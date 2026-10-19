@@ -34,3 +34,14 @@ src/data/seed.ts  sample data
 - Images are stored as file paths, so they are not included in the JSON backup.
 - KaTeX styles load from a CDN, so equations need internet.
 - PDF export lists questions only; an answer-key PDF is not built yet.
+
+## Build with GitHub Actions
+`.github/workflows/build.yml` type-checks the code, then builds an Android APK on every push to `main` (or run it by hand from the Actions tab).
+
+One-time setup:
+1. `npm install -g eas-cli && eas login && eas init` (links the project and adds `extra.eas.projectId` to app.json; commit that change).
+2. Create a token at expo.dev > Account settings > Access tokens.
+3. In GitHub: Settings > Secrets and variables > Actions > New repository secret, name `EXPO_TOKEN`, paste the token.
+4. Push to `main`. When the run finishes, download `physics-cq-apk` from the run's Artifacts section.
+
+iOS builds need an Apple Developer account, so the workflow builds Android only.
