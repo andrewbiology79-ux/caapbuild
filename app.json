@@ -1,3 +1,0 @@
-{ "expo": { "name": "Physics CQ", "slug": "physics-cq-app", "version": "0.1.0", "orientation": "portrait",
-  "ios": { "supportsTablet": true, "bundleIdentifier": "com.example.physicscq" },
-  "android": { "package": "com.example.physicscq" } } }
