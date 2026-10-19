@@ -1,0 +1,48 @@
+name: Build APK
+
+on:
+  workflow_dispatch:          # Actions tab > Build APK > Run workflow
+  push:
+    branches: [main]
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Align package versions with the Expo SDK
+        run: npx expo install --fix -- --legacy-peer-deps
+
+      - name: Generate native Android project
+        run: |
+          npx expo prebuild --platform android --no-install
+          sed -i '/^org.gradle.jvmargs/d' android/gradle.properties
+          echo "org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g" >> android/gradle.properties
+
+      - name: Build release APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon \
+            -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: physics-cq-apk
+          path: android/app/build/outputs/apk/release/*.apk
