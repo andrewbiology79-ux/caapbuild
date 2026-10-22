@@ -1,6 +1,8 @@
 node_modules/
-.expo/
+build/
 dist/
-*.log
+coverage/
 .DS_Store
-.env
+*.log
+.env*
+!.env.example
