@@ -1,0 +1,111 @@
+@import "@fontsource/hind-siliguri/bengali-400.css";
+@import "@fontsource/hind-siliguri/bengali-500.css";
+@import "@fontsource/hind-siliguri/bengali-600.css";
+@import "@fontsource/hind-siliguri/400.css";
+@import "@fontsource/hind-siliguri/500.css";
+@import "@fontsource/hind-siliguri/600.css";
+@import "katex/dist/katex.min.css";
+@import "tailwindcss";
+
+/* Tailwind v4: make `dark:` variants follow the `.dark` class set by Settings (not the OS theme) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --color-primary: #3B4FD8;
+  --color-primary-dark: #2A3BB0;
+  --color-bg: #F2F4F8;
+  --color-card: #FFFFFF;
+  --color-border: #D5D9E2;
+  --color-text-main: #1B1F2A;
+  --color-text-blue: #2A3BB0;
+  font-family: 'Hind Siliguri', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #F2F4F8;
+  color: #1B1F2A;
+  font-family: 'Hind Siliguri', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+/* Ensure minimum button heights for touch accessibility */
+button,
+[role="button"] {
+  min-height: 44px;
+}
+
+/* KaTeX responsive scroll & containment rules */
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+  padding: 4px 0;
+}
+
+.katex {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* Custom subtle scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #D5D9E2;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #B4B9C6;
+}
+
+/* ---- Dark theme: recolour hard-coded light colours in screens/components that have no `dark:` classes ---- */
+.dark .bg-white:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #1e293b; }
+.dark .bg-\[\#F2F4F8\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #0f172a; }
+.dark .bg-\[\#F2F4F8\]\/50:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: rgba(15,23,42,0.6); }
+.dark .bg-\[\#F2F4F8\]\/40:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: rgba(15,23,42,0.5); }
+.dark .bg-\[\#F8FAFC\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #162033; }
+.dark .bg-\[\#EEF2FF\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #1e1b4b; }
+.dark .bg-\[\#EEF2FF\]\/50:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: rgba(30,27,75,0.5); }
+.dark .bg-\[\#FEF9C3\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #422006; }
+.dark .bg-emerald-50:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #052e16; }
+.dark .bg-red-50:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #450a0a; }
+.dark .text-\[\#1B1F2A\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { color: #f1f5f9; }
+.dark .text-\[\#64748B\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { color: #94a3b8; }
+.dark .text-\[\#2A3BB0\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { color: #a5b4fc; }
+.dark .text-\[\#3B4FD8\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { color: #818cf8; }
+.dark .text-\[\#713F12\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { color: #fde68a; }
+.dark .text-emerald-800:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { color: #6ee7b7; }
+.dark .text-red-900:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { color: #fecaca; }
+.dark .text-amber-950:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { color: #fde68a; }
+.dark .border-\[\#D5D9E2\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { border-color: #334155; }
+.dark .border-\[\#E2E8F0\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { border-color: #334155; }
+.dark .border-\[\#F2F4F8\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { border-color: #1e293b; }
+.dark .border-\[\#FDE047\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { border-color: #854d0e; }
+.dark .border-emerald-200:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { border-color: #065f46; }
+.dark .hover\:bg-\[\#EEF2FF\]:hover:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #312e81; }
+.dark .hover\:bg-\[\#E0E7FF\]:hover:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #3730a3; }
+.dark .active\:bg-\[\#E0E7FF\]:active:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #3730a3; }
+.dark .hover\:bg-\[\#F2F4F8\]:hover:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #334155; }
+.dark .active\:bg-\[\#E5E9F0\]:active:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #334155; }
+.dark .hover\:bg-white:hover:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #334155; }
+.dark .focus\:bg-white:focus:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #0f172a; }
+.dark .hover\:bg-red-50:hover:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #450a0a; }
+.dark .hover\:text-\[\#1B1F2A\]:hover:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { color: #f1f5f9; }
+
+.dark { color-scheme: dark; }
+.dark body { background-color: #0f172a; color: #f1f5f9; }
+.dark ::-webkit-scrollbar-thumb { background: #475569; }
