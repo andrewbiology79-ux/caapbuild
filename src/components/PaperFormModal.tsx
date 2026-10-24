@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, FileText, Check, Plus, ArrowUp, ArrowDown, Trash2, Layers } from 'lucide-react';
-import { db, type Paper, type Question, type Stimulus, type Category } from '../db/db';
+import { db, DEFAULT_PAPER_NOTE, type Paper, type Question, type Stimulus, type Category } from '../db/db';
 import {
   savePaper,
   getSelectedIds,
@@ -41,6 +41,7 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
   const [subjectLine, setSubjectLine] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [categories, setCategories] = useState<Category[]>([]);
+  const [note, setNote] = useState(DEFAULT_PAPER_NOTE);
   const [duration, setDuration] = useState('২ ঘণ্টা ৩০ মিনিট');
   const [totalMarks, setTotalMarks] = useState<number>(50);
 
@@ -78,6 +79,7 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
         setSelectedCategoryId(editPaper.categoryId || (cats[0]?.id ?? ''));
         setDuration(String(editPaper.duration || '২ ঘণ্টা ৩০ মিনিট'));
         setTotalMarks(editPaper.totalMarks || 50);
+        setNote(editPaper.note ?? DEFAULT_PAPER_NOTE);
         targetQIds = editPaper.questionIds || [];
       } else {
         const nextCount = (await db.papers.count()) + 1;
@@ -87,6 +89,7 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
         setSelectedCategoryId(cats[0]?.id || '');
         setDuration('২ ঘণ্টা ৩০ মিনিট');
         setTotalMarks(50);
+        setNote(DEFAULT_PAPER_NOTE);
         targetQIds = selIds.length > 0 ? selIds : [];
       }
 
@@ -240,6 +243,7 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
         title: title.trim(),
         shortName: shortName.trim(),
         subjectLine: subjectLine.trim(),
+        note: note.trim(),
         category: matchedCat?.name || 'মডেল টেস্ট',
         categoryId: selectedCategoryId,
         duration,
@@ -362,6 +366,20 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
               onChange={(e) => setSubjectLine(e.target.value)}
               placeholder="যেমন: বিষয়: পদার্থবিজ্ঞান ১ম পত্র"
               className="w-full min-h-[44px] px-3.5 py-2 rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-[#1B1F2A] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
+            />
+          </div>
+
+          {/* Note (দ্রষ্টব্য) */}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-[#1B1F2A] dark:text-slate-200">
+              দ্রষ্টব্য (প্রশ্নপত্রের হেডারের নিচে)
+            </label>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={3}
+              placeholder="যেমন: [ দ্রষ্টব্য: ডান পাশের সংখ্যা প্রশ্নের পূর্ণমান নির্দেশক। ] — ফাঁকা রাখলে PDF-এ দ্রষ্টব্য আসবে না"
+              className="w-full px-3.5 py-2 rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-white dark:bg-slate-800 text-xs leading-relaxed text-[#1B1F2A] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#3B4FD8] resize-y"
             />
           </div>
 

@@ -5,7 +5,7 @@ import html2canvas from 'html2canvas-pro';
 import { jsPDF } from 'jspdf';
 import katex from 'katex';
 import { toBn } from './toBn';
-import { db, type Paper, type Question, type Stimulus } from '../db/db';
+import { db, DEFAULT_PAPER_NOTE, type Paper, type Question, type Stimulus } from '../db/db';
 import { getImageBlobUrl } from '../db/api';
 import { ensureStorageAccess, savePdfToPhoneStorage } from './storageAccess';
 import { getPdfFontScale, normalizePdfFontScale } from './settings';
@@ -317,16 +317,20 @@ function buildPaperHeaderElement(paper: Paper, k = 1): HTMLElement {
   headerDiv.appendChild(metaRow);
 
   // Instruction Notice
-  const noteDiv = document.createElement('div');
-  noteDiv.textContent =
-    '[ দ্রষ্টব্য: ডান পাশের সংখ্যা প্রশ্নের পূর্ণমান নির্দেশক। প্রয়োজনীয় ক্ষেত্রে চিত্র অঙ্কন আবশ্যক। ]';
-  noteDiv.style.textAlign = 'center';
-  noteDiv.style.fontSize = px(10);
-  noteDiv.style.fontWeight = '600';
-  noteDiv.style.fontStyle = 'italic';
-  noteDiv.style.color = '#333333';
-  noteDiv.style.paddingTop = '5px';
-  headerDiv.appendChild(noteDiv);
+  const noteText = (paper.note === undefined ? DEFAULT_PAPER_NOTE : paper.note).trim();
+  if (noteText) {
+    const noteDiv = document.createElement('div');
+    noteDiv.textContent = noteText;
+    noteDiv.style.whiteSpace = 'pre-wrap';
+    noteDiv.style.overflowWrap = 'anywhere';
+    noteDiv.style.textAlign = 'center';
+    noteDiv.style.fontSize = px(10);
+    noteDiv.style.fontWeight = '600';
+    noteDiv.style.fontStyle = 'italic';
+    noteDiv.style.color = '#333333';
+    noteDiv.style.paddingTop = '5px';
+    headerDiv.appendChild(noteDiv);
+  }
 
   return headerDiv;
 }

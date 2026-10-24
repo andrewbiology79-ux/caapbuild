@@ -57,6 +57,9 @@ export interface Category {
   createdAt: number;
 }
 
+export const DEFAULT_PAPER_NOTE =
+  '[ দ্রষ্টব্য: ডান পাশের সংখ্যা প্রশ্নের পূর্ণমান নির্দেশক। প্রয়োজনীয় ক্ষেত্রে চিত্র অঙ্কন আবশ্যক। ]';
+
 export interface Paper {
   id: string;
   shortName: string;
@@ -65,6 +68,8 @@ export interface Paper {
   createdAt: number;
   title: string;
   subjectLine?: string;
+  /** দ্রষ্টব্য (note) printed under the paper header. undefined = default note, '' = hidden */
+  note?: string;
   duration?: string | number;
   totalMarks?: number;
   questionIds: string[];

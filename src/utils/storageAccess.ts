@@ -10,6 +10,7 @@ interface StorageAccessPlugin {
   check(): Promise<{ granted: boolean; sdk: number }>;
   openSettings(): Promise<void>;
   openFolder(options: { path: string }): Promise<void>;
+  openFile(options: { path: string; mimeType?: string }): Promise<void>;
 }
 
 const StorageAccess = registerPlugin<StorageAccessPlugin>('StorageAccess');
@@ -201,6 +202,21 @@ export async function openSavedFolder(filePath: string): Promise<boolean> {
     return true;
   } catch (err) {
     console.warn('Open folder failed:', err);
+    return false;
+  }
+}
+
+/**
+ * Open the saved PDF directly in another app (PDF viewer chosen by the user).
+ * Resolves true when an app was launched.
+ */
+export async function openSavedFile(filePath: string): Promise<boolean> {
+  if (!Capacitor.isNativePlatform()) return false;
+  try {
+    await StorageAccess.openFile({ path: filePath, mimeType: 'application/pdf' });
+    return true;
+  } catch (err) {
+    console.warn('Open file failed:', err);
     return false;
   }
 }

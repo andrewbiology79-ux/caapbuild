@@ -1,15 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, FolderOpen } from 'lucide-react';
+import { CheckCircle2, FileText } from 'lucide-react';
 import {
   subscribePdfSavedDialog,
   closePdfSavedDialog,
-  openSavedFolder,
+  openSavedFile,
   getFolderOfPath,
 } from '../utils/storageAccess';
 
 /**
  * Shown after a PDF is saved to the phone: tells where it was saved and lets the user
- * jump straight to that folder with an "Open" button.
+ * open the PDF directly in another app with the "Open" button.
  */
 export const PdfSavedDialog: React.FC = () => {
   const [savedPath, setSavedPath] = useState<string | null>(null);
@@ -25,7 +25,8 @@ export const PdfSavedDialog: React.FC = () => {
   if (!savedPath) return null;
 
   const handleOpen = async () => {
-    const ok = await openSavedFolder(savedPath);
+    setOpenFailed(false);
+    const ok = await openSavedFile(savedPath);
     if (ok) {
       closePdfSavedDialog();
     } else {
@@ -46,7 +47,7 @@ export const PdfSavedDialog: React.FC = () => {
         </div>
 
         <div className="flex items-start gap-2 text-[11px] text-[#64748B] dark:text-slate-400 bg-[#F2F4F8] dark:bg-slate-800 rounded-xl p-2.5">
-          <FolderOpen className="w-4 h-4 shrink-0 mt-0.5" />
+          <FileText className="w-4 h-4 shrink-0 mt-0.5" />
           <span className="break-all">
             <span className="font-semibold">{getFolderOfPath(savedPath)}</span>
             <br />
@@ -55,8 +56,9 @@ export const PdfSavedDialog: React.FC = () => {
         </div>
 
         {openFailed && (
-          <p className="text-xs text-red-600 dark:text-red-400 font-medium">
-            ফোল্ডারটি খোলা যায়নি। ফাইল ম্যানেজার থেকে উপরের ফোল্ডারে গিয়ে দেখুন।
+          <p className="text-xs text-red-600 dark:text-red-400 font-medium leading-relaxed">
+            PDF খোলা যায়নি। ফোনে কোনো PDF ভিউয়ার অ্যাপ আছে কিনা দেখুন, অথবা ফাইল ম্যানেজার থেকে উপরের
+            ফোল্ডারে গিয়ে খুলুন।
           </p>
         )}
 
@@ -66,8 +68,8 @@ export const PdfSavedDialog: React.FC = () => {
             onClick={handleOpen}
             className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] text-white text-xs font-bold flex items-center justify-center gap-1.5"
           >
-            <FolderOpen className="w-4 h-4" />
-            <span>Open (ফোল্ডার খুলুন)</span>
+            <FileText className="w-4 h-4" />
+            <span>Open (PDF খুলুন)</span>
           </button>
           <button
             type="button"

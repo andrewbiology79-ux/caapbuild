@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { X, Trash2, Edit3, FileDown, AlertTriangle, Minus, Plus } from 'lucide-react';
-import { db, type Paper, type Question, type Stimulus } from '../db/db';
+import { db, DEFAULT_PAPER_NOTE, type Paper, type Question, type Stimulus } from '../db/db';
 import { deletePaper, getImageBlobUrl } from '../db/api';
 import { RichText } from './RichText';
 import { useToast } from './Toast';
@@ -225,9 +225,11 @@ export const PaperViewModal: React.FC<PaperViewModalProps> = ({
       </div>
 
       {/* Instruction Notice */}
-      <div className="text-center text-[0.6875rem] font-semibold text-black/80 italic">
-        [ দ্রষ্টব্য: ডান পাশের সংখ্যা প্রশ্নের পূর্ণমান নির্দেশক। প্রয়োজনীয় ক্ষেত্রে চিত্র অঙ্কন আবশ্যক। ]
-      </div>
+      {(paper.note === undefined ? DEFAULT_PAPER_NOTE : paper.note).trim() && (
+        <div className="text-center text-[0.6875rem] font-semibold text-black/80 italic whitespace-pre-wrap">
+          {(paper.note === undefined ? DEFAULT_PAPER_NOTE : paper.note).trim()}
+        </div>
+      )}
 
       {/* Questions List */}
       <div className="space-y-4 pt-2">

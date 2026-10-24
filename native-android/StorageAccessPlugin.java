@@ -1,12 +1,16 @@
 package com.qbcollection.app;
 
 import android.app.DownloadManager;
+import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
-import android.provider.DocumentsContract;
 import android.provider.Settings;
+
+import androidx.core.content.FileProvider;
+
+import java.io.File;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -59,34 +63,12 @@ public class StorageAccessPlugin extends Plugin {
     }
 
     /**
-     * Opens a folder of the phone's internal storage (e.g. "Download/QbCollection")
-     * in the file manager. Falls back to the system Downloads screen.
+     * Opens the system Downloads screen in the file manager. (Launching some devices' Files app
+     * straight into a sub-folder makes that app crash - and such a crash cannot be caught from
+     * here - so the standard Downloads screen is used; the PDF folder is one tap away.)
      */
     @PluginMethod
     public void openFolder(PluginCall call) {
-        String path = call.getString("path", "Download/QbCollection");
-        if (path == null || path.trim().isEmpty()) {
-            path = "Download/QbCollection";
-        }
-        path = path.replaceAll("^/+", "").replaceAll("/+$", "");
-
-        // 1) File manager (Documents UI) directly at the folder
-        try {
-            Uri folderUri = DocumentsContract.buildDocumentUri(
-                "com.android.externalstorage.documents",
-                "primary:" + path
-            );
-            Intent intent = new Intent(Intent.ACTION_VIEW);
-            intent.setDataAndType(folderUri, "vnd.android.document/directory");
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            getContext().startActivity(intent);
-            call.resolve();
-            return;
-        } catch (Exception ignored) {
-            // try fallback below
-        }
-
-        // 2) Fallback: system Downloads screen
         try {
             Intent downloads = new Intent(DownloadManager.ACTION_VIEW_DOWNLOADS);
             downloads.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -94,6 +76,47 @@ public class StorageAccessPlugin extends Plugin {
             call.resolve();
         } catch (Exception e) {
             call.reject("Unable to open folder");
+        }
+    }
+
+    /**
+     * Opens a saved file (path relative to the phone's internal storage, e.g.
+     * "Download/QbCollection/x.pdf") in another app via a chooser / default app.
+     */
+    @PluginMethod
+    public void openFile(PluginCall call) {
+        String path = call.getString("path");
+        String mime = call.getString("mimeType", "application/pdf");
+        if (path == null || path.trim().isEmpty()) {
+            call.reject("No file path");
+            return;
+        }
+        path = path.replaceAll("^/+", "");
+
+        File file = new File(Environment.getExternalStorageDirectory(), path);
+        if (!file.exists()) {
+            call.reject("File not found");
+            return;
+        }
+
+        try {
+            Uri uri = FileProvider.getUriForFile(
+                getContext(),
+                getContext().getPackageName() + ".fileprovider",
+                file
+            );
+            Intent view = new Intent(Intent.ACTION_VIEW);
+            view.setDataAndType(uri, mime);
+            view.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+            Intent chooser = Intent.createChooser(view, "PDF খুলুন");
+            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            getContext().startActivity(chooser);
+            call.resolve();
+        } catch (ActivityNotFoundException e) {
+            call.reject("No app found to open this file");
+        } catch (Exception e) {
+            call.reject("Unable to open file");
         }
     }
 }
