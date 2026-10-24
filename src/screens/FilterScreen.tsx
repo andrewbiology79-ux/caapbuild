@@ -4,11 +4,8 @@ import {
   SlidersHorizontal,
   X,
   RefreshCw,
-  ArrowUpDown,
-  Bookmark,
-  BookmarkPlus,
-  Trash2,
   Check,
+  Trash2,
   Layers,
   BookOpen,
   CheckSquare,
@@ -19,33 +16,33 @@ import {
   Star,
   Copy,
   FileText,
+  ChevronDown,
 } from 'lucide-react';
 import { Header } from '../components/Header';
+import { KebabMenu, type MenuItem } from '../components/KebabMenu';
 import { RichText } from '../components/RichText';
-import { PromptDialog } from '../components/PromptDialog';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ActionSheet } from '../components/ActionSheet';
 import { useToast } from '../components/Toast';
 import { FilterPdfDialog, type FilterPdfValues } from '../components/FilterPdfDialog';
 import { exportRowsToPdf } from '../utils/filterPdf';
 import { showPdfSavedDialog } from '../utils/storageAccess';
-import type { MenuItem } from '../components/KebabMenu';
 import { getRatingStarsText, getApi } from '../db/api';
-import type { QuestionType } from '../db/db';
+import { getSelectedIdsAll } from '../db/crossDb';
+import type { CqScope, QuestionType } from '../db/db';
 import { toBn } from '../utils/toBn';
+import { useNavigation } from '../utils/navigation';
 import {
   EMPTY_CRITERIA,
   applyFilters,
   countActiveFilters,
   loadFilterDataset,
-  loadSavedFilters,
-  persistSavedFilters,
   type FilterCriteria,
   type FilterDataset,
   type FilterRow,
-  type SavedFilter,
   type SortMode,
 } from '../utils/filterEngine';
+import { filterTabState, persistDropdownOrder, type DropdownKey } from '../utils/filterStore';
 
 const PAGE_SIZE = 30;
 
@@ -62,7 +59,7 @@ const TYPE_OPTIONS: QuestionType[] = ['ক', 'খ', 'গ', 'ঘ'];
 const EMPTY_DATASET: FilterDataset = {
   rows: [],
   loadedAt: 0,
-  facets: { subjects: [], chapters: [], topics: [], marks: [], boards: [], years: [] },
+  facets: { subjects: [], chapters: [], topics: [], marks: [], boards: [], years: [], categories: [] },
 };
 
 /** hides the scrollbar on the horizontal chip rows */
@@ -136,36 +133,34 @@ const Segmented: React.FC<{
 );
 
 /* ------------------------------------------------------------------ */
-/* Result card                                                         */
+/* Result card (full question — no truncation)                         */
 /* ------------------------------------------------------------------ */
 
 interface ResultCardProps {
   row: FilterRow;
-  selectMode: boolean;
   selected: boolean;
-  onToggle: (key: string) => void;
+  onToggle: (row: FilterRow) => void;
 }
 
-const ResultCard: React.FC<ResultCardProps> = React.memo(({ row, selectMode, selected, onToggle }) => {
+const ResultCard: React.FC<ResultCardProps> = React.memo(({ row, selected, onToggle }) => {
   const q = row.question;
   const path = [row.subjectName, row.chapterName, row.topicName].filter(Boolean).join(' › ');
-  const boards = (q.usedInBoards || []).slice(0, 4);
+  const boards = q.usedInBoards || [];
 
   return (
     <article
-      onClick={selectMode ? () => onToggle(row.key) : undefined}
-      aria-selected={selectMode ? selected : undefined}
-      className={`rounded-2xl border shadow-2xs p-3.5 space-y-2.5 transition-colors ${
+      onClick={() => onToggle(row)}
+      aria-selected={selected}
+      className={`rounded-2xl border shadow-2xs p-3.5 space-y-2.5 transition-colors cursor-pointer ${
         selected ? 'bg-[#EEF2FF] border-[#3B4FD8] ring-1 ring-[#3B4FD8]' : 'bg-white border-[#D5D9E2]'
-      } ${selectMode ? 'cursor-pointer select-none' : ''}`}
+      }`}
     >
       <div className="flex items-center gap-1.5 flex-wrap">
-        {selectMode &&
-          (selected ? (
-            <CheckSquare className="w-5 h-5 text-[#3B4FD8] shrink-0" />
-          ) : (
-            <Square className="w-5 h-5 text-[#94A3B8] shrink-0" />
-          ))}
+        {selected ? (
+          <CheckSquare className="w-5 h-5 text-[#3B4FD8] shrink-0" />
+        ) : (
+          <Square className="w-5 h-5 text-[#94A3B8] shrink-0" />
+        )}
         <span
           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[0.6875rem] font-bold ${
             row.source === 'chapter' ? 'bg-emerald-50 text-emerald-700' : 'bg-[#EEF2FF] text-[#2A3BB0]'
@@ -188,12 +183,12 @@ const ResultCard: React.FC<ResultCardProps> = React.memo(({ row, selectMode, sel
       <p className="text-[0.6875rem] text-[#64748B] leading-snug">{path}</p>
 
       {row.stimulus?.text && (
-        <div className="rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] px-3 py-2 text-xs text-[#334155] line-clamp-3">
+        <div className="rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] px-3 py-2 text-xs text-[#334155] leading-relaxed">
           <RichText text={row.stimulus.text} />
         </div>
       )}
 
-      <div className="text-sm text-[#1B1F2A] leading-relaxed line-clamp-4">
+      <div className="text-sm text-[#1B1F2A] leading-relaxed">
         <RichText text={q.questionText} />
       </div>
 
@@ -216,27 +211,49 @@ const ResultCard: React.FC<ResultCardProps> = React.memo(({ row, selectMode, sel
 ResultCard.displayName = 'ResultCard';
 
 /* ------------------------------------------------------------------ */
-/* Filter sheet                                                        */
+/* Filter sheet (bottom window)                                        */
 /* ------------------------------------------------------------------ */
 
 interface SheetProps {
   isOpen: boolean;
   dataset: FilterDataset;
   criteria: FilterCriteria;
+  sort: SortMode;
   resultCount: number;
   onChange: (c: FilterCriteria) => void;
+  onSortChange: (s: SortMode) => void;
   onClose: () => void;
 }
 
-const FilterSheet: React.FC<SheetProps> = ({ isOpen, dataset, criteria, resultCount, onChange, onClose }) => {
+const FilterSheet: React.FC<SheetProps> = ({
+  isOpen,
+  dataset,
+  criteria,
+  sort,
+  resultCount,
+  onChange,
+  onSortChange,
+  onClose,
+}) => {
+  const { registerBackHandler } = useNavigation();
+
+  // Hardware back button closes this window instead of leaving the app
+  useEffect(() => {
+    if (!isOpen) return;
+    return registerBackHandler(() => {
+      onClose();
+      return true;
+    });
+  }, [isOpen, onClose, registerBackHandler]);
+
   if (!isOpen) return null;
   const f = dataset.facets;
   const set = (patch: Partial<FilterCriteria>) => onChange({ ...criteria, ...patch });
 
-  // Chapters narrow down to the chosen subjects
   const chapters = f.chapters.filter((c) => criteria.subjects.length === 0 || criteria.subjects.includes(c.subject));
   const active = countActiveFilters(criteria);
   const plainChapterNames = f.subjects.length === 1 || criteria.subjects.length === 1;
+  const chapterOnly = criteria.sources.length === 1 && criteria.sources[0] === 'chapter';
 
   return (
     <div
@@ -254,14 +271,24 @@ const FilterSheet: React.FC<SheetProps> = ({ isOpen, dataset, criteria, resultCo
           <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[#D5D9E2]" />
           <div className="flex items-center justify-between">
             <h3 className="text-base font-bold text-[#1B1F2A]">ফিল্টার</h3>
-            <button
-              type="button"
-              onClick={() => onChange({ ...EMPTY_CRITERIA, text: criteria.text })}
-              disabled={active === 0}
-              className="min-h-[36px] px-3 text-xs font-bold text-[#3B4FD8] disabled:text-[#94A3B8]"
-            >
-              সব মুছুন
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => onChange({ ...EMPTY_CRITERIA, text: criteria.text })}
+                disabled={active === 0}
+                className="min-h-[36px] px-3 text-xs font-bold text-[#3B4FD8] disabled:text-[#94A3B8]"
+              >
+                সব মুছুন
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="ফিল্টার বন্ধ করুন"
+                className="w-10 h-10 flex items-center justify-center rounded-full text-[#1B1F2A] hover:bg-[#F2F4F8] active:bg-[#E5E9F0]"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -269,13 +296,27 @@ const FilterSheet: React.FC<SheetProps> = ({ isOpen, dataset, criteria, resultCo
           <Segmented
             title="উৎস"
             value={criteria.sources.length === 1 ? criteria.sources[0] : 'all'}
-            onChange={(v) => set({ sources: v === 'all' ? [] : [v as 'type' | 'chapter'] })}
+            onChange={(v) =>
+              set({
+                sources: v === 'all' ? [] : [v as CqScope],
+                // Chapter CQ has no type/topic level
+                topics: v === 'chapter' ? [] : criteria.topics,
+              })
+            }
             options={[
               { value: 'all', label: 'সব' },
               { value: 'type', label: 'Type CQ' },
               { value: 'chapter', label: 'Chapter CQ' },
             ]}
           />
+
+          <Section title="সাজান">
+            {(Object.keys(SORT_LABELS) as SortMode[]).map((m) => (
+              <Chip key={m} active={sort === m} onClick={() => onSortChange(m)}>
+                {SORT_LABELS[m]}
+              </Chip>
+            ))}
+          </Section>
 
           {f.subjects.length > 0 && (
             <Section title="বিষয়">
@@ -305,7 +346,7 @@ const FilterSheet: React.FC<SheetProps> = ({ isOpen, dataset, criteria, resultCo
             </Section>
           )}
 
-          {f.topics.length > 0 && (
+          {!chapterOnly && f.topics.length > 0 && (
             <Section title="টাইপ / টপিক (Type CQ)">
               {f.topics.map((t) => (
                 <Chip key={t} active={criteria.topics.includes(t)} onClick={() => set({ topics: toggleIn(criteria.topics, t) })}>
@@ -361,6 +402,20 @@ const FilterSheet: React.FC<SheetProps> = ({ isOpen, dataset, criteria, resultCo
             </Section>
           )}
 
+          {f.categories.length > 0 && (
+            <Section title="যে ক্যাটেগরিতে ব্যবহৃত হয়েছে">
+              {f.categories.map((c) => (
+                <Chip
+                  key={c.id}
+                  active={criteria.categories.includes(c.id)}
+                  onClick={() => set({ categories: toggleIn(criteria.categories, c.id) })}
+                >
+                  {c.name}
+                </Chip>
+              ))}
+            </Section>
+          )}
+
           <Segmented
             title="বোর্ডে এসেছে কিনা"
             value={criteria.usage}
@@ -410,42 +465,176 @@ const FilterSheet: React.FC<SheetProps> = ({ isOpen, dataset, criteria, resultCo
 };
 
 /* ------------------------------------------------------------------ */
+/* Draggable dropdown chips                                            */
+/* ------------------------------------------------------------------ */
+
+interface DropdownDef {
+  key: DropdownKey;
+  label: string;
+  options: Array<{ value: string; label: string }>;
+  selected: string[];
+  /** single-choice dropdowns (sort) close after a pick */
+  single?: boolean;
+  /** shown instead of the list when there is nothing to pick */
+  emptyHint?: string;
+  onToggle: (value: string) => void;
+  onClear?: () => void;
+}
+
+/**
+ * Long-press a chip, then drag left/right to reorder. A plain tap still opens the dropdown.
+ */
+function useChipDrag(
+  order: DropdownKey[],
+  setOrder: (o: DropdownKey[]) => void,
+  containerRef: React.RefObject<HTMLDivElement | null>
+) {
+  const [draggingKey, setDraggingKey] = useState<DropdownKey | null>(null);
+  const justDragged = useRef(false);
+  const orderRef = useRef(order);
+  orderRef.current = order;
+
+  const onPointerDown = (key: DropdownKey) => (e: React.PointerEvent) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let active = false;
+
+    const timer = window.setTimeout(() => {
+      active = true;
+      setDraggingKey(key);
+      try {
+        navigator.vibrate?.(15);
+      } catch {
+        /* ignore */
+      }
+    }, 280);
+
+    const blockScroll = (ev: TouchEvent) => {
+      if (active && ev.cancelable) ev.preventDefault();
+    };
+
+    const reorderAt = (x: number) => {
+      const cur = orderRef.current;
+      const from = cur.indexOf(key);
+      let to = from;
+      container.querySelectorAll<HTMLElement>('[data-dd]').forEach((el) => {
+        const k = el.dataset.dd as DropdownKey;
+        if (k === key) return;
+        const r = el.getBoundingClientRect();
+        const mid = r.left + r.width / 2;
+        const idx = cur.indexOf(k);
+        if (idx > from && x > mid) to = Math.max(to, idx);
+        if (idx < from && x < mid) to = Math.min(to, idx);
+      });
+      if (to !== from) {
+        const next = [...cur];
+        next.splice(from, 1);
+        next.splice(to, 0, key);
+        orderRef.current = next;
+        setOrder(next);
+      }
+      // edge auto-scroll
+      const cr = container.getBoundingClientRect();
+      if (x > cr.right - 32) container.scrollLeft += 14;
+      else if (x < cr.left + 32) container.scrollLeft -= 14;
+    };
+
+    const onMove = (ev: PointerEvent) => {
+      if (!active) {
+        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > 8) finish(false);
+        return;
+      }
+      reorderAt(ev.clientX);
+    };
+    const onUp = () => finish(active);
+    const onCancel = () => finish(false);
+
+    function finish(wasDragging: boolean) {
+      window.clearTimeout(timer);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+      document.removeEventListener('touchmove', blockScroll);
+      if (wasDragging) {
+        justDragged.current = true;
+        window.setTimeout(() => (justDragged.current = false), 80);
+        persistDropdownOrder(orderRef.current);
+      }
+      setDraggingKey(null);
+    }
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
+    document.addEventListener('touchmove', blockScroll, { passive: false });
+  };
+
+  return { draggingKey, justDragged, onPointerDown };
+}
+
+/* ------------------------------------------------------------------ */
 /* Screen                                                              */
 /* ------------------------------------------------------------------ */
 
 export const FilterScreen: React.FC = () => {
   const [dataset, setDataset] = useState<FilterDataset | null>(null);
   const [loading, setLoading] = useState(true);
-  const [criteria, setCriteria] = useState<FilterCriteria>(EMPTY_CRITERIA);
-  const [searchInput, setSearchInput] = useState('');
-  const [sort, setSort] = useState<SortMode>('default');
+
+  // Restored from the module store so filters survive switching tabs
+  const [criteria, setCriteria] = useState<FilterCriteria>(filterTabState.criteria);
+  const [searchInput, setSearchInput] = useState(filterTabState.searchInput);
+  const [searchOpen, setSearchOpen] = useState(filterTabState.searchOpen);
+  const [sort, setSort] = useState<SortMode>(filterTabState.sort);
+  const [order, setOrder] = useState<DropdownKey[]>(filterTabState.order);
+
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [sortOpen, setSortOpen] = useState(false);
-  const [savedOpen, setSavedOpen] = useState(false);
-  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
-  const [saved, setSaved] = useState<SavedFilter[]>(() => loadSavedFilters());
+  const [openDropdown, setOpenDropdown] = useState<DropdownKey | null>(null);
   const [visible, setVisible] = useState(PAGE_SIZE);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const chipRowRef = useRef<HTMLDivElement>(null);
   const { showToast } = useToast();
+  const { registerBackHandler } = useNavigation();
 
-  // Multi-select (entered from the header ⋮ menu)
-  const [selectMode, setSelectMode] = useState(false);
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
+  // Selection lives in the same database selection list the Type CQ / Chapter CQ tabs use,
+  // so the Create tab picks it up automatically.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [ratingSheetOpen, setRatingSheetOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [pdfOpen, setPdfOpen] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
 
+  // mirror state into the store
+  useEffect(() => {
+    filterTabState.criteria = criteria;
+    filterTabState.searchInput = searchInput;
+    filterTabState.searchOpen = searchOpen;
+    filterTabState.sort = sort;
+    filterTabState.order = order;
+  }, [criteria, searchInput, searchOpen, sort, order]);
+
+  const refreshSelection = useCallback(async () => {
+    try {
+      setSelectedIds(new Set(await getSelectedIdsAll()));
+    } catch (err) {
+      console.error('Failed to load selection:', err);
+    }
+  }, []);
+
   const reload = useCallback(async () => {
     setLoading(true);
     try {
       setDataset(await loadFilterDataset());
+      await refreshSelection();
     } catch (err) {
       console.error('Failed to load filter dataset:', err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [refreshSelection]);
 
   useEffect(() => {
     reload();
@@ -460,17 +649,24 @@ export const FilterScreen: React.FC = () => {
     return () => clearTimeout(t);
   }, [searchInput]);
 
+  // Hardware back closes an open dropdown first
+  useEffect(() => {
+    if (!openDropdown) return;
+    return registerBackHandler(() => {
+      setOpenDropdown(null);
+      return true;
+    });
+  }, [openDropdown, registerBackHandler]);
+
   const results = useMemo(
     () => (dataset ? applyFilters(dataset.rows, criteria, sort) : []),
     [dataset, criteria, sort]
   );
 
-  // Reset paging whenever the result set changes
   useEffect(() => {
     setVisible(PAGE_SIZE);
   }, [results]);
 
-  // Infinite scroll
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el) return;
@@ -485,115 +681,189 @@ export const FilterScreen: React.FC = () => {
   }, [results.length, visible, loading]);
 
   const activeCount = countActiveFilters(criteria);
-  const hasAnyFilter = activeCount > 0 || criteria.text.trim().length > 0;
+  const hasAnyFilter = activeCount > 0 || criteria.text.trim().length > 0 || sort !== 'default';
 
   const applyCriteria = (c: FilterCriteria) => {
     setCriteria(c);
     setSearchInput(c.text);
   };
 
-  /* Removable chips summarising what is active */
-  const activeChips = useMemo(() => {
-    const chips: Array<{ id: string; label: string; remove: () => void }> = [];
-    const patch = (p: (c: FilterCriteria) => Partial<FilterCriteria>) => () =>
-      setCriteria((c) => ({ ...c, ...p(c) }));
+  const clearAllFilters = () => {
+    applyCriteria(EMPTY_CRITERIA);
+    setSort('default');
+  };
 
-    criteria.sources.forEach((s) =>
-      chips.push({
-        id: `src:${s}`,
-        label: s === 'chapter' ? 'Chapter CQ' : 'Type CQ',
-        remove: patch((c) => ({ sources: c.sources.filter((x) => x !== s) })),
-      })
-    );
-    criteria.subjects.forEach((s) =>
-      chips.push({ id: `sub:${s}`, label: s, remove: patch((c) => ({ subjects: c.subjects.filter((x) => x !== s) })) })
-    );
-    criteria.chapters.forEach((k) =>
-      chips.push({
-        id: `ch:${k}`,
-        label: k.split('||')[1],
-        remove: patch((c) => ({ chapters: c.chapters.filter((x) => x !== k) })),
-      })
-    );
-    criteria.topics.forEach((t) =>
-      chips.push({ id: `top:${t}`, label: t, remove: patch((c) => ({ topics: c.topics.filter((x) => x !== t) })) })
-    );
-    criteria.types.forEach((t) =>
-      chips.push({
-        id: `type:${t}`,
-        label: `ধরন ${t}`,
-        remove: patch((c) => ({ types: c.types.filter((x) => x !== t) })),
-      })
-    );
-    criteria.ratings.forEach((r) =>
-      chips.push({ id: `rate:${r}`, label: '★'.repeat(r), remove: patch((c) => ({ ratings: c.ratings.filter((x) => x !== r) })) })
-    );
-    criteria.marks.forEach((m) =>
-      chips.push({
-        id: `marks:${m}`,
-        label: `${toBn(m)} নম্বর`,
-        remove: patch((c) => ({ marks: c.marks.filter((x) => x !== m) })),
-      })
-    );
-    criteria.boards.forEach((b) =>
-      chips.push({ id: `board:${b}`, label: b, remove: patch((c) => ({ boards: c.boards.filter((x) => x !== b) })) })
-    );
-    criteria.years.forEach((y) =>
-      chips.push({ id: `year:${y}`, label: toBn(y), remove: patch((c) => ({ years: c.years.filter((x) => x !== y) })) })
-    );
-    if (criteria.usage !== 'any')
-      chips.push({
-        id: 'usage',
-        label: criteria.usage === 'used' ? 'বোর্ডে এসেছে' : 'বোর্ডে আসেনি',
-        remove: patch(() => ({ usage: 'any' })),
-      });
-    if (criteria.stimulus !== 'any')
-      chips.push({
-        id: 'stim',
-        label: criteria.stimulus === 'with' ? 'উদ্দীপকসহ' : 'উদ্দীপক ছাড়া',
-        remove: patch(() => ({ stimulus: 'any' })),
-      });
-    if (criteria.solution !== 'any')
-      chips.push({
-        id: 'sol',
-        label: criteria.solution === 'with' ? 'সমাধানসহ' : 'সমাধান ছাড়া',
-        remove: patch(() => ({ solution: 'any' })),
-      });
-    return chips;
-  }, [criteria]);
+  /* ---------- dropdown definitions ---------- */
 
-  const toggleKey = useCallback((key: string) => {
-    setSelectedKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }, []);
+  const chapterOnly = criteria.sources.length === 1 && criteria.sources[0] === 'chapter';
 
-  const exitSelectMode = useCallback(() => {
-    setSelectMode(false);
-    setSelectedKeys(new Set());
-  }, []);
+  // facets narrowed by the chosen source (Type CQ / Chapter CQ) and subject
+  const scoped = useMemo(() => {
+    const rows = (dataset?.rows ?? []).filter(
+      (r) => criteria.sources.length === 0 || criteria.sources.includes(r.source)
+    );
+    const chapters = new Map<string, { key: string; subject: string; name: string }>();
+    const topics = new Set<string>();
+    const subjects = new Set<string>();
+    for (const r of rows) {
+      subjects.add(r.subjectName);
+      if (criteria.subjects.length === 0 || criteria.subjects.includes(r.subjectName)) {
+        const k = `${r.subjectName}||${r.chapterName}`;
+        if (!chapters.has(k)) chapters.set(k, { key: k, subject: r.subjectName, name: r.chapterName });
+      }
+      if (r.topicName) topics.add(r.topicName);
+    }
+    return { chapters: [...chapters.values()], topics: [...topics], multiSubject: subjects.size > 1 };
+  }, [dataset, criteria.sources, criteria.subjects]);
 
-  const selectAllResults = () => setSelectedKeys(new Set(results.map((r) => r.key)));
+  const dropdowns = useMemo((): Record<DropdownKey, DropdownDef> => {
+    const f = (dataset ?? EMPTY_DATASET).facets;
+    const patch = (p: Partial<FilterCriteria>) => setCriteria((c) => ({ ...c, ...p }));
+    return {
+      source: {
+        key: 'source',
+        label: 'Type CQ / Chapter CQ',
+        options: [
+          { value: 'type', label: 'Type CQ' },
+          { value: 'chapter', label: 'Chapter CQ' },
+        ],
+        selected: criteria.sources,
+        onToggle: (v) =>
+          setCriteria((c) => {
+            const sources = toggleIn(c.sources, v as CqScope);
+            const onlyChapter = sources.length === 1 && sources[0] === 'chapter';
+            // Chapter CQ has no type level → drop any topic filter
+            return { ...c, sources, topics: onlyChapter ? [] : c.topics };
+          }),
+        onClear: () => patch({ sources: [] }),
+      },
+      chapter: {
+        key: 'chapter',
+        label: 'অধ্যায়',
+        options: scoped.chapters.map((c) => ({
+          value: c.key,
+          label: scoped.multiSubject && criteria.subjects.length !== 1 ? `${c.subject} · ${c.name}` : c.name,
+        })),
+        selected: criteria.chapters,
+        emptyHint: 'কোনো অধ্যায় নেই',
+        onToggle: (v) => patch({ chapters: toggleIn(criteria.chapters, v) }),
+        onClear: () => patch({ chapters: [] }),
+      },
+      topic: {
+        key: 'topic',
+        label: 'টাইপ',
+        options: chapterOnly ? [] : scoped.topics.map((t) => ({ value: t, label: t })),
+        selected: chapterOnly ? [] : criteria.topics,
+        emptyHint: chapterOnly ? 'Chapter CQ-তে টাইপ নেই' : 'কোনো টাইপ নেই',
+        onToggle: (v) => patch({ topics: toggleIn(criteria.topics, v) }),
+        onClear: () => patch({ topics: [] }),
+      },
+      board: {
+        key: 'board',
+        label: 'বোর্ড',
+        options: f.boards.map((b) => ({ value: b, label: b })),
+        selected: criteria.boards,
+        emptyHint: 'কোনো বোর্ড নেই',
+        onToggle: (v) => patch({ boards: toggleIn(criteria.boards, v) }),
+        onClear: () => patch({ boards: [] }),
+      },
+      year: {
+        key: 'year',
+        label: 'সাল',
+        options: f.years.map((y) => ({ value: String(y), label: toBn(y) })),
+        selected: criteria.years.map(String),
+        emptyHint: 'কোনো সাল নেই',
+        onToggle: (v) => patch({ years: toggleIn(criteria.years, Number(v)) }),
+        onClear: () => patch({ years: [] }),
+      },
+      rating: {
+        key: 'rating',
+        label: 'রেটিং',
+        options: [5, 4, 3, 2, 1].map((r) => ({ value: String(r), label: '★'.repeat(r) + '☆'.repeat(5 - r) })),
+        selected: criteria.ratings.map(String),
+        onToggle: (v) => patch({ ratings: toggleIn(criteria.ratings, Number(v)) }),
+        onClear: () => patch({ ratings: [] }),
+      },
+      category: {
+        key: 'category',
+        label: 'ক্যাটেগরি',
+        options: f.categories.map((c) => ({ value: c.id, label: c.name })),
+        selected: criteria.categories,
+        emptyHint: 'কোনো প্রশ্ন এখনো প্রশ্নপত্রে ব্যবহৃত হয়নি',
+        onToggle: (v) => patch({ categories: toggleIn(criteria.categories, v) }),
+        onClear: () => patch({ categories: [] }),
+      },
+      type: {
+        key: 'type',
+        label: 'ধরন (ক–ঘ)',
+        options: TYPE_OPTIONS.map((t) => ({ value: t, label: t })),
+        selected: criteria.types,
+        onToggle: (v) => patch({ types: toggleIn(criteria.types, v as QuestionType) }),
+        onClear: () => patch({ types: [] }),
+      },
+      sort: {
+        key: 'sort',
+        label: 'সাজান',
+        single: true,
+        options: (Object.keys(SORT_LABELS) as SortMode[]).map((m) => ({ value: m, label: SORT_LABELS[m] })),
+        selected: sort === 'default' ? [] : [sort],
+        onToggle: (v) => setSort(v as SortMode),
+        onClear: () => setSort('default'),
+      },
+    };
+  }, [dataset, criteria, scoped, chapterOnly, sort]);
 
-  const invertSelection = () =>
-    setSelectedKeys((prev) => {
-      const next = new Set<string>();
-      results.forEach((r) => {
-        if (!prev.has(r.key)) next.add(r.key);
+  const handleOrderChange = useCallback((o: DropdownKey[]) => setOrder(o), []);
+  const { draggingKey, justDragged, onPointerDown } = useChipDrag(order, handleOrderChange, chipRowRef);
+
+  /* ---------- selection ---------- */
+
+  const toggleRow = useCallback(
+    async (row: FilterRow) => {
+      const id = row.question.id;
+      // optimistic UI
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
       });
-      // keep selections that are hidden by the current filter
-      prev.forEach((k) => {
-        if (!results.some((r) => r.key === k)) next.add(k);
-      });
-      return next;
-    });
+      try {
+        await getApi(row.source).toggleSelected(id);
+      } catch (err) {
+        console.error('Toggle selection failed:', err);
+        await refreshSelection();
+      }
+    },
+    [refreshSelection]
+  );
+
+  /** Rewrite the selection list of each collection from the current result set */
+  const rewriteSelection = async (mode: 'add' | 'invert') => {
+    for (const scope of ['type', 'chapter'] as CqScope[]) {
+      const api = getApi(scope);
+      const current = await api.getSelectedIds();
+      const ids = results.filter((r) => r.source === scope).map((r) => r.question.id);
+      const idSet = new Set(ids);
+      let next: string[];
+      if (mode === 'add') {
+        next = [...current, ...ids.filter((id) => !current.includes(id))];
+      } else {
+        next = [...current.filter((id) => !idSet.has(id)), ...ids.filter((id) => !current.includes(id))];
+      }
+      await api.reorderSelected(next);
+    }
+    await refreshSelection();
+  };
+
+  const clearSelectionAll = async () => {
+    await Promise.all([getApi('type').clearSelection(), getApi('chapter').clearSelection()]);
+    setSelectedIds(new Set());
+  };
 
   const selectedRows = useMemo(
-    () => (dataset ? dataset.rows.filter((r) => selectedKeys.has(r.key)) : []),
-    [dataset, selectedKeys]
+    () => (dataset ? dataset.rows.filter((r) => selectedIds.has(r.question.id)) : []),
+    [dataset, selectedIds]
   );
 
   /** Run a per-question action against the right database (Type CQ / Chapter CQ) */
@@ -641,43 +911,43 @@ export const FilterScreen: React.FC = () => {
   const handleBulkDelete = async () => {
     setConfirmDelete(false);
     const n = await runBulk((api, row) => api.deleteQuestion(row.question.id));
-    setSelectedKeys(new Set());
     await reload();
     showToast(`${toBn(n)}টি প্রশ্ন মুছে ফেলা হয়েছে`);
   };
 
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setSearchInput('');
+  };
+
   const headerMenuItems = useMemo((): MenuItem[] => {
-    if (!selectMode) {
-      return [
-        {
-          id: 'select-mode',
-          label: 'সিলেক্ট করুন',
-          icon: <CheckSquare className="w-4 h-4 text-[#3B4FD8]" />,
-          onClick: () => setSelectMode(true),
-        },
-      ];
-    }
     const items: MenuItem[] = [
+      {
+        id: 'search',
+        label: searchOpen ? 'সার্চ বন্ধ করুন' : 'প্রশ্ন সার্চ',
+        icon: <Search className="w-4 h-4 text-[#3B4FD8]" />,
+        onClick: () => (searchOpen ? closeSearch() : setSearchOpen(true)),
+      },
       {
         id: 'select-all',
         label: `সব সিলেক্ট করুন (${toBn(results.length)})`,
         icon: <ListChecks className="w-4 h-4 text-[#3B4FD8]" />,
-        onClick: selectAllResults,
+        onClick: () => rewriteSelection('add'),
       },
       {
         id: 'invert',
         label: 'উল্টো সিলেক্ট',
         icon: <FlipHorizontal className="w-4 h-4 text-[#3B4FD8]" />,
-        onClick: invertSelection,
+        onClick: () => rewriteSelection('invert'),
       },
     ];
-    if (selectedKeys.size > 0) {
+    if (selectedIds.size > 0) {
       items.push(
         {
           id: 'clear',
           label: 'সিলেকশন মুছুন',
           icon: <XCircle className="w-4 h-4 text-[#1B1F2A]" />,
-          onClick: () => setSelectedKeys(new Set()),
+          onClick: clearSelectionAll,
         },
         {
           id: 'pdf',
@@ -706,116 +976,159 @@ export const FilterScreen: React.FC = () => {
         }
       );
     }
-    items.push({
-      id: 'exit-select',
-      label: 'সিলেক্ট মোড বন্ধ করুন',
-      icon: <X className="w-4 h-4 text-[#1B1F2A]" />,
-      onClick: exitSelectMode,
-    });
     return items;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectMode, selectedKeys, results, selectedRows]);
+  }, [searchOpen, selectedIds, results, selectedRows]);
 
-  const handleSaveFilter = (name: string) => {
-    const trimmed = name.trim();
-    setSaveDialogOpen(false);
-    if (!trimmed) return;
-    const next = [...saved, { id: `sf_${Date.now()}`, name: trimmed, criteria, sort }];
-    setSaved(next);
-    persistSavedFilters(next);
-  };
-
-  const handleDeleteSaved = (id: string) => {
-    const next = saved.filter((s) => s.id !== id);
-    setSaved(next);
-    persistSavedFilters(next);
-  };
+  const openDef = openDropdown ? dropdowns[openDropdown] : null;
 
   return (
     <div className="flex-1 flex flex-col min-h-full pb-20 bg-[#F2F4F8]">
       <Header
-        title={selectMode ? `${toBn(selectedKeys.size)}টি সিলেক্টেড` : 'Filter'}
+        title="Filter"
         subtitle={
-          selectMode
-            ? 'কার্ডে ট্যাপ করে সিলেক্ট করুন'
+          selectedIds.size > 0
+            ? `${toBn(selectedIds.size)}টি নির্বাচিত`
             : dataset
               ? `মোট ${toBn(dataset.rows.length)}টি প্রশ্ন`
               : undefined
         }
-        showBack={selectMode}
-        onBack={exitSelectMode}
-        menuItems={headerMenuItems}
+        rightAction={
+          <div className="flex items-center">
+            <button
+              type="button"
+              onClick={() => setSheetOpen(true)}
+              aria-label="ফিল্টার খুলুন"
+              className="relative min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full text-white/90 hover:text-white hover:bg-white/10 active:bg-white/20 transition-colors"
+            >
+              <SlidersHorizontal className="w-5 h-5" />
+              {activeCount > 0 && (
+                <span className="absolute top-1 right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[0.625rem] font-bold flex items-center justify-center border-2 border-[#3B4FD8]">
+                  {toBn(activeCount)}
+                </span>
+              )}
+            </button>
+            <KebabMenu items={headerMenuItems} buttonAriaLabel="মেনু" align="right" />
+          </div>
+        }
       />
 
       {/* Sticky control bar */}
       <div className="sticky top-14 z-30 bg-white/95 backdrop-blur border-b border-[#D5D9E2] px-3.5 pt-2.5 pb-2.5 space-y-2.5">
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
+        {searchOpen && (
+          <div className="relative">
             <Search className="w-4 h-4 text-[#64748B] absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
+              autoFocus
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="প্রশ্ন, উদ্দীপক বা সমাধান খুঁজুন..."
-              className="w-full min-h-[44px] pl-9 pr-8 py-2 rounded-xl bg-[#F2F4F8] border border-[#D5D9E2] text-xs text-[#1B1F2A] focus:outline-none focus:ring-2 focus:ring-[#3B4FD8] focus:bg-white transition-all"
+              className="w-full min-h-[44px] pl-9 pr-9 py-2 rounded-xl bg-[#F2F4F8] border border-[#D5D9E2] text-xs text-[#1B1F2A] focus:outline-none focus:ring-2 focus:ring-[#3B4FD8] focus:bg-white transition-all"
             />
-            {searchInput && (
-              <button
-                type="button"
-                onClick={() => setSearchInput('')}
-                aria-label="সার্চ মুছুন"
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-[#64748B]"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={closeSearch}
+              aria-label="সার্চ বন্ধ করুন"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-[#64748B]"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setSheetOpen(true)}
-            aria-label="ফিল্টার খুলুন"
-            className="relative w-11 h-11 shrink-0 flex items-center justify-center rounded-xl bg-[#3B4FD8] text-white active:scale-95 transition-transform"
-          >
-            <SlidersHorizontal className="w-5 h-5" />
-            {activeCount > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[0.625rem] font-bold flex items-center justify-center border-2 border-white">
-                {toBn(activeCount)}
-              </span>
-            )}
-          </button>
+        )}
+
+        {/* Dropdown filters — long-press and drag to reorder */}
+        <div ref={chipRowRef} className="flex gap-1.5 overflow-x-auto pb-0.5" style={NO_SCROLLBAR}>
+          {order.map((key) => {
+            const def = dropdowns[key];
+            const count = def.selected.length;
+            const isOpen = openDropdown === key;
+            const isDragging = draggingKey === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                data-dd={key}
+                onPointerDown={onPointerDown(key)}
+                onContextMenu={(e) => e.preventDefault()}
+                onClick={() => {
+                  if (justDragged.current) return;
+                  setOpenDropdown((cur) => (cur === key ? null : key));
+                }}
+                aria-expanded={isOpen}
+                className={`shrink-0 min-h-[36px] pl-3 pr-2 rounded-full border text-xs font-semibold flex items-center gap-1 select-none transition-all ${
+                  isDragging
+                    ? 'scale-110 shadow-lg ring-2 ring-[#3B4FD8] z-10'
+                    : 'active:scale-95'
+                } ${
+                  count > 0
+                    ? 'bg-[#3B4FD8] border-[#3B4FD8] text-white'
+                    : isOpen
+                      ? 'bg-[#EEF2FF] border-[#3B4FD8] text-[#2A3BB0]'
+                      : 'bg-white border-[#D5D9E2] text-[#1B1F2A]'
+                }`}
+                style={{ WebkitUserSelect: 'none' }}
+              >
+                {def.label}
+                {count > 0 && key !== 'sort' && <span className="opacity-90">· {toBn(count)}</span>}
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+              </button>
+            );
+          })}
         </div>
 
-        {/* Quick filters: source + type */}
-        <div className="flex gap-1.5 overflow-x-auto pb-0.5" style={NO_SCROLLBAR}>
-          {(
-            [
-              ['type', 'Type CQ'],
-              ['chapter', 'Chapter CQ'],
-            ] as const
-          ).map(([v, label]) => (
-            <Chip
-              key={v}
-              active={criteria.sources.includes(v)}
-              onClick={() => setCriteria((c) => ({ ...c, sources: toggleIn(c.sources, v) }))}
-              className="shrink-0"
-            >
-              {label}
-            </Chip>
-          ))}
-          <span className="w-px bg-[#D5D9E2] my-1 shrink-0" />
-          {TYPE_OPTIONS.map((t) => (
-            <Chip
-              key={t}
-              active={criteria.types.includes(t)}
-              onClick={() => setCriteria((c) => ({ ...c, types: toggleIn(c.types, t) }))}
-              className="shrink-0 min-w-[40px]"
-            >
-              {t}
-            </Chip>
-          ))}
-        </div>
+        {/* Open dropdown panel */}
+        {openDef && (
+          <div className="rounded-xl border border-[#D5D9E2] bg-white shadow-lg overflow-hidden">
+            <div className="flex items-center justify-between px-3.5 py-2 bg-[#F8FAFC] border-b border-[#E2E8F0]">
+              <span className="text-xs font-bold text-[#1B1F2A]">{openDef.label}</span>
+              <div className="flex items-center gap-1">
+                {openDef.selected.length > 0 && openDef.onClear && (
+                  <button
+                    type="button"
+                    onClick={openDef.onClear}
+                    className="min-h-[30px] px-2 text-[0.6875rem] font-bold text-rose-600"
+                  >
+                    মুছুন
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setOpenDropdown(null)}
+                  aria-label="বন্ধ করুন"
+                  className="w-8 h-8 flex items-center justify-center text-[#64748B]"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <div className="max-h-[45vh] overflow-y-auto">
+              {openDef.options.length === 0 ? (
+                <p className="px-3.5 py-4 text-center text-xs text-[#64748B]">{openDef.emptyHint ?? 'কোনো অপশন নেই'}</p>
+              ) : (
+                openDef.options.map((o) => {
+                  const on = openDef.selected.includes(o.value) || (openDef.single && openDef.key === 'sort' && o.value === 'default' && sort === 'default');
+                  return (
+                    <button
+                      key={o.value}
+                      type="button"
+                      onClick={() => {
+                        openDef.onToggle(o.value);
+                        if (openDef.single) setOpenDropdown(null);
+                      }}
+                      className="w-full min-h-[42px] px-3.5 text-left text-xs font-medium text-[#1B1F2A] flex items-center justify-between gap-2 hover:bg-[#F2F4F8] border-b border-[#F2F4F8] last:border-b-0"
+                    >
+                      <span className="min-w-0">{o.label}</span>
+                      {on && <Check className="w-4 h-4 text-[#3B4FD8] shrink-0" />}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
 
-        {/* Result count + sort + saved */}
+        {/* Result count + selection */}
         <div className="flex items-center justify-between">
           <p className="text-xs font-bold text-[#1B1F2A]">
             {toBn(results.length)}টি ফলাফল
@@ -824,66 +1137,27 @@ export const FilterScreen: React.FC = () => {
             )}
           </p>
           <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setSortOpen((o) => !o)}
-              className="min-h-[36px] px-2.5 rounded-lg text-[0.6875rem] font-semibold text-[#2A3BB0] hover:bg-[#EEF2FF] flex items-center gap-1"
-            >
-              <ArrowUpDown className="w-3.5 h-3.5" />
-              সাজান
-            </button>
-            <button
-              type="button"
-              onClick={() => setSavedOpen(true)}
-              className="min-h-[36px] px-2.5 rounded-lg text-[0.6875rem] font-semibold text-[#2A3BB0] hover:bg-[#EEF2FF] flex items-center gap-1"
-            >
-              <Bookmark className="w-3.5 h-3.5" />
-              সেভড{saved.length > 0 ? ` (${toBn(saved.length)})` : ''}
-            </button>
-          </div>
-        </div>
-
-        {sortOpen && (
-          <div className="rounded-xl border border-[#D5D9E2] bg-white shadow-lg overflow-hidden">
-            {(Object.keys(SORT_LABELS) as SortMode[]).map((m) => (
+            {hasAnyFilter && (
               <button
-                key={m}
                 type="button"
-                onClick={() => {
-                  setSort(m);
-                  setSortOpen(false);
-                }}
-                className="w-full min-h-[42px] px-3.5 text-left text-xs font-medium flex items-center justify-between hover:bg-[#F2F4F8]"
+                onClick={clearAllFilters}
+                className="min-h-[32px] px-2.5 rounded-lg text-[0.6875rem] font-bold text-rose-600 hover:bg-rose-50"
               >
-                {SORT_LABELS[m]}
-                {sort === m && <Check className="w-4 h-4 text-[#3B4FD8]" />}
+                ফিল্টার মুছুন
               </button>
-            ))}
-          </div>
-        )}
-
-        {activeChips.length > 0 && (
-          <div className="flex gap-1.5 overflow-x-auto pb-0.5" style={NO_SCROLLBAR}>
-            {activeChips.map((chip) => (
+            )}
+            {selectedIds.size > 0 && (
               <button
-                key={chip.id}
                 type="button"
-                onClick={chip.remove}
-                className="shrink-0 min-h-[30px] pl-2.5 pr-1.5 rounded-full bg-[#EEF2FF] border border-[#C7D2FE] text-[#2A3BB0] text-[0.6875rem] font-semibold flex items-center gap-1 active:scale-95"
+                onClick={clearSelectionAll}
+                className="min-h-[32px] px-2.5 rounded-lg text-[0.6875rem] font-bold text-[#2A3BB0] bg-[#EEF2FF] flex items-center gap-1"
               >
-                {chip.label}
+                {toBn(selectedIds.size)} নির্বাচিত
                 <X className="w-3 h-3" />
               </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => applyCriteria(EMPTY_CRITERIA)}
-              className="shrink-0 min-h-[30px] px-2.5 text-[0.6875rem] font-bold text-rose-600"
-            >
-              সব মুছুন
-            </button>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
       {/* Results */}
@@ -904,7 +1178,7 @@ export const FilterScreen: React.FC = () => {
             {hasAnyFilter && (
               <button
                 type="button"
-                onClick={() => applyCriteria(EMPTY_CRITERIA)}
+                onClick={clearAllFilters}
                 className="min-h-[44px] px-4 py-2 rounded-xl bg-[#3B4FD8] text-white text-xs font-semibold"
               >
                 ফিল্টার মুছুন
@@ -917,9 +1191,8 @@ export const FilterScreen: React.FC = () => {
               <ResultCard
                 key={row.key}
                 row={row}
-                selectMode={selectMode}
-                selected={selectedKeys.has(row.key)}
-                onToggle={toggleKey}
+                selected={selectedIds.has(row.question.id)}
+                onToggle={toggleRow}
               />
             ))}
             {visible < results.length && (
@@ -935,73 +1208,12 @@ export const FilterScreen: React.FC = () => {
         isOpen={sheetOpen}
         dataset={dataset ?? EMPTY_DATASET}
         criteria={criteria}
+        sort={sort}
         resultCount={results.length}
         onChange={applyCriteria}
+        onSortChange={setSort}
         onClose={() => setSheetOpen(false)}
       />
-
-      {/* Saved filters sheet */}
-      {savedOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50"
-          onClick={() => setSavedOpen(false)}
-        >
-          <div
-            className="w-full max-w-[390px] bg-white rounded-t-3xl shadow-2xl pb-3 max-h-[75vh] flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="px-5 pt-3 pb-2">
-              <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[#D5D9E2]" />
-              <h3 className="text-sm font-bold text-[#1B1F2A]">সেভ করা ফিল্টার</h3>
-            </div>
-            <div className="px-3 overflow-y-auto flex-1">
-              <button
-                type="button"
-                disabled={!hasAnyFilter}
-                onClick={() => {
-                  setSavedOpen(false);
-                  setSaveDialogOpen(true);
-                }}
-                className="w-full min-h-[48px] px-3.5 rounded-xl text-left text-sm font-semibold text-[#3B4FD8] disabled:text-[#94A3B8] flex items-center gap-3 hover:bg-[#F2F4F8]"
-              >
-                <BookmarkPlus className="w-4 h-4" />
-                বর্তমান ফিল্টার সেভ করুন
-              </button>
-              {saved.length === 0 && (
-                <p className="px-3.5 py-6 text-center text-xs text-[#64748B]">
-                  এখনো কোনো ফিল্টার সেভ করা হয়নি
-                </p>
-              )}
-              {saved.map((s) => (
-                <div key={s.id} className="flex items-center">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      applyCriteria(s.criteria);
-                      setSort(s.sort);
-                      setSavedOpen(false);
-                    }}
-                    className="flex-1 min-h-[48px] px-3.5 rounded-xl text-left text-sm font-medium text-[#1B1F2A] flex items-center gap-3 hover:bg-[#F2F4F8]"
-                  >
-                    <Bookmark className="w-4 h-4 text-[#64748B]" />
-                    <span className="truncate">{s.name}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteSaved(s.id)}
-                    aria-label="মুছুন"
-                    className="w-11 h-11 flex items-center justify-center text-rose-500"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
       <FilterPdfDialog
         isOpen={pdfOpen}
@@ -1016,7 +1228,7 @@ export const FilterScreen: React.FC = () => {
       <ActionSheet
         isOpen={ratingSheetOpen}
         title="রেটিং বদলান"
-        subtitle={`${toBn(selectedKeys.size)}টি প্রশ্ন`}
+        subtitle={`${toBn(selectedIds.size)}টি প্রশ্ন`}
         onClose={() => setRatingSheetOpen(false)}
         items={[5, 4, 3, 2, 1].map((r) => ({
           id: `rate-${r}`,
@@ -1028,19 +1240,11 @@ export const FilterScreen: React.FC = () => {
       <ConfirmDialog
         isOpen={confirmDelete}
         title="প্রশ্ন মুছে ফেলবেন?"
-        message={`সিলেক্ট করা ${toBn(selectedKeys.size)}টি প্রশ্ন (সমাধানের ছবিসহ) স্থায়ীভাবে মুছে যাবে।`}
+        message={`সিলেক্ট করা ${toBn(selectedIds.size)}টি প্রশ্ন (সমাধানের ছবিসহ) স্থায়ীভাবে মুছে যাবে।`}
         confirmText="মুছুন"
         isDestructive
         onConfirm={handleBulkDelete}
         onCancel={() => setConfirmDelete(false)}
-      />
-
-      <PromptDialog
-        isOpen={saveDialogOpen}
-        title="ফিল্টারের নাম"
-        placeholder="যেমন: ঢাকা বোর্ড ৫ স্টার গ"
-        onConfirm={handleSaveFilter}
-        onCancel={() => setSaveDialogOpen(false)}
       />
     </div>
   );

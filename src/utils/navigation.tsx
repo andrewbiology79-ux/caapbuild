@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
 import type { TabType } from '../components/BottomNav';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 
 export interface RouteItem {
   id: string;
@@ -46,6 +47,11 @@ const getInitialRoute = (tab: TabType = 'typeCq'): RouteItem => ({
 export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children }) => {
   const [activeTab, setActiveTab] = useState<TabType>('typeCq');
   const [stack, setStack] = useState<RouteItem[]>([getInitialRoute('typeCq')]);
+  const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
+  const exitConfirmOpenRef = useRef(false);
+  exitConfirmOpenRef.current = exitConfirmOpen;
+  const stackRef = useRef<RouteItem[]>(stack);
+  stackRef.current = stack;
 
   // Priority stack of back handlers registered by active components
   const backHandlersRef = useRef<BackHandler[]>([]);
@@ -115,25 +121,23 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
             }
           }
 
-          // 2. Fall back to root stack pop
-          setStack((prev) => {
-            if (prev.length > 1) {
-              const newStack = prev.slice(0, -1);
-              const top = newStack[newStack.length - 1];
-              if (top) {
-                setActiveTab(top.tab);
-              }
-              return newStack;
-            } else {
-              // At root of stack: Exit the app on Android
-              try {
-                CapacitorApp.exitApp();
-              } catch (err) {
-                console.warn('CapacitorApp.exitApp error:', err);
-              }
-              return prev;
-            }
-          });
+          // 2. Exit confirmation already showing → a second back press dismisses it
+          if (exitConfirmOpenRef.current) {
+            setExitConfirmOpen(false);
+            return;
+          }
+
+          // 3. Fall back to root stack pop
+          const current = stackRef.current;
+          if (current.length > 1) {
+            const newStack = current.slice(0, -1);
+            const top = newStack[newStack.length - 1];
+            if (top) setActiveTab(top.tab);
+            setStack(newStack);
+          } else {
+            // At root of stack: ask before leaving the app
+            setExitConfirmOpen(true);
+          }
         });
         listenerHandle = handle;
       } catch (e) {
@@ -167,6 +171,22 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
       }}
     >
       {children}
+      <ConfirmDialog
+        isOpen={exitConfirmOpen}
+        title="অ্যাপ থেকে বের হবেন?"
+        message="আপনি কি সত্যিই অ্যাপ বন্ধ করতে চান?"
+        confirmText="বের হোন"
+        cancelText="থাকুন"
+        onConfirm={() => {
+          setExitConfirmOpen(false);
+          try {
+            CapacitorApp.exitApp();
+          } catch (err) {
+            console.warn('CapacitorApp.exitApp error:', err);
+          }
+        }}
+        onCancel={() => setExitConfirmOpen(false)}
+      />
     </NavigationContext.Provider>
   );
 };

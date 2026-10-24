@@ -25,6 +25,8 @@ export interface FilterRow {
   seq: number;
   /** lower-cased searchable text */
   haystack: string;
+  /** ids of the paper categories whose papers contain this question */
+  categoryIds: string[];
 }
 
 export interface FilterCriteria {
@@ -39,6 +41,8 @@ export interface FilterCriteria {
   marks: number[];
   boards: string[];
   years: number[];
+  /** paper-category ids the question has been used in */
+  categories: string[];
   usage: 'any' | 'used' | 'unused';
   stimulus: 'any' | 'with' | 'without';
   solution: 'any' | 'with' | 'without';
@@ -57,6 +61,7 @@ export const EMPTY_CRITERIA: FilterCriteria = {
   marks: [],
   boards: [],
   years: [],
+  categories: [],
   usage: 'any',
   stimulus: 'any',
   solution: 'any',
@@ -69,6 +74,7 @@ export interface FilterFacets {
   marks: number[];
   boards: string[];
   years: number[];
+  categories: Array<{ id: string; name: string }>;
 }
 
 export interface FilterDataset {
@@ -82,7 +88,8 @@ const TYPE_ORDER: Record<string, number> = { ক: 0, খ: 1, গ: 2, ঘ: 3 };
 async function loadScope(
   source: CqScope,
   database: typeof db,
-  startSeq: number
+  startSeq: number,
+  questionCategories: Map<string, Set<string>>
 ): Promise<FilterRow[]> {
   const subjects: Subject[] = await database.subjects.toArray();
   const chapters: Chapter[] = await database.chapters.toArray();
@@ -118,6 +125,7 @@ async function loadScope(
       topicName: source === 'chapter' ? '' : topic.name,
       seq: 0,
       haystack,
+      categoryIds: [...(questionCategories.get(q.id) ?? [])],
     });
   }
 
@@ -144,8 +152,20 @@ async function loadScope(
 
 /** Read both databases and build one flat dataset + the facet lists for the filter sheet */
 export async function loadFilterDataset(): Promise<FilterDataset> {
-  const typeRows = await loadScope('type', db, 0);
-  const chapterRows = await loadScope('chapter', chapterDb, typeRows.length);
+  // Which paper categories each question has been used in (papers live in the main database)
+  const [categoryList, papers] = await Promise.all([db.categories.toArray(), db.papers.toArray()]);
+  const questionCategories = new Map<string, Set<string>>();
+  for (const paper of papers) {
+    if (!paper.categoryId) continue;
+    for (const qid of paper.questionIds || []) {
+      let set = questionCategories.get(qid);
+      if (!set) questionCategories.set(qid, (set = new Set<string>()));
+      set.add(paper.categoryId);
+    }
+  }
+
+  const typeRows = await loadScope('type', db, 0, questionCategories);
+  const chapterRows = await loadScope('chapter', chapterDb, typeRows.length, questionCategories);
   const rows = [...typeRows, ...chapterRows];
 
   const subjects = new Set<string>();
@@ -154,8 +174,10 @@ export async function loadFilterDataset(): Promise<FilterDataset> {
   const marks = new Set<number>();
   const boards = new Set<string>();
   const years = new Set<number>();
+  const usedCategoryIds = new Set<string>();
 
   for (const r of rows) {
+    r.categoryIds.forEach((id) => usedCategoryIds.add(id));
     subjects.add(r.subjectName);
     const ck = `${r.subjectName}||${r.chapterName}`;
     if (!chapters.has(ck)) chapters.set(ck, { key: ck, subject: r.subjectName, name: r.chapterName });
@@ -177,6 +199,10 @@ export async function loadFilterDataset(): Promise<FilterDataset> {
       marks: [...marks].sort((a, b) => a - b),
       boards: [...boards],
       years: [...years].sort((a, b) => b - a),
+      categories: categoryList
+        .filter((c) => usedCategoryIds.has(c.id))
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        .map((c) => ({ id: c.id, name: c.name })),
     },
   };
 }
@@ -208,6 +234,8 @@ export function matchesCriteria(row: FilterRow, c: FilterCriteria, textTerms: st
     );
     if (!ok) return false;
   }
+
+  if (c.categories.length > 0 && !row.categoryIds.some((id) => c.categories.includes(id))) return false;
 
   if (c.stimulus === 'with' && !row.stimulus) return false;
   if (c.stimulus === 'without' && row.stimulus) return false;
@@ -255,7 +283,7 @@ export function applyFilters(rows: FilterRow[], c: FilterCriteria, sort: SortMod
 /** How many separate filters are switched on (for the badge on the Filter button) */
 export function countActiveFilters(c: FilterCriteria): number {
   let n = 0;
-  (['sources', 'subjects', 'chapters', 'topics', 'types', 'ratings', 'marks', 'boards', 'years'] as const).forEach(
+  (['sources', 'subjects', 'chapters', 'topics', 'types', 'ratings', 'marks', 'boards', 'years', 'categories'] as const).forEach(
     (k) => {
       if (c[k].length > 0) n += 1;
     }
@@ -264,37 +292,4 @@ export function countActiveFilters(c: FilterCriteria): number {
   if (c.stimulus !== 'any') n += 1;
   if (c.solution !== 'any') n += 1;
   return n;
-}
-
-/* ---------- saved filters (kept in localStorage — small, device-local) ---------- */
-
-export interface SavedFilter {
-  id: string;
-  name: string;
-  criteria: FilterCriteria;
-  sort: SortMode;
-}
-
-const SAVED_KEY = 'qb_saved_filters_v1';
-
-export function loadSavedFilters(): SavedFilter[] {
-  try {
-    const raw = localStorage.getItem(SAVED_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((f) => f && typeof f.id === 'string' && typeof f.name === 'string' && f.criteria)
-      .map((f) => ({ ...f, criteria: { ...EMPTY_CRITERIA, ...f.criteria } }));
-  } catch {
-    return [];
-  }
-}
-
-export function persistSavedFilters(list: SavedFilter[]): void {
-  try {
-    localStorage.setItem(SAVED_KEY, JSON.stringify(list));
-  } catch {
-    /* ignore storage errors */
-  }
 }
