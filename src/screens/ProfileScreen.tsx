@@ -32,6 +32,13 @@ import {
   type Paper,
   type Question,
   type Stimulus,
+  UNCATEGORIZED_CATEGORY_ID,
+  getUncategorizedPapers,
+  getUncategorizedStats,
+  getQuestionsNotInAnyPaper,
+  movePapersToCategory,
+  duplicatePapers,
+  deletePapers,
 } from '../db/api';
 import { db } from '../db/db';
 import {
@@ -65,10 +72,24 @@ import {
   ClipboardPaste,
   FolderInput,
   X,
+  CheckSquare,
+  Square,
+  Check,
+  CheckCheck,
+  FolderArchive,
+  FolderCheck,
+  Inbox,
+  FolderSync,
 } from 'lucide-react';
 import { Share } from '@capacitor/share';
-import { exportPaperById } from '../utils/pdfGenerator';
-import { showPdfSavedDialog } from '../utils/storageAccess';
+import {
+  exportPaperById,
+  exportPapersToNewFolder,
+  exportCategoriesToNewFolder,
+  type CategoryExportProgress,
+  type MultiCategoryPdfResult,
+} from '../utils/pdfGenerator';
+import { showPdfSavedDialog, openSavedFolder } from '../utils/storageAccess';
 import {
   exportCategoryShare,
   exportPaperShare,
@@ -77,6 +98,13 @@ import {
 } from '../utils/categoryTransfer';
 
 type ProfileViewMode = 'main' | 'categories' | 'category-detail';
+
+const uncategorizedVirtualCategory: Category = {
+  id: UNCATEGORIZED_CATEGORY_ID,
+  name: 'ক্যাটাগরিহীন',
+  order: 9999,
+  createdAt: 0,
+};
 
 export const ProfileScreen: React.FC = () => {
   const { showToast } = useToast();
@@ -94,11 +122,31 @@ export const ProfileScreen: React.FC = () => {
   const [catStats, setCatStats] = useState<
     Record<string, { paperCount: number; questionCount: number }>
   >({});
+  const [uncatStats, setUncatStats] = useState<{ paperCount: number; questionCount: number }>({
+    paperCount: 0,
+    questionCount: 0,
+  });
+  const [uncatQuestions, setUncatQuestions] = useState<Question[]>([]);
+  const [uncatSubTab, setUncatSubTab] = useState<'papers' | 'questions'>('papers');
+
   const [categoryPapers, setCategoryPapers] = useState<Paper[]>([]);
   const [expandedPaperIds, setExpandedPaperIds] = useState<Record<string, boolean>>({});
   const [paperDetailsMap, setPaperDetailsMap] = useState<
     Record<string, Array<{ stimulus?: Stimulus; questions: Question[] }>>
   >({});
+
+  // Category Multi-select (Batch PDF Export)
+  const [isCatSelectMode, setIsCatSelectMode] = useState<boolean>(false);
+  const [selectedCatIds, setSelectedCatIds] = useState<string[]>([]);
+  const [exportProgress, setExportProgress] = useState<CategoryExportProgress | null>(null);
+  const [exportResult, setExportResult] = useState<MultiCategoryPdfResult | null>(null);
+  const [isBatchExporting, setIsBatchExporting] = useState<boolean>(false);
+
+  // Paper Multi-select (Batch Copy / Move / Delete)
+  const [isPaperSelectMode, setIsPaperSelectMode] = useState<boolean>(false);
+  const [selectedPaperIds, setSelectedPaperIds] = useState<string[]>([]);
+  const [batchPickerMode, setBatchPickerMode] = useState<'move' | 'copy' | null>(null);
+  const [showBatchDeleteConfirm, setShowBatchDeleteConfirm] = useState<boolean>(false);
 
   // Modals state
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
@@ -148,14 +196,18 @@ export const ProfileScreen: React.FC = () => {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [pCount, qCount, catList] = await Promise.all([
+      const [pCount, qCount, catList, uStats, uQuestions] = await Promise.all([
         getPaperCount(),
         getQuestionCount(),
         getCategories(),
+        getUncategorizedStats(),
+        getQuestionsNotInAnyPaper(),
       ]);
       setPaperCount(pCount);
       setQuestionCount(qCount);
       setCategories(catList);
+      setUncatStats(uStats);
+      setUncatQuestions(uQuestions);
       setClipboard(await getCategoryClipboard());
 
       // Compute stats for each category
@@ -163,10 +215,14 @@ export const ProfileScreen: React.FC = () => {
       for (const cat of catList) {
         statsMap[cat.id] = await getCategoryStats(cat.id);
       }
+      statsMap[UNCATEGORIZED_CATEGORY_ID] = uStats;
       setCatStats(statsMap);
 
       if (viewMode === 'category-detail' && selectedCategory) {
-        const papers = await getPapersByCategory(selectedCategory.id);
+        const papers =
+          selectedCategory.id === UNCATEGORIZED_CATEGORY_ID
+            ? await getUncategorizedPapers()
+            : await getPapersByCategory(selectedCategory.id);
         setCategoryPapers(papers);
       }
     } catch (err) {
@@ -182,6 +238,16 @@ export const ProfileScreen: React.FC = () => {
 
   // Back button handling
   const handleGoBack = useCallback((): boolean => {
+    if (isPaperSelectMode) {
+      setIsPaperSelectMode(false);
+      setSelectedPaperIds([]);
+      return true;
+    }
+    if (isCatSelectMode) {
+      setIsCatSelectMode(false);
+      setSelectedCatIds([]);
+      return true;
+    }
     if (viewMode === 'category-detail') {
       setViewMode('categories');
       return true;
@@ -191,7 +257,7 @@ export const ProfileScreen: React.FC = () => {
       return true;
     }
     return false;
-  }, [viewMode]);
+  }, [isPaperSelectMode, isCatSelectMode, viewMode]);
 
   useEffect(() => {
     const unregister = registerBackHandler(() => {
@@ -268,14 +334,28 @@ export const ProfileScreen: React.FC = () => {
     }
   };
 
+  // Open question from question bank in Create tab
+  const handleOpenQuestionInCreate = async (q: Question) => {
+    try {
+      await db.meta.put({ key: 'selected_question_ids', value: [q.id] });
+      showToast('প্রশ্নটি Create ট্যাবে লোড করা হয়েছে');
+      switchTab('create');
+    } catch {
+      showToast('লোড করতে সমস্যা হয়েছে');
+    }
+  };
+
   // Export paper to PDF directly from Category detail list
   const handleExportPaperPdf = async (paper: Paper) => {
     setExportingPaperId(paper.id);
     showToast('PDF বানানো হচ্ছে…');
     try {
       const savedPath = await exportPaperById(paper.id);
-      if (!(savedPath && showPdfSavedDialog(savedPath))) {
-        showToast(savedPath ? `PDF সেভ হয়েছে: ${savedPath}` : 'PDF তৈরি সম্পন্ন হয়েছে', savedPath ? 4500 : 2000);
+      if (!(savedPath && typeof savedPath === 'string' && showPdfSavedDialog(savedPath))) {
+        showToast(
+          typeof savedPath === 'string' ? `PDF সেভ হয়েছে: ${savedPath}` : 'PDF তৈরি সম্পন্ন হয়েছে',
+          savedPath ? 4500 : 2000
+        );
       }
     } catch (err: any) {
       console.error('PDF export failed:', err);
@@ -337,7 +417,7 @@ export const ProfileScreen: React.FC = () => {
     }
   };
 
-  // ---------- Advanced category options ----------
+  // ---------- Advanced category options (Copy / Paste / Move) ----------
 
   const handleCopyCategory = async (cat: Category) => {
     await setCategoryClipboard({ type: 'category', id: cat.id, name: cat.name });
@@ -357,20 +437,27 @@ export const ProfileScreen: React.FC = () => {
     setClipboard(null);
   };
 
-  // Paste: category -> duplicates the category, paper -> copies the paper into target category
+  // Paste: category -> duplicates the category, paper/papers -> copies the paper(s) into target category
   const handlePaste = async (targetCategory?: Category | null) => {
     if (!clipboard) return;
     try {
       if (clipboard.type === 'category') {
         await duplicateCategory(clipboard.id);
         showToast('ক্যাটেগরি পেস্ট হয়েছে');
-      } else {
+      } else if (clipboard.type === 'paper') {
         if (!targetCategory) {
           showToast('যে ক্যাটেগরিতে পেস্ট করবেন সেটি খুলুন বা তার মেনু থেকে পেস্ট করুন', 3000);
           return;
         }
         await duplicatePaper(clipboard.id, targetCategory.id);
         showToast(`"${targetCategory.name}" ক্যাটেগরিতে প্রশ্নপত্র পেস্ট হয়েছে`);
+      } else if (clipboard.type === 'papers') {
+        if (!targetCategory) {
+          showToast('যে ক্যাটেগরিতে পেস্ট করবেন সেটি খুলুন বা তার মেনু থেকে পেস্ট করুন', 3000);
+          return;
+        }
+        const count = await duplicatePapers(clipboard.ids, targetCategory.id);
+        showToast(`"${targetCategory.name}" ক্যাটেগরিতে ${toBn(count)}টি প্রশ্নপত্র পেস্ট হয়েছে`);
       }
       await loadData();
     } catch (err: any) {
@@ -451,28 +538,156 @@ export const ProfileScreen: React.FC = () => {
     }
   };
 
+  // ---------- Multi-Select for Papers (Batch Copy / Move / Delete) ----------
+
+  const togglePaperSelect = (id: string) => {
+    setSelectedPaperIds((prev) =>
+      prev.includes(id) ? prev.filter((pId) => pId !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAllPapers = () => {
+    if (selectedPaperIds.length === categoryPapers.length) {
+      setSelectedPaperIds([]);
+    } else {
+      setSelectedPaperIds(categoryPapers.map((p) => p.id));
+    }
+  };
+
+  const handleBatchCopyPapers = async () => {
+    if (selectedPaperIds.length === 0) return;
+    const clipData: CategoryClipboard = {
+      type: 'papers',
+      ids: [...selectedPaperIds],
+      count: selectedPaperIds.length,
+      name: `${toBn(selectedPaperIds.length)}টি প্রশ্নপত্র`,
+    };
+    await setCategoryClipboard(clipData);
+    setClipboard(clipData);
+    showToast(`${toBn(selectedPaperIds.length)}টি ফাইল কপি হয়েছে — যেকোনো ক্যাটেগরিতে পেস্ট করুন`, 3500);
+    setIsPaperSelectMode(false);
+    setSelectedPaperIds([]);
+  };
+
+  const handleBatchPickDestination = async (target: Category) => {
+    if (selectedPaperIds.length === 0) return;
+    const mode = batchPickerMode || 'move';
+    setBatchPickerMode(null);
+    try {
+      if (mode === 'move') {
+        const count = await movePapersToCategory(selectedPaperIds, target.id);
+        showToast(`"${target.name}" ক্যাটেগরিতে ${toBn(count)}টি প্রশ্নপত্র সরানো হয়েছে`);
+      } else {
+        const count = await duplicatePapers(selectedPaperIds, target.id);
+        showToast(`"${target.name}" ক্যাটেগরিতে ${toBn(count)}টি প্রশ্নপত্র কপি হয়েছে`);
+      }
+      setIsPaperSelectMode(false);
+      setSelectedPaperIds([]);
+      await loadData();
+    } catch (err: any) {
+      console.error('Batch move/copy failed:', err);
+      showToast(err?.message || 'কাজটি সম্পন্ন করা যায়নি');
+    }
+  };
+
+  const handleConfirmBatchDeletePapers = async () => {
+    if (selectedPaperIds.length === 0) return;
+    try {
+      await deletePapers(selectedPaperIds);
+      showToast(`${toBn(selectedPaperIds.length)}টি প্রশ্নপত্র মুছে ফেলা হয়েছে`);
+      setShowBatchDeleteConfirm(false);
+      setIsPaperSelectMode(false);
+      setSelectedPaperIds([]);
+      await loadData();
+    } catch (err: any) {
+      console.error('Batch delete failed:', err);
+      showToast(err?.message || 'মুছতে সমস্যা হয়েছে');
+    }
+  };
+
+  // ---------- Multi-Category Selection & Batch PDF Export ----------
+
+  const allSelectableCategoryIds = [
+    ...categories.map((c) => c.id),
+    ...(uncatStats.paperCount > 0 ? [UNCATEGORIZED_CATEGORY_ID] : []),
+  ];
+
+  const toggleCategorySelect = (id: string) => {
+    setSelectedCatIds((prev) =>
+      prev.includes(id) ? prev.filter((cId) => cId !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAllCategories = () => {
+    if (selectedCatIds.length === allSelectableCategoryIds.length) {
+      setSelectedCatIds([]);
+    } else {
+      setSelectedCatIds([...allSelectableCategoryIds]);
+    }
+  };
+
+  const handleExportSelectedCategories = async () => {
+    if (selectedCatIds.length === 0) {
+      showToast('অনুগ্রহ করে অন্তত একটি ক্যাটেগরি নির্বাচন করুন');
+      return;
+    }
+
+    setIsBatchExporting(true);
+    setExportProgress({
+      categoryIndex: 1,
+      totalCategories: selectedCatIds.length,
+      categoryName: 'শুরু হচ্ছে...',
+      paperIndex: 0,
+      totalPapersInCategory: 0,
+      overallSaved: 0,
+      overallTotal: 0,
+    });
+
+    try {
+      const result = await exportCategoriesToNewFolder(selectedCatIds, (prog) => {
+        setExportProgress(prog);
+      });
+      setExportResult(result);
+      setIsCatSelectMode(false);
+      setSelectedCatIds([]);
+      await loadData();
+    } catch (err: any) {
+      console.error('Multi category export failed:', err);
+      setPdfErrorMessage(err?.message || 'ক্যাটেগরি এক্সপোর্টে অপ্রত্যাশিত সমস্যা হয়েছে।');
+    } finally {
+      setIsBatchExporting(false);
+      setExportProgress(null);
+    }
+  };
+
   // Clipboard banner (shown in categories list & category detail)
   const renderClipboardBanner = (target?: Category | null) => {
     if (!clipboard) return null;
-    const isPaper = clipboard.type === 'paper';
+    const isCategory = clipboard.type === 'category';
+    const isMultiple = clipboard.type === 'papers';
+
     return (
-      <div className="flex items-center gap-2 rounded-2xl border border-[#3B4FD8] dark:border-indigo-500 bg-[#EEF2FF] dark:bg-indigo-950/60 px-3 py-2">
+      <div className="flex items-center gap-2 rounded-2xl border border-[#3B4FD8] dark:border-indigo-500 bg-[#EEF2FF] dark:bg-indigo-950/60 px-3 py-2 shadow-xs">
         <ClipboardPaste className="w-4 h-4 text-[#3B4FD8] dark:text-indigo-300 shrink-0" />
         <div className="flex-1 min-w-0">
           <p className="text-[0.6875rem] font-bold text-[#2A3BB0] dark:text-indigo-200 truncate">
-            {isPaper ? 'কপি করা প্রশ্নপত্র' : 'কপি করা ক্যাটেগরি'}: {clipboard.name}
+            {isCategory
+              ? `কপি করা ক্যাটেগরি: ${clipboard.name}`
+              : isMultiple
+              ? `কপি করা ফাইলসমূহ: ${clipboard.name}`
+              : `কপি করা প্রশ্নপত্র: ${clipboard.name}`}
           </p>
-          {isPaper && !target && (
+          {!isCategory && !target && (
             <p className="text-[0.625rem] text-[#64748B] dark:text-slate-400">
-              ক্যাটেগরির মেনু থেকে "এখানে পেস্ট করুন" চাপুন
+              যেকোনো ক্যাটেগরি খুলুন বা মেনু থেকে "এখানে পেস্ট করুন" চাপুন
             </p>
           )}
         </div>
-        {(!isPaper || target) && (
+        {(!isCategory || target) && (
           <button
             type="button"
             onClick={() => handlePaste(target)}
-            className="min-h-[36px] px-3 py-1 rounded-lg bg-[#3B4FD8] text-white text-xs font-bold"
+            className="min-h-[36px] px-3 py-1 rounded-lg bg-[#3B4FD8] hover:bg-[#2A3BB0] text-white text-xs font-bold transition-colors shrink-0"
           >
             পেস্ট
           </button>
@@ -481,7 +696,7 @@ export const ProfileScreen: React.FC = () => {
           type="button"
           aria-label="কপি বাতিল"
           onClick={handleClearClipboard}
-          className="min-h-[36px] w-8 flex items-center justify-center text-[#64748B] dark:text-slate-400"
+          className="min-h-[36px] w-8 flex items-center justify-center text-[#64748B] dark:text-slate-400 hover:text-red-500 shrink-0"
         >
           <X className="w-4 h-4" />
         </button>
@@ -590,7 +805,7 @@ export const ProfileScreen: React.FC = () => {
     {
       id: 'categories',
       title: 'ক্যাটেগরি',
-      description: 'প্রশ্নপত্রের ক্যাটেগরি তৈরি, সম্পাদনা ও সংরক্ষিত প্রশ্নপত্র',
+      description: 'প্রশ্নপত্রের ক্যাটেগরি তৈরি, সম্পাদনা, ফাইল কপি-পেস্ট ও মাল্টি-এক্সপোর্ট',
       icon: <FolderKanban className="w-5 h-5 text-[#3B4FD8]" />,
       action: () => setViewMode('categories'),
     },
@@ -631,41 +846,198 @@ export const ProfileScreen: React.FC = () => {
     },
   ];
 
+  const isUncategorizedSelected = selectedCategory?.id === UNCATEGORIZED_CATEGORY_ID;
+
   return (
     <div className="flex-1 flex flex-col min-h-full pb-20 bg-[#F2F4F8] dark:bg-slate-900 transition-colors">
-      {/* ----------------- SUB-VIEW: CATEGORY DETAIL ----------------- */}
+      {/* ----------------- SUB-VIEW: CATEGORY DETAIL (FILES VIEW) ----------------- */}
       {viewMode === 'category-detail' && selectedCategory && (
         <>
           <Header
-            title={selectedCategory.name}
-            subtitle="ক্যাটেগরির প্রশ্নপত্রসমূহ"
+            title={
+              isPaperSelectMode
+                ? `${toBn(selectedPaperIds.length)}টি ফাইল নির্বাচিত`
+                : selectedCategory.name
+            }
+            subtitle={
+              isPaperSelectMode
+                ? 'কপি, সরান বা ডিলিট করুন'
+                : isUncategorizedSelected
+                ? 'ক্যাটাগরি ছাড়া প্রশ্নপত্র ও প্রশ্নসমূহ'
+                : 'ক্যাটেগরির প্রশ্নপত্রসমূহ'
+            }
             showBack={true}
-            onBack={() => setViewMode('categories')}
+            onBack={() => {
+              if (isPaperSelectMode) {
+                setIsPaperSelectMode(false);
+                setSelectedPaperIds([]);
+              } else {
+                setViewMode('categories');
+              }
+            }}
           />
 
-          <main className="flex-1 p-3.5 space-y-3">
+          <main className="flex-1 p-3.5 space-y-3 pb-28">
             {renderClipboardBanner(selectedCategory)}
-            {categoryPapers.length === 0 ? (
-              <div className="bg-white dark:bg-slate-800 rounded-3xl p-7 text-center border border-[#D5D9E2] dark:border-slate-700 space-y-3">
-                <p className="text-sm font-semibold text-[#1B1F2A] dark:text-slate-100">
-                  এই ক্যাটেগরিতে কোনো প্রশ্নপত্র নেই
-                </p>
-                <p className="text-xs text-[#64748B] dark:text-slate-400">
-                  Create ট্যাব থেকে নতুন প্রশ্নপত্র তৈরি করার সময় এই ক্যাটেগরি নির্বাচন করুন।
-                </p>
+
+            {/* If viewing Uncategorized Category, show Sub-Tabs: Uncategorized Papers vs Unused Questions */}
+            {isUncategorizedSelected && (
+              <div className="flex items-center gap-1.5 p-1 bg-white dark:bg-slate-800 rounded-xl border border-[#D5D9E2] dark:border-slate-700">
                 <button
                   type="button"
-                  onClick={() => switchTab('create')}
-                  className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#3B4FD8] text-white text-xs font-bold"
+                  onClick={() => setUncatSubTab('papers')}
+                  className={`flex-1 min-h-[38px] px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    uncatSubTab === 'papers'
+                      ? 'bg-[#3B4FD8] text-white shadow-2xs'
+                      : 'text-[#64748B] dark:text-slate-400 hover:text-[#1B1F2A]'
+                  }`}
                 >
-                  Create ট্যাবে যান
+                  <FileText className="w-4 h-4" />
+                  <span>প্রশ্নপত্র ({toBn(categoryPapers.length)})</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setUncatSubTab('questions')}
+                  className={`flex-1 min-h-[38px] px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    uncatSubTab === 'questions'
+                      ? 'bg-[#3B4FD8] text-white shadow-2xs'
+                      : 'text-[#64748B] dark:text-slate-400 hover:text-[#1B1F2A]'
+                  }`}
+                >
+                  <HelpCircle className="w-4 h-4" />
+                  <span>ক্যাটাগরিহীন প্রশ্ন ({toBn(uncatQuestions.length)})</span>
+                </button>
+              </div>
+            )}
+
+            {/* Top Toolbar in Category Detail */}
+            {(!isUncategorizedSelected || uncatSubTab === 'papers') && (
+              <div className="flex items-center justify-between px-1">
+                <span className="text-xs font-bold text-[#1B1F2A] dark:text-slate-300">
+                  {toBn(categoryPapers.length)}টি ফাইল (প্রশ্নপত্র)
+                </span>
+                <div className="flex items-center gap-2">
+                  {categoryPapers.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isPaperSelectMode) {
+                          setIsPaperSelectMode(false);
+                          setSelectedPaperIds([]);
+                        } else {
+                          setIsPaperSelectMode(true);
+                        }
+                      }}
+                      className={`min-h-[36px] px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all ${
+                        isPaperSelectMode
+                          ? 'bg-[#EEF2FF] border-[#3B4FD8] text-[#3B4FD8] dark:bg-indigo-950/60 dark:text-indigo-300'
+                          : 'bg-white dark:bg-slate-800 border-[#D5D9E2] dark:border-slate-700 text-[#1B1F2A] dark:text-slate-200 hover:border-[#3B4FD8]'
+                      }`}
+                    >
+                      <CheckSquare className="w-3.5 h-3.5" />
+                      <span>{isPaperSelectMode ? 'বাতিল' : 'মাল্টি-সিলেক্ট'}</span>
+                    </button>
+                  )}
+                  {isPaperSelectMode && categoryPapers.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={toggleSelectAllPapers}
+                      className="min-h-[36px] px-3 py-1 rounded-xl bg-white dark:bg-slate-800 border border-[#D5D9E2] dark:border-slate-700 text-[#3B4FD8] dark:text-indigo-400 text-xs font-bold flex items-center gap-1"
+                    >
+                      <CheckCheck className="w-3.5 h-3.5" />
+                      <span>
+                        {selectedPaperIds.length === categoryPapers.length
+                          ? 'আনসিলেক্ট'
+                          : 'সব সিলেক্ট'}
+                      </span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Uncategorized Questions Sub-Tab Content */}
+            {isUncategorizedSelected && uncatSubTab === 'questions' ? (
+              <div className="space-y-3">
+                <div className="p-3 bg-amber-50 dark:bg-amber-950/30 rounded-2xl border border-amber-200 dark:border-amber-900 text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
+                  এই প্রশ্নগুলো প্রশ্ন ব্যাংকে সংগৃহীত আছে কিন্তু এখনো কোনো তৈরি করা প্রশ্নপত্রে অন্তর্ভুক্ত হয়নি। আপনি এখান থেকে যেকোনো প্রশ্ন সরাসরি Create ট্যাবে নিয়ে যেতে পারেন।
+                </div>
+                {uncatQuestions.length === 0 ? (
+                  <div className="bg-white dark:bg-slate-800 rounded-3xl p-7 text-center border border-[#D5D9E2] dark:border-slate-700 space-y-2">
+                    <p className="text-sm font-semibold text-[#1B1F2A] dark:text-slate-100">
+                      কোনো অব্যবহৃত প্রশ্ন নেই
+                    </p>
+                    <p className="text-xs text-[#64748B] dark:text-slate-400">
+                      প্রশ্ন ব্যাংকের সকল প্রশ্ন কোনো না কোনো প্রশ্নপত্রে ব্যবহৃত হয়েছে।
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {uncatQuestions.map((q) => (
+                      <div
+                        key={q.id}
+                        className="bg-white dark:bg-slate-800 rounded-2xl p-3.5 border border-[#D5D9E2] dark:border-slate-700 shadow-xs flex items-center justify-between gap-3"
+                      >
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-xs text-[#3B4FD8] bg-[#EEF2FF] dark:bg-indigo-950 px-2 py-0.5 rounded-md border border-[#D5D9E2] dark:border-indigo-900">
+                              {q.type || 'গ'} ({toBn(q.marks)} নম্বর)
+                            </span>
+                          </div>
+                          <RichText
+                            text={q.questionText}
+                            className="text-xs text-[#1B1F2A] dark:text-slate-200 line-clamp-2"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenQuestionInCreate(q)}
+                          className="shrink-0 min-h-[36px] px-3 py-1 rounded-xl bg-[#3B4FD8] text-white text-xs font-bold flex items-center gap-1 shadow-2xs"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          <span>Create-এ নেন</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : categoryPapers.length === 0 ? (
+              <div className="bg-white dark:bg-slate-800 rounded-3xl p-7 text-center border border-[#D5D9E2] dark:border-slate-700 space-y-3">
+                <p className="text-sm font-semibold text-[#1B1F2A] dark:text-slate-100">
+                  {isUncategorizedSelected
+                    ? 'কোনো ক্যাটাগরিহীন প্রশ্নপত্র নেই'
+                    : 'এই ক্যাটেগরিতে কোনো প্রশ্নপত্র নেই'}
+                </p>
+                <p className="text-xs text-[#64748B] dark:text-slate-400">
+                  Create ট্যাব থেকে নতুন প্রশ্নপত্র তৈরি করার সময় এই ক্যাটেগরি নির্বাচন করুন অথবা পূর্বের কপি করা প্রশ্নপত্র পেস্ট করুন।
+                </p>
+                <div className="flex items-center justify-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => switchTab('create')}
+                    className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#3B4FD8] text-white text-xs font-bold"
+                  >
+                    Create ট্যাবে যান
+                  </button>
+                  {clipboard?.type === 'paper' || clipboard?.type === 'papers' ? (
+                    <button
+                      type="button"
+                      onClick={() => handlePaste(selectedCategory)}
+                      className="min-h-[44px] px-5 py-2.5 rounded-xl border border-[#3B4FD8] text-[#3B4FD8] text-xs font-bold flex items-center gap-1.5"
+                    >
+                      <ClipboardPaste className="w-4 h-4" />
+                      <span>এখানে পেস্ট করুন</span>
+                    </button>
+                  ) : null}
+                </div>
               </div>
             ) : (
               <div className="space-y-3">
                 {categoryPapers.map((paper) => {
                   const isExpanded = expandedPaperIds[paper.id];
                   const details = paperDetailsMap[paper.id] || [];
+                  const isSelected = selectedPaperIds.includes(paper.id);
                   const dateStr = new Date(paper.createdAt || Date.now()).toLocaleDateString('bn-BD', {
                     year: 'numeric',
                     month: 'short',
@@ -675,13 +1047,34 @@ export const ProfileScreen: React.FC = () => {
                   return (
                     <div
                       key={paper.id}
-                      className="bg-white dark:bg-slate-800 rounded-2xl border border-[#D5D9E2] dark:border-slate-700 shadow-xs overflow-hidden"
+                      className={`bg-white dark:bg-slate-800 rounded-2xl border transition-all shadow-xs overflow-hidden ${
+                        isSelected
+                          ? 'border-[#3B4FD8] ring-2 ring-[#3B4FD8]/20 dark:border-indigo-500'
+                          : 'border-[#D5D9E2] dark:border-slate-700'
+                      }`}
                     >
                       {/* Paper Top Card Summary */}
                       <div
-                        onClick={() => togglePaperExpand(paper)}
+                        onClick={() => {
+                          if (isPaperSelectMode) {
+                            togglePaperSelect(paper.id);
+                          } else {
+                            togglePaperExpand(paper);
+                          }
+                        }}
                         className="p-3.5 flex items-center justify-between gap-3 cursor-pointer hover:bg-[#F8FAFC] dark:hover:bg-slate-750 transition-colors"
                       >
+                        {/* Checkbox when in Multi-Select Mode */}
+                        {isPaperSelectMode && (
+                          <div className="shrink-0 text-[#3B4FD8]">
+                            {isSelected ? (
+                              <CheckSquare className="w-5 h-5 text-[#3B4FD8]" />
+                            ) : (
+                              <Square className="w-5 h-5 text-[#94A3B8]" />
+                            )}
+                          </div>
+                        )}
+
                         <div className="flex-1 min-w-0 space-y-1">
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-xs text-[#3B4FD8] dark:text-indigo-400 bg-[#EEF2FF] dark:bg-indigo-950 px-2 py-0.5 rounded-md border border-[#D5D9E2] dark:border-indigo-900 truncate">
@@ -699,29 +1092,33 @@ export const ProfileScreen: React.FC = () => {
                           </p>
                         </div>
 
-                        <button
-                          type="button"
-                          aria-label="আরও অপশন"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setPaperSheet(paper);
-                          }}
-                          className="shrink-0 min-h-[40px] min-w-[36px] flex items-center justify-center rounded-full text-[#64748B] dark:text-slate-400 hover:bg-[#F2F4F8] dark:hover:bg-slate-700"
-                        >
-                          <MoreVertical className="w-5 h-5" />
-                        </button>
+                        {!isPaperSelectMode && (
+                          <>
+                            <button
+                              type="button"
+                              aria-label="আরও অপশন"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPaperSheet(paper);
+                              }}
+                              className="shrink-0 min-h-[40px] min-w-[36px] flex items-center justify-center rounded-full text-[#64748B] dark:text-slate-400 hover:bg-[#F2F4F8] dark:hover:bg-slate-700"
+                            >
+                              <MoreVertical className="w-5 h-5" />
+                            </button>
 
-                        <div className="text-[#64748B] shrink-0 p-1">
-                          {isExpanded ? (
-                            <ChevronDown className="w-5 h-5 text-[#3B4FD8]" />
-                          ) : (
-                            <ChevronRight className="w-5 h-5" />
-                          )}
-                        </div>
+                            <div className="text-[#64748B] shrink-0 p-1">
+                              {isExpanded ? (
+                                <ChevronDown className="w-5 h-5 text-[#3B4FD8]" />
+                              ) : (
+                                <ChevronRight className="w-5 h-5" />
+                              )}
+                            </div>
+                          </>
+                        )}
                       </div>
 
                       {/* Expanded Questions preview & Actions */}
-                      {isExpanded && (
+                      {isExpanded && !isPaperSelectMode && (
                         <div className="px-3.5 pb-3.5 pt-1 border-t border-[#F2F4F8] dark:border-slate-700 space-y-3 bg-[#FAFCFF] dark:bg-slate-850">
                           {/* Questions summary */}
                           <div className="space-y-2.5 pt-2">
@@ -791,6 +1188,49 @@ export const ProfileScreen: React.FC = () => {
               </div>
             )}
           </main>
+
+          {/* Sticky Bottom Multi-Select Actions for Papers */}
+          {isPaperSelectMode && (
+            <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-[#D5D9E2] dark:border-slate-800 p-3 shadow-2xl flex items-center justify-between gap-2 max-w-lg mx-auto">
+              <span className="text-xs font-bold text-[#1B1F2A] dark:text-slate-200 shrink-0">
+                {toBn(selectedPaperIds.length)}টি ফাইল
+              </span>
+              <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                {/* Batch Copy */}
+                <button
+                  type="button"
+                  disabled={selectedPaperIds.length === 0}
+                  onClick={handleBatchCopyPapers}
+                  className="min-h-[40px] px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-[#3B4FD8] dark:text-indigo-300 border border-indigo-200 dark:border-indigo-900 text-xs font-bold flex items-center gap-1 disabled:opacity-40"
+                >
+                  <Copy className="w-4 h-4" />
+                  <span>কপি</span>
+                </button>
+
+                {/* Batch Move */}
+                <button
+                  type="button"
+                  disabled={selectedPaperIds.length === 0}
+                  onClick={() => setBatchPickerMode('move')}
+                  className="min-h-[40px] px-3 py-1.5 rounded-xl bg-[#3B4FD8] text-white text-xs font-bold flex items-center gap-1 disabled:opacity-40 shadow-2xs"
+                >
+                  <FolderInput className="w-4 h-4" />
+                  <span>সরান</span>
+                </button>
+
+                {/* Batch Delete */}
+                <button
+                  type="button"
+                  disabled={selectedPaperIds.length === 0}
+                  onClick={() => setShowBatchDeleteConfirm(true)}
+                  className="min-h-[40px] px-3 py-1.5 rounded-xl bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900 text-xs font-bold flex items-center gap-1 disabled:opacity-40"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>ডিলিট</span>
+                </button>
+              </div>
+            </div>
+          )}
         </>
       )}
 
@@ -798,39 +1238,88 @@ export const ProfileScreen: React.FC = () => {
       {viewMode === 'categories' && (
         <>
           <Header
-            title="ক্যাটেগরি"
-            subtitle="প্রশ্নপত্রের বিভাগ ও ক্যাটেগরি"
+            title={isCatSelectMode ? `${toBn(selectedCatIds.length)}টি ক্যাটেগরি নির্বাচিত` : 'ক্যাটেগরি'}
+            subtitle={isCatSelectMode ? 'পিডিএফ এক্সপোর্ট করতে ক্যাটেগরি বাছাই করুন' : 'প্রশ্নপত্রের বিভাগ ও ক্যাটেগরি'}
             showBack={true}
-            onBack={() => setViewMode('main')}
+            onBack={() => {
+              if (isCatSelectMode) {
+                setIsCatSelectMode(false);
+                setSelectedCatIds([]);
+              } else {
+                setViewMode('main');
+              }
+            }}
           />
 
-          <main className="flex-1 p-3.5 space-y-3.5">
+          <main className="flex-1 p-3.5 space-y-3.5 pb-28">
             {renderClipboardBanner(null)}
 
-            {/* Top Bar with + New Category Button */}
-            <div className="flex items-center justify-between px-1">
+            {/* Top Bar with New Category & Multi-Select PDF Export Toggle */}
+            <div className="flex items-center justify-between px-1 gap-2 flex-wrap">
               <span className="text-xs font-bold text-[#1B1F2A] dark:text-slate-300">
-                সকল ক্যাটেগরি ({toBn(categories.length)}টি)
+                সকল ক্যাটেগরি ({toBn(categories.length + 1)}টি)
               </span>
-              <button
-                type="button"
-                onClick={handleOpenAddCategory}
-                className="min-h-[44px] px-3.5 py-1.5 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] text-white text-xs font-bold flex items-center gap-1 shadow-2xs"
-              >
-                <Plus className="w-4 h-4" />
-                <span>নতুন ক্যাটেগরি</span>
-              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isCatSelectMode) {
+                      setIsCatSelectMode(false);
+                      setSelectedCatIds([]);
+                    } else {
+                      setIsCatSelectMode(true);
+                    }
+                  }}
+                  className={`min-h-[38px] px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all ${
+                    isCatSelectMode
+                      ? 'bg-[#EEF2FF] border-[#3B4FD8] text-[#3B4FD8] dark:bg-indigo-950/60 dark:text-indigo-300'
+                      : 'bg-white dark:bg-slate-800 border-[#D5D9E2] dark:border-slate-700 text-[#1B1F2A] dark:text-slate-200 hover:border-[#3B4FD8]'
+                  }`}
+                >
+                  <CheckSquare className="w-4 h-4" />
+                  <span>{isCatSelectMode ? 'বাতিল' : 'মাল্টি-এক্সপোর্ট'}</span>
+                </button>
+
+                {!isCatSelectMode && (
+                  <button
+                    type="button"
+                    onClick={handleOpenAddCategory}
+                    className="min-h-[38px] px-3.5 py-1.5 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] text-white text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>নতুন ক্যাটেগরি</span>
+                  </button>
+                )}
+
+                {isCatSelectMode && (
+                  <button
+                    type="button"
+                    onClick={toggleSelectAllCategories}
+                    className="min-h-[38px] px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-[#D5D9E2] dark:border-slate-700 text-[#3B4FD8] dark:text-indigo-400 text-xs font-bold flex items-center gap-1"
+                  >
+                    <CheckCheck className="w-4 h-4" />
+                    <span>
+                      {selectedCatIds.length === allSelectableCategoryIds.length
+                        ? 'আনসিলেক্ট'
+                        : 'সব সিলেক্ট'}
+                    </span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Import a shared category / paper file */}
-            <button
-              type="button"
-              onClick={() => importCategoryInputRef.current?.click()}
-              className="w-full min-h-[44px] px-3.5 py-2 rounded-xl border border-dashed border-[#3B4FD8] dark:border-indigo-500 text-[#3B4FD8] dark:text-indigo-300 text-xs font-bold flex items-center justify-center gap-1.5"
-            >
-              <Upload className="w-4 h-4" />
-              <span>শেয়ার করা ক্যাটেগরি/প্রশ্নপত্র ফাইল ইমপোর্ট করুন</span>
-            </button>
+            {!isCatSelectMode && (
+              <button
+                type="button"
+                onClick={() => importCategoryInputRef.current?.click()}
+                className="w-full min-h-[44px] px-3.5 py-2 rounded-xl border border-dashed border-[#3B4FD8] dark:border-indigo-500 text-[#3B4FD8] dark:text-indigo-300 text-xs font-bold flex items-center justify-center gap-1.5 bg-white/60 dark:bg-slate-800/40 hover:bg-[#EEF2FF] dark:hover:bg-slate-800 transition-colors"
+              >
+                <Upload className="w-4 h-4" />
+                <span>শেয়ার করা ক্যাটেগরি/প্রশ্নপত্র ফাইল ইমপোর্ট করুন</span>
+              </button>
+            )}
             <input
               ref={importCategoryInputRef}
               type="file"
@@ -840,43 +1329,113 @@ export const ProfileScreen: React.FC = () => {
             />
 
             {/* List of Category Cards */}
-            {categories.length === 0 ? (
-              <div className="bg-white dark:bg-slate-800 rounded-3xl p-7 text-center border border-[#D5D9E2] dark:border-slate-700 space-y-3">
-                <p className="text-sm font-semibold text-[#1B1F2A] dark:text-slate-100">
-                  কোনো ক্যাটেগরি নেই
-                </p>
-                <button
-                  type="button"
-                  onClick={handleOpenAddCategory}
-                  className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#3B4FD8] text-white text-xs font-bold"
-                >
-                  + ক্যাটেগরি তৈরি করুন
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-2.5">
-                {categories.map((cat) => {
-                  const stats = catStats[cat.id] || { paperCount: 0, questionCount: 0 };
+            <div className="space-y-2.5">
+              {/* SPECIAL SYSTEM CATEGORY: ক্যাটাগরিহীন প্রশ্ন ও প্রশ্নপত্র */}
+              {(() => {
+                const isSelected = selectedCatIds.includes(UNCATEGORIZED_CATEGORY_ID);
 
-                  return (
-                    <div
-                      key={cat.id}
-                      onClick={() => {
+                return (
+                  <div
+                    key={UNCATEGORIZED_CATEGORY_ID}
+                    onClick={() => {
+                      if (isCatSelectMode) {
+                        toggleCategorySelect(UNCATEGORIZED_CATEGORY_ID);
+                      } else {
+                        setSelectedCategory(uncategorizedVirtualCategory);
+                        setViewMode('category-detail');
+                      }
+                    }}
+                    className={`bg-white dark:bg-slate-800 rounded-2xl p-4 border transition-all shadow-xs flex items-center justify-between gap-3 cursor-pointer group ${
+                      isSelected
+                        ? 'border-amber-500 ring-2 ring-amber-500/20'
+                        : 'border-amber-200 dark:border-amber-900/60 hover:border-amber-500'
+                    }`}
+                  >
+                    {isCatSelectMode && (
+                      <div className="shrink-0 text-amber-600">
+                        {isSelected ? (
+                          <CheckSquare className="w-5 h-5 text-amber-600" />
+                        ) : (
+                          <Square className="w-5 h-5 text-[#94A3B8]" />
+                        )}
+                      </div>
+                    )}
+
+                    <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/60 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
+                      <Inbox className="w-5 h-5" />
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-bold text-[#1B1F2A] dark:text-slate-100 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors truncate">
+                          ক্যাটাগরিহীন (Uncategorized)
+                        </h3>
+                        <span className="text-[0.625rem] font-bold px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300">
+                          ডিফল্ট
+                        </span>
+                      </div>
+                      <p className="text-[0.6875rem] text-[#64748B] dark:text-slate-400 font-medium mt-0.5">
+                        {toBn(uncatStats.paperCount)}টি প্রশ্নপত্র · {toBn(uncatStats.questionCount)}টি প্রশ্ন
+                        {uncatQuestions.length > 0 && ` · ${toBn(uncatQuestions.length)}টি অব্যবহৃত`}
+                      </p>
+                    </div>
+
+                    {!isCatSelectMode && (
+                      <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <ChevronRight className="w-5 h-5 text-[#94A3B8] group-hover:translate-x-0.5 transition-transform" />
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Regular User-created Categories */}
+              {categories.map((cat) => {
+                const stats = catStats[cat.id] || { paperCount: 0, questionCount: 0 };
+                const isSelected = selectedCatIds.includes(cat.id);
+
+                return (
+                  <div
+                    key={cat.id}
+                    onClick={() => {
+                      if (isCatSelectMode) {
+                        toggleCategorySelect(cat.id);
+                      } else {
                         setSelectedCategory(cat);
                         setViewMode('category-detail');
-                      }}
-                      className="bg-white dark:bg-slate-800 hover:border-[#3B4FD8] dark:hover:border-indigo-500 rounded-2xl p-4 border border-[#D5D9E2] dark:border-slate-700 shadow-xs flex items-center justify-between gap-3 cursor-pointer transition-all group"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-sm font-bold text-[#1B1F2A] dark:text-slate-100 group-hover:text-[#3B4FD8] transition-colors truncate">
-                          {cat.name}
-                        </h3>
-                        <p className="text-[0.6875rem] text-[#64748B] dark:text-slate-400 font-medium mt-0.5">
-                          {toBn(stats.paperCount)}টি প্রশ্নপত্র · {toBn(stats.questionCount)}টি প্রশ্ন
-                        </p>
+                      }
+                    }}
+                    className={`bg-white dark:bg-slate-800 rounded-2xl p-4 border transition-all shadow-xs flex items-center justify-between gap-3 cursor-pointer group ${
+                      isSelected
+                        ? 'border-[#3B4FD8] ring-2 ring-[#3B4FD8]/20 dark:border-indigo-500'
+                        : 'border-[#D5D9E2] dark:border-slate-700 hover:border-[#3B4FD8] dark:hover:border-indigo-500'
+                    }`}
+                  >
+                    {isCatSelectMode && (
+                      <div className="shrink-0 text-[#3B4FD8]">
+                        {isSelected ? (
+                          <CheckSquare className="w-5 h-5 text-[#3B4FD8]" />
+                        ) : (
+                          <Square className="w-5 h-5 text-[#94A3B8]" />
+                        )}
                       </div>
+                    )}
 
-                      {/* Right: Kebab Menu & Chevron */}
+                    <div className="w-10 h-10 rounded-xl bg-[#EEF2FF] dark:bg-indigo-950/60 flex items-center justify-center text-[#3B4FD8] dark:text-indigo-400 shrink-0">
+                      <FolderKanban className="w-5 h-5" />
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-sm font-bold text-[#1B1F2A] dark:text-slate-100 group-hover:text-[#3B4FD8] dark:group-hover:text-indigo-400 transition-colors truncate">
+                        {cat.name}
+                      </h3>
+                      <p className="text-[0.6875rem] text-[#64748B] dark:text-slate-400 font-medium mt-0.5">
+                        {toBn(stats.paperCount)}টি প্রশ্নপত্র · {toBn(stats.questionCount)}টি প্রশ্ন
+                      </p>
+                    </div>
+
+                    {/* Right: Kebab Menu & Chevron */}
+                    {!isCatSelectMode && (
                       <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
@@ -888,12 +1447,36 @@ export const ProfileScreen: React.FC = () => {
                         </button>
                         <ChevronRight className="w-5 h-5 text-[#94A3B8] group-hover:translate-x-0.5 transition-transform" />
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </main>
+
+          {/* Sticky Bottom Multi-Category PDF Export Action Bar */}
+          {isCatSelectMode && (
+            <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-[#D5D9E2] dark:border-slate-800 p-3.5 shadow-2xl flex items-center justify-between gap-3 max-w-lg mx-auto">
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-[#1B1F2A] dark:text-slate-100 truncate">
+                  {toBn(selectedCatIds.length)}টি ক্যাটেগরি নির্বাচিত
+                </p>
+                <p className="text-[0.625rem] text-[#64748B] dark:text-slate-400 truncate">
+                  আলাদা আলাদা ফোল্ডারে পিডিএফ সেভ হবে
+                </p>
+              </div>
+
+              <button
+                type="button"
+                disabled={selectedCatIds.length === 0 || isBatchExporting}
+                onClick={handleExportSelectedCategories}
+                className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] text-white text-xs font-bold flex items-center gap-2 disabled:opacity-40 shadow-sm shrink-0 transition-colors"
+              >
+                <FileDown className="w-4 h-4" />
+                <span>PDF এক্সপোর্ট করুন</span>
+              </button>
+            </div>
+          )}
         </>
       )}
 
@@ -1008,7 +1591,7 @@ export const ProfileScreen: React.FC = () => {
                   icon: <Copy className="w-5 h-5 text-[#3B4FD8]" />,
                   onClick: () => handleCopyCategory(categorySheet),
                 },
-                ...(clipboard?.type === 'paper'
+                ...(clipboard?.type === 'paper' || clipboard?.type === 'papers'
                   ? [
                       {
                         id: 'paste-paper',
@@ -1092,7 +1675,7 @@ export const ProfileScreen: React.FC = () => {
         }
       />
 
-      {/* Destination picker for Move / Copy */}
+      {/* Destination picker for Single Paper Move / Copy */}
       <CategoryPickerDialog
         isOpen={Boolean(picker)}
         title={picker?.mode === 'move' ? 'কোন ক্যাটেগরিতে সরাবেন?' : 'কোন ক্যাটেগরিতে কপি করবেন?'}
@@ -1103,16 +1686,43 @@ export const ProfileScreen: React.FC = () => {
         onCancel={() => setPicker(null)}
       />
 
-      {/* Delete Paper Confirmation */}
+      {/* Destination picker for BATCH Paper Move / Copy */}
+      <CategoryPickerDialog
+        isOpen={Boolean(batchPickerMode)}
+        title={
+          batchPickerMode === 'move'
+            ? `নির্বাচিত ${toBn(selectedPaperIds.length)}টি প্রশ্নপত্র কোন ক্যাটেগরিতে সরাবেন?`
+            : `নির্বাচিত ${toBn(selectedPaperIds.length)}টি প্রশ্নপত্র কোন ক্যাটেগরিতে কপি করবেন?`
+        }
+        categories={categories}
+        excludeId={selectedCategory?.id}
+        stats={catStats}
+        onPick={handleBatchPickDestination}
+        onCancel={() => setBatchPickerMode(null)}
+      />
+
+      {/* Single Paper Delete Confirmation */}
       <ConfirmDialog
         isOpen={Boolean(deletePaperTarget)}
         title="প্রশ্নপত্র মুছবেন?"
-        message={`"${deletePaperTarget?.title || deletePaperTarget?.shortName || ''}" প্রশ্নপত্রটি মুছে যাবে (কালেকশনের প্রশ্নগুলো মুছবে না)।`}
+        message={`"${deletePaperTarget?.title || deletePaperTarget?.shortName || ''}" প্রশ্নপত্রটি মুছে যাবে (কালেকশনের মূল প্রশ্ন সংরক্ষিত থাকবে)।`}
         confirmText="হ্যাঁ, মুছে ফেলুন"
         cancelText="না"
         isDestructive={true}
         onConfirm={handleConfirmDeletePaper}
         onCancel={() => setDeletePaperTarget(null)}
+      />
+
+      {/* Batch Paper Delete Confirmation */}
+      <ConfirmDialog
+        isOpen={showBatchDeleteConfirm}
+        title="নির্বাচিত প্রশ্নপত্রসমূহ মুছবেন?"
+        message={`নির্বাচিত মোট ${toBn(selectedPaperIds.length)}টি প্রশ্নপত্র মুছে ফেলা হবে। কালেকশনের মূল প্রশ্নগুলো সংরক্ষিত থাকবে।`}
+        confirmText="হ্যাঁ, সব মুছুন"
+        cancelText="না"
+        isDestructive={true}
+        onConfirm={handleConfirmBatchDeletePapers}
+        onCancel={() => setShowBatchDeleteConfirm(false)}
       />
 
       {/* Category Add / Rename Prompt */}
@@ -1128,7 +1738,7 @@ export const ProfileScreen: React.FC = () => {
       <ConfirmDialog
         isOpen={deleteCatConfirm.isOpen}
         title="ক্যাটেগরি মুছবেন?"
-        message={`"${deleteCatConfirm.catName}" ক্যাটেগরি মুছলে এর অন্তর্গত প্রশ্নপত্রগুলো 'অশ্রেণিবদ্ধ' ক্যাটেগরিতে চলে যাবে (কোনো প্রশ্নপত্র মুছে যাবে না)।`}
+        message={`"${deleteCatConfirm.catName}" ক্যাটেগরি মুছলে এর অন্তর্গত প্রশ্নপত্রগুলো 'ক্যাটাগরিহীন' তালিকায় চলে যাবে (কোনো প্রশ্নপত্র মুছে যাবে না)।`}
         confirmText="হ্যাঁ, মুছে ফেলুন"
         cancelText="না"
         isDestructive={true}
@@ -1175,6 +1785,114 @@ export const ProfileScreen: React.FC = () => {
         }}
         onDeleted={loadData}
       />
+
+      {/* Multi-Category PDF Export Progress Overlay (NO PREVIEW) */}
+      {isBatchExporting && exportProgress && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-60 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-in fade-in"
+        >
+          <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-3xl p-6 border border-[#D5D9E2] dark:border-slate-700 shadow-2xl space-y-4 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-[#EEF2FF] dark:bg-indigo-950 flex items-center justify-center text-[#3B4FD8] dark:text-indigo-400 mx-auto animate-pulse">
+              <FolderArchive className="w-6 h-6" />
+            </div>
+
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-[#1B1F2A] dark:text-slate-100">
+                ক্যাটেগরি অনুযায়ী PDF তৈরি হচ্ছে
+              </h3>
+              <p className="text-xs text-[#64748B] dark:text-slate-400">
+                কোনো প্রিভিউ ছাড়া সরাসরি ফোল্ডারে সেভ হচ্ছে...
+              </p>
+            </div>
+
+            {/* Progress indicators */}
+            <div className="bg-[#F8FAFC] dark:bg-slate-800 p-3 rounded-2xl border border-[#E2E8F0] dark:border-slate-700 space-y-2 text-left">
+              <div className="flex justify-between text-xs font-bold text-[#1B1F2A] dark:text-slate-200">
+                <span>ক্যাটেগরি: {exportProgress.categoryName}</span>
+                <span className="text-[#3B4FD8]">
+                  {toBn(exportProgress.categoryIndex)}/{toBn(exportProgress.totalCategories)}
+                </span>
+              </div>
+              <div className="w-full bg-[#E2E8F0] dark:bg-slate-700 h-2 rounded-full overflow-hidden">
+                <div
+                  className="bg-[#3B4FD8] h-full transition-all duration-300 rounded-full"
+                  style={{
+                    width: `${
+                      exportProgress.overallTotal > 0
+                        ? Math.round((exportProgress.overallSaved / exportProgress.overallTotal) * 100)
+                        : 0
+                    }%`,
+                  }}
+                />
+              </div>
+              <p className="text-[0.6875rem] text-[#64748B] dark:text-slate-400 text-center font-medium">
+                মোট {toBn(exportProgress.overallSaved)} / {toBn(exportProgress.overallTotal)}টি প্রশ্নপত্র সম্পন্ন
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Multi-Category PDF Export Result Dialog */}
+      {exportResult && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-60 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-in fade-in"
+        >
+          <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-3xl p-6 border border-[#D5D9E2] dark:border-slate-700 shadow-2xl space-y-4 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 flex items-center justify-center text-emerald-600 dark:text-emerald-400 mx-auto">
+              <FolderCheck className="w-6 h-6" />
+            </div>
+
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-[#1B1F2A] dark:text-slate-100">
+                PDF এক্সপোর্ট সফল হয়েছে
+              </h3>
+              <p className="text-xs text-[#64748B] dark:text-slate-400">
+                মোট {toBn(exportResult.categoryCount)}টি ক্যাটেগরির {toBn(exportResult.totalSaved)}টি প্রশ্নপত্র ফোল্ডার অনুযায়ী সেভ করা হয়েছে।
+              </p>
+            </div>
+
+            <div className="bg-[#F8FAFC] dark:bg-slate-800 p-3 rounded-2xl border border-[#E2E8F0] dark:border-slate-700 text-left space-y-1">
+              <span className="text-[0.6875rem] font-bold text-[#64748B] dark:text-slate-400 block uppercase">
+                সংরক্ষিত ফোল্ডার
+              </span>
+              <p className="text-xs font-mono font-semibold text-[#1B1F2A] dark:text-slate-200 break-all">
+                {exportResult.folder}
+              </p>
+            </div>
+
+            {exportResult.failed.length > 0 && (
+              <p className="text-[0.6875rem] text-red-500 font-medium text-left">
+                সতর্কতা: {toBn(exportResult.failed.length)}টি প্রশ্নপত্র এক্সপোর্ট করা যায়নি।
+              </p>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  await openSavedFolder(exportResult.folder);
+                }}
+                className="flex-1 min-h-[44px] px-3.5 py-2 rounded-xl border border-[#3B4FD8] text-[#3B4FD8] dark:text-indigo-400 hover:bg-[#EEF2FF] text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <FolderInput className="w-4 h-4" />
+                <span>ফোল্ডার খুলুন</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setExportResult(null)}
+                className="flex-1 min-h-[44px] px-4 py-2 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] text-white text-xs font-bold transition-colors"
+              >
+                ঠিক আছে
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* PDF Failure Error Modal showing real error.message */}
       {pdfErrorMessage && (

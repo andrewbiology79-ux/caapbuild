@@ -176,8 +176,11 @@ export const PaperViewModal: React.FC<PaperViewModalProps> = ({
         imageUrls,
         fontScale: pdfFontScale,
       });
-      if (!(savedPath && showPdfSavedDialog(savedPath))) {
-        showToast(savedPath ? `PDF সেভ হয়েছে: ${savedPath}` : 'PDF তৈরি সম্পন্ন হয়েছে', savedPath ? 4500 : 2000);
+      if (!(savedPath && typeof savedPath === 'string' && showPdfSavedDialog(savedPath))) {
+        showToast(
+          typeof savedPath === 'string' ? `PDF সেভ হয়েছে: ${savedPath}` : 'PDF তৈরি সম্পন্ন হয়েছে',
+          savedPath ? 4500 : 2000
+        );
       }
     } catch (err: any) {
       console.error('PDF export failed:', err);

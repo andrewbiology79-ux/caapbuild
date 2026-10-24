@@ -1132,12 +1132,58 @@ export async function deleteCategory(id: string): Promise<void> {
   await db.categories.delete(id);
 }
 
+export const UNCATEGORIZED_CATEGORY_ID = '__uncategorized__';
+
+export async function getUncategorizedPapers(): Promise<Paper[]> {
+  const allCategories = await db.categories.toArray();
+  const validCatIds = new Set(allCategories.map((c) => c.id));
+  const allPapers = await db.papers.toArray();
+  return allPapers
+    .filter(
+      (p) =>
+        !p.categoryId ||
+        p.categoryId === '' ||
+        p.categoryId === UNCATEGORIZED_CATEGORY_ID ||
+        p.categoryId === 'cat_unclassified' ||
+        !validCatIds.has(p.categoryId)
+    )
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+}
+
+export async function getUncategorizedStats(): Promise<{ paperCount: number; questionCount: number }> {
+  const papers = await getUncategorizedPapers();
+  const paperCount = papers.length;
+  let questionCount = 0;
+  for (const p of papers) {
+    questionCount += p.questionIds?.length || 0;
+  }
+  return { paperCount, questionCount };
+}
+
+export async function getQuestionsNotInAnyPaper(): Promise<Question[]> {
+  const allPapers = await db.papers.toArray();
+  const usedQIds = new Set<string>();
+  for (const p of allPapers) {
+    if (p.questionIds) {
+      p.questionIds.forEach((id) => usedQIds.add(id));
+    }
+  }
+  const allQuestions = await db.questions.toArray();
+  return allQuestions.filter((q) => !usedQIds.has(q.id));
+}
+
 export async function getPapersByCategory(categoryId: string): Promise<Paper[]> {
+  if (categoryId === UNCATEGORIZED_CATEGORY_ID) {
+    return await getUncategorizedPapers();
+  }
   const list = await db.papers.where('categoryId').equals(categoryId).toArray();
   return list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 }
 
 export async function getCategoryStats(categoryId: string): Promise<{ paperCount: number; questionCount: number }> {
+  if (categoryId === UNCATEGORIZED_CATEGORY_ID) {
+    return await getUncategorizedStats();
+  }
   const papers = await db.papers.where('categoryId').equals(categoryId).toArray();
   const paperCount = papers.length;
   let questionCount = 0;
@@ -1153,21 +1199,41 @@ export async function getCategoryStats(categoryId: string): Promise<{ paperCount
 
 export type CategoryClipboard =
   | { type: 'category'; id: string; name: string }
-  | { type: 'paper'; id: string; name: string };
+  | { type: 'paper'; id: string; name: string }
+  | { type: 'papers'; ids: string[]; count: number; name: string };
 
 const META_CATEGORY_CLIPBOARD_KEY = 'category_clipboard';
 
 export async function getCategoryClipboard(): Promise<CategoryClipboard | null> {
   const rec = await db.meta.get(META_CATEGORY_CLIPBOARD_KEY);
   const v = rec?.value as CategoryClipboard | null | undefined;
-  if (!v || !v.id || (v.type !== 'category' && v.type !== 'paper')) return null;
-  // Make sure the copied item still exists
+  if (!v || (v.type !== 'category' && v.type !== 'paper' && v.type !== 'papers')) return null;
+
   if (v.type === 'category') {
+    if (v.id === UNCATEGORIZED_CATEGORY_ID) {
+      return { type: 'category', id: UNCATEGORIZED_CATEGORY_ID, name: 'ক্যাটাগরিহীন' };
+    }
     const c = await db.categories.get(v.id);
     return c ? { type: 'category', id: c.id, name: c.name } : null;
   }
-  const p = await db.papers.get(v.id);
-  return p ? { type: 'paper', id: p.id, name: p.title || p.shortName } : null;
+
+  if (v.type === 'paper') {
+    const p = await db.papers.get(v.id);
+    return p ? { type: 'paper', id: p.id, name: p.title || p.shortName } : null;
+  }
+
+  if (v.type === 'papers' && Array.isArray(v.ids)) {
+    const existing = await db.papers.where('id').anyOf(v.ids).toArray();
+    if (existing.length === 0) return null;
+    return {
+      type: 'papers',
+      ids: existing.map((p) => p.id),
+      count: existing.length,
+      name: `${toBn(existing.length)}টি প্রশ্নপত্র`,
+    };
+  }
+
+  return null;
 }
 
 export async function setCategoryClipboard(value: CategoryClipboard | null): Promise<void> {
@@ -1195,10 +1261,19 @@ export async function getUniqueCategoryName(baseName: string): Promise<string> {
  * Move a paper (question paper) from its current category into another category
  */
 export async function movePaperToCategory(paperId: string, targetCategoryId: string): Promise<void> {
-  const target = await db.categories.get(targetCategoryId);
-  if (!target) throw new Error('গন্তব্য ক্যাটেগরি পাওয়া যায়নি');
   const paper = await db.papers.get(paperId);
   if (!paper) return;
+
+  if (targetCategoryId === UNCATEGORIZED_CATEGORY_ID) {
+    await db.papers.update(paperId, {
+      categoryId: undefined,
+      category: 'ক্যাটাগরিহীন',
+    });
+    return;
+  }
+
+  const target = await db.categories.get(targetCategoryId);
+  if (!target) throw new Error('গন্তব্য ক্যাটেগরি পাওয়া যায়নি');
   if (paper.categoryId === target.id) return;
   await db.papers.update(paperId, {
     categoryId: target.id,
@@ -1211,16 +1286,27 @@ export async function movePaperToCategory(paperId: string, targetCategoryId: str
  * Copy a paper into a category (creates an independent copy of the paper)
  */
 export async function duplicatePaper(paperId: string, targetCategoryId: string): Promise<Paper> {
-  const [paper, target] = await Promise.all([db.papers.get(paperId), db.categories.get(targetCategoryId)]);
+  const paper = await db.papers.get(paperId);
   if (!paper) throw new Error('প্রশ্নপত্রটি পাওয়া যায়নি');
-  if (!target) throw new Error('গন্তব্য ক্যাটেগরি পাওয়া যায়নি');
+
+  let targetId: string | undefined = undefined;
+  let targetName = 'ক্যাটাগরিহীন';
+  let shortName = paper.shortName;
+
+  if (targetCategoryId !== UNCATEGORIZED_CATEGORY_ID) {
+    const target = await db.categories.get(targetCategoryId);
+    if (!target) throw new Error('গন্তব্য ক্যাটেগরি পাওয়া যায়নি');
+    targetId = target.id;
+    targetName = target.name;
+    shortName = await getNextPaperLabel(target.id, target.name);
+  }
 
   const copy: Paper = {
     ...paper,
     id: generateId(),
-    categoryId: target.id,
-    category: target.name,
-    shortName: await getNextPaperLabel(target.id, target.name),
+    categoryId: targetId,
+    category: targetName,
+    shortName,
     createdAt: Date.now(),
     questionIds: [...(paper.questionIds || [])],
   };
@@ -1229,7 +1315,7 @@ export async function duplicatePaper(paperId: string, targetCategoryId: string):
 }
 
 /**
- * Batch helpers used by the Create screen (multi-select)
+ * Batch helpers used by Create screen & Profile screen (multi-select)
  */
 export async function movePapersToCategory(paperIds: string[], targetCategoryId: string): Promise<number> {
   let count = 0;
