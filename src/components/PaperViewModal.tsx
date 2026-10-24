@@ -1,12 +1,19 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { X, Trash2, Edit3, FileDown, AlertTriangle } from 'lucide-react';
+import { X, Trash2, Edit3, FileDown, AlertTriangle, Minus, Plus } from 'lucide-react';
 import { db, type Paper, type Question, type Stimulus } from '../db/db';
 import { deletePaper, getImageBlobUrl } from '../db/api';
 import { RichText } from './RichText';
 import { useToast } from './Toast';
 import { ConfirmDialog } from './ConfirmDialog';
 import { toBn } from '../utils/toBn';
+import {
+  PDF_FONT_SCALES,
+  DEFAULT_PDF_FONT_SCALE,
+  getPdfFontScale,
+  savePdfFontScale,
+} from '../utils/settings';
 import { generateAndSharePdf } from '../utils/pdfGenerator';
+import { showPdfSavedDialog } from '../utils/storageAccess';
 
 export interface PaperViewModalProps {
   paperId: string | null;
@@ -36,6 +43,27 @@ export const PaperViewModal: React.FC<PaperViewModalProps> = ({
   const [exportingPdf, setExportingPdf] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [pdfErrorMessage, setPdfErrorMessage] = useState<string | null>(null);
+  const [pdfFontScale, setPdfFontScale] = useState<number>(DEFAULT_PDF_FONT_SCALE);
+
+  // Load the PDF text size that was selected last time
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    getPdfFontScale().then((v) => {
+      if (!cancelled) setPdfFontScale(v);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
+
+  const changePdfFontScale = (dir: -1 | 1) => {
+    const idx = PDF_FONT_SCALES.indexOf(pdfFontScale as (typeof PDF_FONT_SCALES)[number]);
+    const next = PDF_FONT_SCALES[Math.min(PDF_FONT_SCALES.length - 1, Math.max(0, idx + dir))];
+    if (next === pdfFontScale) return;
+    setPdfFontScale(next);
+    savePdfFontScale(next); // remembered for the next export
+  };
 
   useEffect(() => {
     if (!isOpen || !paperId) return;
@@ -146,8 +174,11 @@ export const PaperViewModal: React.FC<PaperViewModalProps> = ({
         paper,
         groupedQuestions,
         imageUrls,
+        fontScale: pdfFontScale,
       });
-      showToast(savedPath ? `PDF সেভ হয়েছে: ${savedPath}` : 'PDF তৈরি সম্পন্ন হয়েছে', savedPath ? 4500 : 2000);
+      if (!(savedPath && showPdfSavedDialog(savedPath))) {
+        showToast(savedPath ? `PDF সেভ হয়েছে: ${savedPath}` : 'PDF তৈরি সম্পন্ন হয়েছে', savedPath ? 4500 : 2000);
+      }
     } catch (err: any) {
       console.error('PDF export failed:', err);
       setPdfErrorMessage(err?.message || 'পিডিএফ তৈরিতে অপ্রত্যাশিত সমস্যা হয়েছে।');
@@ -228,7 +259,9 @@ export const PaperViewModal: React.FC<PaperViewModalProps> = ({
                     return (
                       <div
                         key={imgId}
-                        className="my-2.5 max-w-full sm:max-w-sm mx-auto overflow-hidden text-center rounded-lg border border-gray-200 p-1 bg-white"
+                        className={`my-2.5 max-w-full sm:max-w-sm mx-auto overflow-hidden text-center bg-white ${
+                          isExport ? '' : 'rounded-lg border border-gray-200 p-1'
+                        }`}
                       >
                         <img
                           src={url}
@@ -333,6 +366,34 @@ export const PaperViewModal: React.FC<PaperViewModalProps> = ({
             </button>
           </div>
         </header>
+
+        {/* PDF text size control (remembered for next time) */}
+        <div className="shrink-0 flex items-center justify-between gap-2 px-4 py-2 bg-white dark:bg-slate-900 border-b border-[#D5D9E2] dark:border-slate-800">
+          <span className="text-xs font-bold text-[#1B1F2A] dark:text-slate-200">PDF টেক্সট সাইজ</span>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              aria-label="টেক্সট ছোট করুন"
+              disabled={pdfFontScale <= PDF_FONT_SCALES[0]}
+              onClick={() => changePdfFontScale(-1)}
+              className="w-9 h-9 min-h-0 rounded-lg border border-[#D5D9E2] dark:border-slate-700 flex items-center justify-center text-[#3B4FD8] dark:text-indigo-400 disabled:opacity-40 active:bg-[#F2F4F8] dark:active:bg-slate-800"
+            >
+              <Minus className="w-4 h-4" />
+            </button>
+            <span className="min-w-[52px] text-center text-xs font-black text-[#3B4FD8] dark:text-indigo-400">
+              {toBn(Math.round(pdfFontScale * 100))}%
+            </span>
+            <button
+              type="button"
+              aria-label="টেক্সট বড় করুন"
+              disabled={pdfFontScale >= PDF_FONT_SCALES[PDF_FONT_SCALES.length - 1]}
+              onClick={() => changePdfFontScale(1)}
+              className="w-9 h-9 min-h-0 rounded-lg border border-[#D5D9E2] dark:border-slate-700 flex items-center justify-center text-[#3B4FD8] dark:text-indigo-400 disabled:opacity-40 active:bg-[#F2F4F8] dark:active:bg-slate-800"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
 
         {/* Scrollable A4 Preview Container */}
         <div className="flex-1 overflow-y-auto p-3 sm:p-4 bg-[#E5E9F0] dark:bg-slate-950/70">

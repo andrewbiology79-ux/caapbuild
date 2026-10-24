@@ -68,6 +68,7 @@ import {
 } from 'lucide-react';
 import { Share } from '@capacitor/share';
 import { exportPaperById } from '../utils/pdfGenerator';
+import { showPdfSavedDialog } from '../utils/storageAccess';
 import {
   exportCategoryShare,
   exportPaperShare,
@@ -273,7 +274,9 @@ export const ProfileScreen: React.FC = () => {
     showToast('PDF বানানো হচ্ছে…');
     try {
       const savedPath = await exportPaperById(paper.id);
-      showToast(savedPath ? `PDF সেভ হয়েছে: ${savedPath}` : 'PDF তৈরি সম্পন্ন হয়েছে', savedPath ? 4500 : 2000);
+      if (!(savedPath && showPdfSavedDialog(savedPath))) {
+        showToast(savedPath ? `PDF সেভ হয়েছে: ${savedPath}` : 'PDF তৈরি সম্পন্ন হয়েছে', savedPath ? 4500 : 2000);
+      }
     } catch (err: any) {
       console.error('PDF export failed:', err);
       setPdfErrorMessage(err?.message || 'পিডিএফ তৈরিতে অপ্রত্যাশিত সমস্যা হয়েছে।');

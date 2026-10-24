@@ -1,9 +1,11 @@
 package com.qbcollection.app;
 
+import android.app.DownloadManager;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
+import android.provider.DocumentsContract;
 import android.provider.Settings;
 
 import com.getcapacitor.JSObject;
@@ -54,5 +56,44 @@ public class StorageAccessPlugin extends Plugin {
             }
         }
         call.resolve();
+    }
+
+    /**
+     * Opens a folder of the phone's internal storage (e.g. "Download/QbCollection")
+     * in the file manager. Falls back to the system Downloads screen.
+     */
+    @PluginMethod
+    public void openFolder(PluginCall call) {
+        String path = call.getString("path", "Download/QbCollection");
+        if (path == null || path.trim().isEmpty()) {
+            path = "Download/QbCollection";
+        }
+        path = path.replaceAll("^/+", "").replaceAll("/+$", "");
+
+        // 1) File manager (Documents UI) directly at the folder
+        try {
+            Uri folderUri = DocumentsContract.buildDocumentUri(
+                "com.android.externalstorage.documents",
+                "primary:" + path
+            );
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setDataAndType(folderUri, "vnd.android.document/directory");
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            getContext().startActivity(intent);
+            call.resolve();
+            return;
+        } catch (Exception ignored) {
+            // try fallback below
+        }
+
+        // 2) Fallback: system Downloads screen
+        try {
+            Intent downloads = new Intent(DownloadManager.ACTION_VIEW_DOWNLOADS);
+            downloads.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(downloads);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Unable to open folder");
+        }
     }
 }

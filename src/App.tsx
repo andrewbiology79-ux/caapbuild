@@ -7,6 +7,7 @@ import { CollectionScreen } from './screens/CollectionScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
 import { getAppSettings, applySettingsToDOM } from './utils/settings';
 import { StoragePermissionDialog } from './components/StoragePermissionDialog';
+import { PdfSavedDialog } from './components/PdfSavedDialog';
 
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
@@ -58,6 +59,7 @@ export default function App() {
       <NavigationProvider>
         <MainLayout />
         <StoragePermissionDialog />
+        <PdfSavedDialog />
       </NavigationProvider>
     </ToastProvider>
   );

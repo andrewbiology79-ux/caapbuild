@@ -9,6 +9,7 @@ import { App as CapacitorApp } from '@capacitor/app';
 interface StorageAccessPlugin {
   check(): Promise<{ granted: boolean; sdk: number }>;
   openSettings(): Promise<void>;
+  openFolder(options: { path: string }): Promise<void>;
 }
 
 const StorageAccess = registerPlugin<StorageAccessPlugin>('StorageAccess');
@@ -157,4 +158,49 @@ export async function savePdfToPhoneStorage(base64Data: string, baseName: string
   });
 
   return filePath;
+}
+
+/* ------------------------------------------------------------------
+ * "PDF saved" dialog with an Open-folder button (rendered by <PdfSavedDialog /> in App)
+ * ---------------------------------------------------------------- */
+
+type SavedListener = (savedPath: string | null) => void;
+let savedListener: SavedListener | null = null;
+
+export function subscribePdfSavedDialog(listener: SavedListener): () => void {
+  savedListener = listener;
+  return () => {
+    if (savedListener === listener) savedListener = null;
+  };
+}
+
+/** Show the "PDF saved" dialog. Returns false if no dialog host is mounted. */
+export function showPdfSavedDialog(savedPath: string): boolean {
+  if (!savedListener) return false;
+  savedListener(savedPath);
+  return true;
+}
+
+export function closePdfSavedDialog(): void {
+  savedListener?.(null);
+}
+
+/** Folder part of a saved file path, e.g. "Download/QbCollection/x.pdf" -> "Download/QbCollection" */
+export function getFolderOfPath(filePath: string): string {
+  const idx = filePath.lastIndexOf('/');
+  return idx > 0 ? filePath.slice(0, idx) : PDF_SAVE_FOLDER;
+}
+
+/**
+ * Open the folder in the phone's file manager. Resolves true when a file manager was launched.
+ */
+export async function openSavedFolder(filePath: string): Promise<boolean> {
+  if (!Capacitor.isNativePlatform()) return false;
+  try {
+    await StorageAccess.openFolder({ path: getFolderOfPath(filePath) });
+    return true;
+  } catch (err) {
+    console.warn('Open folder failed:', err);
+    return false;
+  }
 }

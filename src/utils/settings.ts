@@ -92,3 +92,43 @@ export async function saveAppSettings(input: AppSettings): Promise<void> {
   });
   applySettingsToDOM(settings);
 }
+
+/* ------------------------------------------------------------------
+ * PDF text size (remembered between exports)
+ * ---------------------------------------------------------------- */
+
+const PDF_FONT_SCALE_KEY = 'pdf_font_scale';
+
+/** Allowed PDF text scales (1 = 100%) */
+export const PDF_FONT_SCALES = [0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3] as const;
+export const DEFAULT_PDF_FONT_SCALE = 1;
+
+/** Snap any stored/invalid value to the nearest allowed scale */
+export function normalizePdfFontScale(value: unknown): number {
+  const n = typeof value === 'number' && isFinite(value) ? value : DEFAULT_PDF_FONT_SCALE;
+  let best: number = PDF_FONT_SCALES[0];
+  for (const step of PDF_FONT_SCALES) {
+    if (Math.abs(step - n) < Math.abs(best - n)) best = step;
+  }
+  return best;
+}
+
+export async function getPdfFontScale(): Promise<number> {
+  try {
+    const record = await db.meta.get(PDF_FONT_SCALE_KEY);
+    if (record && record.value !== undefined) {
+      return normalizePdfFontScale(record.value);
+    }
+  } catch (err) {
+    console.error('Failed to read PDF font scale:', err);
+  }
+  return DEFAULT_PDF_FONT_SCALE;
+}
+
+export async function savePdfFontScale(scale: number): Promise<void> {
+  try {
+    await db.meta.put({ key: PDF_FONT_SCALE_KEY, value: normalizePdfFontScale(scale) });
+  } catch (err) {
+    console.error('Failed to save PDF font scale:', err);
+  }
+}

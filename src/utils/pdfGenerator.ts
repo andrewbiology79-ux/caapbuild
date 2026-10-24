@@ -8,11 +8,14 @@ import { toBn } from './toBn';
 import { db, type Paper, type Question, type Stimulus } from '../db/db';
 import { getImageBlobUrl } from '../db/api';
 import { ensureStorageAccess, savePdfToPhoneStorage } from './storageAccess';
+import { getPdfFontScale, normalizePdfFontScale } from './settings';
 
 export interface GeneratePdfOptions {
   paper: Paper;
   groupedQuestions: Array<{ stimulus?: Stimulus; questions: Question[] }>;
   imageUrls?: Record<string, string>;
+  /** PDF text size multiplier (1 = 100%). If omitted, the last saved size is used. */
+  fontScale?: number;
 }
 
 /**
@@ -44,15 +47,25 @@ function renderRichTextToHtml(rawText: string): string {
     const mathContent = isBlock ? token.slice(2, -2).trim() : token.slice(1, -1).trim();
 
     try {
-      const rendered = katex.renderToString(mathContent, {
-        displayMode: isBlock,
-        throwOnError: false,
-      });
+      // `output: 'html'` skips the hidden MathML copy; the inline overflow reset is essential:
+      // the app-wide `.katex { overflow: auto/hidden }` rule moves the formula's baseline to its
+      // bottom edge, which is what made formulas sit lower than the surrounding text in the PDF.
+      const rendered = katex
+        .renderToString(mathContent, {
+          displayMode: isBlock,
+          throwOnError: false,
+          output: 'html',
+        })
+        .replace(
+          /class="(katex-display|katex)"/g,
+          'class="$1" style="overflow: visible; max-width: none; padding: 0; margin-top: 0; margin-bottom: 0;"'
+        );
 
       if (isBlock) {
-        html += `<div style="text-align: center; margin: 4px 0; max-width: 100%; overflow: visible; padding: 3px 0; line-height: 1.6; font-size: 0.9em;">${rendered}</div>`;
+        html += `<div style="text-align: center; margin: 4px 0; max-width: 100%; overflow: visible; padding: 0; font-size: 0.95em;">${rendered}</div>`;
       } else {
-        html += `<span style="display: inline-block; vertical-align: middle; margin: 0 1px; max-width: 100%; overflow: visible; padding: 2px 0; line-height: 1.6; font-size: 0.9em;">${rendered}</span>`;
+        // Plain inline + baseline alignment: formula baseline == text baseline on the same line
+        html += `<span style="display: inline; vertical-align: baseline; margin: 0 1px; overflow: visible; padding: 0; font-size: 0.95em;">${rendered}</span>`;
       }
     } catch {
       html += escapeHtml(token);
@@ -191,6 +204,9 @@ async function resolveImageToDataUrl(blob: Blob, fileName = ''): Promise<string>
  * Wait for web fonts and all images inside container to finish loading and decoding
  */
 async function waitForFontsAndImages(container: HTMLElement): Promise<void> {
+  // Force a layout first so the browser actually starts loading the fonts used here
+  // (otherwise `fonts.ready` can resolve before KaTeX/Bangla fonts are requested).
+  void container.offsetHeight;
   if (document.fonts && document.fonts.ready) {
     await document.fonts.ready;
   }
@@ -244,7 +260,8 @@ async function blobToBase64Only(blob: Blob): Promise<string> {
 /**
  * Build Header element for the first page (full width spanning both columns)
  */
-function buildPaperHeaderElement(paper: Paper): HTMLElement {
+function buildPaperHeaderElement(paper: Paper, k = 1): HTMLElement {
+  const px = (n: number) => `${+(n * k).toFixed(2)}px`;
   const headerDiv = document.createElement('div');
   headerDiv.style.textAlign = 'center';
   headerDiv.style.paddingBottom = '8px';
@@ -256,7 +273,7 @@ function buildPaperHeaderElement(paper: Paper): HTMLElement {
   // Title
   const titleEl = document.createElement('h1');
   titleEl.textContent = paper.title || 'প্রশ্নপত্র';
-  titleEl.style.fontSize = '18px';
+  titleEl.style.fontSize = px(18);
   titleEl.style.fontWeight = '900';
   titleEl.style.color = '#000000';
   titleEl.style.margin = '0 0 3px 0';
@@ -271,7 +288,7 @@ function buildPaperHeaderElement(paper: Paper): HTMLElement {
   if (paper.subjectLine) {
     const subEl = document.createElement('p');
     subEl.textContent = paper.subjectLine;
-    subEl.style.fontSize = '12px';
+    subEl.style.fontSize = px(12);
     subEl.style.fontWeight = 'bold';
     subEl.style.color = '#000000';
     subEl.style.margin = '0 0 4px 0';
@@ -285,7 +302,7 @@ function buildPaperHeaderElement(paper: Paper): HTMLElement {
   metaRow.style.display = 'flex';
   metaRow.style.justifyContent = 'space-between';
   metaRow.style.alignItems = 'center';
-  metaRow.style.fontSize = '11.5px';
+  metaRow.style.fontSize = px(11.5);
   metaRow.style.fontWeight = 'bold';
   metaRow.style.color = '#000000';
   metaRow.style.paddingTop = '2px';
@@ -304,7 +321,7 @@ function buildPaperHeaderElement(paper: Paper): HTMLElement {
   noteDiv.textContent =
     '[ দ্রষ্টব্য: ডান পাশের সংখ্যা প্রশ্নের পূর্ণমান নির্দেশক। প্রয়োজনীয় ক্ষেত্রে চিত্র অঙ্কন আবশ্যক। ]';
   noteDiv.style.textAlign = 'center';
-  noteDiv.style.fontSize = '10px';
+  noteDiv.style.fontSize = px(10);
   noteDiv.style.fontWeight = '600';
   noteDiv.style.fontStyle = 'italic';
   noteDiv.style.color = '#333333';
@@ -317,7 +334,8 @@ function buildPaperHeaderElement(paper: Paper): HTMLElement {
 /**
  * Build mini running header for subsequent pages (Page 2, 3...)
  */
-function buildMiniHeaderElement(paper: Paper): HTMLElement {
+function buildMiniHeaderElement(paper: Paper, k = 1): HTMLElement {
+  const px = (n: number) => `${+(n * k).toFixed(2)}px`;
   const miniHeader = document.createElement('div');
   miniHeader.style.display = 'flex';
   miniHeader.style.justifyContent = 'space-between';
@@ -325,7 +343,7 @@ function buildMiniHeaderElement(paper: Paper): HTMLElement {
   miniHeader.style.paddingBottom = '4px';
   miniHeader.style.marginBottom = '10px';
   miniHeader.style.borderBottom = '1px solid #D1D5DB';
-  miniHeader.style.fontSize = '10px';
+  miniHeader.style.fontSize = px(10);
   miniHeader.style.fontWeight = 'bold';
   miniHeader.style.color = '#4B5563';
   miniHeader.style.width = '100%';
@@ -348,8 +366,10 @@ function buildQuestionGroupElement(
   group: { stimulus?: Stimulus; questions: Question[] },
   gIdx: number,
   imageUrls: Record<string, string>,
-  colWidthPx = 350
+  colWidthPx = 350,
+  k = 1
 ): HTMLElement {
+  const px = (n: number) => `${+(n * k).toFixed(2)}px`;
   const block = document.createElement('div');
   block.style.paddingBottom = '10px';
   block.style.marginBottom = '10px';
@@ -364,7 +384,7 @@ function buildQuestionGroupElement(
   const topRow = document.createElement('div');
   topRow.style.display = 'flex';
   topRow.style.justifyContent = 'flex-start';
-  topRow.style.alignItems = 'flex-start';
+  topRow.style.alignItems = 'baseline';
   topRow.style.gap = '6px';
   topRow.style.marginBottom = '6px';
   topRow.style.width = '100%';
@@ -372,7 +392,7 @@ function buildQuestionGroupElement(
   const serialSpan = document.createElement('span');
   serialSpan.textContent = `${toBn(gIdx + 1)}।`;
   serialSpan.style.fontWeight = '900';
-  serialSpan.style.fontSize = '13px';
+  serialSpan.style.fontSize = px(13);
   serialSpan.style.color = '#000000';
   serialSpan.style.flexShrink = '0';
   topRow.appendChild(serialSpan);
@@ -381,7 +401,7 @@ function buildQuestionGroupElement(
   if (group.stimulus?.text) {
     const stimTextDiv = document.createElement('div');
     stimTextDiv.innerHTML = renderRichTextToHtml(group.stimulus.text);
-    stimTextDiv.style.fontSize = '11.5px';
+    stimTextDiv.style.fontSize = px(11.5);
     stimTextDiv.style.fontWeight = '500';
     stimTextDiv.style.color = '#111827';
     stimTextDiv.style.lineHeight = '1.55';
@@ -416,9 +436,12 @@ function buildQuestionGroupElement(
         img.style.objectFit = 'contain';
         img.style.display = 'block';
         img.style.margin = '0 auto';
-        img.style.border = '1px solid #E5E7EB';
-        img.style.borderRadius = '4px';
-        img.style.padding = '2px';
+        // No border / rounded frame / padding around images in the exported PDF
+        img.style.border = 'none';
+        img.style.outline = 'none';
+        img.style.borderRadius = '0';
+        img.style.padding = '0';
+        img.style.boxShadow = 'none';
         img.style.backgroundColor = '#ffffff';
         img.style.boxSizing = 'border-box';
 
@@ -440,21 +463,21 @@ function buildQuestionGroupElement(
   group.questions.forEach((q, qIdx) => {
     const qRow = document.createElement('div');
     qRow.style.display = 'flex';
-    qRow.style.alignItems = 'flex-start';
+    qRow.style.alignItems = 'baseline';
     qRow.style.justifyContent = 'space-between';
     qRow.style.gap = '6px';
     qRow.style.width = '100%';
-    qRow.style.fontSize = '11.5px';
+    qRow.style.fontSize = px(11.5);
     qRow.style.lineHeight = '1.45';
 
     // Left container for label and question text
     const qLeft = document.createElement('div');
     qLeft.style.display = 'flex';
-    qLeft.style.alignItems = 'flex-start';
+    qLeft.style.alignItems = 'baseline';
     qLeft.style.gap = '4px';
     qLeft.style.flex = '1';
     qLeft.style.minWidth = '0';
-    qLeft.style.maxWidth = 'calc(100% - 24px)';
+    qLeft.style.maxWidth = `calc(100% - ${px(24)})`;
 
     // Label: "গ." or "(১)"
     const labelSpan = document.createElement('span');
@@ -486,7 +509,7 @@ function buildQuestionGroupElement(
     marksSpan.style.flexShrink = '0';
     marksSpan.style.textAlign = 'right';
     marksSpan.style.paddingLeft = '4px';
-    marksSpan.style.minWidth = '18px';
+    marksSpan.style.minWidth = px(18);
     qRow.appendChild(marksSpan);
 
     subWrap.appendChild(qRow);
@@ -519,6 +542,9 @@ interface PageSlot {
  */
 export async function generateAndSharePdf(options: GeneratePdfOptions): Promise<string | undefined> {
   const { paper, groupedQuestions, imageUrls = {} } = options;
+  // Use the size passed in, otherwise the last size the user picked (remembered in settings)
+  const fontScale =
+    options.fontScale !== undefined ? normalizePdfFontScale(options.fontScale) : await getPdfFontScale();
   const fileName = `${paper.shortName || 'question-paper'}.pdf`;
 
   // Hidden container for staging and measurement
@@ -595,7 +621,7 @@ export async function generateAndSharePdf(options: GeneratePdfOptions): Promise<
     hiddenRoot.appendChild(measureContainer);
 
     // Measure Header (full width: 726px)
-    const headerEl = buildPaperHeaderElement(paper);
+    const headerEl = buildPaperHeaderElement(paper, fontScale);
     measureContainer.style.width = '726px';
     measureContainer.appendChild(headerEl);
     await waitForFontsAndImages(measureContainer);
@@ -603,7 +629,7 @@ export async function generateAndSharePdf(options: GeneratePdfOptions): Promise<
     measureContainer.removeChild(headerEl);
 
     // Measure Mini Header for subsequent pages (726px)
-    const miniHeaderSample = buildMiniHeaderElement(paper);
+    const miniHeaderSample = buildMiniHeaderElement(paper, fontScale);
     measureContainer.appendChild(miniHeaderSample);
     const miniHeaderHeight = miniHeaderSample.getBoundingClientRect().height || miniHeaderSample.offsetHeight;
     measureContainer.removeChild(miniHeaderSample);
@@ -614,7 +640,7 @@ export async function generateAndSharePdf(options: GeneratePdfOptions): Promise<
     // Measure each question group
     const measuredGroups: Array<{ element: HTMLElement; height: number }> = [];
     for (let i = 0; i < groupedQuestions.length; i++) {
-      const blockEl = buildQuestionGroupElement(groupedQuestions[i], i, resolvedImageUrls, COL_WIDTH_PX);
+      const blockEl = buildQuestionGroupElement(groupedQuestions[i], i, resolvedImageUrls, COL_WIDTH_PX, fontScale);
       measureContainer.appendChild(blockEl);
       await waitForFontsAndImages(measureContainer);
       const h = blockEl.getBoundingClientRect().height || blockEl.offsetHeight;
@@ -626,7 +652,7 @@ export async function generateAndSharePdf(options: GeneratePdfOptions): Promise<
     const endMarkerEl = document.createElement('div');
     endMarkerEl.textContent = '— সমাপ্ত —';
     endMarkerEl.style.textAlign = 'center';
-    endMarkerEl.style.fontSize = '11px';
+    endMarkerEl.style.fontSize = `${+(11 * fontScale).toFixed(2)}px`;
     endMarkerEl.style.fontWeight = 'bold';
     endMarkerEl.style.color = '#4B5563';
     endMarkerEl.style.paddingTop = '8px';
@@ -659,7 +685,7 @@ export async function generateAndSharePdf(options: GeneratePdfOptions): Promise<
       if (isFirstPage) {
         pageDiv.appendChild(headerEl);
       } else {
-        const miniH = buildMiniHeaderElement(paper);
+        const miniH = buildMiniHeaderElement(paper, fontScale);
         pageDiv.appendChild(miniH);
       }
 
