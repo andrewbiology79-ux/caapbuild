@@ -70,7 +70,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
   onSaved,
   initialTopicId,
   editQuestionId,
-  scope = 'type',
+  scope = 'type' as CqScope,
 }) => {
   const { getSubjects, getChapters, getTopics, saveImageBlob, getImageBlobUrl, getQuestionGroupForEdit, saveQuestionGroup } = getApi(scope);
   const { showToast } = useToast();

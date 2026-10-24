@@ -35,7 +35,7 @@ export const ImportCollectionModal: React.FC<ImportCollectionModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
-  scope = 'type',
+  scope = 'type' as CqScope,
 }) => {
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);

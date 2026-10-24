@@ -1,5 +1,6 @@
 import {
   db,
+  db as typeDatabase,
   chapterDb,
   type QbDatabase,
   type CqScope,
@@ -856,7 +857,9 @@ async function deleteStimulusGroup(
 
 async function getImageBlobUrl(imageId: string): Promise<string | null> {
   try {
-    const img = await db.images.get(imageId);
+    // a paper can mix Type CQ + Chapter CQ questions, so also look in the other database
+    const sibling = db === chapterDb ? typeDatabase : chapterDb;
+    const img = (await db.images.get(imageId)) ?? (await sibling.images.get(imageId));
     if (!img || !img.blob) return null;
     return URL.createObjectURL(img.blob);
   } catch {

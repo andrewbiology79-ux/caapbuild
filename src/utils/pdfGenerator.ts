@@ -1,3 +1,4 @@
+import { getQuestionsByIds, getStimuliByIds } from '../db/crossDb';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
@@ -5,7 +6,7 @@ import html2canvas from 'html2canvas-pro';
 import { jsPDF } from 'jspdf';
 import katex from 'katex';
 import { toBn } from './toBn';
-import { db, DEFAULT_PAPER_NOTE, type Paper, type Question, type Stimulus } from '../db/db';
+import { db, chapterDb, DEFAULT_PAPER_NOTE, type Paper, type Question, type Stimulus } from '../db/db';
 import { getImageBlobUrl } from '../db/api';
 import {
   ensureStorageAccess,
@@ -595,7 +596,8 @@ export async function generateAndSharePdf(options: GeneratePdfOptions): Promise<
     }
 
     for (const imgId of allImageIds) {
-      const imgRecord = await db.images.get(imgId);
+      // Images live in the database of the collection they belong to (Type CQ / Chapter CQ)
+      const imgRecord = (await db.images.get(imgId)) ?? (await chapterDb.images.get(imgId));
       if (imgRecord?.blob) {
         try {
           resolvedImageUrls[imgId] = await resolveImageToDataUrl(imgRecord.blob, imgRecord.fileName);
@@ -973,10 +975,7 @@ export async function exportPaperById(
     throw new Error('প্রশ্নপত্রটি ডাটাবেসে পাওয়া যায়নি।');
   }
 
-  const questionsList = await db.questions
-    .where('id')
-    .anyOf(paper.questionIds || [])
-    .toArray();
+  const questionsList = await getQuestionsByIds(paper.questionIds || []);
 
   questionsList.sort((a, b) => {
     const idxA = paper.questionIds.indexOf(a.id);
@@ -990,7 +989,7 @@ export async function exportPaperById(
 
   const stimuliMap = new Map<string, Stimulus>();
   if (stimulusIds.length > 0) {
-    const stims = await db.stimuli.where('id').anyOf(stimulusIds).toArray();
+    const stims = await getStimuliByIds(stimulusIds);
     stims.forEach((s) => stimuliMap.set(s.id, s));
   }
 

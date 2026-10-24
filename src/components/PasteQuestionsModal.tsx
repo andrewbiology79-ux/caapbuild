@@ -157,7 +157,7 @@ export const PasteQuestionsModal: React.FC<PasteQuestionsModalProps> = ({
   topicName,
   onClose,
   onSuccess,
-  scope = 'type',
+  scope = 'type' as CqScope,
 }) => {
   const { addQuestion, saveQuestionGroup } = getApi(scope);
   const { showToast } = useToast();

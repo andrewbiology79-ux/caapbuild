@@ -1,3 +1,4 @@
+import { getQuestionsByIds, getStimuliByIds, setSelectionFromPaperIds } from '../db/crossDb';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Header } from '../components/Header';
 import { useToast } from '../components/Toast';
@@ -33,7 +34,7 @@ import {
   type Question,
   type Stimulus,
 } from '../db/api';
-import { db } from '../db/db';
+import { db, type CqScope } from '../db/db';
 import {
   exportFullBackup,
   restoreFullBackup,
@@ -103,6 +104,7 @@ export const ProfileScreen: React.FC = () => {
   // Modals state
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
   const [showImportModal, setShowImportModal] = useState<boolean>(false);
+  const [showImportChapterModal, setShowImportChapterModal] = useState<boolean>(false);
   const [viewPaperId, setViewPaperId] = useState<string | null>(null);
   const [exportingPaperId, setExportingPaperId] = useState<string | null>(null);
   const [pdfErrorMessage, setPdfErrorMessage] = useState<string | null>(null);
@@ -207,10 +209,7 @@ export const ProfileScreen: React.FC = () => {
 
     if (!isOpen && !paperDetailsMap[paper.id]) {
       // Load details for this paper
-      const questionsList = await db.questions
-        .where('id')
-        .anyOf(paper.questionIds || [])
-        .toArray();
+      const questionsList = await getQuestionsByIds(paper.questionIds || []);
 
       questionsList.sort((a, b) => {
         const idxA = paper.questionIds.indexOf(a.id);
@@ -224,7 +223,7 @@ export const ProfileScreen: React.FC = () => {
 
       const stimuliMap = new Map<string, Stimulus>();
       if (stimulusIds.length > 0) {
-        const stims = await db.stimuli.where('id').anyOf(stimulusIds).toArray();
+        const stims = await getStimuliByIds(stimulusIds);
         stims.forEach((s) => stimuliMap.set(s.id, s));
       }
 
@@ -260,7 +259,7 @@ export const ProfileScreen: React.FC = () => {
   // Open in Create tab
   const handleOpenInCreate = async (paper: Paper) => {
     try {
-      await db.meta.put({ key: 'selected_question_ids', value: paper.questionIds || [] });
+      await setSelectionFromPaperIds(paper.questionIds || []);
       showToast('প্রশ্নপত্রটি Create ট্যাবে লোড করা হয়েছে');
       switchTab('create');
     } catch {
@@ -503,10 +502,10 @@ export const ProfileScreen: React.FC = () => {
   };
 
   // Export Question Collection
-  const handleExportCollection = async () => {
+  const handleExportCollection = async (scope: CqScope = 'type') => {
     setIsExporting(true);
     try {
-      const ok = await exportQuestionCollection();
+      const ok = await exportQuestionCollection(scope);
       if (ok) {
         showToast('প্রশ্ন কালেকশন সফলভাবে এক্সপোর্ট হয়েছে');
       } else {
@@ -521,10 +520,10 @@ export const ProfileScreen: React.FC = () => {
   };
 
   // Full System Backup
-  const handleFullBackup = async () => {
+  const handleFullBackup = async (scope: CqScope = 'type') => {
     setIsExporting(true);
     try {
-      const ok = await exportFullBackup();
+      const ok = await exportFullBackup(scope);
       if (ok) {
         showToast('সম্পূর্ণ ডাটাবেস ব্যাকআপ সম্পন্ন হয়েছে');
       } else {
@@ -596,31 +595,52 @@ export const ProfileScreen: React.FC = () => {
     },
     {
       id: 'backup',
-      title: 'Backup (সম্পূর্ণ ব্যাকআপ)',
-      description: 'সব প্রশ্নপত্র, প্রশ্ন, ছবি ও সেটিংসের নিরাপদ ব্যাকআপ ফাইল তৈরি',
+      title: 'Backup — Type CQ (সম্পূর্ণ ব্যাকআপ)',
+      description: 'সব প্রশ্নপত্র, Type CQ প্রশ্ন, ছবি ও সেটিংসের ব্যাকআপ ফাইল তৈরি',
       icon: <HardDriveDownload className="w-5 h-5 text-[#3B4FD8]" />,
-      action: handleFullBackup,
+      action: () => handleFullBackup('type'),
+    },
+    {
+      id: 'backup-chapter',
+      title: 'Backup — Chapter CQ',
+      description: 'Chapter CQ এর সব প্রশ্ন ও ছবির আলাদা ব্যাকআপ ফাইল তৈরি',
+      icon: <HardDriveDownload className="w-5 h-5 text-emerald-600" />,
+      action: () => handleFullBackup('chapter'),
     },
     {
       id: 'restore',
       title: 'Restore (পুনরুদ্ধার)',
-      description: 'পূর্বের ব্যাকআপ ফাইল থেকে সকল ডাটা ফিরিয়ে আনা',
+      description: 'Type CQ বা Chapter CQ ব্যাকআপ ফাইল দিন, ফাইল দেখে নিজেই ঠিক ডাটাবেসে বসাবে',
       icon: <HardDriveUpload className="w-5 h-5 text-amber-600" />,
       action: () => restoreFileInputRef.current?.click(),
     },
     {
       id: 'import-collection',
-      title: 'Import Question Collection',
-      description: 'JSON ফাইল থেকে প্রশ্ন, উদ্দীপক ও চিত্র সংগ্রহ যুক্ত করুন',
+      title: 'Import Type CQ',
+      description: 'JSON ফাইল থেকে Type CQ প্রশ্ন, উদ্দীপক ও চিত্র যুক্ত করুন',
       icon: <Upload className="w-5 h-5 text-emerald-600" />,
       action: () => setShowImportModal(true),
     },
     {
       id: 'export-collection',
-      title: 'Export Question Collection',
-      description: 'বর্তমান কালেকশনের প্রশ্নগুলো অন্য ডিভাইসে ব্যবহারের জন্য নামান',
+      title: 'Export Type CQ',
+      description: 'Type CQ এর প্রশ্নগুলো অন্য ডিভাইসে ব্যবহারের জন্য নামান',
       icon: <Download className="w-5 h-5 text-indigo-600" />,
-      action: handleExportCollection,
+      action: () => handleExportCollection('type'),
+    },
+    {
+      id: 'import-chapter-collection',
+      title: 'Import Chapter CQ',
+      description: 'JSON ফাইল থেকে Chapter CQ প্রশ্ন, উদ্দীপক ও চিত্র যুক্ত করুন',
+      icon: <Upload className="w-5 h-5 text-emerald-600" />,
+      action: () => setShowImportChapterModal(true),
+    },
+    {
+      id: 'export-chapter-collection',
+      title: 'Export Chapter CQ',
+      description: 'Chapter CQ এর প্রশ্নগুলো অন্য ডিভাইসে ব্যবহারের জন্য নামান',
+      icon: <Download className="w-5 h-5 text-indigo-600" />,
+      action: () => handleExportCollection('chapter'),
     },
     {
       id: 'settings',
@@ -1157,7 +1177,18 @@ export const ProfileScreen: React.FC = () => {
       {/* Import Collection Modal */}
       <ImportCollectionModal
         isOpen={showImportModal}
+        scope="type"
         onClose={() => setShowImportModal(false)}
+        onSuccess={() => {
+          loadData();
+          showToast('কালেকশন সফলভাবে ইমপোর্ট সম্পন্ন হয়েছে');
+        }}
+      />
+
+      <ImportCollectionModal
+        isOpen={showImportChapterModal}
+        scope="chapter"
+        onClose={() => setShowImportChapterModal(false)}
         onSuccess={() => {
           loadData();
           showToast('কালেকশন সফলভাবে ইমপোর্ট সম্পন্ন হয়েছে');

@@ -502,9 +502,11 @@ export async function exportFullBackup(scope: CqScope = 'type'): Promise<boolean
 /**
  * Full System Restore: completely replaces database with backup content
  */
-export async function restoreFullBackup(jsonText: string, scope: CqScope = 'type'): Promise<void> {
-  const db = getDb(scope);
+/** `scope` omitted = decided by the backup file itself (old files without a scope = Type CQ) */
+export async function restoreFullBackup(jsonText: string, scope?: CqScope): Promise<void> {
   const data = JSON.parse(jsonText);
+  const target: CqScope = scope ?? (data && data.scope === 'chapter' ? 'chapter' : 'type');
+  const db = getDb(target);
 
   if (!data || typeof data !== 'object' || !Array.isArray(data.subjects) || !Array.isArray(data.questions)) {
     throw new Error('অবৈধ ব্যাকআপ ফাইল। ফাইলে ডাটাবেসের টেবিল পাওয়া যায়নি।');

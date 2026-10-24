@@ -1,3 +1,4 @@
+import { getQuestionsByIds, getStimuliByIds } from '../db/crossDb';
 import React, { useRef, useState, useEffect } from 'react';
 import { X, Trash2, Edit3, FileDown, AlertTriangle, Minus, Plus } from 'lucide-react';
 import { db, DEFAULT_PAPER_NOTE, type Paper, type Question, type Stimulus } from '../db/db';
@@ -80,10 +81,7 @@ export const PaperViewModal: React.FC<PaperViewModalProps> = ({
         setPaper(p);
 
         // Fetch questions
-        const questionsList = await db.questions
-          .where('id')
-          .anyOf(p.questionIds || [])
-          .toArray();
+        const questionsList = await getQuestionsByIds(p.questionIds || []);
 
         // Sort by order in paper.questionIds
         questionsList.sort((a, b) => {
@@ -99,7 +97,7 @@ export const PaperViewModal: React.FC<PaperViewModalProps> = ({
 
         const stimuliMap = new Map<string, Stimulus>();
         if (stimulusIds.length > 0) {
-          const stims = await db.stimuli.where('id').anyOf(stimulusIds).toArray();
+          const stims = await getStimuliByIds(stimulusIds);
           stims.forEach((s) => stimuliMap.set(s.id, s));
         }
 

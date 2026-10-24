@@ -1,3 +1,4 @@
+import { getSelectedIdsAll, getSelectedStimuliCountAll } from '../db/crossDb';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Header } from '../components/Header';
 import { useToast } from '../components/Toast';
@@ -7,8 +8,6 @@ import { PaperViewModal } from '../components/PaperViewModal';
 import { CategoryPickerDialog } from '../components/CategoryPickerDialog';
 import {
   getPapers,
-  getSelectedIds,
-  getSelectedStimuliCount,
   getCategories,
   movePapersToCategory,
   duplicatePapers,
@@ -95,8 +94,8 @@ export const CreateScreen: React.FC = () => {
     try {
       // categories first: this also gives every paper its "<category>-<number>" name
       const cats = await getCategories();
-      const [list, selIds] = await Promise.all([getPapers(), getSelectedIds()]);
-      const stimCount = await getSelectedStimuliCount(selIds);
+      const [list, selIds] = await Promise.all([getPapers(), getSelectedIdsAll()]);
+      const stimCount = await getSelectedStimuliCountAll();
       setCategories(cats);
       setPapers(list);
       setSelectedCount(stimCount);

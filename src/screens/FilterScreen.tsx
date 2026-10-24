@@ -11,11 +11,26 @@ import {
   Check,
   Layers,
   BookOpen,
+  CheckSquare,
+  Square,
+  ListChecks,
+  FlipHorizontal,
+  XCircle,
+  Star,
+  Copy,
+  FileText,
 } from 'lucide-react';
 import { Header } from '../components/Header';
 import { RichText } from '../components/RichText';
 import { PromptDialog } from '../components/PromptDialog';
-import { getRatingStarsText } from '../db/api';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { ActionSheet } from '../components/ActionSheet';
+import { useToast } from '../components/Toast';
+import { FilterPdfDialog, type FilterPdfValues } from '../components/FilterPdfDialog';
+import { exportRowsToPdf } from '../utils/filterPdf';
+import { showPdfSavedDialog } from '../utils/storageAccess';
+import type { MenuItem } from '../components/KebabMenu';
+import { getRatingStarsText, getApi } from '../db/api';
 import type { QuestionType } from '../db/db';
 import { toBn } from '../utils/toBn';
 import {
@@ -124,14 +139,33 @@ const Segmented: React.FC<{
 /* Result card                                                         */
 /* ------------------------------------------------------------------ */
 
-const ResultCard: React.FC<{ row: FilterRow }> = React.memo(({ row }) => {
+interface ResultCardProps {
+  row: FilterRow;
+  selectMode: boolean;
+  selected: boolean;
+  onToggle: (key: string) => void;
+}
+
+const ResultCard: React.FC<ResultCardProps> = React.memo(({ row, selectMode, selected, onToggle }) => {
   const q = row.question;
   const path = [row.subjectName, row.chapterName, row.topicName].filter(Boolean).join(' › ');
   const boards = (q.usedInBoards || []).slice(0, 4);
 
   return (
-    <article className="bg-white rounded-2xl border border-[#D5D9E2] shadow-2xs p-3.5 space-y-2.5">
+    <article
+      onClick={selectMode ? () => onToggle(row.key) : undefined}
+      aria-selected={selectMode ? selected : undefined}
+      className={`rounded-2xl border shadow-2xs p-3.5 space-y-2.5 transition-colors ${
+        selected ? 'bg-[#EEF2FF] border-[#3B4FD8] ring-1 ring-[#3B4FD8]' : 'bg-white border-[#D5D9E2]'
+      } ${selectMode ? 'cursor-pointer select-none' : ''}`}
+    >
       <div className="flex items-center gap-1.5 flex-wrap">
+        {selectMode &&
+          (selected ? (
+            <CheckSquare className="w-5 h-5 text-[#3B4FD8] shrink-0" />
+          ) : (
+            <Square className="w-5 h-5 text-[#94A3B8] shrink-0" />
+          ))}
         <span
           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[0.6875rem] font-bold ${
             row.source === 'chapter' ? 'bg-emerald-50 text-emerald-700' : 'bg-[#EEF2FF] text-[#2A3BB0]'
@@ -392,6 +426,15 @@ export const FilterScreen: React.FC = () => {
   const [saved, setSaved] = useState<SavedFilter[]>(() => loadSavedFilters());
   const [visible, setVisible] = useState(PAGE_SIZE);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const { showToast } = useToast();
+
+  // Multi-select (entered from the header ⋮ menu)
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
+  const [ratingSheetOpen, setRatingSheetOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [pdfOpen, setPdfOpen] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -519,6 +562,160 @@ export const FilterScreen: React.FC = () => {
     return chips;
   }, [criteria]);
 
+  const toggleKey = useCallback((key: string) => {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const exitSelectMode = useCallback(() => {
+    setSelectMode(false);
+    setSelectedKeys(new Set());
+  }, []);
+
+  const selectAllResults = () => setSelectedKeys(new Set(results.map((r) => r.key)));
+
+  const invertSelection = () =>
+    setSelectedKeys((prev) => {
+      const next = new Set<string>();
+      results.forEach((r) => {
+        if (!prev.has(r.key)) next.add(r.key);
+      });
+      // keep selections that are hidden by the current filter
+      prev.forEach((k) => {
+        if (!results.some((r) => r.key === k)) next.add(k);
+      });
+      return next;
+    });
+
+  const selectedRows = useMemo(
+    () => (dataset ? dataset.rows.filter((r) => selectedKeys.has(r.key)) : []),
+    [dataset, selectedKeys]
+  );
+
+  /** Run a per-question action against the right database (Type CQ / Chapter CQ) */
+  const runBulk = async (fn: (api: ReturnType<typeof getApi>, row: FilterRow) => Promise<void>): Promise<number> => {
+    let done = 0;
+    for (const row of selectedRows) {
+      try {
+        await fn(getApi(row.source), row);
+        done += 1;
+      } catch (err) {
+        console.error('Bulk action failed for', row.key, err);
+      }
+    }
+    return done;
+  };
+
+  const handleBulkPdf = async (values: FilterPdfValues) => {
+    setPdfBusy(true);
+    try {
+      const savedPath = await exportRowsToPdf(selectedRows, values);
+      setPdfOpen(false);
+      if (!(savedPath && showPdfSavedDialog(savedPath))) {
+        showToast(savedPath ? `PDF সেভ হয়েছে: ${savedPath}` : 'PDF তৈরি সম্পন্ন হয়েছে', savedPath ? 4500 : 2000);
+      }
+    } catch (err: any) {
+      console.error('Filter PDF export failed:', err);
+      showToast(err?.message || 'PDF তৈরিতে সমস্যা হয়েছে');
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
+  const handleBulkRating = async (rating: number) => {
+    const n = await runBulk((api, row) => api.updateQuestion(row.question.id, { rating }));
+    await reload();
+    showToast(`${toBn(n)}টি প্রশ্নের রেটিং বদলানো হয়েছে`);
+  };
+
+  const handleBulkCopy = async () => {
+    const n = await runBulk((api, row) => api.copyQuestion(row.question.id));
+    await reload();
+    showToast(`${toBn(n)}টি প্রশ্ন কপি হয়েছে`);
+  };
+
+  const handleBulkDelete = async () => {
+    setConfirmDelete(false);
+    const n = await runBulk((api, row) => api.deleteQuestion(row.question.id));
+    setSelectedKeys(new Set());
+    await reload();
+    showToast(`${toBn(n)}টি প্রশ্ন মুছে ফেলা হয়েছে`);
+  };
+
+  const headerMenuItems = useMemo((): MenuItem[] => {
+    if (!selectMode) {
+      return [
+        {
+          id: 'select-mode',
+          label: 'সিলেক্ট করুন',
+          icon: <CheckSquare className="w-4 h-4 text-[#3B4FD8]" />,
+          onClick: () => setSelectMode(true),
+        },
+      ];
+    }
+    const items: MenuItem[] = [
+      {
+        id: 'select-all',
+        label: `সব সিলেক্ট করুন (${toBn(results.length)})`,
+        icon: <ListChecks className="w-4 h-4 text-[#3B4FD8]" />,
+        onClick: selectAllResults,
+      },
+      {
+        id: 'invert',
+        label: 'উল্টো সিলেক্ট',
+        icon: <FlipHorizontal className="w-4 h-4 text-[#3B4FD8]" />,
+        onClick: invertSelection,
+      },
+    ];
+    if (selectedKeys.size > 0) {
+      items.push(
+        {
+          id: 'clear',
+          label: 'সিলেকশন মুছুন',
+          icon: <XCircle className="w-4 h-4 text-[#1B1F2A]" />,
+          onClick: () => setSelectedKeys(new Set()),
+        },
+        {
+          id: 'pdf',
+          label: 'PDF বানান',
+          icon: <FileText className="w-4 h-4 text-[#3B4FD8]" />,
+          onClick: () => setPdfOpen(true),
+        },
+        {
+          id: 'rating',
+          label: 'রেটিং বদলান',
+          icon: <Star className="w-4 h-4 text-amber-500" />,
+          onClick: () => setRatingSheetOpen(true),
+        },
+        {
+          id: 'copy',
+          label: 'কপি করুন',
+          icon: <Copy className="w-4 h-4 text-[#1B1F2A]" />,
+          onClick: handleBulkCopy,
+        },
+        {
+          id: 'delete',
+          label: 'মুছে ফেলুন',
+          icon: <Trash2 className="w-4 h-4" />,
+          isDestructive: true,
+          onClick: () => setConfirmDelete(true),
+        }
+      );
+    }
+    items.push({
+      id: 'exit-select',
+      label: 'সিলেক্ট মোড বন্ধ করুন',
+      icon: <X className="w-4 h-4 text-[#1B1F2A]" />,
+      onClick: exitSelectMode,
+    });
+    return items;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectMode, selectedKeys, results, selectedRows]);
+
   const handleSaveFilter = (name: string) => {
     const trimmed = name.trim();
     setSaveDialogOpen(false);
@@ -537,18 +734,17 @@ export const FilterScreen: React.FC = () => {
   return (
     <div className="flex-1 flex flex-col min-h-full pb-20 bg-[#F2F4F8]">
       <Header
-        title="Filter"
-        subtitle={dataset ? `মোট ${toBn(dataset.rows.length)}টি প্রশ্ন` : undefined}
-        rightAction={
-          <button
-            type="button"
-            onClick={reload}
-            aria-label="রিফ্রেশ"
-            className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-black/5 active:bg-black/10"
-          >
-            <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
-          </button>
+        title={selectMode ? `${toBn(selectedKeys.size)}টি সিলেক্টেড` : 'Filter'}
+        subtitle={
+          selectMode
+            ? 'কার্ডে ট্যাপ করে সিলেক্ট করুন'
+            : dataset
+              ? `মোট ${toBn(dataset.rows.length)}টি প্রশ্ন`
+              : undefined
         }
+        showBack={selectMode}
+        onBack={exitSelectMode}
+        menuItems={headerMenuItems}
       />
 
       {/* Sticky control bar */}
@@ -718,7 +914,13 @@ export const FilterScreen: React.FC = () => {
         ) : (
           <>
             {results.slice(0, visible).map((row) => (
-              <ResultCard key={row.key} row={row} />
+              <ResultCard
+                key={row.key}
+                row={row}
+                selectMode={selectMode}
+                selected={selectedKeys.has(row.key)}
+                onToggle={toggleKey}
+              />
             ))}
             {visible < results.length && (
               <div ref={sentinelRef} className="py-4 text-center text-xs text-[#64748B]">
@@ -800,6 +1002,38 @@ export const FilterScreen: React.FC = () => {
           </div>
         </div>
       )}
+
+      <FilterPdfDialog
+        isOpen={pdfOpen}
+        questionCount={selectedRows.length}
+        totalMarks={selectedRows.reduce((sum, r) => sum + (r.question.marks || 0), 0)}
+        defaultSubjectLine={[...new Set(selectedRows.map((r) => r.subjectName))].join(', ')}
+        busy={pdfBusy}
+        onConfirm={handleBulkPdf}
+        onCancel={() => setPdfOpen(false)}
+      />
+
+      <ActionSheet
+        isOpen={ratingSheetOpen}
+        title="রেটিং বদলান"
+        subtitle={`${toBn(selectedKeys.size)}টি প্রশ্ন`}
+        onClose={() => setRatingSheetOpen(false)}
+        items={[5, 4, 3, 2, 1].map((r) => ({
+          id: `rate-${r}`,
+          label: `${'★'.repeat(r)}${'☆'.repeat(5 - r)}  ${getRatingStarsText(r).split(' ').slice(1).join(' ')}`,
+          onClick: () => handleBulkRating(r),
+        }))}
+      />
+
+      <ConfirmDialog
+        isOpen={confirmDelete}
+        title="প্রশ্ন মুছে ফেলবেন?"
+        message={`সিলেক্ট করা ${toBn(selectedKeys.size)}টি প্রশ্ন (সমাধানের ছবিসহ) স্থায়ীভাবে মুছে যাবে।`}
+        confirmText="মুছুন"
+        isDestructive
+        onConfirm={handleBulkDelete}
+        onCancel={() => setConfirmDelete(false)}
+      />
 
       <PromptDialog
         isOpen={saveDialogOpen}

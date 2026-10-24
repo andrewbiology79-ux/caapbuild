@@ -1,9 +1,9 @@
+import { getQuestionsByIds, getStimuliByIds, getSelectedIdsAll } from '../db/crossDb';
 import React, { useState, useEffect, useRef } from 'react';
 import { X, FileText, Check, Plus, ArrowUp, ArrowDown, Trash2, Layers } from 'lucide-react';
 import { db, DEFAULT_PAPER_NOTE, type Paper, type Question, type Stimulus, type Category } from '../db/db';
 import {
   savePaper,
-  getSelectedIds,
   getCategories,
   saveCategory,
   getImageBlobUrl,
@@ -66,7 +66,7 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
       const [cats, settings, selIds] = await Promise.all([
         getCategories(),
         getAppSettings(),
-        getSelectedIds(),
+        getSelectedIdsAll(),
       ]);
 
       setCategories(cats);
@@ -93,7 +93,7 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
 
       // Fetch questions and group by stimulus
       if (targetQIds.length > 0) {
-        const questionsList = await db.questions.where('id').anyOf(targetQIds).toArray();
+        const questionsList = await getQuestionsByIds(targetQIds);
         // Preserve order
         questionsList.sort((a, b) => targetQIds.indexOf(a.id) - targetQIds.indexOf(b.id));
 
@@ -103,7 +103,7 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
 
         const stimuliMap = new Map<string, Stimulus>();
         if (stimulusIds.length > 0) {
-          const stims = await db.stimuli.where('id').anyOf(stimulusIds).toArray();
+          const stims = await getStimuliByIds(stimulusIds);
           stims.forEach((s) => stimuliMap.set(s.id, s));
         }
 
