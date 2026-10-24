@@ -9,7 +9,21 @@ import { db, DEFAULT_PAPER_NOTE, type Paper, type Question, type Stimulus } from
 import { getImageBlobUrl } from '../db/api';
 import { ensureStorageAccess, savePdfToPhoneStorage } from './storageAccess';
 import { getPdfFontScale, normalizePdfFontScale } from './settings';
-import { replaceKatexWithImages } from './katexImages';
+import { collectFormulas, mathKey, prepareMathImages, type MathImage } from './mathImages';
+import './katexAssets'; // registers the KaTeX stylesheet + fonts used to draw formula pictures
+
+/**
+ * Formulas are drawn into the PDF as pictures that the browser itself painted (see mathImages.ts).
+ * If, on some phone, formulas still sit slightly high/low next to the Bengali text, tune this
+ * (CSS px; positive = formulas move down, negative = up).
+ */
+const MATH_BASELINE_NUDGE_PX = 0;
+
+interface MathRenderContext {
+  /** Font size (px) of the text the formulas are embedded in */
+  fontPx: number;
+  images: Map<string, MathImage>;
+}
 
 export interface GeneratePdfOptions {
   paper: Paper;
@@ -19,10 +33,20 @@ export interface GeneratePdfOptions {
   fontScale?: number;
 }
 
+/** <img> tags for one formula picture (one per line-break slice) */
+function mathImageTags(img: MathImage): string {
+  return img.slices
+    .map(
+      (sl) =>
+        `<img src="${sl.url}" alt="" draggable="false" style="display: inline; max-width: none; width: ${+sl.width.toFixed(3)}px; height: ${+sl.height.toFixed(3)}px; margin: ${sl.marginTop}px ${sl.marginRight}px ${sl.marginBottom}px ${sl.marginLeft}px; padding: 0; border: 0; vertical-align: ${+(-(sl.descent + MATH_BASELINE_NUDGE_PX)).toFixed(3)}px;">`
+    )
+    .join('');
+}
+
 /**
  * Render RichText string with LaTeX to HTML string for A4 PDF column
  */
-function renderRichTextToHtml(rawText: string): string {
+function renderRichTextToHtml(rawText: string, math?: MathRenderContext): string {
   if (!rawText) return '';
 
   // Matches $$...$$ or $...$
@@ -47,10 +71,23 @@ function renderRichTextToHtml(rawText: string): string {
     const isBlock = token.startsWith('$$') && token.endsWith('$$');
     const mathContent = isBlock ? token.slice(2, -2).trim() : token.slice(1, -1).trim();
 
+    // Preferred: picture painted by the browser -> html2canvas only places an image on the baseline
+    const picture = math?.images.get(mathKey(mathContent, isBlock, math.fontPx));
+    if (picture) {
+      if (isBlock) {
+        html += `<div style="text-align: center; margin: 4px 0; max-width: 100%; overflow: visible; padding: 0;">${mathImageTags(picture)}</div>`;
+      } else {
+        html += `<span style="display: inline; margin: 0 1.5px; padding: 0;">${mathImageTags(picture)}</span>`;
+      }
+      lastIndex = regex.lastIndex;
+      continue;
+    }
+
+    // Fallback (picture could not be made): plain KaTeX HTML
     try {
       // `output: 'html'` skips the hidden MathML copy; the inline overflow reset is essential:
       // the app-wide `.katex { overflow: auto/hidden }` rule moves the formula's baseline to its
-      // bottom edge, which is what made formulas sit lower than the surrounding text in the PDF.
+      // bottom edge, which makes formulas sit lower than the surrounding text.
       const rendered = katex
         .renderToString(mathContent, {
           displayMode: isBlock,
@@ -65,7 +102,6 @@ function renderRichTextToHtml(rawText: string): string {
       if (isBlock) {
         html += `<div style="text-align: center; margin: 4px 0; max-width: 100%; overflow: visible; padding: 0; font-size: 1em;">${rendered}</div>`;
       } else {
-        // Plain inline + baseline alignment: formula baseline == text baseline on the same line
         html += `<span style="display: inline; vertical-align: baseline; margin: 0 1.5px; overflow: visible; padding: 0; font-size: 1em;">${rendered}</span>`;
       }
     } catch {
@@ -372,7 +408,8 @@ function buildQuestionGroupElement(
   gIdx: number,
   imageUrls: Record<string, string>,
   colWidthPx = 350,
-  k = 1
+  k = 1,
+  math?: MathRenderContext
 ): HTMLElement {
   const px = (n: number) => `${+(n * k).toFixed(2)}px`;
   const block = document.createElement('div');
@@ -405,7 +442,7 @@ function buildQuestionGroupElement(
   // Stimulus Text
   if (group.stimulus?.text) {
     const stimTextDiv = document.createElement('div');
-    stimTextDiv.innerHTML = renderRichTextToHtml(group.stimulus.text);
+    stimTextDiv.innerHTML = renderRichTextToHtml(group.stimulus.text, math);
     stimTextDiv.style.fontSize = px(11.5);
     stimTextDiv.style.fontWeight = '500';
     stimTextDiv.style.color = '#111827';
@@ -494,7 +531,7 @@ function buildQuestionGroupElement(
 
     // Text: with full word wrap and KaTeX
     const textSpan = document.createElement('span');
-    textSpan.innerHTML = renderRichTextToHtml(q.questionText || '');
+    textSpan.innerHTML = renderRichTextToHtml(q.questionText || '', math);
     textSpan.style.flex = '1';
     textSpan.style.minWidth = '0';
     textSpan.style.color = '#111827';
@@ -601,6 +638,25 @@ export async function generateAndSharePdf(options: GeneratePdfOptions): Promise<
       }
     }
 
+    // 1b. Paint every formula to a picture with the browser (same size as the surrounding text:
+    //     stimulus text and question text are both 11.5px * fontScale)
+    const mathFontPx = +(11.5 * fontScale).toFixed(2);
+    let mathImages = new Map<string, MathImage>();
+    try {
+      const formulaTexts: Array<string | undefined> = [];
+      for (const g of groupedQuestions) {
+        formulaTexts.push(g.stimulus?.text);
+        for (const q of g.questions) formulaTexts.push(q.questionText);
+      }
+      mathImages = await prepareMathImages(collectFormulas(formulaTexts), mathFontPx, {
+        mathEm: 1.04,
+        canvasScale: 3,
+      });
+    } catch (e) {
+      console.warn('Formula pictures unavailable, using KaTeX HTML instead:', e);
+    }
+    const mathCtx: MathRenderContext = { fontPx: mathFontPx, images: mathImages };
+
     // A4 Dimensions:
     // Total: 794px x 1123px.
     // Horizontal Margins: 34px left, 34px right -> Usable Width = 726px.
@@ -646,7 +702,14 @@ export async function generateAndSharePdf(options: GeneratePdfOptions): Promise<
     // Measure each question group
     const measuredGroups: Array<{ element: HTMLElement; height: number }> = [];
     for (let i = 0; i < groupedQuestions.length; i++) {
-      const blockEl = buildQuestionGroupElement(groupedQuestions[i], i, resolvedImageUrls, COL_WIDTH_PX, fontScale);
+      const blockEl = buildQuestionGroupElement(
+        groupedQuestions[i],
+        i,
+        resolvedImageUrls,
+        COL_WIDTH_PX,
+        fontScale,
+        mathCtx
+      );
       measureContainer.appendChild(blockEl);
       await waitForFontsAndImages(measureContainer);
       const h = blockEl.getBoundingClientRect().height || blockEl.offsetHeight;
@@ -865,14 +928,6 @@ export async function generateAndSharePdf(options: GeneratePdfOptions): Promise<
     for (let i = 0; i < pageSlots.length; i++) {
       if (i > 0) {
         pdf.addPage();
-      }
-
-      // Formulas are drawn by the browser itself (exactly like the in-app preview) and inserted as
-      // baseline-aligned images, because html2canvas places KaTeX glyphs lower than the text line.
-      try {
-        await replaceKatexWithImages(pageSlots[i].pageDiv);
-      } catch (e) {
-        console.warn('Formula alignment step skipped:', e);
       }
 
       const canvas = await html2canvas(pageSlots[i].pageDiv, {
