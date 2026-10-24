@@ -58,14 +58,14 @@ function renderRichTextToHtml(rawText: string): string {
         })
         .replace(
           /class="(katex-display|katex)"/g,
-          'class="$1" style="overflow: visible; max-width: none; padding: 0; margin-top: 0; margin-bottom: 0;"'
+          'class="$1" style="overflow: visible; max-width: none; padding: 0; margin-top: 0; margin-bottom: 0; font-size: 1.04em;"'
         );
 
       if (isBlock) {
-        html += `<div style="text-align: center; margin: 4px 0; max-width: 100%; overflow: visible; padding: 0; font-size: 0.95em;">${rendered}</div>`;
+        html += `<div style="text-align: center; margin: 4px 0; max-width: 100%; overflow: visible; padding: 0; font-size: 1em;">${rendered}</div>`;
       } else {
         // Plain inline + baseline alignment: formula baseline == text baseline on the same line
-        html += `<span style="display: inline; vertical-align: baseline; margin: 0 1px; overflow: visible; padding: 0; font-size: 0.95em;">${rendered}</span>`;
+        html += `<span style="display: inline; vertical-align: baseline; margin: 0 1.5px; overflow: visible; padding: 0; font-size: 1em;">${rendered}</span>`;
       }
     } catch {
       html += escapeHtml(token);
@@ -497,6 +497,7 @@ function buildQuestionGroupElement(
     textSpan.style.flex = '1';
     textSpan.style.minWidth = '0';
     textSpan.style.color = '#111827';
+    textSpan.style.fontWeight = '500';
     textSpan.style.overflowWrap = 'anywhere';
     textSpan.style.wordBreak = 'break-word';
     textSpan.style.whiteSpace = 'pre-wrap';
@@ -874,9 +875,12 @@ export async function generateAndSharePdf(options: GeneratePdfOptions): Promise<
         windowWidth: PAGE_WIDTH_PX,
       });
 
-      const imgData = canvas.toDataURL('image/jpeg', 0.96);
+      // Lossless PNG keeps Bangla + formula edges sharp (JPEG blurred thin strokes)
+      const imgData = canvas.toDataURL('image/png');
       // Fit A4 210mm x 297mm exactly
-      pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+      pdf.addImage(imgData, 'PNG', 0, 0, 210, 297, undefined, 'FAST');
+      canvas.width = 0;
+      canvas.height = 0;
     }
 
     const pdfBlob = pdf.output('blob');
