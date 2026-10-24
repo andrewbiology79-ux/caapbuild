@@ -1,10 +1,12 @@
-import { db, type Subject, type Chapter, type Topic, type Stimulus, type Question, type Paper, type DbImage } from '../db/db';
+import { getDb, type CqScope, type Subject, type Chapter, type Topic, type Stimulus, type Question, type Paper, type DbImage } from '../db/db';
 import { blobToBase64, base64ToBlob, exportJsonFile } from './fileExport';
 import { compressImageToWebP } from './imageCompressor';
 
 export interface CollectionJsonSchema {
   version: string;
   type: 'qb-question-collection';
+  /** which collection this file belongs to: 'type' (Type CQ) or 'chapter' (Chapter CQ). Missing = legacy Type CQ file */
+  scope?: CqScope;
   exportedAt: string;
   subjects: Subject[];
   chapters: Chapter[];
@@ -21,6 +23,7 @@ export interface CollectionJsonSchema {
 export interface FullBackupJsonSchema {
   version: string;
   type: 'qb-full-backup';
+  scope?: CqScope;
   exportedAt: string;
   subjects: Subject[];
   chapters: Chapter[];
@@ -58,7 +61,8 @@ export interface ImportOptions {
 /**
  * Export Question Collection to JSON file
  */
-export async function exportQuestionCollection(): Promise<boolean> {
+export async function exportQuestionCollection(scope: CqScope = 'type'): Promise<boolean> {
+  const db = getDb(scope);
   try {
     const [subjects, chapters, topics, stimuli, questions] = await Promise.all([
       db.subjects.toArray(),
@@ -99,6 +103,7 @@ export async function exportQuestionCollection(): Promise<boolean> {
     const payload: CollectionJsonSchema = {
       version: '1.0',
       type: 'qb-question-collection',
+      scope,
       exportedAt: new Date().toISOString(),
       subjects,
       chapters,
@@ -109,7 +114,7 @@ export async function exportQuestionCollection(): Promise<boolean> {
     };
 
     const dateStr = new Date().toISOString().split('T')[0];
-    const fileName = `qb-collection-${dateStr}.json`;
+    const fileName = `qb-${scope === 'chapter' ? 'chapter' : 'type'}-cq-${dateStr}.json`;
     return await exportJsonFile(fileName, JSON.stringify(payload, null, 2));
   } catch (err) {
     console.error('Failed to export question collection:', err);
@@ -120,7 +125,11 @@ export async function exportQuestionCollection(): Promise<boolean> {
 /**
  * Validate and generate preview statistics for an uploaded Collection JSON file
  */
-export async function parseAndValidateCollectionJson(jsonText: string): Promise<CollectionPreviewResult> {
+export async function parseAndValidateCollectionJson(
+  jsonText: string,
+  scope: CqScope = 'type'
+): Promise<CollectionPreviewResult> {
+  const db = getDb(scope);
   try {
     const data = JSON.parse(jsonText);
 
@@ -144,6 +153,26 @@ export async function parseAndValidateCollectionJson(jsonText: string): Promise<
       return {
         valid: false,
         errorMessage: 'অসম্পূর্ণ বা অবৈধ কাঠামো। ফাইলে বিষয়, অধ্যায়, টপিক বা প্রশ্ন তালিকা অনুপস্থিত।',
+        subjectsCount: 0,
+        chaptersCount: 0,
+        topicsCount: 0,
+        stimuliCount: 0,
+        totalQuestions: 0,
+        newQuestionsCount: 0,
+        duplicateQuestionsCount: 0,
+        missingImageFiles: [],
+      };
+    }
+
+    // A Chapter CQ file must not be imported into Type CQ (and vice versa)
+    const fileScope: CqScope = data.scope === 'chapter' ? 'chapter' : 'type';
+    if (fileScope !== scope) {
+      return {
+        valid: false,
+        errorMessage:
+          scope === 'chapter'
+            ? 'এটি Type CQ এর ফাইল। Chapter CQ তে ইমপোর্ট করতে Chapter CQ থেকে এক্সপোর্ট করা ফাইল দিন।'
+            : 'এটি Chapter CQ এর ফাইল। Type CQ তে ইমপোর্ট করতে Type CQ থেকে এক্সপোর্ট করা ফাইল দিন।',
         subjectsCount: 0,
         chaptersCount: 0,
         topicsCount: 0,
@@ -246,8 +275,10 @@ export async function parseAndValidateCollectionJson(jsonText: string): Promise<
  */
 export async function executeCollectionImport(
   payload: CollectionJsonSchema,
-  options: ImportOptions
+  options: ImportOptions,
+  scope: CqScope = 'type'
 ): Promise<{ subjects: number; questions: number; images: number }> {
+  const db = getDb(scope);
   const { mode, manualFiles = [] } = options;
 
   let imageSavedCount = 0;
@@ -339,10 +370,11 @@ export async function executeCollectionImport(
 /**
  * Generate Sample Collection JSON for downloading
  */
-export function getSampleCollectionJson(): string {
+export function getSampleCollectionJson(scope: CqScope = 'type'): string {
   const sampleData: CollectionJsonSchema = {
     version: '1.0',
     type: 'qb-question-collection',
+    scope,
     exportedAt: new Date().toISOString(),
     subjects: [
       {
@@ -417,7 +449,8 @@ export function getSampleCollectionJson(): string {
 /**
  * Full System Backup: exports all tables and image blobs
  */
-export async function exportFullBackup(): Promise<boolean> {
+export async function exportFullBackup(scope: CqScope = 'type'): Promise<boolean> {
+  const db = getDb(scope);
   try {
     const [subjects, chapters, topics, stimuli, questions, papers, meta, images] = await Promise.all([
       db.subjects.toArray(),
@@ -445,6 +478,7 @@ export async function exportFullBackup(): Promise<boolean> {
     const fullPayload: FullBackupJsonSchema = {
       version: '1.0',
       type: 'qb-full-backup',
+      scope,
       exportedAt: new Date().toISOString(),
       subjects,
       chapters,
@@ -457,7 +491,7 @@ export async function exportFullBackup(): Promise<boolean> {
     };
 
     const dateStr = new Date().toISOString().split('T')[0];
-    const fileName = `qb-backup-${dateStr}.json`;
+    const fileName = `qb-${scope === 'chapter' ? 'chapter' : 'type'}-backup-${dateStr}.json`;
     return await exportJsonFile(fileName, JSON.stringify(fullPayload, null, 2));
   } catch (err) {
     console.error('Full backup export failed:', err);
@@ -468,7 +502,8 @@ export async function exportFullBackup(): Promise<boolean> {
 /**
  * Full System Restore: completely replaces database with backup content
  */
-export async function restoreFullBackup(jsonText: string): Promise<void> {
+export async function restoreFullBackup(jsonText: string, scope: CqScope = 'type'): Promise<void> {
+  const db = getDb(scope);
   const data = JSON.parse(jsonText);
 
   if (!data || typeof data !== 'object' || !Array.isArray(data.subjects) || !Array.isArray(data.questions)) {

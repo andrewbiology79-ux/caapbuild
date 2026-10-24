@@ -97,8 +97,8 @@ export class QbDatabase extends Dexie {
   images!: Table<DbImage, string>;
   meta!: Table<MetaRecord, string>;
 
-  constructor() {
-    super('QbExamDatabase');
+  constructor(name: string = 'QbExamDatabase') {
+    super(name);
 
     this.version(1).stores({
       subjects: 'id, name, order',
@@ -172,5 +172,16 @@ export class QbDatabase extends Dexie {
   }
 }
 
-export const db = new QbDatabase();
+/** Which question collection a screen / API works on */
+export type CqScope = 'type' | 'chapter';
+
+/** Type CQ (formerly "Collection") — keeps the original DB name so old data stays intact */
+export const db = new QbDatabase('QbExamDatabase');
+/** Chapter CQ — separate IndexedDB database (faster, isolated import/export) */
+export const chapterDb = new QbDatabase('QbChapterCqDatabase');
+
+export function getDb(scope: CqScope): QbDatabase {
+  return scope === 'chapter' ? chapterDb : db;
+}
+
 export default db;

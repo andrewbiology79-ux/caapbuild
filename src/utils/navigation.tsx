@@ -37,15 +37,15 @@ interface NavigationProviderProps {
   children: React.ReactNode;
 }
 
-const getInitialRoute = (tab: TabType = 'collection'): RouteItem => ({
+const getInitialRoute = (tab: TabType = 'typeCq'): RouteItem => ({
   id: `root-${tab}-${Date.now()}`,
   name: tab,
   tab,
 });
 
 export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children }) => {
-  const [activeTab, setActiveTab] = useState<TabType>('collection');
-  const [stack, setStack] = useState<RouteItem[]>([getInitialRoute('collection')]);
+  const [activeTab, setActiveTab] = useState<TabType>('typeCq');
+  const [stack, setStack] = useState<RouteItem[]>([getInitialRoute('typeCq')]);
 
   // Priority stack of back handlers registered by active components
   const backHandlersRef = useRef<BackHandler[]>([]);

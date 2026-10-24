@@ -4,15 +4,9 @@ import { Share } from '@capacitor/share';
 import html2canvas from 'html2canvas-pro';
 import { jsPDF } from 'jspdf';
 import katex from 'katex';
-import JSZip from 'jszip';
 import { toBn } from './toBn';
 import { db, DEFAULT_PAPER_NOTE, type Paper, type Question, type Stimulus } from '../db/db';
-import {
-  getImageBlobUrl,
-  UNCATEGORIZED_CATEGORY_ID,
-  getUncategorizedPapers,
-  getPapersByCategory,
-} from '../db/api';
+import { getImageBlobUrl } from '../db/api';
 import {
   ensureStorageAccess,
   savePdfToPhoneStorage,
@@ -35,8 +29,6 @@ export interface GeneratePdfOptions {
   saveFolder?: string;
   /** File name (without .pdf) used together with saveFolder / browser download */
   fileBaseName?: string;
-  /** If true, returns the raw PDF blob directly without browser download / share sheet */
-  returnBlob?: boolean;
 }
 
 /**
@@ -566,9 +558,7 @@ interface PageSlot {
  * - JPG/PNG images sized appropriately to fit column width without shrinking into unreadability.
  * - jsPDF A4 portrait with html2canvas-pro.
  */
-export async function generateAndSharePdf(
-  options: GeneratePdfOptions
-): Promise<string | Blob | undefined> {
+export async function generateAndSharePdf(options: GeneratePdfOptions): Promise<string | undefined> {
   const { paper, groupedQuestions, imageUrls = {} } = options;
   // Use the size passed in, otherwise the last size the user picked (remembered in settings)
   const fontScale =
@@ -908,10 +898,6 @@ export async function generateAndSharePdf(
 
     const pdfBlob = pdf.output('blob');
 
-    if (options.returnBlob) {
-      return pdfBlob;
-    }
-
     // 6. Deliver PDF to Android or Web Browser
     if (Capacitor.isNativePlatform()) {
       const base64Only = await blobToBase64Only(pdfBlob);
@@ -980,8 +966,8 @@ export async function generateAndSharePdf(
  */
 export async function exportPaperById(
   paperId: string,
-  extra: { saveFolder?: string; fileBaseName?: string; fontScale?: number; returnBlob?: boolean } = {}
-): Promise<string | Blob | undefined> {
+  extra: { saveFolder?: string; fileBaseName?: string; fontScale?: number } = {}
+): Promise<string | undefined> {
   const paper = await db.papers.get(paperId);
   if (!paper) {
     throw new Error('প্রশ্নপত্রটি ডাটাবেসে পাওয়া যায়নি।');
@@ -1127,157 +1113,3 @@ export async function exportPapersToNewFolder(
 
   return { folder, saved, failed };
 }
-
-export interface CategoryExportProgress {
-  categoryIndex: number;
-  totalCategories: number;
-  categoryName: string;
-  paperIndex: number;
-  totalPapersInCategory: number;
-  overallSaved: number;
-  overallTotal: number;
-}
-
-export interface MultiCategoryPdfResult {
-  folder: string;
-  totalSaved: number;
-  categoryCount: number;
-  failed: Array<{ category: string; paper: string; error?: string }>;
-}
-
-/**
- * Export multiple categories at once without any preview:
- * In the default directory (Download/QbCollection), creates a master folder,
- * and inside it creates subfolders named after each category, saving each paper's PDF inside.
- */
-export async function exportCategoriesToNewFolder(
-  categoryIds: string[],
-  onProgress?: (progress: CategoryExportProgress) => void
-): Promise<MultiCategoryPdfResult> {
-  const native = Capacitor.isNativePlatform();
-
-  if (native) {
-    const allowed = await ensureStorageAccess();
-    if (!allowed) {
-      throw new Error('ফোনের স্টোরেজে সেভ করার অনুমতি দেওয়া হয়নি।');
-    }
-  }
-
-  const timeStamp = makeTimeStamp();
-  const masterFolderName = `ক্যাটেগরি_${timeStamp}`;
-  const masterFolder = native ? `${PDF_SAVE_FOLDER}/${masterFolderName}` : masterFolderName;
-
-  const fontScale = await getPdfFontScale();
-  const failed: Array<{ category: string; paper: string; error?: string }> = [];
-  let overallSaved = 0;
-
-  // 1. Gather all categories and their papers
-  const categoryJobs: Array<{
-    id: string;
-    name: string;
-    papers: Paper[];
-  }> = [];
-
-  const allCategories = await db.categories.toArray();
-  const catMap = new Map(allCategories.map((c) => [c.id, c]));
-
-  let overallTotal = 0;
-  for (const catId of categoryIds) {
-    let catName = '';
-    let papers: Paper[] = [];
-    if (catId === UNCATEGORIZED_CATEGORY_ID || catId === 'uncategorized') {
-      catName = 'ক্যাটাগরিহীন';
-      papers = await getUncategorizedPapers();
-    } else {
-      const c = catMap.get(catId);
-      if (!c) continue;
-      catName = c.name;
-      papers = await getPapersByCategory(catId);
-    }
-    categoryJobs.push({ id: catId, name: catName, papers });
-    overallTotal += papers.length;
-  }
-
-  // If in web browser, prepare JSZip for nested folder zip archive
-  let zip: JSZip | null = null;
-  if (!native) {
-    zip = new JSZip();
-  }
-
-  // 2. Process each category and its papers
-  for (let cIdx = 0; cIdx < categoryJobs.length; cIdx++) {
-    const job = categoryJobs[cIdx];
-    const catSubFolder = sanitizeFileName(job.name);
-    const targetFolder = native ? `${masterFolder}/${catSubFolder}` : catSubFolder;
-
-    const usedNames = new Set<string>();
-
-    for (let pIdx = 0; pIdx < job.papers.length; pIdx++) {
-      const paper = job.papers[pIdx];
-      const paperLabel = paper.shortName || paper.title || 'question-paper';
-
-      onProgress?.({
-        categoryIndex: cIdx + 1,
-        totalCategories: categoryJobs.length,
-        categoryName: job.name,
-        paperIndex: pIdx + 1,
-        totalPapersInCategory: job.papers.length,
-        overallSaved,
-        overallTotal,
-      });
-
-      // unique file name inside the category folder
-      const base = sanitizeFileName(paperLabel);
-      let name = base;
-      let n = 2;
-      while (usedNames.has(name.toLowerCase())) {
-        name = `${base}-${n++}`;
-      }
-      usedNames.add(name.toLowerCase());
-
-      try {
-        if (native) {
-          await exportPaperById(paper.id, {
-            saveFolder: targetFolder,
-            fileBaseName: name,
-            fontScale,
-          });
-        } else if (zip) {
-          const pdfBlob = (await exportPaperById(paper.id, {
-            returnBlob: true,
-            fontScale,
-          })) as Blob;
-          zip.file(`${masterFolderName}/${catSubFolder}/${name}.pdf`, pdfBlob);
-        }
-        overallSaved++;
-        if (!native) {
-          await new Promise((r) => setTimeout(r, 100));
-        }
-      } catch (err: any) {
-        console.error(`Export failed for paper ${paper.id} in category ${job.name}:`, err);
-        failed.push({ category: job.name, paper: paperLabel, error: err?.message });
-      }
-    }
-  }
-
-  // 3. Finalize
-  if (!native && zip && overallSaved > 0) {
-    const zipBlob = await zip.generateAsync({ type: 'blob' });
-    const url = URL.createObjectURL(zipBlob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${masterFolderName}.zip`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
-
-  return {
-    folder: masterFolder,
-    totalSaved: overallSaved,
-    categoryCount: categoryJobs.length,
-    failed,
-  };
-}
-

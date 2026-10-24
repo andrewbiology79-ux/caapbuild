@@ -7,13 +7,7 @@ import { useNavigation } from '../utils/navigation';
 import { compressImageToWebP } from '../utils/imageCompressor';
 import { loadCustomBoards, saveCustomBoards, customBoardToOption, type CustomBoard } from '../utils/boards';
 import {
-  getSubjects,
-  getChapters,
-  getTopics,
-  saveImageBlob,
-  getImageBlobUrl,
-  getQuestionGroupForEdit,
-  saveQuestionGroup,
+  getApi,
   type Subject,
   type Chapter,
   type Topic,
@@ -21,6 +15,7 @@ import {
   type BoardUsage,
   type QuestionBlockInput,
 } from '../db/api';
+import type { CqScope } from '../db/db';
 import {
   X,
   Plus,
@@ -37,6 +32,8 @@ import {
 } from 'lucide-react';
 
 export interface QuestionFormModalProps {
+  /** which collection (database) to work on — default Type CQ */
+  scope?: CqScope;
   isOpen: boolean;
   onClose: () => void;
   onSaved: () => void;
@@ -73,7 +70,9 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
   onSaved,
   initialTopicId,
   editQuestionId,
+  scope = 'type',
 }) => {
+  const { getSubjects, getChapters, getTopics, saveImageBlob, getImageBlobUrl, getQuestionGroupForEdit, saveQuestionGroup } = getApi(scope);
   const { showToast } = useToast();
   const { registerBackHandler } = useNavigation();
 

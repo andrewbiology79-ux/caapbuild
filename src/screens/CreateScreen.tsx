@@ -311,7 +311,7 @@ export const CreateScreen: React.FC = () => {
           id: 'go-collection',
           label: 'কালেকশন থেকে প্রশ্ন নির্বাচন',
           icon: <Layers className="w-4 h-4 text-[#2A3BB0]" />,
-          onClick: () => switchTab('collection'),
+          onClick: () => switchTab('typeCq'),
         },
       ];
 
@@ -349,7 +349,7 @@ export const CreateScreen: React.FC = () => {
 
           <button
             type="button"
-            onClick={selectedCount > 0 ? handleOpenCreateNew : () => switchTab('collection')}
+            onClick={selectedCount > 0 ? handleOpenCreateNew : () => switchTab('typeCq')}
             className="min-h-[44px] px-3.5 py-1.5 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] active:bg-[#202E91] text-white text-xs font-bold shrink-0 shadow-2xs transition-colors"
           >
             {selectedCount > 0 ? '+ তৈরি করো' : 'নির্বাচন করো'}

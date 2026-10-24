@@ -12,38 +12,9 @@ import { RichText } from '../components/RichText';
 import { KebabMenu, type MenuItem } from '../components/KebabMenu';
 import { toBn, toBnPad2 } from '../utils/toBn';
 import { useNavigation } from '../utils/navigation';
-import { db } from '../db/db';
+import { getDb, type CqScope } from '../db/db';
 import {
-  seedInitialDataIfNeeded,
-  getSubjects,
-  getChapters,
-  getTopics,
-  getQuestionsByTopicGrouped,
-  getHierarchyStats,
-  getSelectedIds,
-  toggleStimulusSelect,
-  getSelectedStimuliCount,
-  clearSelection,
-  copyStimulusGroup,
-  getGroupClipboard,
-  clearGroupClipboard,
-  pasteStimulusGroup,
-  deleteStimulusGroup,
-  getRatingStarsText,
-  getQuestionPaperUsage,
-  getImageBlobUrl,
-  addSubject,
-  updateSubject,
-  deleteSubject,
-  reorderSubjects,
-  addChapter,
-  updateChapter,
-  deleteChapter,
-  reorderChapters,
-  addTopic,
-  updateTopic,
-  deleteTopic,
-  reorderTopics,
+  getApi,
   type Subject,
   type Chapter,
   type Topic,
@@ -84,25 +55,35 @@ type DrillView =
   | { level: 'questions'; subject: Subject; chapter: Chapter; topic: Topic };
 
 // Remembers where the user was inside Collection, so switching tabs and coming back restores it
-let lastDrillView: DrillView = { level: 'subjects' };
+const lastDrillViews: Record<CqScope, DrillView> = {
+  type: { level: 'subjects' },
+  chapter: { level: 'subjects' },
+};
 
-export const CollectionScreen: React.FC = () => {
+interface CollectionScreenProps {
+  /** 'type' = Type CQ (old Collection), 'chapter' = Chapter CQ */
+  scope?: CqScope;
+}
+
+export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'type' }) => {
+  const db = getDb(scope);
+  const { seedInitialDataIfNeeded, getSubjects, getChapters, getTopics, getQuestionsByTopicGrouped, getHierarchyStats, getSelectedIds, toggleStimulusSelect, getSelectedStimuliCount, clearSelection, copyStimulusGroup, getGroupClipboard, clearGroupClipboard, pasteStimulusGroup, deleteStimulusGroup, getRatingStarsText, getQuestionPaperUsage, getImageBlobUrl, addSubject, updateSubject, deleteSubject, reorderSubjects, addChapter, updateChapter, deleteChapter, reorderChapters, addTopic, updateTopic, deleteTopic, reorderTopics } = getApi(scope);
   const { showToast } = useToast();
   const { registerBackHandler } = useNavigation();
 
   // Navigation Drill-down View State (restored from last visit)
-  const [currentView, setCurrentView] = useState<DrillView>(lastDrillView);
+  const [currentView, setCurrentView] = useState<DrillView>(lastDrillViews[scope]);
 
   useEffect(() => {
-    lastDrillView = currentView;
-  }, [currentView]);
+    lastDrillViews[scope] = currentView;
+  }, [currentView, scope]);
 
   // If the remembered chapter/topic no longer exists (deleted/imported elsewhere), fall back to subjects
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const v = lastDrillView;
+        const v = lastDrillViews[scope];
         if (v.level === 'subjects') return;
         const subjectOk = !!(await db.subjects.get(v.subject.id));
         const chapterOk = v.level === 'chapters' ? true : !!(await db.chapters.get(v.chapter.id));
@@ -255,12 +236,32 @@ export const CollectionScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentView, showToast]);
+  }, [currentView, showToast, scope]);
 
   useEffect(() => {
     loadData();
     setIsReordering(false);
   }, [loadData]);
+
+  // Chapter CQ has no topic level: every chapter owns one hidden default topic that holds its questions
+  const openChapter = useCallback(
+    async (subject: Subject, chapter: Chapter) => {
+      if (scope !== 'chapter') {
+        setCurrentView({ level: 'topics', subject, chapter });
+        return;
+      }
+      try {
+        const existing = await getTopics(chapter.id);
+        const topic = existing[0] ?? (await addTopic(chapter.id, 'সকল প্রশ্ন'));
+        setCurrentView({ level: 'questions', subject, chapter, topic });
+      } catch (err) {
+        console.error('Failed to open chapter:', err);
+        showToast('অধ্যায় খুলতে সমস্যা হয়েছে');
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [scope, showToast]
+  );
 
   // Handle hardware & UI Back Navigation
   const handleGoBack = useCallback((): boolean => {
@@ -271,6 +272,11 @@ export const CollectionScreen: React.FC = () => {
 
     if (isReordering) {
       setIsReordering(false);
+      return true;
+    }
+
+    if (currentView.level === 'questions' && scope === 'chapter') {
+      setCurrentView({ level: 'chapters', subject: currentView.subject });
       return true;
     }
 
@@ -297,7 +303,7 @@ export const CollectionScreen: React.FC = () => {
     }
 
     return false; // Already at Subjects level
-  }, [currentView, isReordering, imageViewerState.isOpen]);
+  }, [currentView, isReordering, imageViewerState.isOpen, scope]);
 
   // Register with Capacitor Back Button listener
   useEffect(() => {
@@ -609,8 +615,8 @@ export const CollectionScreen: React.FC = () => {
     if (currentView.level === 'chapters') return currentView.subject.name;
     if (currentView.level === 'topics') return currentView.chapter.name;
     if (currentView.level === 'questions') return currentView.topic.name;
-    return 'কালেকশন';
-  }, [currentView]);
+    return scope === 'chapter' ? 'Chapter CQ' : 'Type CQ';
+  }, [currentView, scope]);
 
   // Header KebabMenu Items
   const headerMenuItems = useMemo((): MenuItem[] => {
@@ -687,24 +693,24 @@ export const CollectionScreen: React.FC = () => {
     if (currentView.level === 'subjects') {
       items.push({
         id: 'import',
-        label: 'Import Question Collection',
+        label: scope === 'chapter' ? 'Import Chapter CQ' : 'Import Type CQ',
         icon: <Upload className="w-4 h-4 text-[#3B4FD8]" />,
         onClick: () => setShowImportModal(true),
       });
       items.push({
         id: 'export',
-        label: 'Export Question Collection',
+        label: scope === 'chapter' ? 'Export Chapter CQ' : 'Export Type CQ',
         icon: <Download className="w-4 h-4 text-[#3B4FD8]" />,
         onClick: async () => {
           try {
-            const ok = await exportQuestionCollection();
+            const ok = await exportQuestionCollection(scope);
             if (ok) {
-              showToast('প্রশ্ন কালেকশন সফলভাবে এক্সপোর্ট হয়েছে');
+              showToast(`${scope === 'chapter' ? 'Chapter CQ' : 'Type CQ'} সফলভাবে এক্সপোর্ট হয়েছে`);
             } else {
-              showToast('কালেকশন এক্সপোর্ট করা যায়নি');
+              showToast('এক্সপোর্ট করা যায়নি');
             }
           } catch {
-            showToast('কালেকশন এক্সপোর্ট ব্যর্থ হয়েছে');
+            showToast('এক্সপোর্ট করা যায়নি');
           }
         },
       });
@@ -720,7 +726,7 @@ export const CollectionScreen: React.FC = () => {
     });
 
     return items;
-  }, [currentView, showToast]);
+  }, [currentView, showToast, scope]);
 
   // Filter questions by search query
   const filteredQuestionGroups = useMemo(() => {
@@ -801,21 +807,16 @@ export const CollectionScreen: React.FC = () => {
       items.push({
         id: `chapter-${c.id}`,
         label,
-        isCurrent: currentView.level === 'topics',
+        isCurrent: currentView.level === 'topics' || (scope === 'chapter' && currentView.level === 'questions'),
         onClick:
-          currentView.level === 'topics'
+          currentView.level === 'topics' || (scope === 'chapter' && currentView.level === 'questions')
             ? undefined
-            : () =>
-                setCurrentView({
-                  level: 'topics',
-                  subject: currentView.subject,
-                  chapter: c,
-                }),
+            : () => openChapter(currentView.subject, c),
       });
     }
 
-    // Level 3: Topic
-    if (currentView.level === 'questions') {
+    // Level 3: Topic (Chapter CQ has no visible topic level)
+    if (currentView.level === 'questions' && scope !== 'chapter') {
       const t = currentView.topic;
       const label = `${toBnPad2(t.order)}. ${t.name}`;
       items.push({
@@ -827,7 +828,7 @@ export const CollectionScreen: React.FC = () => {
     }
 
     return items;
-  }, [currentView]);
+  }, [currentView, scope, openChapter]);
 
   return (
     <div className="flex-1 flex flex-col min-h-full pb-20 bg-[#F2F4F8]">
@@ -1080,11 +1081,7 @@ export const CollectionScreen: React.FC = () => {
                     className="bg-white rounded-2xl p-3.5 border border-[#D5D9E2] shadow-xs flex items-center justify-between gap-3 hover:border-[#3B4FD8] transition-all cursor-pointer select-none"
                     onClick={() => {
                       if (!isReordering) {
-                        setCurrentView({
-                          level: 'topics',
-                          subject: currentView.subject,
-                          chapter,
-                        });
+                        openChapter(currentView.subject, chapter);
                       }
                     }}
                   >
@@ -1637,6 +1634,7 @@ export const CollectionScreen: React.FC = () => {
 
       {/* Full-Screen Question Add & Edit Modal */}
       <QuestionFormModal
+        scope={scope}
         isOpen={questionFormState.isOpen}
         initialTopicId={questionFormState.initialTopicId}
         editQuestionId={questionFormState.editQuestionId}
@@ -1654,6 +1652,7 @@ export const CollectionScreen: React.FC = () => {
 
       {/* Paste JSON Questions Modal */}
       <PasteQuestionsModal
+        scope={scope}
         isOpen={showPasteModal && currentView.level === 'questions'}
         topicId={currentView.level === 'questions' ? currentView.topic.id : ''}
         topicName={currentView.level === 'questions' ? currentView.topic.name : ''}
@@ -1665,6 +1664,7 @@ export const CollectionScreen: React.FC = () => {
 
       {/* Import Collection Modal */}
       <ImportCollectionModal
+        scope={scope}
         isOpen={showImportModal}
         onClose={() => setShowImportModal(false)}
         onSuccess={() => {

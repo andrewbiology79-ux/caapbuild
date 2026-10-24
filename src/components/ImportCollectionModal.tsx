@@ -21,17 +21,21 @@ import { exportJsonFile } from '../utils/fileExport';
 import { useToast } from './Toast';
 import { ConfirmDialog } from './ConfirmDialog';
 import { toBn } from '../utils/toBn';
+import type { CqScope } from '../db/db';
 
 export interface ImportCollectionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  /** which collection to import into (default: Type CQ) */
+  scope?: CqScope;
 }
 
 export const ImportCollectionModal: React.FC<ImportCollectionModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
+  scope = 'type',
 }) => {
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -65,7 +69,7 @@ export const ImportCollectionModal: React.FC<ImportCollectionModalProps> = ({
 
     try {
       const text = await file.text();
-      const res = await parseAndValidateCollectionJson(text);
+      const res = await parseAndValidateCollectionJson(text, scope);
       setPreview(res);
     } catch (err: any) {
       setPreview({
@@ -97,8 +101,8 @@ export const ImportCollectionModal: React.FC<ImportCollectionModalProps> = ({
   // Download Sample JSON
   const handleDownloadSample = async () => {
     try {
-      const sampleContent = getSampleCollectionJson();
-      const success = await exportJsonFile('qb-collection-sample.json', sampleContent);
+      const sampleContent = getSampleCollectionJson(scope);
+      const success = await exportJsonFile(scope === 'chapter' ? 'qb-chapter-cq-sample.json' : 'qb-type-cq-sample.json', sampleContent);
       if (success) {
         showToast('নমুনা JSON ফাইল ডাউনলোড হয়েছে');
       } else {
@@ -130,7 +134,7 @@ export const ImportCollectionModal: React.FC<ImportCollectionModalProps> = ({
       const stats = await executeCollectionImport(preview.rawPayload, {
         mode: importMode,
         manualFiles: manualImages,
-      });
+      }, scope);
 
       showToast(
         `সফলভাবে ${toBn(stats.subjects)}টি বিষয় ও ${toBn(stats.questions)}টি প্রশ্ন ইমপোর্ট হয়েছে`
@@ -166,7 +170,7 @@ export const ImportCollectionModal: React.FC<ImportCollectionModalProps> = ({
           <div className="flex items-center gap-2">
             <Upload className="w-5 h-5 text-white" />
             <h2 id="import-modal-title" className="text-base font-bold text-white">
-              প্রশ্ন কালেকশন ইমপোর্ট
+              {scope === 'chapter' ? 'Chapter CQ ইমপোর্ট' : 'Type CQ ইমপোর্ট'}
             </h2>
           </div>
           <button

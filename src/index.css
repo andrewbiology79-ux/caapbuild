@@ -58,13 +58,16 @@ button,
   width: 4px;
   height: 4px;
 }
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
   background: #D5D9E2;
   border-radius: 4px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
   background: #B4B9C6;
 }
@@ -80,7 +83,6 @@ button,
 .dark .bg-\[\#FEF9C3\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #422006; }
 .dark .bg-emerald-50:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #052e16; }
 .dark .bg-red-50:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #450a0a; }
-
 .dark .text-\[\#1B1F2A\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { color: #f1f5f9; }
 .dark .text-\[\#64748B\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { color: #94a3b8; }
 .dark .text-\[\#2A3BB0\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { color: #a5b4fc; }
@@ -89,13 +91,11 @@ button,
 .dark .text-emerald-800:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { color: #6ee7b7; }
 .dark .text-red-900:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { color: #fecaca; }
 .dark .text-amber-950:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { color: #fde68a; }
-
 .dark .border-\[\#D5D9E2\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { border-color: #334155; }
 .dark .border-\[\#E2E8F0\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { border-color: #334155; }
 .dark .border-\[\#F2F4F8\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { border-color: #1e293b; }
 .dark .border-\[\#FDE047\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { border-color: #854d0e; }
 .dark .border-emerald-200:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { border-color: #065f46; }
-
 .dark .hover\:bg-\[\#EEF2FF\]:hover:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #312e81; }
 .dark .hover\:bg-\[\#E0E7FF\]:hover:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #3730a3; }
 .dark .active\:bg-\[\#E0E7FF\]:active:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #3730a3; }

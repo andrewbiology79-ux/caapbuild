@@ -3,14 +3,16 @@ import { X, ClipboardPaste, Copy, CheckCircle2, AlertCircle } from 'lucide-react
 import { useToast } from './Toast';
 import { toBn } from '../utils/toBn';
 import {
-  addQuestion,
-  saveQuestionGroup,
+  getApi,
   type QuestionType,
   type BoardUsage,
   type QuestionBlockInput,
 } from '../db/api';
+import type { CqScope } from '../db/db';
 
 export interface PasteQuestionsModalProps {
+  /** which collection (database) to work on — default Type CQ */
+  scope?: CqScope;
   isOpen: boolean;
   topicId: string;
   topicName: string;
@@ -155,7 +157,9 @@ export const PasteQuestionsModal: React.FC<PasteQuestionsModalProps> = ({
   topicName,
   onClose,
   onSuccess,
+  scope = 'type',
 }) => {
+  const { addQuestion, saveQuestionGroup } = getApi(scope);
   const { showToast } = useToast();
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
