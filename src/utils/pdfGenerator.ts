@@ -9,6 +9,7 @@ import { db, DEFAULT_PAPER_NOTE, type Paper, type Question, type Stimulus } from
 import { getImageBlobUrl } from '../db/api';
 import { ensureStorageAccess, savePdfToPhoneStorage } from './storageAccess';
 import { getPdfFontScale, normalizePdfFontScale } from './settings';
+import { replaceKatexWithImages } from './katexImages';
 
 export interface GeneratePdfOptions {
   paper: Paper;
@@ -864,6 +865,14 @@ export async function generateAndSharePdf(options: GeneratePdfOptions): Promise<
     for (let i = 0; i < pageSlots.length; i++) {
       if (i > 0) {
         pdf.addPage();
+      }
+
+      // Formulas are drawn by the browser itself (exactly like the in-app preview) and inserted as
+      // baseline-aligned images, because html2canvas places KaTeX glyphs lower than the text line.
+      try {
+        await replaceKatexWithImages(pageSlots[i].pageDiv);
+      } catch (e) {
+        console.warn('Formula alignment step skipped:', e);
       }
 
       const canvas = await html2canvas(pageSlots[i].pageDiv, {
