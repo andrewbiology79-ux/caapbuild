@@ -11,6 +11,7 @@ import {
   type QuestionType,
   type BoardUsage,
 } from './db';
+import { toBn, toEn } from '../utils/toBn';
 
 export type {
   Subject,
@@ -935,6 +936,58 @@ export async function getPaperById(id: string): Promise<Paper | undefined> {
   return await db.papers.get(id);
 }
 
+/**
+ * Paper tag = category name + running number, e.g. "উইকলি মডেল টেস্ট-১".
+ * The number continues after the highest number already used inside that category.
+ */
+function paperLabelNumber(shortName: string | undefined, categoryName: string): number | null {
+  const prefix = `${categoryName.trim()}-`;
+  const name = (shortName || '').trim();
+  if (!name.startsWith(prefix)) return null;
+  const rest = toEn(name.slice(prefix.length)).trim();
+  return /^\d+$/.test(rest) ? parseInt(rest, 10) : null;
+}
+
+export async function getNextPaperLabel(
+  categoryId: string,
+  categoryName: string,
+  excludePaperId?: string
+): Promise<string> {
+  const papers = await db.papers.where('categoryId').equals(categoryId).toArray();
+  let max = 0;
+  for (const p of papers) {
+    if (p.id === excludePaperId) continue;
+    const n = paperLabelNumber(p.shortName, categoryName);
+    if (n !== null && n > max) max = n;
+  }
+  return `${categoryName.trim()}-${toBn(max + 1)}`;
+}
+
+/**
+ * Give every paper whose tag is not "<category>-<number>" yet a proper tag
+ * (old papers that still have a manual short name). Papers that already have a
+ * proper tag keep their number.
+ */
+export async function relabelPapersByCategory(): Promise<void> {
+  const [cats, papers] = await Promise.all([db.categories.toArray(), db.papers.toArray()]);
+  for (const cat of cats) {
+    const inCat = papers
+      .filter((p) => p.categoryId === cat.id)
+      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    let max = 0;
+    for (const p of inCat) {
+      const n = paperLabelNumber(p.shortName, cat.name);
+      if (n !== null && n > max) max = n;
+    }
+    for (const p of inCat) {
+      if (paperLabelNumber(p.shortName, cat.name) === null) {
+        max += 1;
+        await db.papers.update(p.id, { shortName: `${cat.name.trim()}-${toBn(max)}` });
+      }
+    }
+  }
+}
+
 export async function savePaper(paper: Omit<Paper, 'id' | 'createdAt'> & { id?: string; createdAt?: number }): Promise<Paper> {
   const id = paper.id || generateId();
   const fullPaper: Paper = {
@@ -990,6 +1043,8 @@ export async function ensureDefaultCategories(): Promise<Category[]> {
     }
   }
 
+  await relabelPapersByCategory();
+
   return list.sort((a, b) => a.order - b.order);
 }
 
@@ -1037,11 +1092,17 @@ export async function updateCategory(id: string, name: string): Promise<void> {
     throw new Error('এই নামের ক্যাটেগরি ইতিমধ্যে রয়েছে');
   }
 
+  const oldCat = await db.categories.get(id);
   await db.categories.update(id, { name: trimmed });
-  // Also update category string in papers for consistency
+  // Also update category string (and the "<category>-<number>" tag) in papers for consistency
   const papers = await db.papers.where('categoryId').equals(id).toArray();
   for (const p of papers) {
-    await db.papers.update(p.id, { category: trimmed });
+    const changes: Partial<Paper> = { category: trimmed };
+    if (oldCat) {
+      const n = paperLabelNumber(p.shortName, oldCat.name);
+      if (n !== null) changes.shortName = `${trimmed}-${toBn(n)}`;
+    }
+    await db.papers.update(p.id, changes);
   }
 }
 
@@ -1136,9 +1197,13 @@ export async function getUniqueCategoryName(baseName: string): Promise<string> {
 export async function movePaperToCategory(paperId: string, targetCategoryId: string): Promise<void> {
   const target = await db.categories.get(targetCategoryId);
   if (!target) throw new Error('গন্তব্য ক্যাটেগরি পাওয়া যায়নি');
+  const paper = await db.papers.get(paperId);
+  if (!paper) return;
+  if (paper.categoryId === target.id) return;
   await db.papers.update(paperId, {
     categoryId: target.id,
     category: target.name,
+    shortName: await getNextPaperLabel(target.id, target.name),
   });
 }
 
@@ -1150,18 +1215,47 @@ export async function duplicatePaper(paperId: string, targetCategoryId: string):
   if (!paper) throw new Error('প্রশ্নপত্রটি পাওয়া যায়নি');
   if (!target) throw new Error('গন্তব্য ক্যাটেগরি পাওয়া যায়নি');
 
-  const sameCategory = paper.categoryId === target.id;
   const copy: Paper = {
     ...paper,
     id: generateId(),
     categoryId: target.id,
     category: target.name,
-    shortName: sameCategory ? `${paper.shortName} (কপি)` : paper.shortName,
+    shortName: await getNextPaperLabel(target.id, target.name),
     createdAt: Date.now(),
     questionIds: [...(paper.questionIds || [])],
   };
   await db.papers.add(copy);
   return copy;
+}
+
+/**
+ * Batch helpers used by the Create screen (multi-select)
+ */
+export async function movePapersToCategory(paperIds: string[], targetCategoryId: string): Promise<number> {
+  let count = 0;
+  for (const id of paperIds) {
+    const paper = await db.papers.get(id);
+    if (!paper) continue;
+    await movePaperToCategory(id, targetCategoryId);
+    count++;
+  }
+  return count;
+}
+
+export async function duplicatePapers(paperIds: string[], targetCategoryId: string): Promise<number> {
+  let count = 0;
+  const base = Date.now();
+  for (const id of paperIds) {
+    const copy = await duplicatePaper(id, targetCategoryId);
+    // keep the copies in the same order as the originals
+    await db.papers.update(copy.id, { createdAt: base + (paperIds.length - 1 - count) });
+    count++;
+  }
+  return count;
+}
+
+export async function deletePapers(paperIds: string[]): Promise<void> {
+  await db.papers.bulkDelete(paperIds);
 }
 
 /**

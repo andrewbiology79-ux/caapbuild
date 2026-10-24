@@ -7,23 +7,14 @@ import katex from 'katex';
 import { toBn } from './toBn';
 import { db, DEFAULT_PAPER_NOTE, type Paper, type Question, type Stimulus } from '../db/db';
 import { getImageBlobUrl } from '../db/api';
-import { ensureStorageAccess, savePdfToPhoneStorage } from './storageAccess';
+import {
+  ensureStorageAccess,
+  savePdfToPhoneStorage,
+  sanitizeFileName,
+  makeTimeStamp,
+  PDF_SAVE_FOLDER,
+} from './storageAccess';
 import { getPdfFontScale, normalizePdfFontScale } from './settings';
-import { collectFormulas, mathKey, prepareMathImages, type MathImage } from './mathImages';
-import './katexAssets'; // registers the KaTeX stylesheet + fonts used to draw formula pictures
-
-/**
- * Formulas are drawn into the PDF as pictures that the browser itself painted (see mathImages.ts).
- * If, on some phone, formulas still sit slightly high/low next to the Bengali text, tune this
- * (CSS px; positive = formulas move down, negative = up).
- */
-const MATH_BASELINE_NUDGE_PX = 0;
-
-interface MathRenderContext {
-  /** Font size (px) of the text the formulas are embedded in */
-  fontPx: number;
-  images: Map<string, MathImage>;
-}
 
 export interface GeneratePdfOptions {
   paper: Paper;
@@ -31,22 +22,19 @@ export interface GeneratePdfOptions {
   imageUrls?: Record<string, string>;
   /** PDF text size multiplier (1 = 100%). If omitted, the last saved size is used. */
   fontScale?: number;
-}
-
-/** <img> tags for one formula picture (one per line-break slice) */
-function mathImageTags(img: MathImage): string {
-  return img.slices
-    .map(
-      (sl) =>
-        `<img src="${sl.url}" alt="" draggable="false" style="display: inline; max-width: none; width: ${+sl.width.toFixed(3)}px; height: ${+sl.height.toFixed(3)}px; margin: ${sl.marginTop}px ${sl.marginRight}px ${sl.marginBottom}px ${sl.marginLeft}px; padding: 0; border: 0; vertical-align: ${+(-(sl.descent + MATH_BASELINE_NUDGE_PX)).toFixed(3)}px;">`
-    )
-    .join('');
+  /**
+   * Batch mode: save the PDF straight into this folder (no share sheet, no time stamp in the
+   * file name). The caller must already have storage access.
+   */
+  saveFolder?: string;
+  /** File name (without .pdf) used together with saveFolder / browser download */
+  fileBaseName?: string;
 }
 
 /**
  * Render RichText string with LaTeX to HTML string for A4 PDF column
  */
-function renderRichTextToHtml(rawText: string, math?: MathRenderContext): string {
+function renderRichTextToHtml(rawText: string): string {
   if (!rawText) return '';
 
   // Matches $$...$$ or $...$
@@ -71,23 +59,10 @@ function renderRichTextToHtml(rawText: string, math?: MathRenderContext): string
     const isBlock = token.startsWith('$$') && token.endsWith('$$');
     const mathContent = isBlock ? token.slice(2, -2).trim() : token.slice(1, -1).trim();
 
-    // Preferred: picture painted by the browser -> html2canvas only places an image on the baseline
-    const picture = math?.images.get(mathKey(mathContent, isBlock, math.fontPx));
-    if (picture) {
-      if (isBlock) {
-        html += `<div style="text-align: center; margin: 4px 0; max-width: 100%; overflow: visible; padding: 0;">${mathImageTags(picture)}</div>`;
-      } else {
-        html += `<span style="display: inline; margin: 0 1.5px; padding: 0;">${mathImageTags(picture)}</span>`;
-      }
-      lastIndex = regex.lastIndex;
-      continue;
-    }
-
-    // Fallback (picture could not be made): plain KaTeX HTML
     try {
       // `output: 'html'` skips the hidden MathML copy; the inline overflow reset is essential:
       // the app-wide `.katex { overflow: auto/hidden }` rule moves the formula's baseline to its
-      // bottom edge, which makes formulas sit lower than the surrounding text.
+      // bottom edge, which is what made formulas sit lower than the surrounding text in the PDF.
       const rendered = katex
         .renderToString(mathContent, {
           displayMode: isBlock,
@@ -102,6 +77,7 @@ function renderRichTextToHtml(rawText: string, math?: MathRenderContext): string
       if (isBlock) {
         html += `<div style="text-align: center; margin: 4px 0; max-width: 100%; overflow: visible; padding: 0; font-size: 1em;">${rendered}</div>`;
       } else {
+        // Plain inline + baseline alignment: formula baseline == text baseline on the same line
         html += `<span style="display: inline; vertical-align: baseline; margin: 0 1.5px; overflow: visible; padding: 0; font-size: 1em;">${rendered}</span>`;
       }
     } catch {
@@ -408,8 +384,7 @@ function buildQuestionGroupElement(
   gIdx: number,
   imageUrls: Record<string, string>,
   colWidthPx = 350,
-  k = 1,
-  math?: MathRenderContext
+  k = 1
 ): HTMLElement {
   const px = (n: number) => `${+(n * k).toFixed(2)}px`;
   const block = document.createElement('div');
@@ -442,7 +417,7 @@ function buildQuestionGroupElement(
   // Stimulus Text
   if (group.stimulus?.text) {
     const stimTextDiv = document.createElement('div');
-    stimTextDiv.innerHTML = renderRichTextToHtml(group.stimulus.text, math);
+    stimTextDiv.innerHTML = renderRichTextToHtml(group.stimulus.text);
     stimTextDiv.style.fontSize = px(11.5);
     stimTextDiv.style.fontWeight = '500';
     stimTextDiv.style.color = '#111827';
@@ -531,7 +506,7 @@ function buildQuestionGroupElement(
 
     // Text: with full word wrap and KaTeX
     const textSpan = document.createElement('span');
-    textSpan.innerHTML = renderRichTextToHtml(q.questionText || '', math);
+    textSpan.innerHTML = renderRichTextToHtml(q.questionText || '');
     textSpan.style.flex = '1';
     textSpan.style.minWidth = '0';
     textSpan.style.color = '#111827';
@@ -588,7 +563,7 @@ export async function generateAndSharePdf(options: GeneratePdfOptions): Promise<
   // Use the size passed in, otherwise the last size the user picked (remembered in settings)
   const fontScale =
     options.fontScale !== undefined ? normalizePdfFontScale(options.fontScale) : await getPdfFontScale();
-  const fileName = `${paper.shortName || 'question-paper'}.pdf`;
+  const fileName = `${options.fileBaseName || paper.shortName || 'question-paper'}.pdf`;
 
   // Hidden container for staging and measurement
   const hiddenRoot = document.createElement('div');
@@ -638,25 +613,6 @@ export async function generateAndSharePdf(options: GeneratePdfOptions): Promise<
       }
     }
 
-    // 1b. Paint every formula to a picture with the browser (same size as the surrounding text:
-    //     stimulus text and question text are both 11.5px * fontScale)
-    const mathFontPx = +(11.5 * fontScale).toFixed(2);
-    let mathImages = new Map<string, MathImage>();
-    try {
-      const formulaTexts: Array<string | undefined> = [];
-      for (const g of groupedQuestions) {
-        formulaTexts.push(g.stimulus?.text);
-        for (const q of g.questions) formulaTexts.push(q.questionText);
-      }
-      mathImages = await prepareMathImages(collectFormulas(formulaTexts), mathFontPx, {
-        mathEm: 1.04,
-        canvasScale: 3,
-      });
-    } catch (e) {
-      console.warn('Formula pictures unavailable, using KaTeX HTML instead:', e);
-    }
-    const mathCtx: MathRenderContext = { fontPx: mathFontPx, images: mathImages };
-
     // A4 Dimensions:
     // Total: 794px x 1123px.
     // Horizontal Margins: 34px left, 34px right -> Usable Width = 726px.
@@ -702,14 +658,7 @@ export async function generateAndSharePdf(options: GeneratePdfOptions): Promise<
     // Measure each question group
     const measuredGroups: Array<{ element: HTMLElement; height: number }> = [];
     for (let i = 0; i < groupedQuestions.length; i++) {
-      const blockEl = buildQuestionGroupElement(
-        groupedQuestions[i],
-        i,
-        resolvedImageUrls,
-        COL_WIDTH_PX,
-        fontScale,
-        mathCtx
-      );
+      const blockEl = buildQuestionGroupElement(groupedQuestions[i], i, resolvedImageUrls, COL_WIDTH_PX, fontScale);
       measureContainer.appendChild(blockEl);
       await waitForFontsAndImages(measureContainer);
       const h = blockEl.getBoundingClientRect().height || blockEl.offsetHeight;
@@ -953,6 +902,15 @@ export async function generateAndSharePdf(options: GeneratePdfOptions): Promise<
     if (Capacitor.isNativePlatform()) {
       const base64Only = await blobToBase64Only(pdfBlob);
 
+      // Batch export: save into the given folder, never fall back to the share sheet
+      if (options.saveFolder) {
+        return await savePdfToPhoneStorage(
+          base64Only,
+          options.fileBaseName || paper.shortName || 'question-paper',
+          { folder: options.saveFolder, addStamp: false }
+        );
+      }
+
       // Preferred: save directly into the phone storage (asks "All files access" permission if needed)
       try {
         const allowed = await ensureStorageAccess();
@@ -1006,7 +964,10 @@ export async function generateAndSharePdf(options: GeneratePdfOptions): Promise<
  * Convenient helper to load all paper questions, stimuli, and images by paperId,
  * and execute the PDF generation process
  */
-export async function exportPaperById(paperId: string): Promise<string | undefined> {
+export async function exportPaperById(
+  paperId: string,
+  extra: { saveFolder?: string; fileBaseName?: string; fontScale?: number } = {}
+): Promise<string | undefined> {
   const paper = await db.papers.get(paperId);
   if (!paper) {
     throw new Error('প্রশ্নপত্রটি ডাটাবেসে পাওয়া যায়নি।');
@@ -1081,5 +1042,74 @@ export async function exportPaperById(paperId: string): Promise<string | undefin
     paper,
     groupedQuestions: groups,
     imageUrls: urls,
+    ...extra,
   });
+}
+
+export interface BatchPdfResult {
+  /** Folder (relative to the phone's internal storage) that holds the PDFs. Empty in the browser. */
+  folder: string;
+  saved: number;
+  failed: string[];
+}
+
+/**
+ * Export many papers at once without any preview: a NEW folder is created inside the
+ * default PDF folder and every PDF is saved into it.
+ */
+export async function exportPapersToNewFolder(
+  paperIds: string[],
+  onProgress?: (done: number, total: number) => void
+): Promise<BatchPdfResult> {
+  const native = Capacitor.isNativePlatform();
+
+  if (native) {
+    const allowed = await ensureStorageAccess();
+    if (!allowed) {
+      throw new Error('ফোনের স্টোরেজে সেভ করার অনুমতি দেওয়া হয়নি।');
+    }
+  }
+
+  const folder = native ? `${PDF_SAVE_FOLDER}/প্রশ্নপত্র_${makeTimeStamp()}` : '';
+  const fontScale = await getPdfFontScale();
+  const usedNames = new Set<string>();
+  const failed: string[] = [];
+  let saved = 0;
+
+  onProgress?.(0, paperIds.length);
+
+  for (let i = 0; i < paperIds.length; i++) {
+    const id = paperIds[i];
+    let label = '';
+    try {
+      const paper = await db.papers.get(id);
+      label = paper?.shortName || paper?.title || 'question-paper';
+
+      // unique file name inside the folder
+      const base = sanitizeFileName(label);
+      let name = base;
+      let n = 2;
+      while (usedNames.has(name.toLowerCase())) {
+        name = `${base}-${n++}`;
+      }
+      usedNames.add(name.toLowerCase());
+
+      await exportPaperById(id, {
+        saveFolder: native ? folder : undefined,
+        fileBaseName: name,
+        fontScale,
+      });
+      saved++;
+      if (!native) {
+        // give the browser a moment between several downloads
+        await new Promise((r) => setTimeout(r, 400));
+      }
+    } catch (err) {
+      console.error('Batch PDF export failed for', id, err);
+      failed.push(label || id);
+    }
+    onProgress?.(i + 1, paperIds.length);
+  }
+
+  return { folder, saved, failed };
 }

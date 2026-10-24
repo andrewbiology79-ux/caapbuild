@@ -7,6 +7,7 @@ import {
   getCategories,
   saveCategory,
   getImageBlobUrl,
+  getNextPaperLabel,
 } from '../db/api';
 import { getAppSettings } from '../utils/settings';
 import { useToast } from './Toast';
@@ -37,11 +38,11 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
   const { showToast } = useToast();
 
   const [title, setTitle] = useState('');
-  const [shortName, setShortName] = useState('');
   const [subjectLine, setSubjectLine] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [categories, setCategories] = useState<Category[]>([]);
-  const [note, setNote] = useState(DEFAULT_PAPER_NOTE);
+  const [note, setNote] = useState('');
+  const [tagPreview, setTagPreview] = useState('');
   const [duration, setDuration] = useState('২ ঘণ্টা ৩০ মিনিট');
   const [totalMarks, setTotalMarks] = useState<number>(50);
 
@@ -74,22 +75,19 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
 
       if (editPaper) {
         setTitle(editPaper.title);
-        setShortName(editPaper.shortName);
         setSubjectLine(editPaper.subjectLine || 'বিষয়: পদার্থবিজ্ঞান ১ম পত্র');
         setSelectedCategoryId(editPaper.categoryId || (cats[0]?.id ?? ''));
         setDuration(String(editPaper.duration || '২ ঘণ্টা ৩০ মিনিট'));
         setTotalMarks(editPaper.totalMarks || 50);
-        setNote(editPaper.note ?? DEFAULT_PAPER_NOTE);
+        setNote(editPaper.note ?? settings.defaultPaperNote ?? DEFAULT_PAPER_NOTE);
         targetQIds = editPaper.questionIds || [];
       } else {
-        const nextCount = (await db.papers.count()) + 1;
         setTitle(settings.defaultPaperTitle || 'পদার্থবিজ্ঞান ১ম পত্র - মডেল টেস্ট');
-        setShortName(`মডেল টেস্ট-${toBn(nextCount)}`);
         setSubjectLine('বিষয়: পদার্থবিজ্ঞান (প্রথম পত্র)');
         setSelectedCategoryId(cats[0]?.id || '');
         setDuration('২ ঘণ্টা ৩০ মিনিট');
         setTotalMarks(50);
-        setNote(DEFAULT_PAPER_NOTE);
+        setNote(settings.defaultPaperNote ?? DEFAULT_PAPER_NOTE);
         targetQIds = selIds.length > 0 ? selIds : [];
       }
 
@@ -162,6 +160,30 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
     init();
   }, [isOpen, editPaper]);
 
+  // Preview of the tag the paper will get (category name + number)
+  useEffect(() => {
+    if (!isOpen || !selectedCategoryId) {
+      setTagPreview('');
+      return;
+    }
+    if (editPaper && editPaper.categoryId === selectedCategoryId && editPaper.shortName) {
+      setTagPreview(editPaper.shortName);
+      return;
+    }
+    const cat = categories.find((c) => c.id === selectedCategoryId);
+    if (!cat) {
+      setTagPreview('');
+      return;
+    }
+    let cancelled = false;
+    getNextPaperLabel(cat.id, cat.name, editPaper?.id).then((label) => {
+      if (!cancelled) setTagPreview(label);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, selectedCategoryId, categories, editPaper]);
+
   if (!isOpen) return null;
 
   // Handle Category selection & new category
@@ -211,10 +233,6 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
       setValidationError('প্রশ্নপত্রের শিরোনাম আবশ্যক');
       return;
     }
-    if (!shortName.trim()) {
-      setValidationError('সংক্ষিপ্ত নাম আবশ্যক');
-      return;
-    }
     if (!selectedCategoryId) {
       setValidationError('ক্যাটেগরি নির্বাচন আবশ্যক');
       return;
@@ -237,14 +255,22 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
       });
 
       const matchedCat = categories.find((c) => c.id === selectedCategoryId);
+      const catName = matchedCat?.name || 'মডেল টেস্ট';
+
+      // Tag = category name + number (e.g. "উইকলি মডেল টেস্ট-১"). Kept as it is when the
+      // category did not change, otherwise the next free number of the category is used.
+      const keepTag = Boolean(editPaper && editPaper.categoryId === selectedCategoryId && editPaper.shortName);
+      const shortName = keepTag
+        ? editPaper!.shortName
+        : await getNextPaperLabel(selectedCategoryId, catName, editPaper?.id);
 
       await savePaper({
         id: editPaper ? editPaper.id : undefined,
         title: title.trim(),
-        shortName: shortName.trim(),
+        shortName,
         subjectLine: subjectLine.trim(),
         note: note.trim(),
-        category: matchedCat?.name || 'মডেল টেস্ট',
+        category: catName,
         categoryId: selectedCategoryId,
         duration,
         totalMarks: Number(totalMarks) || 50,
@@ -311,48 +337,36 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
             />
           </div>
 
-          {/* Short Name & Category Dropdown */}
-          <div className="grid grid-cols-2 gap-2.5">
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-[#1B1F2A] dark:text-slate-200">
-                সংক্ষিপ্ত নাম *
-              </label>
-              <input
-                type="text"
-                value={shortName}
-                onChange={(e) => {
-                  setShortName(e.target.value);
-                  setValidationError(null);
-                }}
-                placeholder="যেমন: MT-01"
-                className="w-full min-h-[44px] px-3 py-2 rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-[#1B1F2A] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-[#1B1F2A] dark:text-slate-200">
-                ক্যাটেগরি *
-              </label>
-              <select
-                value={selectedCategoryId}
-                onChange={handleCategorySelectChange}
-                className="w-full min-h-[44px] px-2.5 py-2 rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-[#1B1F2A] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
-              >
-                {categories.length === 0 ? (
+          {/* Category (main) */}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-[#1B1F2A] dark:text-slate-200">
+              ক্যাটেগরি *
+            </label>
+            <select
+              value={selectedCategoryId}
+              onChange={handleCategorySelectChange}
+              className="w-full min-h-[44px] px-3 py-2 rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-[#1B1F2A] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
+            >
+              {categories.length === 0 ? (
+                <option value="__ADD_NEW__">+ নতুন ক্যাটেগরি</option>
+              ) : (
+                <>
+                  <option value="">-- নির্বাচন করুন --</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
                   <option value="__ADD_NEW__">+ নতুন ক্যাটেগরি</option>
-                ) : (
-                  <>
-                    <option value="">-- নির্বাচন করুন --</option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                    <option value="__ADD_NEW__">+ নতুন ক্যাটেগরি</option>
-                  </>
-                )}
-              </select>
-            </div>
+                </>
+              )}
+            </select>
+            {tagPreview && (
+              <p className="text-[0.6875rem] text-[#64748B] dark:text-slate-400">
+                প্রশ্নপত্রের নাম:{' '}
+                <span className="font-bold text-[#3B4FD8] dark:text-indigo-300">{tagPreview}</span>
+              </p>
+            )}
           </div>
 
           {/* Subject Line */}

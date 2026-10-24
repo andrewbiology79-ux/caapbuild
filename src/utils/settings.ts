@@ -1,4 +1,4 @@
-import { db } from '../db/db';
+import { db, DEFAULT_PAPER_NOTE } from '../db/db';
 
 export type ThemeMode = 'light' | 'dark';
 export type FontSizeOption = 'small' | 'medium' | 'large';
@@ -7,12 +7,15 @@ export interface AppSettings {
   theme: ThemeMode;
   fontSize: FontSizeOption;
   defaultPaperTitle: string;
+  /** দ্রষ্টব্য (note) that is filled in automatically for every new question paper. '' = no note */
+  defaultPaperNote: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'light',
   fontSize: 'medium',
   defaultPaperTitle: 'পদার্থবিজ্ঞান ১ম পত্র - মডেল টেস্ট',
+  defaultPaperNote: DEFAULT_PAPER_NOTE,
 };
 
 const SETTINGS_KEY = 'settings';
@@ -45,6 +48,10 @@ function normalizeSettings(raw: any): AppSettings {
       typeof merged.defaultPaperTitle === 'string' && merged.defaultPaperTitle.trim()
         ? merged.defaultPaperTitle
         : DEFAULT_SETTINGS.defaultPaperTitle,
+    defaultPaperNote:
+      typeof merged.defaultPaperNote === 'string'
+        ? merged.defaultPaperNote
+        : DEFAULT_SETTINGS.defaultPaperNote,
   };
 }
 

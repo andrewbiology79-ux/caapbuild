@@ -133,23 +133,39 @@ export async function ensureStorageAccess(): Promise<boolean> {
  * Saving
  * ---------------------------------------------------------------- */
 
-function sanitizeFileName(name: string): string {
+export function sanitizeFileName(name: string): string {
   return name.replace(/[\\/:*?"<>|\r\n\t]+/g, '-').trim() || 'question-paper';
 }
 
-/**
- * Save a PDF (base64 without data-URL prefix) into Download/QbCollection.
- * Returns the saved path (relative to the phone's internal storage).
- */
-export async function savePdfToPhoneStorage(base64Data: string, baseName: string): Promise<string> {
+/** Time stamp like 20261024-153012 (used in file / folder names) */
+export function makeTimeStamp(): string {
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
-  const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(
+  return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(
     now.getMinutes()
   )}${pad(now.getSeconds())}`;
+}
 
+export interface SavePdfOptions {
+  /** Folder to save into (relative to the phone's internal storage). Default: Download/QbCollection */
+  folder?: string;
+  /** Add a time stamp to the file name (default true) */
+  addStamp?: boolean;
+}
+
+/**
+ * Save a PDF (base64 without data-URL prefix) into Download/QbCollection
+ * (or into the given folder). Returns the saved path (relative to the phone's internal storage).
+ */
+export async function savePdfToPhoneStorage(
+  base64Data: string,
+  baseName: string,
+  options: SavePdfOptions = {}
+): Promise<string> {
+  const folder = options.folder || PDF_SAVE_FOLDER;
   const cleanBase = sanitizeFileName(baseName.replace(/\.pdf$/i, ''));
-  const filePath = `${PDF_SAVE_FOLDER}/${cleanBase}_${stamp}.pdf`;
+  const fileName = options.addStamp === false ? `${cleanBase}.pdf` : `${cleanBase}_${makeTimeStamp()}.pdf`;
+  const filePath = `${folder}/${fileName}`;
 
   await Filesystem.writeFile({
     path: filePath,

@@ -14,6 +14,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   const [theme, setTheme] = useState<ThemeMode>('light');
   const [fontSize, setFontSize] = useState<FontSizeOption>('medium');
   const [defaultPaperTitle, setDefaultPaperTitle] = useState('');
+  const [defaultPaperNote, setDefaultPaperNote] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -23,6 +24,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
       setTheme(s.theme);
       setFontSize(s.fontSize);
       setDefaultPaperTitle(s.defaultPaperTitle || '');
+      setDefaultPaperNote(s.defaultPaperNote ?? '');
     };
     load();
   }, [isOpen]);
@@ -36,6 +38,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
         theme,
         fontSize,
         defaultPaperTitle: defaultPaperTitle.trim() || 'পদার্থবিজ্ঞান ১ম পত্র - মডেল টেস্ট',
+        defaultPaperNote: defaultPaperNote.trim(),
       };
       await saveAppSettings(newSettings);
       showToast('সেটিংস সফলভাবে সংরক্ষিত হয়েছে');
@@ -159,6 +162,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
             />
             <p className="text-[0.6875rem] text-[#64748B] dark:text-slate-400">
               Create ট্যাবে নতুন প্রশ্নপত্র তৈরির সময় এই শিরোনামটি স্বয়ংক্রিয়ভাবে বসবে।
+            </p>
+          </div>
+
+          {/* 4. Default Paper Note (দ্রষ্টব্য) */}
+          <div className="space-y-2 pt-2 border-t border-[#F2F4F8] dark:border-slate-800">
+            <label className="text-xs font-bold text-[#1B1F2A] dark:text-slate-200 flex items-center gap-1.5">
+              <FileText className="w-4 h-4 text-[#3B4FD8]" />
+              <span>প্রশ্নপত্রের ডিফল্ট দ্রষ্টব্য</span>
+            </label>
+            <textarea
+              value={defaultPaperNote}
+              onChange={(e) => setDefaultPaperNote(e.target.value)}
+              rows={4}
+              placeholder="যেমন: [ দ্রষ্টব্য: ডান পাশের সংখ্যা প্রশ্নের পূর্ণমান নির্দেশক। ]"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-white dark:bg-slate-800 text-xs leading-relaxed text-[#1B1F2A] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#3B4FD8] resize-y"
+            />
+            <p className="text-[0.6875rem] text-[#64748B] dark:text-slate-400">
+              নতুন প্রশ্নপত্র তৈরির সময় "দ্রষ্টব্য" ঘরে এই লেখাটি স্বয়ংক্রিয়ভাবে বসবে। ফাঁকা রাখলে কোনো দ্রষ্টব্য আসবে না।
             </p>
           </div>
         </div>
