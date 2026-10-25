@@ -28,6 +28,7 @@ import {
 import { Header } from '../components/Header';
 import { KebabMenu, type MenuItem } from '../components/KebabMenu';
 import { RichText } from '../components/RichText';
+import { QuestionBoardTags } from '../components/QuestionBoardTags';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ActionSheet } from '../components/ActionSheet';
 import { ImageViewerModal } from '../components/ImageViewerModal';
@@ -349,24 +350,27 @@ const ResultCard: React.FC<ResultCardProps> = React.memo(
             </div>
 
             <div>
-              <button
-                type="button"
-                aria-label={solutionOpen ? 'সমাধান লুকান' : 'সমাধান দেখুন'}
-                onClick={() => setSolutionOpen((o) => !o)}
-                className="min-h-[44px] px-3.5 py-1.5 rounded-xl border border-[#D5D9E2] bg-white hover:bg-[#F2F4F8] text-xs font-semibold text-[#2A3BB0] flex items-center gap-1.5 transition-colors"
-              >
-                {solutionOpen ? (
-                  <>
-                    <EyeOff className="w-4 h-4" />
-                    <span>সমাধান লুকাও</span>
-                  </>
-                ) : (
-                  <>
-                    <Eye className="w-4 h-4" />
-                    <span>সমাধান দেখো</span>
-                  </>
-                )}
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  aria-label={solutionOpen ? 'সমাধান লুকান' : 'সমাধান দেখুন'}
+                  onClick={() => setSolutionOpen((o) => !o)}
+                  className="min-h-[34px] px-2.5 py-1 rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#F2F4F8] text-[0.6875rem] font-semibold text-[#2A3BB0] flex items-center gap-1 transition-colors shrink-0"
+                >
+                  {solutionOpen ? (
+                    <>
+                      <EyeOff className="w-3.5 h-3.5" />
+                      <span>সমাধান লুকাও</span>
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>সমাধান দেখো</span>
+                    </>
+                  )}
+                </button>
+                <QuestionBoardTags boards={q.usedInBoards} />
+              </div>
 
               {solutionOpen && (
                 <div className="mt-2.5 p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-2">

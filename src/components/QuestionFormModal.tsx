@@ -403,36 +403,34 @@ const ImageStrip: React.FC<ImageStripProps> = ({
                 </button>
               </div>
               {fullFeatures && (
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      aria-label="ছবি বদলান"
-                      onClick={() => onReplace(imgId)}
-                      className="flex-1 min-h-[36px] rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#EEF2FF] text-[#2A3BB0] text-[0.6875rem] font-semibold flex items-center justify-center gap-1"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      <span>বদলান</span>
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="ছবি এক্সপোর্ট করুন"
-                      title="ছবি এক্সপোর্ট (ডাউনলোড)"
-                      disabled={!url}
-                      onClick={() => onExport(imgId)}
-                      className="min-h-[36px] min-w-[40px] shrink-0 rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#EEF2FF] active:bg-[#E0E7FF] text-[#2A3BB0] flex items-center justify-center disabled:opacity-40 disabled:pointer-events-none"
-                    >
-                      <Download className="w-4 h-4" />
-                    </button>
-                  </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    aria-label="ছবি বদলান"
+                    title="বদলান"
+                    onClick={() => onReplace(imgId)}
+                    className="flex-1 min-h-[36px] rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#EEF2FF] active:bg-[#E0E7FF] text-[#2A3BB0] flex items-center justify-center"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="ছবি এক্সপোর্ট করুন"
+                    title="এক্সপোর্ট (ডাউনলোড)"
+                    disabled={!url}
+                    onClick={() => onExport(imgId)}
+                    className="flex-1 min-h-[36px] rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#EEF2FF] active:bg-[#E0E7FF] text-[#2A3BB0] flex items-center justify-center disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    <Download className="w-4 h-4" />
+                  </button>
                   <button
                     type="button"
                     aria-label="বড় প্রিভিউ দেখুন"
+                    title="বড় দেখুন"
                     onClick={() => onOpenViewer(idx)}
-                    className="w-full min-h-[36px] rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#EEF2FF] text-[#2A3BB0] text-[0.6875rem] font-semibold flex items-center justify-center gap-1"
+                    className="flex-1 min-h-[36px] rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#EEF2FF] active:bg-[#E0E7FF] text-[#2A3BB0] flex items-center justify-center"
                   >
-                    <Maximize2 className="w-3.5 h-3.5" />
-                    <span>বড় দেখুন</span>
+                    <Maximize2 className="w-4 h-4" />
                   </button>
                 </div>
               )}

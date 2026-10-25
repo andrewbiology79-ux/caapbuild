@@ -17,6 +17,7 @@ import { ImageViewerModal } from '../components/ImageViewerModal';
 import { ReferenceDialog } from '../components/ReferenceDialog';
 import { exportQuestionCollection } from '../utils/collectionTransfer';
 import { RichText } from '../components/RichText';
+import { QuestionBoardTags } from '../components/QuestionBoardTags';
 import { KebabMenu, type MenuItem } from '../components/KebabMenu';
 import { toBn, toBnPad2 } from '../utils/toBn';
 import { useNavigation } from '../utils/navigation';
@@ -1623,31 +1624,34 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
                                 />
                               </div>
 
-                              {/* "সমাধান দেখো" button */}
+                              {/* "সমাধান দেখো" button + the boards this question (গ / ঘ) came in */}
                               <div>
-                                <button
-                                  type="button"
-                                  aria-label={isSolutionOpen ? 'সমাধান লুকান' : 'সমাধান দেখুন'}
-                                  onClick={() =>
-                                    setExpandedSolutions((prev) => ({
-                                      ...prev,
-                                      [question.id]: !isSolutionOpen,
-                                    }))
-                                  }
-                                  className="min-h-[44px] px-3.5 py-1.5 rounded-xl border border-[#D5D9E2] bg-white hover:bg-[#F2F4F8] text-xs font-semibold text-[#2A3BB0] flex items-center gap-1.5 transition-colors"
-                                >
-                                  {isSolutionOpen ? (
-                                    <>
-                                      <EyeOff className="w-4 h-4" />
-                                      <span>সমাধান লুকাও</span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Eye className="w-4 h-4" />
-                                      <span>সমাধান দেখো</span>
-                                    </>
-                                  )}
-                                </button>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <button
+                                    type="button"
+                                    aria-label={isSolutionOpen ? 'সমাধান লুকান' : 'সমাধান দেখুন'}
+                                    onClick={() =>
+                                      setExpandedSolutions((prev) => ({
+                                        ...prev,
+                                        [question.id]: !isSolutionOpen,
+                                      }))
+                                    }
+                                    className="min-h-[34px] px-2.5 py-1 rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#F2F4F8] text-[0.6875rem] font-semibold text-[#2A3BB0] flex items-center gap-1 transition-colors shrink-0"
+                                  >
+                                    {isSolutionOpen ? (
+                                      <>
+                                        <EyeOff className="w-3.5 h-3.5" />
+                                        <span>সমাধান লুকাও</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Eye className="w-3.5 h-3.5" />
+                                        <span>সমাধান দেখো</span>
+                                      </>
+                                    )}
+                                  </button>
+                                  <QuestionBoardTags boards={question.usedInBoards} />
+                                </div>
 
                                 {/* Solution expansion */}
                                 {isSolutionOpen && (
