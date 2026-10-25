@@ -36,6 +36,13 @@ export type {
 /**
  * Generate a unique ID (crypto.randomUUID with fallback)
  */
+/** Always-present category (pinned on top) that holds papers without a category */
+export const UNCATEGORIZED_NAME = 'অশ্রেণিবদ্ধ';
+
+export function isUncategorizedName(name?: string | null): boolean {
+  return (name || '').trim() === UNCATEGORIZED_NAME;
+}
+
 export function generateId(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
@@ -1118,6 +1125,22 @@ async function ensureDefaultCategories(): Promise<Category[]> {
     list = await db.categories.toArray();
   }
 
+  // The pinned uncategorized category always exists (order 0 = on top)
+  let uncategorized = list.find((c) => isUncategorizedName(c.name));
+  if (!uncategorized) {
+    uncategorized = {
+      id: generateId(),
+      name: UNCATEGORIZED_NAME,
+      order: 0,
+      createdAt: Date.now(),
+    };
+    await db.categories.add(uncategorized);
+    list.push(uncategorized);
+  } else if (uncategorized.order !== 0) {
+    await db.categories.update(uncategorized.id, { order: 0 });
+    uncategorized.order = 0;
+  }
+
   // Ensure all existing papers have a valid categoryId
   const allPapers = await db.papers.toArray();
   const catByName = new Map<string, Category>();
@@ -1129,11 +1152,16 @@ async function ensureDefaultCategories(): Promise<Category[]> {
       if (existingMatch) {
         await db.papers.update(p.id, { categoryId: existingMatch.id });
       } else {
-        // Create new category for this paper or assign to first
-        const newCatName = p.category?.trim() || 'সাধারণ';
-        const newCat = await saveCategory(newCatName);
-        catByName.set(newCatName, newCat);
-        await db.papers.update(p.id, { categoryId: newCat.id });
+        const newCatName = p.category?.trim();
+        if (!newCatName) {
+          // no category at all -> pinned uncategorized category
+          await db.papers.update(p.id, { categoryId: uncategorized.id, category: uncategorized.name });
+        } else {
+          const newCat = await saveCategory(newCatName);
+          catByName.set(newCatName, newCat);
+          if (!list.some((c) => c.id === newCat.id)) list.push(newCat);
+          await db.papers.update(p.id, { categoryId: newCat.id });
+        }
       }
     }
   }
@@ -1192,6 +1220,12 @@ async function updateCategory(id: string, name: string): Promise<void> {
   }
 
   const oldCat = await db.categories.get(id);
+  if (oldCat && isUncategorizedName(oldCat.name)) {
+    throw new Error('অশ্রেণিবদ্ধ ক্যাটেগরির নাম বদলানো যায় না');
+  }
+  if (isUncategorizedName(trimmed)) {
+    throw new Error('এই নামটি সংরক্ষিত, অন্য নাম দিন');
+  }
   await db.categories.update(id, { name: trimmed });
   // Also update category string (and the "<category>-<number>" tag) in papers for consistency
   const papers = await db.papers.where('categoryId').equals(id).toArray();
@@ -1207,6 +1241,10 @@ async function updateCategory(id: string, name: string): Promise<void> {
 
 
 async function deleteCategory(id: string): Promise<void> {
+  const target = await db.categories.get(id);
+  if (target && isUncategorizedName(target.name)) {
+    throw new Error('অশ্রেণিবদ্ধ ক্যাটেগরি মোছা যায় না');
+  }
   // Move papers to "অশ্রেণিবদ্ধ" category
   let unclassified = await db.categories.where('name').equalsIgnoreCase('অশ্রেণিবদ্ধ').first();
   if (!unclassified) {
@@ -1214,8 +1252,8 @@ async function deleteCategory(id: string): Promise<void> {
     const maxOrder = all.reduce((max, c) => Math.max(max, c.order || 0), 0);
     unclassified = {
       id: generateId(),
-      name: 'অশ্রেণিবদ্ধ',
-      order: maxOrder + 1,
+      name: UNCATEGORIZED_NAME,
+      order: 0,
       createdAt: Date.now(),
     };
     await db.categories.add(unclassified);

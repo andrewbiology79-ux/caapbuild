@@ -30,6 +30,8 @@ export interface GeneratePdfOptions {
   saveFolder?: string;
   /** File name (without .pdf) used together with saveFolder / browser download */
   fileBaseName?: string;
+  /** html2canvas render scale (default 3). Batch export uses a lower value to save memory. */
+  canvasScale?: number;
 }
 
 /**
@@ -882,7 +884,7 @@ export async function generateAndSharePdf(options: GeneratePdfOptions): Promise<
       }
 
       const canvas = await html2canvas(pageSlots[i].pageDiv, {
-        scale: 3,
+        scale: options.canvasScale ?? 3,
         useCORS: true,
         backgroundColor: '#ffffff',
         width: PAGE_WIDTH_PX,
@@ -968,7 +970,7 @@ export async function generateAndSharePdf(options: GeneratePdfOptions): Promise<
  */
 export async function exportPaperById(
   paperId: string,
-  extra: { saveFolder?: string; fileBaseName?: string; fontScale?: number } = {}
+  extra: { saveFolder?: string; fileBaseName?: string; fontScale?: number; canvasScale?: number } = {}
 ): Promise<string | undefined> {
   const paper = await db.papers.get(paperId);
   if (!paper) {
@@ -1056,9 +1058,18 @@ export interface BatchPdfResult {
  * Export many papers at once without any preview: a NEW folder is created inside the
  * default PDF folder and every PDF is saved into it.
  */
+export interface BatchPdfOptions {
+  /** Name of the new folder (e.g. the category name). Default: "প্রশ্নপত্র_<time stamp>" */
+  folderName?: string;
+}
+
+/** Let the WebView free the big canvases of the previous PDF before the next one starts */
+const breathe = (ms = 350) => new Promise<void>((r) => setTimeout(r, ms));
+
 export async function exportPapersToNewFolder(
   paperIds: string[],
-  onProgress?: (done: number, total: number) => void
+  onProgress?: (done: number, total: number) => void,
+  options: BatchPdfOptions = {}
 ): Promise<BatchPdfResult> {
   const native = Capacitor.isNativePlatform();
 
@@ -1069,7 +1080,10 @@ export async function exportPapersToNewFolder(
     }
   }
 
-  const folder = native ? `${PDF_SAVE_FOLDER}/প্রশ্নপত্র_${makeTimeStamp()}` : '';
+  const folderLabel = options.folderName?.trim()
+    ? sanitizeFileName(options.folderName)
+    : `প্রশ্নপত্র_${makeTimeStamp()}`;
+  const folder = native ? `${PDF_SAVE_FOLDER}/${folderLabel}` : '';
   const fontScale = await getPdfFontScale();
   const usedNames = new Set<string>();
   const failed: string[] = [];
@@ -1097,17 +1111,18 @@ export async function exportPapersToNewFolder(
         saveFolder: native ? folder : undefined,
         fileBaseName: name,
         fontScale,
+        // several PDFs in a row: a lighter render keeps the app from running out of memory
+        canvasScale: native ? 2 : undefined,
       });
       saved++;
-      if (!native) {
-        // give the browser a moment between several downloads
-        await new Promise((r) => setTimeout(r, 400));
-      }
     } catch (err) {
       console.error('Batch PDF export failed for', id, err);
       failed.push(label || id);
     }
     onProgress?.(i + 1, paperIds.length);
+    if (i < paperIds.length - 1) {
+      await breathe(native ? 350 : 400);
+    }
   }
 
   return { folder, saved, failed };

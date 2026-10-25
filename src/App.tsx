@@ -7,10 +7,12 @@ import { CollectionScreen } from './screens/CollectionScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
 import { FilterScreen } from './screens/FilterScreen';
 import { getAppSettings, applySettingsToDOM } from './utils/settings';
+import { hideSystemBars } from './utils/storageAccess';
+import { App as CapacitorApp } from '@capacitor/app';
 import { StoragePermissionDialog } from './components/StoragePermissionDialog';
 import { PdfSavedDialog } from './components/PdfSavedDialog';
 
-import { StatusBar, Style } from '@capacitor/status-bar';
+import { StatusBar } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
 
 const MainLayout: React.FC = () => {
@@ -21,18 +23,33 @@ const MainLayout: React.FC = () => {
       const settings = await getAppSettings();
       applySettingsToDOM(settings);
 
-      // Configure Capacitor StatusBar on native platform
+      // Full screen: status bar + navigation bar hidden (swipe from the edge to peek)
       if (Capacitor.isNativePlatform()) {
         try {
-          await StatusBar.setOverlaysWebView({ overlay: false });
-          await StatusBar.setBackgroundColor({ color: '#3B4FD8' });
-          await StatusBar.setStyle({ style: Style.Dark });
+          await StatusBar.hide();
         } catch (e) {
-          console.warn('Failed to configure StatusBar:', e);
+          console.warn('Failed to hide StatusBar:', e);
         }
+        await hideSystemBars();
       }
     };
     initApp();
+
+    // Bring back full screen whenever the app returns to the foreground
+    let handle: { remove: () => Promise<void> } | null = null;
+    if (Capacitor.isNativePlatform()) {
+      CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+        if (isActive) {
+          StatusBar.hide().catch(() => {});
+          hideSystemBars();
+        }
+      }).then((h) => {
+        handle = h;
+      });
+    }
+    return () => {
+      handle?.remove();
+    };
   }, []);
 
   return (

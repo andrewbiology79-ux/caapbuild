@@ -7,8 +7,13 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.provider.Settings;
+import android.view.Window;
+import android.app.Activity;
 
 import androidx.core.content.FileProvider;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
 import java.io.File;
 
@@ -24,6 +29,37 @@ import com.getcapacitor.annotation.CapacitorPlugin;
  */
 @CapacitorPlugin(name = "StorageAccess")
 public class StorageAccessPlugin extends Plugin {
+
+    /**
+     * Full screen: hides the status bar and the navigation bar. A swipe from the screen edge
+     * shows them for a moment (transient) and they hide again by themselves.
+     */
+    public static void hideSystemBars(final Activity activity) {
+        if (activity == null) return;
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Window window = activity.getWindow();
+                    WindowInsetsControllerCompat controller =
+                        WindowCompat.getInsetsController(window, window.getDecorView());
+                    if (controller == null) return;
+                    controller.setSystemBarsBehavior(
+                        WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    );
+                    controller.hide(WindowInsetsCompat.Type.systemBars());
+                } catch (Exception ignored) {
+                    // never crash the app because of the bars
+                }
+            }
+        });
+    }
+
+    @PluginMethod
+    public void hideSystemBars(PluginCall call) {
+        hideSystemBars(getActivity());
+        call.resolve();
+    }
 
     @PluginMethod
     public void check(PluginCall call) {
