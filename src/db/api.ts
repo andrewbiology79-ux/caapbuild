@@ -172,6 +172,13 @@ const META_CATEGORY_CLIPBOARD_KEY = 'category_clipboard';
  * API factory — one instance per database (Type CQ / Chapter CQ)
  * ----------------------------------------------------------- */
 
+/** The permanent category that receives every paper without (or after losing) a category */
+export const UNCATEGORIZED_NAME = 'অশ্রেণিবদ্ধ';
+
+export function isUncategorizedCategory(cat?: { name: string } | null): boolean {
+  return Boolean(cat) && cat!.name.trim() === UNCATEGORIZED_NAME;
+}
+
 export function createQbApi(db: QbDatabase) {
 async function getSubjects(): Promise<Subject[]> {
   const list = await db.subjects.toArray();
@@ -1102,6 +1109,20 @@ async function deletePaper(id: string): Promise<void> {
  * ----------------------------------------------------------- */
 
 
+async function ensureUncategorized(): Promise<Category> {
+  const existing = await db.categories.where('name').equalsIgnoreCase(UNCATEGORIZED_NAME).first();
+  if (existing) return existing;
+  const created: Category = {
+    id: generateId(),
+    name: UNCATEGORIZED_NAME,
+    order: 0,
+    createdAt: Date.now(),
+  };
+  await db.categories.add(created);
+  return created;
+}
+
+
 async function ensureDefaultCategories(): Promise<Category[]> {
   let list = await db.categories.toArray();
   if (list.length === 0) {
@@ -1118,6 +1139,11 @@ async function ensureDefaultCategories(): Promise<Category[]> {
     list = await db.categories.toArray();
   }
 
+  // The "অশ্রেণিবদ্ধ" (uncategorized) category always exists
+  if (!list.some((c) => c.name.trim().toLowerCase() === UNCATEGORIZED_NAME.toLowerCase())) {
+    list.push(await ensureUncategorized());
+  }
+
   // Ensure all existing papers have a valid categoryId
   const allPapers = await db.papers.toArray();
   const catByName = new Map<string, Category>();
@@ -1130,7 +1156,7 @@ async function ensureDefaultCategories(): Promise<Category[]> {
         await db.papers.update(p.id, { categoryId: existingMatch.id });
       } else {
         // Create new category for this paper or assign to first
-        const newCatName = p.category?.trim() || 'সাধারণ';
+        const newCatName = p.category?.trim() || UNCATEGORIZED_NAME;
         const newCat = await saveCategory(newCatName);
         catByName.set(newCatName, newCat);
         await db.papers.update(p.id, { categoryId: newCat.id });
@@ -1192,6 +1218,9 @@ async function updateCategory(id: string, name: string): Promise<void> {
   }
 
   const oldCat = await db.categories.get(id);
+  if (isUncategorizedCategory(oldCat)) {
+    throw new Error('"অশ্রেণিবদ্ধ" ক্যাটেগরির নাম বদলানো যাবে না');
+  }
   await db.categories.update(id, { name: trimmed });
   // Also update category string (and the "<category>-<number>" tag) in papers for consistency
   const papers = await db.papers.where('categoryId').equals(id).toArray();
@@ -1207,20 +1236,14 @@ async function updateCategory(id: string, name: string): Promise<void> {
 
 
 async function deleteCategory(id: string): Promise<void> {
-  // Move papers to "অশ্রেণিবদ্ধ" category
-  let unclassified = await db.categories.where('name').equalsIgnoreCase('অশ্রেণিবদ্ধ').first();
-  if (!unclassified) {
-    const all = await db.categories.toArray();
-    const maxOrder = all.reduce((max, c) => Math.max(max, c.order || 0), 0);
-    unclassified = {
-      id: generateId(),
-      name: 'অশ্রেণিবদ্ধ',
-      order: maxOrder + 1,
-      createdAt: Date.now(),
-    };
-    await db.categories.add(unclassified);
+  const target = await db.categories.get(id);
+  if (!target) return;
+  if (isUncategorizedCategory(target)) {
+    throw new Error('"অশ্রেণিবদ্ধ" ক্যাটেগরি মোছা যাবে না');
   }
 
+  // Papers of the deleted category move to "অশ্রেণিবদ্ধ"
+  const unclassified = await ensureUncategorized();
   const affectedPapers = await db.papers.where('categoryId').equals(id).toArray();
   for (const p of affectedPapers) {
     await db.papers.update(p.id, {
@@ -1230,6 +1253,32 @@ async function deleteCategory(id: string): Promise<void> {
   }
 
   await db.categories.delete(id);
+}
+
+
+/** Delete several categories at once (papers move to "অশ্রেণিবদ্ধ"). Returns how many were deleted. */
+async function deleteCategories(ids: string[]): Promise<number> {
+  let deleted = 0;
+  for (const id of ids) {
+    const cat = await db.categories.get(id);
+    if (!cat || isUncategorizedCategory(cat)) continue;
+    await deleteCategory(id);
+    deleted++;
+  }
+  return deleted;
+}
+
+
+/** Save a manual order: the given ids get order 1,2,3… (the "অশ্রেণিবদ্ধ" category always stays first) */
+async function reorderCategories(orderedIds: string[]): Promise<void> {
+  await db.transaction('rw', db.categories, async () => {
+    let n = 1;
+    for (const id of orderedIds) {
+      const cat = await db.categories.get(id);
+      if (!cat || isUncategorizedCategory(cat)) continue;
+      await db.categories.update(id, { order: n++ });
+    }
+  });
 }
 
 
@@ -1652,6 +1701,9 @@ async function seedInitialDataIfNeeded(): Promise<boolean> {
     saveCategory,
     updateCategory,
     deleteCategory,
+    deleteCategories,
+    reorderCategories,
+    ensureUncategorized,
     getPapersByCategory,
     getCategoryStats,
     getCategoryClipboard,
@@ -1742,6 +1794,9 @@ export const {
   saveCategory,
   updateCategory,
   deleteCategory,
+  deleteCategories,
+  reorderCategories,
+  ensureUncategorized,
   getPapersByCategory,
   getCategoryStats,
   getCategoryClipboard,

@@ -28,6 +28,9 @@ import {
   movePaperToCategory,
   duplicatePaper,
   duplicateCategory,
+  deleteCategories,
+  reorderCategories,
+  isUncategorizedCategory,
   getCategoryClipboard,
   setCategoryClipboard,
   type CategoryClipboard,
@@ -74,6 +77,12 @@ import {
   Square,
   FolderDown,
   FileArchive,
+  Pin,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
+  ListOrdered,
+  Check,
 } from 'lucide-react';
 import { Share } from '@capacitor/share';
 import { exportPaperById, exportCategoriesToFolders, type CategoriesPdfResult } from '../utils/pdfGenerator';
@@ -86,6 +95,20 @@ import {
   parseCategoryShare,
   importCategoryShare,
 } from '../utils/categoryTransfer';
+
+type CategorySortMode = 'custom' | 'name-asc' | 'name-desc' | 'newest' | 'oldest' | 'papers-desc' | 'papers-asc';
+
+const SORT_OPTIONS: Array<{ id: CategorySortMode; label: string }> = [
+  { id: 'custom', label: 'আমার সাজানো ক্রম (রি-অর্ডার)' },
+  { id: 'name-asc', label: 'নাম (অ → হ)' },
+  { id: 'name-desc', label: 'নাম (হ → অ)' },
+  { id: 'newest', label: 'নতুন আগে' },
+  { id: 'oldest', label: 'পুরোনো আগে' },
+  { id: 'papers-desc', label: 'বেশি প্রশ্নপত্র আগে' },
+  { id: 'papers-asc', label: 'কম প্রশ্নপত্র আগে' },
+];
+
+const CATEGORY_SORT_META_KEY = 'category_sort_mode';
 
 type ProfileViewMode = 'main' | 'categories' | 'category-detail';
 
@@ -160,7 +183,13 @@ export const ProfileScreen: React.FC = () => {
 
   // Multi-select of categories (ribbon menu: select / backup export / PDF export)
   const [selectMode, setSelectMode] = useState<boolean>(false);
-  const [selectPurpose, setSelectPurpose] = useState<'backup' | 'pdf' | null>(null);
+  const [selectPurpose, setSelectPurpose] = useState<'backup' | 'pdf' | 'delete' | null>(null);
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState<boolean>(false);
+
+  // Sort / manual re-order of categories
+  const [sortMode, setSortMode] = useState<CategorySortMode>('custom');
+  const [showSortDialog, setShowSortDialog] = useState<boolean>(false);
+  const [reorderMode, setReorderMode] = useState<boolean>(false);
   const [selectedCatIds, setSelectedCatIds] = useState<string[]>([]);
   const [pdfProgress, setPdfProgress] = useState<{ done: number; total: number } | null>(null);
   const [pdfResult, setPdfResult] = useState<CategoriesPdfResult | null>(null);
@@ -201,8 +230,82 @@ export const ProfileScreen: React.FC = () => {
     loadData();
   }, [loadData]);
 
+  // remembered sort mode
+  useEffect(() => {
+    db.meta
+      .get(CATEGORY_SORT_META_KEY)
+      .then((rec) => {
+        const v = rec?.value as CategorySortMode | undefined;
+        if (v && SORT_OPTIONS.some((o) => o.id === v)) setSortMode(v);
+      })
+      .catch(() => {});
+  }, []);
+
+  const changeSortMode = async (mode: CategorySortMode) => {
+    setSortMode(mode);
+    try {
+      await db.meta.put({ key: CATEGORY_SORT_META_KEY, value: mode });
+    } catch (err) {
+      console.warn('Could not save sort mode', err);
+    }
+  };
+
+  // "অশ্রেণিবদ্ধ" (uncategorized) is always pinned on top, the rest follows the chosen sort
+  const visibleCategories = React.useMemo(() => {
+    const pinned = categories.filter((c) => isUncategorizedCategory(c));
+    const rest = categories.filter((c) => !isUncategorizedCategory(c));
+    const papersOf = (c: Category) => catStats[c.id]?.paperCount || 0;
+    const collator = new Intl.Collator('bn');
+    const sorted = [...rest].sort((a, b) => {
+      switch (sortMode) {
+        case 'name-asc':
+          return collator.compare(a.name, b.name);
+        case 'name-desc':
+          return collator.compare(b.name, a.name);
+        case 'newest':
+          return (b.createdAt || 0) - (a.createdAt || 0);
+        case 'oldest':
+          return (a.createdAt || 0) - (b.createdAt || 0);
+        case 'papers-desc':
+          return papersOf(b) - papersOf(a);
+        case 'papers-asc':
+          return papersOf(a) - papersOf(b);
+        default:
+          return (a.order || 0) - (b.order || 0);
+      }
+    });
+    return [...pinned, ...sorted];
+  }, [categories, catStats, sortMode]);
+
+  const enterReorderMode = async () => {
+    // manual order starts from what is currently shown
+    await reorderCategories(visibleCategories.filter((c) => !isUncategorizedCategory(c)).map((c) => c.id));
+    await changeSortMode('custom');
+    await loadData();
+    setReorderMode(true);
+  };
+
+  const moveCategory = async (id: string, dir: -1 | 1) => {
+    const ids = visibleCategories.filter((c) => !isUncategorizedCategory(c)).map((c) => c.id);
+    const idx = ids.indexOf(id);
+    const to = idx + dir;
+    if (idx < 0 || to < 0 || to >= ids.length) return;
+    [ids[idx], ids[to]] = [ids[to], ids[idx]];
+    try {
+      await reorderCategories(ids);
+      await loadData();
+    } catch (err) {
+      console.error('Reorder failed:', err);
+      showToast('ক্রম বদলানো যায়নি');
+    }
+  };
+
   // Back button handling
   const handleGoBack = useCallback((): boolean => {
+    if (reorderMode) {
+      setReorderMode(false);
+      return true;
+    }
     if (selectMode) {
       setSelectMode(false);
       setSelectPurpose(null);
@@ -218,7 +321,7 @@ export const ProfileScreen: React.FC = () => {
       return true;
     }
     return false;
-  }, [viewMode, selectMode]);
+  }, [viewMode, selectMode, reorderMode]);
 
   useEffect(() => {
     const unregister = registerBackHandler(() => {
@@ -515,7 +618,7 @@ export const ProfileScreen: React.FC = () => {
 
   // ---------- Multi-select of categories ----------
 
-  const enterSelectMode = (purpose: 'backup' | 'pdf' | null) => {
+  const enterSelectMode = (purpose: 'backup' | 'pdf' | 'delete' | null) => {
     setSelectMode(true);
     setSelectPurpose(purpose);
     setSelectedCatIds([]);
@@ -530,7 +633,7 @@ export const ProfileScreen: React.FC = () => {
   const toggleCatSelected = (id: string) =>
     setSelectedCatIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
-  const selectAllCategories = () => setSelectedCatIds(categories.map((c) => c.id));
+  const selectAllCategories = () => setSelectedCatIds(visibleCategories.map((c) => c.id));
 
   // Backup file of the selected categories
   const handleExportSelectedBackup = async () => {
@@ -582,6 +685,35 @@ export const ProfileScreen: React.FC = () => {
       return;
     }
     runCategoriesPdfExport(categories.filter((c) => selectedCatIds.includes(c.id)));
+  };
+
+  const handleBulkDeleteClick = () => {
+    const deletable = categories.filter((c) => selectedCatIds.includes(c.id) && !isUncategorizedCategory(c));
+    if (deletable.length === 0) {
+      showToast(
+        selectedCatIds.length === 0
+          ? 'কমপক্ষে একটি ক্যাটেগরি নির্বাচন করুন'
+          : '"অশ্রেণিবদ্ধ" ক্যাটেগরি মোছা যায় না'
+      );
+      return;
+    }
+    setBulkDeleteConfirm(true);
+  };
+
+  const handleConfirmBulkDelete = async () => {
+    setBulkDeleteConfirm(false);
+    try {
+      const ids = categories
+        .filter((c) => selectedCatIds.includes(c.id) && !isUncategorizedCategory(c))
+        .map((c) => c.id);
+      const n = await deleteCategories(ids);
+      showToast(`${toBn(n)}টি ক্যাটেগরি মুছে ফেলা হয়েছে (প্রশ্নপত্র "অশ্রেণিবদ্ধ" এ গেছে)`, 3500);
+      exitSelectMode();
+      await loadData();
+    } catch (err: any) {
+      console.error('Bulk delete failed:', err);
+      showToast(err?.message || 'ক্যাটেগরি মুছতে ব্যর্থ');
+    }
   };
 
   // Share App
@@ -721,7 +853,16 @@ export const ProfileScreen: React.FC = () => {
   ];
 
   // Ribbon (header) 3-dot menu of the Categories screen
-  const categoryMenuItems = selectMode
+  const categoryMenuItems = reorderMode
+    ? [
+        {
+          id: 'reorder-done',
+          label: 'সম্পন্ন',
+          icon: <Check className="w-4 h-4 text-emerald-600" />,
+          onClick: () => setReorderMode(false),
+        },
+      ]
+    : selectMode
     ? [
         {
           id: 'select-all',
@@ -742,6 +883,18 @@ export const ProfileScreen: React.FC = () => {
           label: 'নতুন ক্যাটেগরি',
           icon: <Plus className="w-4 h-4 text-[#3B4FD8]" />,
           onClick: handleOpenAddCategory,
+        },
+        {
+          id: 'sort',
+          label: 'সর্ট করুন',
+          icon: <ArrowUpDown className="w-4 h-4 text-[#3B4FD8]" />,
+          onClick: () => setShowSortDialog(true),
+        },
+        {
+          id: 'reorder',
+          label: 'রি-অর্ডার (ক্রম বদলান)',
+          icon: <ListOrdered className="w-4 h-4 text-[#3B4FD8]" />,
+          onClick: enterReorderMode,
         },
         {
           id: 'select',
@@ -767,10 +920,40 @@ export const ProfileScreen: React.FC = () => {
           icon: <FileDown className="w-4 h-4 text-[#3B4FD8]" />,
           onClick: () => enterSelectMode('pdf'),
         },
+        {
+          id: 'delete-categories',
+          label: 'ক্যাটেগরি ডিলিট (সিলেক্ট করে)',
+          icon: <Trash2 className="w-4 h-4 text-red-500" />,
+          isDestructive: true,
+          onClick: () => enterSelectMode('delete'),
+        },
       ];
 
   // Popup menu (3 dots) of one category card
-  const categoryPopupItems = (cat: Category) => [
+  const categoryPopupItems = (cat: Category) => isUncategorizedCategory(cat) ? [
+    {
+      id: 'pdf',
+      label: 'PDF এক্সপোর্ট (নতুন ফোল্ডারে)',
+      icon: <FolderDown className="w-5 h-5 text-[#3B4FD8]" />,
+      onClick: () => runCategoriesPdfExport([cat]),
+    },
+    ...(clipboard?.type === 'paper'
+      ? [
+          {
+            id: 'paste-paper',
+            label: 'এখানে প্রশ্নপত্র পেস্ট করুন',
+            icon: <ClipboardPaste className="w-5 h-5 text-emerald-600" />,
+            onClick: () => handlePaste(cat),
+          },
+        ]
+      : []),
+    {
+      id: 'share',
+      label: 'শেয়ার করুন (ফাইল)',
+      icon: <Share2 className="w-5 h-5 text-[#3B4FD8]" />,
+      onClick: () => handleShareCategory(cat),
+    },
+  ] : [
     {
       id: 'pdf',
       label: 'PDF এক্সপোর্ট (নতুন ফোল্ডারে)',
@@ -1014,18 +1197,24 @@ export const ProfileScreen: React.FC = () => {
       {viewMode === 'categories' && (
         <>
           <Header
-            title={selectMode ? `${toBn(selectedCatIds.length)}টি নির্বাচিত` : 'ক্যাটেগরি'}
+            title={
+              reorderMode ? 'ক্যাটেগরি রি-অর্ডার' : selectMode ? `${toBn(selectedCatIds.length)}টি নির্বাচিত` : 'ক্যাটেগরি'
+            }
             subtitle={
-              selectMode
-                ? selectPurpose === 'pdf'
-                  ? 'PDF এক্সপোর্টের জন্য ক্যাটেগরি বাছুন'
-                  : selectPurpose === 'backup'
-                    ? 'ব্যাকআপের জন্য ক্যাটেগরি বাছুন'
-                    : 'ক্যাটেগরি নির্বাচন'
-                : 'প্রশ্নপত্রের বিভাগ ও ক্যাটেগরি'
+              reorderMode
+                ? 'তীর চেপে ক্রম বদলান'
+                : selectMode
+                  ? selectPurpose === 'pdf'
+                    ? 'PDF এক্সপোর্টের জন্য ক্যাটেগরি বাছুন'
+                    : selectPurpose === 'backup'
+                      ? 'ব্যাকআপের জন্য ক্যাটেগরি বাছুন'
+                      : selectPurpose === 'delete'
+                        ? 'মোছার জন্য ক্যাটেগরি বাছুন'
+                        : 'ক্যাটেগরি নির্বাচন'
+                  : 'প্রশ্নপত্রের বিভাগ ও ক্যাটেগরি'
             }
             showBack={true}
-            onBack={selectMode ? exitSelectMode : () => setViewMode('main')}
+            onBack={reorderMode ? () => setReorderMode(false) : selectMode ? exitSelectMode : () => setViewMode('main')}
             menuItems={categoryMenuItems}
           />
 
@@ -1037,14 +1226,23 @@ export const ProfileScreen: React.FC = () => {
               <span className="text-xs font-bold text-[#1B1F2A] dark:text-slate-300">
                 সকল ক্যাটেগরি ({toBn(categories.length)}টি)
               </span>
-              {selectMode ? (
+              {reorderMode ? (
                 <button
                   type="button"
-                  onClick={selectedCatIds.length === categories.length ? () => setSelectedCatIds([]) : selectAllCategories}
+                  onClick={() => setReorderMode(false)}
+                  className="min-h-[44px] px-3.5 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-bold flex items-center gap-1"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>সম্পন্ন</span>
+                </button>
+              ) : selectMode ? (
+                <button
+                  type="button"
+                  onClick={selectedCatIds.length === visibleCategories.length ? () => setSelectedCatIds([]) : selectAllCategories}
                   className="min-h-[44px] px-3.5 py-1.5 rounded-xl border border-[#3B4FD8] text-[#3B4FD8] dark:text-indigo-300 text-xs font-bold flex items-center gap-1"
                 >
                   <CheckSquare className="w-4 h-4" />
-                  <span>{selectedCatIds.length === categories.length ? 'সব বাদ দিন' : 'সব নির্বাচন'}</span>
+                  <span>{selectedCatIds.length === visibleCategories.length ? 'সব বাদ দিন' : 'সব নির্বাচন'}</span>
                 </button>
               ) : (
                 <button
@@ -1059,7 +1257,7 @@ export const ProfileScreen: React.FC = () => {
             </div>
 
             {/* Import a shared category / paper file */}
-            {!selectMode && (
+            {!selectMode && !reorderMode && (
             <button
               type="button"
               onClick={() => importCategoryInputRef.current?.click()}
@@ -1093,8 +1291,11 @@ export const ProfileScreen: React.FC = () => {
               </div>
             ) : (
               <div className="space-y-2.5">
-                {categories.map((cat) => {
+                {visibleCategories.map((cat, listIdx) => {
                   const stats = catStats[cat.id] || { paperCount: 0, questionCount: 0 };
+                  const pinned = isUncategorizedCategory(cat);
+                  const movable = visibleCategories.filter((c) => !isUncategorizedCategory(c));
+                  const movIdx = movable.findIndex((c) => c.id === cat.id);
 
                   const isSelected = selectedCatIds.includes(cat.id);
 
@@ -1102,6 +1303,7 @@ export const ProfileScreen: React.FC = () => {
                     <div
                       key={cat.id}
                       onClick={() => {
+                        if (reorderMode) return;
                         if (selectMode) {
                           toggleCatSelected(cat.id);
                           return;
@@ -1121,15 +1323,39 @@ export const ProfileScreen: React.FC = () => {
                         </span>
                       )}
                       <div className="flex-1 min-w-0">
-                        <h3 className="text-sm font-bold text-[#1B1F2A] dark:text-slate-100 group-hover:text-[#3B4FD8] transition-colors truncate">
-                          {cat.name}
+                        <h3 className="text-sm font-bold text-[#1B1F2A] dark:text-slate-100 group-hover:text-[#3B4FD8] transition-colors truncate flex items-center gap-1.5">
+                          {pinned && <Pin className="w-4 h-4 text-[#3B4FD8] shrink-0" />}
+                          <span className="truncate">{cat.name}</span>
                         </h3>
                         <p className="text-[0.6875rem] text-[#64748B] dark:text-slate-400 font-medium mt-0.5">
                           {toBn(stats.paperCount)}টি প্রশ্নপত্র · {toBn(stats.questionCount)}টি প্রশ্ন
                         </p>
                       </div>
 
-                      {!selectMode && (
+                      {reorderMode && !pinned && (
+                        <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            aria-label="উপরে নিন"
+                            disabled={movIdx <= 0}
+                            onClick={() => moveCategory(cat.id, -1)}
+                            className="w-10 h-10 rounded-full flex items-center justify-center bg-[#EEF2FF] dark:bg-indigo-950/60 text-[#3B4FD8] dark:text-indigo-300 disabled:opacity-30"
+                          >
+                            <ArrowUp className="w-5 h-5" />
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="নিচে নিন"
+                            disabled={movIdx < 0 || movIdx >= movable.length - 1}
+                            onClick={() => moveCategory(cat.id, 1)}
+                            className="w-10 h-10 rounded-full flex items-center justify-center bg-[#EEF2FF] dark:bg-indigo-950/60 text-[#3B4FD8] dark:text-indigo-300 disabled:opacity-30"
+                          >
+                            <ArrowDown className="w-5 h-5" />
+                          </button>
+                        </div>
+                      )}
+
+                      {!selectMode && !reorderMode && (
                         <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                           <PopupMenu items={categoryPopupItems(cat)} />
                           <ChevronRight className="w-5 h-5 text-[#94A3B8] group-hover:translate-x-0.5 transition-transform" />
@@ -1148,7 +1374,7 @@ export const ProfileScreen: React.FC = () => {
               style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px) * 0)' }}
             >
               <div className="max-w-[390px] mx-auto flex gap-2">
-                {selectPurpose !== 'pdf' && (
+                {(selectPurpose === null || selectPurpose === 'backup') && (
                   <button
                     type="button"
                     disabled={selectedCatIds.length === 0 || isExporting}
@@ -1156,10 +1382,10 @@ export const ProfileScreen: React.FC = () => {
                     className="flex-1 min-h-[46px] rounded-xl bg-[#3B4FD8] text-white text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-40"
                   >
                     <FileArchive className="w-4 h-4" />
-                    <span>{isExporting ? 'তৈরি হচ্ছে...' : 'ব্যাকআপ এক্সপোর্ট'}</span>
+                    <span>{isExporting ? 'তৈরি হচ্ছে...' : 'ব্যাকআপ'}</span>
                   </button>
                 )}
-                {selectPurpose !== 'backup' && (
+                {(selectPurpose === null || selectPurpose === 'pdf') && (
                   <button
                     type="button"
                     disabled={selectedCatIds.length === 0 || Boolean(pdfProgress)}
@@ -1171,7 +1397,22 @@ export const ProfileScreen: React.FC = () => {
                     }`}
                   >
                     <FileDown className="w-4 h-4" />
-                    <span>PDF এক্সপোর্ট</span>
+                    <span>PDF</span>
+                  </button>
+                )}
+                {(selectPurpose === null || selectPurpose === 'delete') && (
+                  <button
+                    type="button"
+                    disabled={selectedCatIds.length === 0}
+                    onClick={handleBulkDeleteClick}
+                    className={`flex-1 min-h-[46px] rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-40 ${
+                      selectPurpose === 'delete'
+                        ? 'bg-red-600 text-white'
+                        : 'bg-white dark:bg-slate-800 border border-red-500 text-red-600'
+                    }`}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>ডিলিট</span>
                   </button>
                 )}
               </div>
@@ -1313,6 +1554,58 @@ export const ProfileScreen: React.FC = () => {
         onConfirm={handleConfirmDeleteCategory}
         onCancel={() => setDeleteCatConfirm({ isOpen: false, catId: null, catName: '' })}
       />
+
+      {/* Bulk delete confirmation */}
+      <ConfirmDialog
+        isOpen={bulkDeleteConfirm}
+        title="নির্বাচিত ক্যাটেগরি মুছবেন?"
+        message={`${toBn(
+          categories.filter((c) => selectedCatIds.includes(c.id) && !isUncategorizedCategory(c)).length
+        )}টি ক্যাটেগরি মুছে যাবে। এদের প্রশ্নপত্রগুলো 'অশ্রেণিবদ্ধ' ক্যাটেগরিতে চলে যাবে (কোনো প্রশ্নপত্র মুছবে না)।`}
+        confirmText="হ্যাঁ, মুছে ফেলুন"
+        cancelText="না"
+        isDestructive={true}
+        onConfirm={handleConfirmBulkDelete}
+        onCancel={() => setBulkDeleteConfirm(false)}
+      />
+
+      {/* Sort dialog */}
+      {showSortDialog && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in duration-150"
+          onClick={() => setShowSortDialog(false)}
+        >
+          <div
+            className="w-full max-w-[340px] bg-white dark:bg-slate-900 rounded-3xl border border-[#D5D9E2] dark:border-slate-700 shadow-2xl p-4 space-y-1"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-bold text-[#1B1F2A] dark:text-slate-100 px-2 pb-2">ক্যাটেগরি সর্ট করুন</h3>
+            {SORT_OPTIONS.map((o) => (
+              <button
+                key={o.id}
+                type="button"
+                onClick={() => {
+                  changeSortMode(o.id);
+                  setShowSortDialog(false);
+                }}
+                className={`w-full min-h-[46px] px-3 rounded-xl text-left text-sm font-medium flex items-center justify-between ${
+                  sortMode === o.id
+                    ? 'bg-[#EEF2FF] dark:bg-indigo-950/60 text-[#3B4FD8] dark:text-indigo-300 font-bold'
+                    : 'text-[#1B1F2A] dark:text-slate-100 hover:bg-[#F2F4F8] dark:hover:bg-slate-800'
+                }`}
+              >
+                <span>{o.label}</span>
+                {sortMode === o.id && <Check className="w-4 h-4" />}
+              </button>
+            ))}
+            <p className="text-[0.6875rem] text-[#64748B] dark:text-slate-400 px-2 pt-2 leading-snug">
+              "অশ্রেণিবদ্ধ" ক্যাটেগরি সবসময় সবার উপরে থাকে।
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Import / Export choice (Type CQ, Chapter CQ, Full backup) */}
       <TransferChoiceDialog

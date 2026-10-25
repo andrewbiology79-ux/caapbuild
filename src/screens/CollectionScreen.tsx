@@ -5,6 +5,12 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { PromptDialog } from '../components/PromptDialog';
 import { QuestionFormModal } from '../components/QuestionFormModal';
 import { ImportCollectionModal } from '../components/ImportCollectionModal';
+import {
+  getMultiClipboard,
+  clearMultiClipboard,
+  pasteMultiClipboard,
+  countMultiClipboard,
+} from '../db/crossDb';
 import { PasteQuestionsModal } from '../components/PasteQuestionsModal';
 import { ImageViewerModal } from '../components/ImageViewerModal';
 import { exportQuestionCollection } from '../utils/collectionTransfer';
@@ -45,6 +51,7 @@ import {
   Award,
   Layers,
   Upload,
+  ClipboardPaste,
   Download,
   Square,
 } from 'lucide-react';
@@ -132,6 +139,8 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
   const [questionUsages, setQuestionUsages] = useState<Record<string, QuestionPaperUsage[]>>({});
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [groupClipboard, setGroupClipboard] = useState<GroupClipboardData | null>(null);
+  // Questions copied from the Filter tab (many at once)
+  const [multiClipCount, setMultiClipCount] = useState<number>(0);
 
   // Loading & Modes
   const [loading, setLoading] = useState(true);
@@ -197,12 +206,14 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
     try {
       await seedInitialDataIfNeeded();
 
-      const [subList, statsData, selIds, clip] = await Promise.all([
+      const [subList, statsData, selIds, clip, multiClip] = await Promise.all([
         getSubjects(),
         getHierarchyStats(),
         getSelectedIds(),
         getGroupClipboard(),
+        getMultiClipboard(),
       ]);
+      setMultiClipCount(countMultiClipboard(multiClip));
 
       setSubjects(subList);
       setStats(statsData);
@@ -252,7 +263,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
     } finally {
       setLoading(false);
     }
-  }, [currentView, showToast, scope]);
+  }, [currentView, showToast, scope, multiClipCount]);
 
   useEffect(() => {
     loadData();
@@ -444,6 +455,8 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
       if (!sampleQId) return;
 
       await copyStimulusGroup(grp.stimulus?.id, sampleQId, mode);
+      await clearMultiClipboard(); // only one clipboard is active at a time
+      setMultiClipCount(0);
       const clip = await getGroupClipboard();
       setGroupClipboard(clip);
       showToast(mode === 'cut' ? 'কাট করা হয়েছে' : 'কপি করা হয়েছে');
@@ -459,13 +472,24 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
     position: 'before' | 'after'
   ) => {
     try {
+      if (currentView.level !== 'questions') return;
+
+      // Questions copied from the Filter tab
+      if (multiClipCount > 0) {
+        const n = await pasteMultiClipboard(scope, currentView.topic.id, position, {
+          stimulusId: targetGrp.stimulus?.id,
+          questionId: targetGrp.questions[0]?.id,
+        });
+        showToast(`${toBn(n)}টি প্রশ্ন পেস্ট হয়েছে`);
+        loadData();
+        return;
+      }
+
       const clip = await getGroupClipboard();
       if (!clip || clip.questions.length === 0) {
         showToast('আগে Copy বা Cut করুন');
         return;
       }
-
-      if (currentView.level !== 'questions') return;
 
       const targetStimulusId = targetGrp.stimulus?.id;
       const targetQuestionId = targetGrp.questions[0]?.id;
@@ -489,9 +513,28 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
     }
   };
 
+  // Paste the questions copied from the Filter tab at the END of the open type / chapter
+  const handlePasteMultiAtEnd = async () => {
+    if (currentView.level !== 'questions') return;
+    try {
+      if (multiClipCount === 0) {
+        showToast('ফিল্টার ট্যাব থেকে আগে প্রশ্ন কপি করুন');
+        return;
+      }
+      const n = await pasteMultiClipboard(scope, currentView.topic.id, 'end');
+      showToast(`${toBn(n)}টি প্রশ্ন পেস্ট হয়েছে`);
+      loadData();
+    } catch (err) {
+      console.error(err);
+      showToast('পেস্ট করতে ব্যর্থ হয়েছে');
+    }
+  };
+
   // Clear Group Clipboard
   const handleClearClipboard = async () => {
     await clearGroupClipboard();
+    await clearMultiClipboard();
+    setMultiClipCount(0);
     setGroupClipboard(null);
     showToast('ক্লিপবোর্ড খালি করা হয়েছে');
   };
@@ -670,6 +713,12 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
         label: 'JSON পেস্ট করে প্রশ্ন যোগ',
         icon: <Upload className="w-4 h-4 text-[#3B4FD8]" />,
         onClick: () => setShowPasteModal(true),
+      });
+      items.push({
+        id: 'paste-copied',
+        label: multiClipCount > 0 ? `কপি করা প্রশ্ন পেস্ট করুন (${toBn(multiClipCount)}টি)` : 'কপি করা প্রশ্ন পেস্ট করুন',
+        icon: <ClipboardPaste className="w-4 h-4 text-emerald-600" />,
+        onClick: handlePasteMultiAtEnd,
       });
     }
 
@@ -1284,7 +1333,22 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
         {!loading && currentView.level === 'questions' && (
           <div className="space-y-4">
             {/* Clipboard Notice Bar */}
-            {groupClipboard && (
+            {multiClipCount > 0 && (
+              <div className="bg-[#ECFDF5] border border-emerald-500 rounded-xl px-3.5 py-2.5 flex items-center justify-between text-xs text-emerald-800 font-bold shadow-2xs">
+                <span>
+                  {toBn(multiClipCount)}টি প্রশ্ন কপি করা আছে — প্রশ্নের মেনু থেকে "Paste after / before" বা রিবন মেনু থেকে পেস্ট করুন
+                </span>
+                <button
+                  type="button"
+                  aria-label="ক্লিপবোর্ড খালি করুন"
+                  onClick={handleClearClipboard}
+                  className="w-7 h-7 shrink-0 rounded-full flex items-center justify-center hover:bg-white/80 text-emerald-700 font-bold text-sm"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+            {groupClipboard && multiClipCount === 0 && (
               <div className="bg-[#EEF2FF] border border-[#3B4FD8] rounded-xl px-3.5 py-2.5 flex items-center justify-between text-xs text-[#2A3BB0] font-bold shadow-2xs">
                 <span>
                   ১টি প্রশ্ন {groupClipboard.mode === 'cut' ? 'কাট' : 'কপি'} করা আছে

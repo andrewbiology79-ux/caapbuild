@@ -34,7 +34,7 @@ import { FilterPdfDialog, type FilterPdfValues } from '../components/FilterPdfDi
 import { exportRowsToPdf } from '../utils/filterPdf';
 import { showPdfSavedDialog } from '../utils/storageAccess';
 import { getRatingStarsText, getApi } from '../db/api';
-import { getSelectedIdsAll } from '../db/crossDb';
+import { getSelectedIdsAll, setMultiClipboard, type MultiClipGroup } from '../db/crossDb';
 import { getDb } from '../db/db';
 import { openCollectionAtQuestion } from './CollectionScreen';
 import type { CqScope, QuestionType } from '../db/db';
@@ -1099,10 +1099,34 @@ export const FilterScreen: React.FC = () => {
     showToast(`${toBn(n)}টি প্রশ্নের রেটিং বদলানো হয়েছে`);
   };
 
+  // Copy the selected questions (stimulus included) to the shared clipboard.
+  // They can then be pasted into any Type CQ type / Chapter CQ chapter (Paste before / after / end).
   const handleBulkCopy = async () => {
-    const n = await runBulk((api, row) => api.copyQuestion(row.question.id));
-    await reload();
-    showToast(`${toBn(n)}টি প্রশ্ন কপি হয়েছে`);
+    if (selectedRows.length === 0) return;
+    try {
+      const groups: MultiClipGroup[] = [];
+      const byStimulus = new Map<string, MultiClipGroup>();
+      for (const row of selectedRows) {
+        if (row.stimulus) {
+          const key = `${row.source}:${row.stimulus.id}`;
+          let g = byStimulus.get(key);
+          if (!g) {
+            g = { source: row.source, stimulus: row.stimulus, questions: [] };
+            byStimulus.set(key, g);
+            groups.push(g);
+          }
+          g.questions.push(row.question);
+        } else {
+          groups.push({ source: row.source, questions: [row.question] });
+        }
+      }
+      groups.forEach((g) => g.questions.sort((a, b) => a.order - b.order));
+      await setMultiClipboard(groups);
+      showToast(`${toBn(selectedRows.length)}টি প্রশ্ন কপি হয়েছে — Type CQ / Chapter CQ তে গিয়ে পেস্ট করুন`, 3500);
+    } catch (err) {
+      console.error('Bulk copy failed:', err);
+      showToast('কপি করা যায়নি');
+    }
   };
 
   const handleBulkDelete = async () => {
