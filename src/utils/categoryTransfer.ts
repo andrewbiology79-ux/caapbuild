@@ -19,6 +19,8 @@ export interface CategorySharePayload {
   type: 'qb-category-share';
   exportedAt: string;
   category: { name: string };
+  /** Present in multi-category backups: every category with its own papers */
+  categories?: Array<{ name: string; papers: Paper[] }>;
   papers: Paper[];
   subjects: Subject[];
   chapters: Chapter[];
@@ -28,7 +30,12 @@ export interface CategorySharePayload {
   images: Array<{ id: string; fileName: string; data: string }>;
 }
 
-async function buildPayload(categoryName: string, papers: Paper[]): Promise<CategorySharePayload> {
+async function buildPayload(
+  categoryName: string,
+  papersIn: Paper[],
+  groups?: Array<{ name: string; papers: Paper[] }>
+): Promise<CategorySharePayload> {
+  const papers = groups ? groups.flatMap((g) => g.papers) : papersIn;
   const questionIds = Array.from(new Set(papers.flatMap((p) => p.questionIds || [])));
   const questions = ((await db.questions.bulkGet(questionIds)).filter(Boolean) as Question[]);
 
@@ -65,6 +72,7 @@ async function buildPayload(categoryName: string, papers: Paper[]): Promise<Cate
     type: 'qb-category-share',
     exportedAt: new Date().toISOString(),
     category: { name: categoryName },
+    ...(groups ? { categories: groups } : {}),
     papers,
     subjects,
     chapters,
@@ -99,6 +107,25 @@ export async function exportPaperShare(paperId: string): Promise<boolean> {
   return await exportJsonFile(`qb-paper-${dateStr}.json`, JSON.stringify(payload));
 }
 
+/**
+ * Backup several categories into ONE file (select categories -> export)
+ */
+export async function exportCategoriesBackup(categoryIds: string[]): Promise<boolean> {
+  const groups: Array<{ name: string; papers: Paper[] }> = [];
+  for (const id of categoryIds) {
+    const category = await db.categories.get(id);
+    if (!category) continue;
+    const papers = await db.papers.where('categoryId').equals(id).toArray();
+    groups.push({ name: category.name, papers });
+  }
+  if (groups.length === 0) throw new Error('কোনো ক্যাটেগরি পাওয়া যায়নি');
+  const payload = await buildPayload(groups[0].name, [], groups);
+  const dateStr = new Date().toISOString().split('T')[0];
+  const fileName =
+    groups.length === 1 ? `qb-category-${dateStr}.json` : `qb-categories-backup-${dateStr}.json`;
+  return await exportJsonFile(fileName, JSON.stringify(payload));
+}
+
 export function parseCategoryShare(jsonText: string): CategorySharePayload {
   let data: any;
   try {
@@ -114,6 +141,11 @@ export function parseCategoryShare(jsonText: string): CategorySharePayload {
     type: 'qb-category-share',
     exportedAt: String(data.exportedAt || ''),
     category: { name: String(data.category?.name || 'ইমপোর্টেড') },
+    categories: Array.isArray(data.categories)
+      ? data.categories
+          .filter((g: any) => g && Array.isArray(g.papers))
+          .map((g: any) => ({ name: String(g.name || 'ইমপোর্টেড'), papers: g.papers }))
+      : undefined,
     papers: data.papers,
     subjects: Array.isArray(data.subjects) ? data.subjects : [],
     chapters: Array.isArray(data.chapters) ? data.chapters : [],
@@ -137,7 +169,7 @@ async function addMissing<T extends { id: string }>(table: any, items: T[]): Pro
  */
 export async function importCategoryShare(
   payload: CategorySharePayload
-): Promise<{ categoryName: string; papersAdded: number; papersSkipped: number }> {
+): Promise<{ categoryName: string; categoriesCount: number; papersAdded: number; papersSkipped: number }> {
   // Images
   for (const img of payload.images) {
     if (!img?.id || !img.data) continue;
@@ -157,31 +189,46 @@ export async function importCategoryShare(
   await addMissing(db.stimuli, payload.stimuli);
   await addMissing(db.questions, payload.questions);
 
-  // Category + papers
-  const category = await saveCategory(payload.category.name);
-  const existingPapers = await db.papers.where('categoryId').equals(category.id).toArray();
-  const keyOf = (p: Paper) => `${p.shortName}|${p.title}|${(p.questionIds || []).join(',')}`;
-  const existingKeys = new Set(existingPapers.map(keyOf));
+  // Category + papers (one or many categories)
+  const groups =
+    payload.categories && payload.categories.length > 0
+      ? payload.categories
+      : [{ name: payload.category.name, papers: payload.papers }];
 
   let added = 0;
   let skipped = 0;
-  for (const p of payload.papers) {
-    if (!p || !Array.isArray(p.questionIds)) {
-      skipped++;
-      continue;
+  const names: string[] = [];
+
+  for (const group of groups) {
+    const category = await saveCategory(group.name);
+    names.push(category.name);
+    const existingPapers = await db.papers.where('categoryId').equals(category.id).toArray();
+    const keyOf = (p: Paper) => `${p.shortName}|${p.title}|${(p.questionIds || []).join(',')}`;
+    const existingKeys = new Set(existingPapers.map(keyOf));
+
+    for (const p of group.papers) {
+      if (!p || !Array.isArray(p.questionIds)) {
+        skipped++;
+        continue;
+      }
+      if (existingKeys.has(keyOf(p))) {
+        skipped++;
+        continue;
+      }
+      await db.papers.add({
+        ...p,
+        id: generateId(),
+        categoryId: category.id,
+        category: category.name,
+      });
+      added++;
     }
-    if (existingKeys.has(keyOf(p))) {
-      skipped++;
-      continue;
-    }
-    await db.papers.add({
-      ...p,
-      id: generateId(),
-      categoryId: category.id,
-      category: category.name,
-    });
-    added++;
   }
 
-  return { categoryName: category.name, papersAdded: added, papersSkipped: skipped };
+  return {
+    categoryName: names.length > 1 ? `${names.length}টি ক্যাটেগরি` : names[0],
+    categoriesCount: names.length,
+    papersAdded: added,
+    papersSkipped: skipped,
+  };
 }

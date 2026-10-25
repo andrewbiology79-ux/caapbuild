@@ -11,22 +11,9 @@ interface StorageAccessPlugin {
   openSettings(): Promise<void>;
   openFolder(options: { path: string }): Promise<void>;
   openFile(options: { path: string; mimeType?: string }): Promise<void>;
-  hideSystemBars(): Promise<void>;
 }
 
 const StorageAccess = registerPlugin<StorageAccessPlugin>('StorageAccess');
-
-/**
- * Full screen: hide the status bar + navigation bar (a swipe from the edge shows them briefly).
- */
-export async function hideSystemBars(): Promise<void> {
-  if (!Capacitor.isNativePlatform()) return;
-  try {
-    await StorageAccess.hideSystemBars();
-  } catch (err) {
-    console.warn('Hide system bars failed:', err);
-  }
-}
 
 /** Folder (inside the phone's Download folder) where PDFs are saved */
 export const PDF_SAVE_FOLDER = 'Download/QbCollection';

@@ -1,4 +1,4 @@
-import { getDb, type CqScope, type Subject, type Chapter, type Topic, type Stimulus, type Question, type Paper, type DbImage } from '../db/db';
+import { getDb, type CqScope, type Category, type Subject, type Chapter, type Topic, type Stimulus, type Question, type Paper, type DbImage } from '../db/db';
 import { blobToBase64, base64ToBlob, exportJsonFile } from './fileExport';
 import { compressImageToWebP } from './imageCompressor';
 
@@ -550,4 +550,195 @@ export async function restoreFullBackup(jsonText: string, scope?: CqScope): Prom
       }
     }
   );
+}
+
+
+/* ------------------------------------------------------------------
+ * Whole-app FULL backup (Type CQ + Chapter CQ + categories + papers + images + meta)
+ * ---------------------------------------------------------------- */
+
+export type RestoreMode = 'replace' | 'merge';
+
+interface DbDump {
+  subjects: Subject[];
+  chapters: Chapter[];
+  topics: Topic[];
+  stimuli: Stimulus[];
+  questions: Question[];
+  papers: Paper[];
+  categories: Category[];
+  meta: Array<{ key: string; value: any }>;
+  images: Array<{ id: string; fileName: string; data: string }>;
+}
+
+export interface AppFullBackupSchema {
+  version: string;
+  type: 'qb-app-full-backup';
+  exportedAt: string;
+  databases: { type: DbDump; chapter: DbDump };
+}
+
+async function dumpDb(scope: CqScope): Promise<DbDump> {
+  const db = getDb(scope);
+  const [subjects, chapters, topics, stimuli, questions, papers, categories, meta, images] = await Promise.all([
+    db.subjects.toArray(),
+    db.chapters.toArray(),
+    db.topics.toArray(),
+    db.stimuli.toArray(),
+    db.questions.toArray(),
+    db.papers.toArray(),
+    db.categories.toArray(),
+    db.meta.toArray(),
+    db.images.toArray(),
+  ]);
+  const exportedImages: DbDump['images'] = [];
+  for (const img of images) {
+    if (img.blob) {
+      exportedImages.push({ id: img.id, fileName: img.fileName, data: await blobToBase64(img.blob) });
+    }
+  }
+  return { subjects, chapters, topics, stimuli, questions, papers, categories, meta, images: exportedImages };
+}
+
+/** Export EVERYTHING in the app (both question collections, categories, papers, images, settings) */
+export async function exportAppFullBackup(): Promise<boolean> {
+  const [typeDump, chapterDump] = await Promise.all([dumpDb('type'), dumpDb('chapter')]);
+  const payload: AppFullBackupSchema = {
+    version: '2.0',
+    type: 'qb-app-full-backup',
+    exportedAt: new Date().toISOString(),
+    databases: { type: typeDump, chapter: chapterDump },
+  };
+  const dateStr = new Date().toISOString().split('T')[0];
+  return await exportJsonFile(`qb-full-backup-${dateStr}.json`, JSON.stringify(payload));
+}
+
+export interface BackupFileInfo {
+  kind: 'app' | 'scope';
+  scope?: CqScope;
+  questions: number;
+  papers: number;
+}
+
+/** Look inside a backup file (used to show a summary before restoring) */
+export function inspectBackupFile(jsonText: string): BackupFileInfo {
+  let data: any;
+  try {
+    data = JSON.parse(jsonText);
+  } catch {
+    throw new Error('ফাইলটি পড়া যায়নি (JSON ফরম্যাট ঠিক নয়)');
+  }
+  if (data?.type === 'qb-app-full-backup' && data.databases) {
+    const t = data.databases.type || {};
+    const c = data.databases.chapter || {};
+    return {
+      kind: 'app',
+      questions: (t.questions?.length || 0) + (c.questions?.length || 0),
+      papers: (t.papers?.length || 0) + (c.papers?.length || 0),
+    };
+  }
+  if (data?.type === 'qb-full-backup' && Array.isArray(data.subjects) && Array.isArray(data.questions)) {
+    return {
+      kind: 'scope',
+      scope: data.scope === 'chapter' ? 'chapter' : 'type',
+      questions: data.questions.length,
+      papers: Array.isArray(data.papers) ? data.papers.length : 0,
+    };
+  }
+  throw new Error('এটি সম্পূর্ণ ব্যাকআপ ফাইল নয়। অ্যাপ থেকে এক্সপোর্ট করা ফুল ব্যাকআপ ফাইল দিন।');
+}
+
+async function addMissingRows(table: any, rows: Array<{ id: string }> | undefined): Promise<void> {
+  if (!rows?.length) return;
+  const existing: Array<any> = await table.bulkGet(rows.map((r) => r.id));
+  const missing = rows.filter((_, i) => !existing[i]);
+  if (missing.length) await table.bulkAdd(missing);
+}
+
+async function writeDump(scope: CqScope, dump: Partial<DbDump>, mode: RestoreMode): Promise<void> {
+  const db = getDb(scope);
+
+  // images first (blobs are created outside of the main transaction)
+  const imageRows: Array<{ id: string; fileName: string; blob: Blob }> = [];
+  for (const img of dump.images || []) {
+    if (img?.id && img.data) {
+      try {
+        imageRows.push({ id: img.id, fileName: img.fileName || `${img.id}.webp`, blob: base64ToBlob(img.data) });
+      } catch (e) {
+        console.warn('Skipping broken image in backup:', img.id, e);
+      }
+    }
+  }
+
+  const tables = [db.subjects, db.chapters, db.topics, db.stimuli, db.questions, db.papers, db.categories, db.meta, db.images];
+
+  await db.transaction('rw', tables, async () => {
+    if (mode === 'replace') {
+      await Promise.all(tables.map((t: any) => t.clear()));
+      if (dump.subjects?.length) await db.subjects.bulkAdd(dump.subjects);
+      if (dump.chapters?.length) await db.chapters.bulkAdd(dump.chapters);
+      if (dump.topics?.length) await db.topics.bulkAdd(dump.topics);
+      if (dump.stimuli?.length) await db.stimuli.bulkAdd(dump.stimuli);
+      if (dump.questions?.length) await db.questions.bulkAdd(dump.questions);
+      if (dump.categories?.length) await db.categories.bulkAdd(dump.categories);
+      if (dump.papers?.length) await db.papers.bulkAdd(dump.papers);
+      if (dump.meta?.length) await db.meta.bulkAdd(dump.meta);
+      if (imageRows.length) await db.images.bulkAdd(imageRows);
+      return;
+    }
+
+    // ---- merge: keep everything that already exists, only add what is missing ----
+    await addMissingRows(db.subjects, dump.subjects);
+    await addMissingRows(db.chapters, dump.chapters);
+    await addMissingRows(db.topics, dump.topics);
+    await addMissingRows(db.stimuli, dump.stimuli);
+    await addMissingRows(db.questions, dump.questions);
+    await addMissingRows(db.images, imageRows as any);
+
+    // categories: a category with the same name is reused (papers are re-pointed to it)
+    const existingCats: Category[] = await db.categories.toArray();
+    const byName = new Map<string, Category>(existingCats.map((c) => [c.name.trim().toLowerCase(), c]));
+    const catIdMap = new Map<string, Category>();
+    let nextOrder = existingCats.reduce((m, c) => Math.max(m, c.order || 0), 0) + 1;
+    for (const cat of dump.categories || []) {
+      const hit = byName.get(cat.name.trim().toLowerCase());
+      if (hit) {
+        catIdMap.set(cat.id, hit);
+      } else {
+        const existsById = await db.categories.get(cat.id);
+        if (existsById) {
+          catIdMap.set(cat.id, existsById);
+        } else {
+          const created: Category = { ...cat, order: nextOrder++ };
+          await db.categories.add(created);
+          byName.set(created.name.trim().toLowerCase(), created);
+          catIdMap.set(cat.id, created);
+        }
+      }
+    }
+
+    const papers = (dump.papers || []).map((p) => {
+      const target = p.categoryId ? catIdMap.get(p.categoryId) : undefined;
+      return target ? { ...p, categoryId: target.id, category: target.name } : p;
+    });
+    await addMissingRows(db.papers, papers);
+    // meta (selection, clipboard…) is left untouched in merge mode
+  });
+}
+
+/**
+ * Restore a backup file. Works with whole-app backups and with older single-collection backups.
+ * - replace: current data is erased and replaced by the backup
+ * - merge: backup data is added next to the current data (nothing existing is overwritten)
+ */
+export async function restoreAppBackup(jsonText: string, mode: RestoreMode): Promise<BackupFileInfo> {
+  const info = inspectBackupFile(jsonText);
+  const data = JSON.parse(jsonText);
+  if (info.kind === 'app') {
+    if (data.databases.type) await writeDump('type', data.databases.type, mode);
+    if (data.databases.chapter) await writeDump('chapter', data.databases.chapter, mode);
+  } else {
+    await writeDump(info.scope || 'type', data, mode);
+  }
+  return info;
 }

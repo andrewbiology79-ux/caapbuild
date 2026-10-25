@@ -8,7 +8,9 @@ import { SettingsModal } from '../components/SettingsModal';
 import { ImportCollectionModal } from '../components/ImportCollectionModal';
 import { PaperViewModal } from '../components/PaperViewModal';
 import { RichText } from '../components/RichText';
-import { ActionSheet } from '../components/ActionSheet';
+import { PopupMenu } from '../components/PopupMenu';
+import { TransferChoiceDialog } from '../components/TransferChoiceDialog';
+import { RestoreModeDialog } from '../components/RestoreModeDialog';
 import { CategoryPickerDialog } from '../components/CategoryPickerDialog';
 import { toBn } from '../utils/toBn';
 import { useNavigation } from '../utils/navigation';
@@ -26,9 +28,6 @@ import {
   movePaperToCategory,
   duplicatePaper,
   duplicateCategory,
-  movePapersToCategory,
-  deletePapers,
-  isUncategorizedName,
   getCategoryClipboard,
   setCategoryClipboard,
   type CategoryClipboard,
@@ -39,9 +38,11 @@ import {
 } from '../db/api';
 import { db, type CqScope } from '../db/db';
 import {
-  exportFullBackup,
-  restoreFullBackup,
+  exportAppFullBackup,
+  restoreAppBackup,
+  inspectBackupFile,
   exportQuestionCollection,
+  type RestoreMode,
 } from '../utils/collectionTransfer';
 import {
   FileText,
@@ -71,17 +72,16 @@ import {
   X,
   CheckSquare,
   Square,
-  Loader2,
-  CheckCircle2,
-  Pin,
   FolderDown,
+  FileArchive,
 } from 'lucide-react';
-import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
-import { exportPaperById, exportPapersToNewFolder, type BatchPdfResult } from '../utils/pdfGenerator';
-import { showPdfSavedDialog, openSavedFolder } from '../utils/storageAccess';
+import { exportPaperById, exportCategoriesToFolders, type CategoriesPdfResult } from '../utils/pdfGenerator';
+import { showPdfSavedDialog, openSavedFolder, PDF_SAVE_FOLDER } from '../utils/storageAccess';
+import { Capacitor } from '@capacitor/core';
 import {
   exportCategoryShare,
+  exportCategoriesBackup,
   exportPaperShare,
   parseCategoryShare,
   importCategoryShare,
@@ -144,30 +144,26 @@ export const ProfileScreen: React.FC = () => {
 
   // Advanced category options (copy / paste / move / share)
   const [clipboard, setClipboard] = useState<CategoryClipboard | null>(null);
-  const [categorySheet, setCategorySheet] = useState<Category | null>(null);
-  const [paperSheet, setPaperSheet] = useState<Paper | null>(null);
   const [picker, setPicker] = useState<{ mode: 'move' | 'copy'; paper: Paper } | null>(null);
   const [deletePaperTarget, setDeletePaperTarget] = useState<Paper | null>(null);
   const importCategoryInputRef = useRef<HTMLInputElement>(null);
 
-  // Multi-select of papers inside a category + batch PDF export
-  const [selectMode, setSelectMode] = useState(false);
-  const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [movePickerOpen, setMovePickerOpen] = useState(false);
-  const [deletePickedOpen, setDeletePickedOpen] = useState(false);
-  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
-  const [batchResult, setBatchResult] = useState<BatchPdfResult | null>(null);
-  const [batchError, setBatchError] = useState<string | null>(null);
-
-  // Combined "backup / restore" and "import / export" choice sheets (keeps the profile list short)
-  const [backupSheetOpen, setBackupSheetOpen] = useState(false);
-  const [transferSheetOpen, setTransferSheetOpen] = useState(false);
-
-  // Restore file input and confirm dialog
+  // Full backup restore (file -> choose replace / merge)
   const restoreFileInputRef = useRef<HTMLInputElement>(null);
   const [restoreJsonContent, setRestoreJsonContent] = useState<string | null>(null);
-  const [showRestoreConfirm, setShowRestoreConfirm] = useState<boolean>(false);
+  const [restoreInfo, setRestoreInfo] = useState<{ fileName: string; questions: number; papers: number } | null>(null);
+  const [restoring, setRestoring] = useState<boolean>(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
+
+  // Import / Export choice popups (Type CQ, Chapter CQ, Full backup)
+  const [transferChoice, setTransferChoice] = useState<'type' | 'chapter' | 'full' | null>(null);
+
+  // Multi-select of categories (ribbon menu: select / backup export / PDF export)
+  const [selectMode, setSelectMode] = useState<boolean>(false);
+  const [selectPurpose, setSelectPurpose] = useState<'backup' | 'pdf' | null>(null);
+  const [selectedCatIds, setSelectedCatIds] = useState<string[]>([]);
+  const [pdfProgress, setPdfProgress] = useState<{ done: number; total: number } | null>(null);
+  const [pdfResult, setPdfResult] = useState<CategoriesPdfResult | null>(null);
 
   // Load statistical counts & categories
   const loadData = useCallback(async () => {
@@ -209,7 +205,8 @@ export const ProfileScreen: React.FC = () => {
   const handleGoBack = useCallback((): boolean => {
     if (selectMode) {
       setSelectMode(false);
-      setPicked(new Set());
+      setSelectPurpose(null);
+      setSelectedCatIds([]);
       return true;
     }
     if (viewMode === 'category-detail') {
@@ -312,91 +309,6 @@ export const ProfileScreen: React.FC = () => {
     }
   };
 
-  // ---------- Select mode + batch PDF export ----------
-
-  const exitSelectMode = () => {
-    setSelectMode(false);
-    setPicked(new Set());
-  };
-
-  const togglePicked = (id: string) => {
-    setPicked((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const selectAllPapers = () => setPicked(new Set(categoryPapers.map((p) => p.id)));
-
-  /** Create a NEW folder (named after the category) in the default PDF folder and save the PDFs there */
-  const runBatchExport = async (ids: string[], folderName: string) => {
-    if (ids.length === 0 || batchProgress) return;
-    setBatchResult(null);
-    setBatchError(null);
-    setBatchProgress({ done: 0, total: ids.length });
-    try {
-      const result = await exportPapersToNewFolder(
-        ids,
-        (done, total) => setBatchProgress({ done, total }),
-        { folderName }
-      );
-      setBatchResult(result);
-      exitSelectMode();
-    } catch (err: any) {
-      console.error('Batch PDF export failed:', err);
-      setBatchError(err?.message || 'পিডিএফ তৈরিতে অপ্রত্যাশিত সমস্যা হয়েছে।');
-    } finally {
-      setBatchProgress(null);
-    }
-  };
-
-  const handleExportCategoryPdfs = async (cat: Category) => {
-    try {
-      const papers = await getPapersByCategory(cat.id);
-      if (papers.length === 0) {
-        showToast('এই ক্যাটেগরিতে কোনো প্রশ্নপত্র নেই');
-        return;
-      }
-      await runBatchExport(
-        papers.map((p) => p.id),
-        cat.name
-      );
-    } catch (err: any) {
-      setBatchError(err?.message || 'পিডিএফ তৈরিতে অপ্রত্যাশিত সমস্যা হয়েছে।');
-    }
-  };
-
-  const handleExportPickedPdfs = () => {
-    if (!selectedCategory) return;
-    runBatchExport([...picked], selectedCategory.name);
-  };
-
-  const handleMovePicked = async (target: Category) => {
-    setMovePickerOpen(false);
-    try {
-      const n = await movePapersToCategory([...picked], target.id);
-      showToast(`${toBn(n)}টি প্রশ্নপত্র "${target.name}" ক্যাটেগরিতে সরানো হয়েছে`);
-      exitSelectMode();
-      await loadData();
-    } catch (err: any) {
-      showToast(err?.message || 'সরানো যায়নি');
-    }
-  };
-
-  const handleDeletePicked = async () => {
-    setDeletePickedOpen(false);
-    try {
-      await deletePapers([...picked]);
-      showToast(`${toBn(picked.size)}টি প্রশ্নপত্র মুছে ফেলা হয়েছে`);
-      exitSelectMode();
-      await loadData();
-    } catch {
-      showToast('মুছতে সমস্যা হয়েছে');
-    }
-  };
-
   // Add category dialog
   const handleOpenAddCategory = () => {
     setCategoryPrompt({
@@ -425,7 +337,6 @@ export const ProfileScreen: React.FC = () => {
       onConfirm: async (newName) => {
         try {
           await updateCategory(cat.id, newName);
-          setSelectedCategory((cur) => (cur && cur.id === cat.id ? { ...cur, name: newName.trim() } : cur));
           showToast('ক্যাটেগরির নাম পরিবর্তন হয়েছে');
           setCategoryPrompt((prev) => ({ ...prev, isOpen: false }));
           loadData();
@@ -602,6 +513,77 @@ export const ProfileScreen: React.FC = () => {
     );
   };
 
+  // ---------- Multi-select of categories ----------
+
+  const enterSelectMode = (purpose: 'backup' | 'pdf' | null) => {
+    setSelectMode(true);
+    setSelectPurpose(purpose);
+    setSelectedCatIds([]);
+  };
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectPurpose(null);
+    setSelectedCatIds([]);
+  };
+
+  const toggleCatSelected = (id: string) =>
+    setSelectedCatIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+  const selectAllCategories = () => setSelectedCatIds(categories.map((c) => c.id));
+
+  // Backup file of the selected categories
+  const handleExportSelectedBackup = async () => {
+    if (selectedCatIds.length === 0) {
+      showToast('কমপক্ষে একটি ক্যাটেগরি নির্বাচন করুন');
+      return;
+    }
+    setIsExporting(true);
+    try {
+      const ok = await exportCategoriesBackup(selectedCatIds);
+      showToast(ok ? 'ক্যাটেগরি ব্যাকআপ ফাইল তৈরি হয়েছে' : 'ব্যাকআপ ফাইল তৈরি করা যায়নি');
+      if (ok) exitSelectMode();
+    } catch (err: any) {
+      console.error('Category backup failed:', err);
+      showToast(err?.message || 'ব্যাকআপ ব্যর্থ হয়েছে');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // PDFs of the given categories: one new folder per category (named after the category)
+  const runCategoriesPdfExport = async (cats: Category[]) => {
+    if (cats.length === 0 || pdfProgress) return;
+    setPdfProgress({ done: 0, total: 1 });
+    try {
+      const groups: Array<{ name: string; paperIds: string[] }> = [];
+      for (const cat of cats) {
+        const papers = await getPapersByCategory(cat.id);
+        groups.push({ name: cat.name, paperIds: papers.map((p) => p.id) });
+      }
+      if (groups.every((g) => g.paperIds.length === 0)) {
+        showToast(cats.length === 1 ? 'এই ক্যাটেগরিতে কোনো প্রশ্নপত্র নেই' : 'নির্বাচিত ক্যাটেগরিগুলোতে কোনো প্রশ্নপত্র নেই');
+        return;
+      }
+      const result = await exportCategoriesToFolders(groups, (done, total) => setPdfProgress({ done, total }));
+      setPdfResult(result);
+      exitSelectMode();
+    } catch (err: any) {
+      console.error('Category PDF export failed:', err);
+      setPdfErrorMessage(err?.message || 'পিডিএফ তৈরিতে অপ্রত্যাশিত সমস্যা হয়েছে।');
+    } finally {
+      setPdfProgress(null);
+    }
+  };
+
+  const handleExportSelectedPdf = () => {
+    if (selectedCatIds.length === 0) {
+      showToast('কমপক্ষে একটি ক্যাটেগরি নির্বাচন করুন');
+      return;
+    }
+    runCategoriesPdfExport(categories.filter((c) => selectedCatIds.includes(c.id)));
+  };
+
   // Share App
   const handleShareApp = async () => {
     try {
@@ -633,53 +615,54 @@ export const ProfileScreen: React.FC = () => {
     }
   };
 
-  // Full System Backup
-  const handleFullBackup = async (scope: CqScope = 'type') => {
+  // Full app backup (everything)
+  const handleFullBackup = async () => {
     setIsExporting(true);
     try {
-      const ok = await exportFullBackup(scope);
-      if (ok) {
-        showToast('সম্পূর্ণ ডাটাবেস ব্যাকআপ সম্পন্ন হয়েছে');
-      } else {
-        showToast('ব্যাকআপ ফাইল সংরক্ষণ করা যায়নি');
-      }
+      const ok = await exportAppFullBackup();
+      showToast(ok ? 'সম্পূর্ণ অ্যাপ ব্যাকআপ সম্পন্ন হয়েছে' : 'ব্যাকআপ ফাইল সংরক্ষণ করা যায়নি');
     } catch (err) {
       console.error('Backup failed:', err);
-      showToast('ব্যাকআপ নিতে সমস্যা হয়েছে');
+      showToast('ব্যাকআপ নিতে সমস্যা হয়েছে');
     } finally {
       setIsExporting(false);
     }
   };
 
-  // Restore file
+  // Restore file picked -> ask replace / merge
   const handleRestoreFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
-
     try {
       const text = await file.text();
+      const info = inspectBackupFile(text);
       setRestoreJsonContent(text);
-      setShowRestoreConfirm(true);
-    } catch (err) {
+      setRestoreInfo({ fileName: file.name, questions: info.questions, papers: info.papers });
+    } catch (err: any) {
       console.error('Failed to read restore file:', err);
-      showToast('ফাইল পড়তে ব্যর্থ হয়েছে');
+      showToast(err?.message || 'ফাইল পড়তে ব্যর্থ হয়েছে', 3500);
     }
-    e.target.value = '';
   };
 
-  const handleConfirmRestore = async () => {
+  const handleRunRestore = async (mode: RestoreMode) => {
     if (!restoreJsonContent) return;
+    setRestoring(true);
     try {
-      await restoreFullBackup(restoreJsonContent);
-      showToast('ডাটাবেস সফলভাবে রিস্টোর হয়েছে। অ্যাপ রিলোড হচ্ছে...');
-      setShowRestoreConfirm(false);
-      setTimeout(() => {
-        window.location.reload();
-      }, 1000);
+      await restoreAppBackup(restoreJsonContent, mode);
+      showToast(
+        mode === 'replace'
+          ? 'ডাটাবেস রিপ্লেস সম্পন্ন। অ্যাপ রিলোড হচ্ছে...'
+          : 'ব্যাকআপের ডাটা যুক্ত হয়েছে। অ্যাপ রিলোড হচ্ছে...'
+      );
+      setRestoreJsonContent(null);
+      setRestoreInfo(null);
+      setTimeout(() => window.location.reload(), 1000);
     } catch (err: any) {
       console.error('Restore failed:', err);
-      showToast(`রিস্টোর ব্যর্থ: ${err.message || 'ভুল ফরম্যাট'}`);
-      setShowRestoreConfirm(false);
+      showToast(`ইমপোর্ট ব্যর্থ: ${err.message || 'ভুল ফরম্যাট'}`, 3500);
+    } finally {
+      setRestoring(false);
     }
   };
 
@@ -703,23 +686,30 @@ export const ProfileScreen: React.FC = () => {
     {
       id: 'categories',
       title: 'ক্যাটেগরি',
-      description: 'প্রশ্নপত্রের ক্যাটেগরি, সংরক্ষিত প্রশ্নপত্র ও PDF এক্সপোর্ট',
+      description: 'প্রশ্নপত্রের ক্যাটেগরি তৈরি, সম্পাদনা ও সংরক্ষিত প্রশ্নপত্র',
       icon: <FolderKanban className="w-5 h-5 text-[#3B4FD8]" />,
       action: () => setViewMode('categories'),
     },
     {
-      id: 'backup',
-      title: 'ব্যাকআপ ও রিস্টোর',
-      description: 'Type CQ / Chapter CQ এর সম্পূর্ণ ব্যাকআপ নিন বা ফিরিয়ে আনুন',
-      icon: <HardDriveDownload className="w-5 h-5 text-[#3B4FD8]" />,
-      action: () => setBackupSheetOpen(true),
+      id: 'type-cq-transfer',
+      title: 'Type CQ ইমপোর্ট / এক্সপোর্ট',
+      description: 'Type CQ এর প্রশ্ন, উদ্দীপক ও চিত্র ফাইলে নামান বা ফাইল থেকে যুক্ত করুন',
+      icon: <Upload className="w-5 h-5 text-emerald-600" />,
+      action: () => setTransferChoice('type'),
     },
     {
-      id: 'transfer',
-      title: 'ইমপোর্ট / এক্সপোর্ট',
-      description: 'প্রশ্ন কালেকশন (JSON) অন্য ডিভাইস থেকে আনুন বা অন্য ডিভাইসে পাঠান',
+      id: 'chapter-cq-transfer',
+      title: 'Chapter CQ ইমপোর্ট / এক্সপোর্ট',
+      description: 'Chapter CQ এর প্রশ্ন, উদ্দীপক ও চিত্র ফাইলে নামান বা ফাইল থেকে যুক্ত করুন',
       icon: <Download className="w-5 h-5 text-indigo-600" />,
-      action: () => setTransferSheetOpen(true),
+      action: () => setTransferChoice('chapter'),
+    },
+    {
+      id: 'full-backup-transfer',
+      title: 'ফুল ব্যাকআপ ইমপোর্ট / এক্সপোর্ট',
+      description: 'সম্পূর্ণ অ্যাপের সব ডাটা (প্রশ্ন, ক্যাটেগরি, প্রশ্নপত্র, ছবি) ব্যাকআপ ও পুনরুদ্ধার',
+      icon: <HardDriveDownload className="w-5 h-5 text-amber-600" />,
+      action: () => setTransferChoice('full'),
     },
     {
       id: 'settings',
@@ -730,90 +720,140 @@ export const ProfileScreen: React.FC = () => {
     },
   ];
 
-  // Three-dot menu of the category LIST screen
-  const categoryListMenu = [
+  // Ribbon (header) 3-dot menu of the Categories screen
+  const categoryMenuItems = selectMode
+    ? [
+        {
+          id: 'select-all',
+          label: 'সব নির্বাচন করুন',
+          icon: <CheckSquare className="w-4 h-4 text-[#3B4FD8]" />,
+          onClick: selectAllCategories,
+        },
+        {
+          id: 'clear-selection',
+          label: 'নির্বাচন বাতিল',
+          icon: <X className="w-4 h-4 text-[#64748B]" />,
+          onClick: exitSelectMode,
+        },
+      ]
+    : [
+        {
+          id: 'new-category',
+          label: 'নতুন ক্যাটেগরি',
+          icon: <Plus className="w-4 h-4 text-[#3B4FD8]" />,
+          onClick: handleOpenAddCategory,
+        },
+        {
+          id: 'select',
+          label: 'সিলেক্ট',
+          icon: <CheckSquare className="w-4 h-4 text-[#3B4FD8]" />,
+          onClick: () => enterSelectMode(null),
+        },
+        {
+          id: 'import-categories',
+          label: 'ইমপোর্ট (ব্যাকআপ ফাইল)',
+          icon: <Upload className="w-4 h-4 text-emerald-600" />,
+          onClick: () => importCategoryInputRef.current?.click(),
+        },
+        {
+          id: 'export-categories',
+          label: 'এক্সপোর্ট (ব্যাকআপ ফাইল)',
+          icon: <Download className="w-4 h-4 text-indigo-600" />,
+          onClick: () => enterSelectMode('backup'),
+        },
+        {
+          id: 'export-pdf',
+          label: 'Export PDF',
+          icon: <FileDown className="w-4 h-4 text-[#3B4FD8]" />,
+          onClick: () => enterSelectMode('pdf'),
+        },
+      ];
+
+  // Popup menu (3 dots) of one category card
+  const categoryPopupItems = (cat: Category) => [
     {
-      id: 'new-category',
-      label: 'নতুন ক্যাটেগরি',
-      icon: <Plus className="w-4 h-4 text-[#3B4FD8]" />,
-      onClick: handleOpenAddCategory,
+      id: 'pdf',
+      label: 'PDF এক্সপোর্ট (নতুন ফোল্ডারে)',
+      icon: <FolderDown className="w-5 h-5 text-[#3B4FD8]" />,
+      onClick: () => runCategoriesPdfExport([cat]),
     },
     {
-      id: 'import-category',
-      label: 'ফাইল ইমপোর্ট (ক্যাটেগরি/প্রশ্নপত্র)',
-      icon: <Upload className="w-4 h-4 text-emerald-600" />,
-      onClick: () => importCategoryInputRef.current?.click(),
+      id: 'rename',
+      label: 'নাম সম্পাদনা (Edit)',
+      icon: <Edit2 className="w-5 h-5 text-[#3B4FD8]" />,
+      onClick: () => handleRenameCategory(cat),
     },
-    ...(clipboard?.type === 'category'
+    {
+      id: 'copy',
+      label: 'ক্যাটেগরি কপি করুন',
+      icon: <Copy className="w-5 h-5 text-[#3B4FD8]" />,
+      onClick: () => handleCopyCategory(cat),
+    },
+    ...(clipboard?.type === 'paper'
       ? [
           {
-            id: 'paste-category',
-            label: 'ক্যাটেগরি পেস্ট করুন',
-            icon: <ClipboardPaste className="w-4 h-4 text-emerald-600" />,
-            onClick: () => handlePaste(null),
+            id: 'paste-paper',
+            label: 'এখানে প্রশ্নপত্র পেস্ট করুন',
+            icon: <ClipboardPaste className="w-5 h-5 text-emerald-600" />,
+            onClick: () => handlePaste(cat),
           },
         ]
       : []),
+    {
+      id: 'share',
+      label: 'শেয়ার করুন (ফাইল)',
+      icon: <Share2 className="w-5 h-5 text-[#3B4FD8]" />,
+      onClick: () => handleShareCategory(cat),
+    },
+    {
+      id: 'delete',
+      label: 'মুছে ফেলুন',
+      icon: <Trash2 className="w-5 h-5 text-red-500" />,
+      isDestructive: true,
+      onClick: () => setDeleteCatConfirm({ isOpen: true, catId: cat.id, catName: cat.name }),
+    },
   ];
 
-  // Three-dot menu of ONE category (its papers)
-  const categoryDetailMenu = selectedCategory
-    ? selectMode
-      ? [
-          {
-            id: 'select-all',
-            label: 'সব নির্বাচন করুন',
-            icon: <CheckSquare className="w-4 h-4 text-[#3B4FD8]" />,
-            onClick: selectAllPapers,
-          },
-          {
-            id: 'clear',
-            label: 'নির্বাচন বাতিল',
-            icon: <X className="w-4 h-4 text-[#64748B]" />,
-            onClick: exitSelectMode,
-          },
-        ]
-      : [
-          {
-            id: 'select-papers',
-            label: 'প্রশ্নপত্র নির্বাচন করুন',
-            icon: <CheckSquare className="w-4 h-4 text-[#3B4FD8]" />,
-            onClick: () => setSelectMode(true),
-          },
-          {
-            id: 'export-all',
-            label: 'সব প্রশ্নপত্র PDF এক্সপোর্ট',
-            icon: <FolderDown className="w-4 h-4 text-[#3B4FD8]" />,
-            onClick: () => handleExportCategoryPdfs(selectedCategory),
-          },
-          ...(clipboard?.type === 'paper'
-            ? [
-                {
-                  id: 'paste-paper',
-                  label: 'এখানে প্রশ্নপত্র পেস্ট করুন',
-                  icon: <ClipboardPaste className="w-4 h-4 text-emerald-600" />,
-                  onClick: () => handlePaste(selectedCategory),
-                },
-              ]
-            : []),
-          {
-            id: 'share-category',
-            label: 'ক্যাটেগরি শেয়ার (ফাইল)',
-            icon: <Share2 className="w-4 h-4 text-[#3B4FD8]" />,
-            onClick: () => handleShareCategory(selectedCategory),
-          },
-          ...(isUncategorizedName(selectedCategory.name)
-            ? []
-            : [
-                {
-                  id: 'rename-category',
-                  label: 'নাম সম্পাদনা',
-                  icon: <Edit2 className="w-4 h-4 text-[#3B4FD8]" />,
-                  onClick: () => handleRenameCategory(selectedCategory),
-                },
-              ]),
-        ]
-    : [];
+  // Popup menu (3 dots) of one paper card
+  const paperPopupItems = (paper: Paper) => [
+    {
+      id: 'edit',
+      label: 'সম্পাদনা (Create-এ খুলুন)',
+      icon: <Edit2 className="w-5 h-5 text-[#3B4FD8]" />,
+      onClick: () => handleOpenInCreate(paper),
+    },
+    {
+      id: 'move',
+      label: 'অন্য ক্যাটেগরিতে সরান (Move)',
+      icon: <FolderInput className="w-5 h-5 text-[#3B4FD8]" />,
+      onClick: () => setPicker({ mode: 'move', paper }),
+    },
+    {
+      id: 'copy-to',
+      label: 'অন্য ক্যাটেগরিতে কপি করুন',
+      icon: <Layers className="w-5 h-5 text-[#3B4FD8]" />,
+      onClick: () => setPicker({ mode: 'copy', paper }),
+    },
+    {
+      id: 'copy',
+      label: 'কপি করুন (পরে পেস্ট করতে)',
+      icon: <Copy className="w-5 h-5 text-[#3B4FD8]" />,
+      onClick: () => handleCopyPaper(paper),
+    },
+    {
+      id: 'share',
+      label: 'শেয়ার করুন (ফাইল)',
+      icon: <Share2 className="w-5 h-5 text-[#3B4FD8]" />,
+      onClick: () => handleSharePaper(paper),
+    },
+    {
+      id: 'delete',
+      label: 'মুছে ফেলুন',
+      icon: <Trash2 className="w-5 h-5 text-red-500" />,
+      isDestructive: true,
+      onClick: () => setDeletePaperTarget(paper),
+    },
+  ];
 
   return (
     <div className="flex-1 flex flex-col min-h-full pb-20 bg-[#F2F4F8] dark:bg-slate-900 transition-colors">
@@ -821,14 +861,13 @@ export const ProfileScreen: React.FC = () => {
       {viewMode === 'category-detail' && selectedCategory && (
         <>
           <Header
-            title={selectMode ? `${toBn(picked.size)}টি নির্বাচিত` : selectedCategory.name}
-            subtitle={selectMode ? 'প্রশ্নপত্র নির্বাচন মোড' : 'ক্যাটেগরির প্রশ্নপত্রসমূহ'}
+            title={selectedCategory.name}
+            subtitle="ক্যাটেগরির প্রশ্নপত্রসমূহ"
             showBack={true}
-            onBack={() => (selectMode ? exitSelectMode() : setViewMode('categories'))}
-            menuItems={categoryDetailMenu}
+            onBack={() => setViewMode('categories')}
           />
 
-          <main className={`flex-1 p-3.5 space-y-3 ${selectMode ? 'pb-20' : ''}`}>
+          <main className="flex-1 p-3.5 space-y-3">
             {renderClipboardBanner(selectedCategory)}
             {categoryPapers.length === 0 ? (
               <div className="bg-white dark:bg-slate-800 rounded-3xl p-7 text-center border border-[#D5D9E2] dark:border-slate-700 space-y-3">
@@ -864,20 +903,9 @@ export const ProfileScreen: React.FC = () => {
                     >
                       {/* Paper Top Card Summary */}
                       <div
-                        onClick={() => (selectMode ? togglePicked(paper.id) : togglePaperExpand(paper))}
-                        className={`p-3.5 flex items-center justify-between gap-3 cursor-pointer hover:bg-[#F8FAFC] dark:hover:bg-slate-750 transition-colors ${
-                          selectMode && picked.has(paper.id) ? 'bg-[#EEF2FF] dark:bg-indigo-950/50' : ''
-                        }`}
+                        onClick={() => togglePaperExpand(paper)}
+                        className="p-3.5 flex items-center justify-between gap-3 cursor-pointer hover:bg-[#F8FAFC] dark:hover:bg-slate-750 transition-colors"
                       >
-                        {selectMode && (
-                          <span className="shrink-0 text-[#3B4FD8] dark:text-indigo-300">
-                            {picked.has(paper.id) ? (
-                              <CheckSquare className="w-5 h-5" />
-                            ) : (
-                              <Square className="w-5 h-5 text-[#94A3B8]" />
-                            )}
-                          </span>
-                        )}
                         <div className="flex-1 min-w-0 space-y-1">
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-xs text-[#3B4FD8] dark:text-indigo-400 bg-[#EEF2FF] dark:bg-indigo-950 px-2 py-0.5 rounded-md border border-[#D5D9E2] dark:border-indigo-900 truncate">
@@ -895,33 +923,21 @@ export const ProfileScreen: React.FC = () => {
                           </p>
                         </div>
 
-                        {!selectMode && (
-                        <button
-                          type="button"
-                          aria-label="আরও অপশন"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setPaperSheet(paper);
-                          }}
-                          className="shrink-0 min-h-[40px] min-w-[36px] flex items-center justify-center rounded-full text-[#64748B] dark:text-slate-400 hover:bg-[#F2F4F8] dark:hover:bg-slate-700"
-                        >
-                          <MoreVertical className="w-5 h-5" />
-                        </button>
-                        )}
+                        <div onClick={(e) => e.stopPropagation()} className="shrink-0">
+                          <PopupMenu items={paperPopupItems(paper)} />
+                        </div>
 
-                        {!selectMode && (
-                          <div className="text-[#64748B] shrink-0 p-1">
-                            {isExpanded ? (
-                              <ChevronDown className="w-5 h-5 text-[#3B4FD8]" />
-                            ) : (
-                              <ChevronRight className="w-5 h-5" />
-                            )}
-                          </div>
-                        )}
+                        <div className="text-[#64748B] shrink-0 p-1">
+                          {isExpanded ? (
+                            <ChevronDown className="w-5 h-5 text-[#3B4FD8]" />
+                          ) : (
+                            <ChevronRight className="w-5 h-5" />
+                          )}
+                        </div>
                       </div>
 
                       {/* Expanded Questions preview & Actions */}
-                      {isExpanded && !selectMode && (
+                      {isExpanded && (
                         <div className="px-3.5 pb-3.5 pt-1 border-t border-[#F2F4F8] dark:border-slate-700 space-y-3 bg-[#FAFCFF] dark:bg-slate-850">
                           {/* Questions summary */}
                           <div className="space-y-2.5 pt-2">
@@ -998,11 +1014,19 @@ export const ProfileScreen: React.FC = () => {
       {viewMode === 'categories' && (
         <>
           <Header
-            title="ক্যাটেগরি"
-            subtitle="প্রশ্নপত্রের বিভাগ ও ক্যাটেগরি"
+            title={selectMode ? `${toBn(selectedCatIds.length)}টি নির্বাচিত` : 'ক্যাটেগরি'}
+            subtitle={
+              selectMode
+                ? selectPurpose === 'pdf'
+                  ? 'PDF এক্সপোর্টের জন্য ক্যাটেগরি বাছুন'
+                  : selectPurpose === 'backup'
+                    ? 'ব্যাকআপের জন্য ক্যাটেগরি বাছুন'
+                    : 'ক্যাটেগরি নির্বাচন'
+                : 'প্রশ্নপত্রের বিভাগ ও ক্যাটেগরি'
+            }
             showBack={true}
-            onBack={() => setViewMode('main')}
-            menuItems={categoryListMenu}
+            onBack={selectMode ? exitSelectMode : () => setViewMode('main')}
+            menuItems={categoryMenuItems}
           />
 
           <main className="flex-1 p-3.5 space-y-3.5">
@@ -1013,17 +1037,29 @@ export const ProfileScreen: React.FC = () => {
               <span className="text-xs font-bold text-[#1B1F2A] dark:text-slate-300">
                 সকল ক্যাটেগরি ({toBn(categories.length)}টি)
               </span>
-              <button
-                type="button"
-                onClick={handleOpenAddCategory}
-                className="min-h-[44px] px-3.5 py-1.5 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] text-white text-xs font-bold flex items-center gap-1 shadow-2xs"
-              >
-                <Plus className="w-4 h-4" />
-                <span>নতুন ক্যাটেগরি</span>
-              </button>
+              {selectMode ? (
+                <button
+                  type="button"
+                  onClick={selectedCatIds.length === categories.length ? () => setSelectedCatIds([]) : selectAllCategories}
+                  className="min-h-[44px] px-3.5 py-1.5 rounded-xl border border-[#3B4FD8] text-[#3B4FD8] dark:text-indigo-300 text-xs font-bold flex items-center gap-1"
+                >
+                  <CheckSquare className="w-4 h-4" />
+                  <span>{selectedCatIds.length === categories.length ? 'সব বাদ দিন' : 'সব নির্বাচন'}</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleOpenAddCategory}
+                  className="min-h-[44px] px-3.5 py-1.5 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] text-white text-xs font-bold flex items-center gap-1 shadow-2xs"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>নতুন ক্যাটেগরি</span>
+                </button>
+              )}
             </div>
 
             {/* Import a shared category / paper file */}
+            {!selectMode && (
             <button
               type="button"
               onClick={() => importCategoryInputRef.current?.click()}
@@ -1032,6 +1068,7 @@ export const ProfileScreen: React.FC = () => {
               <Upload className="w-4 h-4" />
               <span>শেয়ার করা ক্যাটেগরি/প্রশ্নপত্র ফাইল ইমপোর্ট করুন</span>
             </button>
+            )}
             <input
               ref={importCategoryInputRef}
               type="file"
@@ -1059,45 +1096,87 @@ export const ProfileScreen: React.FC = () => {
                 {categories.map((cat) => {
                   const stats = catStats[cat.id] || { paperCount: 0, questionCount: 0 };
 
+                  const isSelected = selectedCatIds.includes(cat.id);
+
                   return (
                     <div
                       key={cat.id}
                       onClick={() => {
+                        if (selectMode) {
+                          toggleCatSelected(cat.id);
+                          return;
+                        }
                         setSelectedCategory(cat);
                         setViewMode('category-detail');
                       }}
-                      className="bg-white dark:bg-slate-800 hover:border-[#3B4FD8] dark:hover:border-indigo-500 rounded-2xl p-4 border border-[#D5D9E2] dark:border-slate-700 shadow-xs flex items-center justify-between gap-3 cursor-pointer transition-all group"
+                      className={`bg-white dark:bg-slate-800 rounded-2xl p-4 border shadow-xs flex items-center justify-between gap-3 cursor-pointer transition-all group ${
+                        isSelected
+                          ? 'border-[#3B4FD8] dark:border-indigo-500 bg-[#EEF2FF] dark:bg-indigo-950/40'
+                          : 'border-[#D5D9E2] dark:border-slate-700 hover:border-[#3B4FD8] dark:hover:border-indigo-500'
+                      }`}
                     >
+                      {selectMode && (
+                        <span className="shrink-0 text-[#3B4FD8] dark:text-indigo-300">
+                          {isSelected ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5 text-[#94A3B8]" />}
+                        </span>
+                      )}
                       <div className="flex-1 min-w-0">
-                        <h3 className="text-sm font-bold text-[#1B1F2A] dark:text-slate-100 group-hover:text-[#3B4FD8] transition-colors truncate flex items-center gap-1.5">
-                          {isUncategorizedName(cat.name) && (
-                            <Pin className="w-3.5 h-3.5 text-[#3B4FD8] dark:text-indigo-300 shrink-0" />
-                          )}
-                          <span className="truncate">{cat.name}</span>
+                        <h3 className="text-sm font-bold text-[#1B1F2A] dark:text-slate-100 group-hover:text-[#3B4FD8] transition-colors truncate">
+                          {cat.name}
                         </h3>
                         <p className="text-[0.6875rem] text-[#64748B] dark:text-slate-400 font-medium mt-0.5">
                           {toBn(stats.paperCount)}টি প্রশ্নপত্র · {toBn(stats.questionCount)}টি প্রশ্ন
                         </p>
                       </div>
 
-                      {/* Right: Kebab Menu & Chevron */}
-                      <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          aria-label="আরও অপশন"
-                          onClick={() => setCategorySheet(cat)}
-                          className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full text-[#64748B] dark:text-slate-400 hover:bg-[#F2F4F8] dark:hover:bg-slate-700"
-                        >
-                          <MoreVertical className="w-5 h-5" />
-                        </button>
-                        <ChevronRight className="w-5 h-5 text-[#94A3B8] group-hover:translate-x-0.5 transition-transform" />
-                      </div>
+                      {!selectMode && (
+                        <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <PopupMenu items={categoryPopupItems(cat)} />
+                          <ChevronRight className="w-5 h-5 text-[#94A3B8] group-hover:translate-x-0.5 transition-transform" />
+                        </div>
+                      )}
                     </div>
                   );
                 })}
               </div>
             )}
           </main>
+
+          {selectMode && (
+            <div
+              className="fixed left-0 right-0 bottom-16 z-40 px-3.5 pb-2 pt-2 bg-[#F2F4F8]/95 dark:bg-slate-900/95 border-t border-[#D5D9E2] dark:border-slate-700"
+              style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px) * 0)' }}
+            >
+              <div className="max-w-[390px] mx-auto flex gap-2">
+                {selectPurpose !== 'pdf' && (
+                  <button
+                    type="button"
+                    disabled={selectedCatIds.length === 0 || isExporting}
+                    onClick={handleExportSelectedBackup}
+                    className="flex-1 min-h-[46px] rounded-xl bg-[#3B4FD8] text-white text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-40"
+                  >
+                    <FileArchive className="w-4 h-4" />
+                    <span>{isExporting ? 'তৈরি হচ্ছে...' : 'ব্যাকআপ এক্সপোর্ট'}</span>
+                  </button>
+                )}
+                {selectPurpose !== 'backup' && (
+                  <button
+                    type="button"
+                    disabled={selectedCatIds.length === 0 || Boolean(pdfProgress)}
+                    onClick={handleExportSelectedPdf}
+                    className={`flex-1 min-h-[46px] rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-40 ${
+                      selectPurpose === 'pdf'
+                        ? 'bg-[#3B4FD8] text-white'
+                        : 'bg-white dark:bg-slate-800 border border-[#3B4FD8] text-[#3B4FD8] dark:text-indigo-300'
+                    }`}
+                  >
+                    <FileDown className="w-4 h-4" />
+                    <span>PDF এক্সপোর্ট</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </>
       )}
 
@@ -1191,125 +1270,6 @@ export const ProfileScreen: React.FC = () => {
         </>
       )}
 
-      {/* Category options (edit / copy / paste / share / delete) */}
-      <ActionSheet
-        isOpen={Boolean(categorySheet)}
-        title={categorySheet?.name}
-        subtitle="ক্যাটেগরি অপশন"
-        onClose={() => setCategorySheet(null)}
-        items={
-          categorySheet
-            ? [
-                {
-                  id: 'export-pdf',
-                  label: 'PDF এক্সপোর্ট (নতুন ফোল্ডারে)',
-                  icon: <FolderDown className="w-5 h-5 text-[#3B4FD8]" />,
-                  onClick: () => handleExportCategoryPdfs(categorySheet),
-                },
-                ...(isUncategorizedName(categorySheet.name)
-                  ? []
-                  : [
-                      {
-                        id: 'rename',
-                        label: 'নাম সম্পাদনা (Edit)',
-                        icon: <Edit2 className="w-5 h-5 text-[#3B4FD8]" />,
-                        onClick: () => handleRenameCategory(categorySheet),
-                      },
-                    ]),
-                {
-                  id: 'copy',
-                  label: 'ক্যাটেগরি কপি করুন',
-                  icon: <Copy className="w-5 h-5 text-[#3B4FD8]" />,
-                  onClick: () => handleCopyCategory(categorySheet),
-                },
-                ...(clipboard?.type === 'paper'
-                  ? [
-                      {
-                        id: 'paste-paper',
-                        label: 'এখানে প্রশ্নপত্র পেস্ট করুন',
-                        icon: <ClipboardPaste className="w-5 h-5 text-emerald-600" />,
-                        onClick: () => handlePaste(categorySheet),
-                      },
-                    ]
-                  : []),
-                {
-                  id: 'share',
-                  label: 'শেয়ার করুন (ফাইল)',
-                  icon: <Share2 className="w-5 h-5 text-[#3B4FD8]" />,
-                  onClick: () => handleShareCategory(categorySheet),
-                },
-                ...(isUncategorizedName(categorySheet.name)
-                  ? []
-                  : [
-                      {
-                        id: 'delete',
-                        label: 'মুছে ফেলুন',
-                        icon: <Trash2 className="w-5 h-5 text-red-500" />,
-                        isDestructive: true,
-                        onClick: () =>
-                          setDeleteCatConfirm({
-                            isOpen: true,
-                            catId: categorySheet.id,
-                            catName: categorySheet.name,
-                          }),
-                      },
-                    ]),
-              ]
-            : []
-        }
-      />
-
-      {/* Paper options (edit / move / copy / share / delete) */}
-      <ActionSheet
-        isOpen={Boolean(paperSheet)}
-        title={paperSheet?.title || paperSheet?.shortName}
-        subtitle="প্রশ্নপত্র অপশন"
-        onClose={() => setPaperSheet(null)}
-        items={
-          paperSheet
-            ? [
-                {
-                  id: 'edit',
-                  label: 'সম্পাদনা (Create-এ খুলুন)',
-                  icon: <Edit2 className="w-5 h-5 text-[#3B4FD8]" />,
-                  onClick: () => handleOpenInCreate(paperSheet),
-                },
-                {
-                  id: 'move',
-                  label: 'অন্য ক্যাটেগরিতে সরান (Move)',
-                  icon: <FolderInput className="w-5 h-5 text-[#3B4FD8]" />,
-                  onClick: () => setPicker({ mode: 'move', paper: paperSheet }),
-                },
-                {
-                  id: 'copy-to',
-                  label: 'অন্য ক্যাটেগরিতে কপি করুন',
-                  icon: <Layers className="w-5 h-5 text-[#3B4FD8]" />,
-                  onClick: () => setPicker({ mode: 'copy', paper: paperSheet }),
-                },
-                {
-                  id: 'copy',
-                  label: 'কপি করুন (পরে পেস্ট করতে)',
-                  icon: <Copy className="w-5 h-5 text-[#3B4FD8]" />,
-                  onClick: () => handleCopyPaper(paperSheet),
-                },
-                {
-                  id: 'share',
-                  label: 'শেয়ার করুন (ফাইল)',
-                  icon: <Share2 className="w-5 h-5 text-[#3B4FD8]" />,
-                  onClick: () => handleSharePaper(paperSheet),
-                },
-                {
-                  id: 'delete',
-                  label: 'মুছে ফেলুন',
-                  icon: <Trash2 className="w-5 h-5 text-red-500" />,
-                  isDestructive: true,
-                  onClick: () => setDeletePaperTarget(paperSheet),
-                },
-              ]
-            : []
-        }
-      />
-
       {/* Destination picker for Move / Copy */}
       <CategoryPickerDialog
         isOpen={Boolean(picker)}
@@ -1354,205 +1314,102 @@ export const ProfileScreen: React.FC = () => {
         onCancel={() => setDeleteCatConfirm({ isOpen: false, catId: null, catName: '' })}
       />
 
-      {/* Restore Confirmation Dialog */}
-      <ConfirmDialog
-        isOpen={showRestoreConfirm}
-        title="ডাটাবেস রিস্টোর করবেন?"
-        message="সতর্কতা: এটি পূর্বের সকল প্রশ্নপত্র ও তথ্য পরিবর্তন করে ব্যাকআপ ফাইলের ডাটা স্থাপন করবে।"
-        confirmText="হ্যাঁ, রিস্টোর করুন"
-        cancelText="বাতিল"
-        isDestructive={true}
-        onConfirm={handleConfirmRestore}
-        onCancel={() => setShowRestoreConfirm(false)}
+      {/* Import / Export choice (Type CQ, Chapter CQ, Full backup) */}
+      <TransferChoiceDialog
+        isOpen={transferChoice !== null}
+        title={
+          transferChoice === 'type'
+            ? 'Type CQ ইমপোর্ট / এক্সপোর্ট'
+            : transferChoice === 'chapter'
+              ? 'Chapter CQ ইমপোর্ট / এক্সপোর্ট'
+              : 'ফুল ব্যাকআপ ইমপোর্ট / এক্সপোর্ট'
+        }
+        description={
+          transferChoice === 'full'
+            ? 'সম্পূর্ণ অ্যাপের সব ডাটা (Type CQ, Chapter CQ, ক্যাটেগরি, প্রশ্নপত্র, ছবি)।'
+            : 'প্রশ্ন, উদ্দীপক ও চিত্রসহ JSON ফাইল।'
+        }
+        onClose={() => setTransferChoice(null)}
+        onImport={() => {
+          if (transferChoice === 'type') setShowImportModal(true);
+          else if (transferChoice === 'chapter') setShowImportChapterModal(true);
+          else restoreFileInputRef.current?.click();
+        }}
+        onExport={() => {
+          if (transferChoice === 'type') handleExportCollection('type');
+          else if (transferChoice === 'chapter') handleExportCollection('chapter');
+          else handleFullBackup();
+        }}
       />
 
-      {/* Backup / Restore choices */}
-      <ActionSheet
-        isOpen={backupSheetOpen}
-        title="ব্যাকআপ ও রিস্টোর"
-        subtitle="সম্পূর্ণ ডাটাবেস (প্রশ্ন, ছবি, প্রশ্নপত্র, সেটিংস)"
-        onClose={() => setBackupSheetOpen(false)}
-        items={[
-          {
-            id: 'backup-type',
-            label: 'Type CQ ব্যাকআপ নিন',
-            icon: <HardDriveDownload className="w-5 h-5 text-[#3B4FD8]" />,
-            onClick: () => handleFullBackup('type'),
-          },
-          {
-            id: 'backup-chapter',
-            label: 'Chapter CQ ব্যাকআপ নিন',
-            icon: <HardDriveDownload className="w-5 h-5 text-emerald-600" />,
-            onClick: () => handleFullBackup('chapter'),
-          },
-          {
-            id: 'restore',
-            label: 'ব্যাকআপ ফাইল থেকে রিস্টোর',
-            icon: <HardDriveUpload className="w-5 h-5 text-amber-600" />,
-            onClick: () => restoreFileInputRef.current?.click(),
-          },
-        ]}
+      {/* Full backup import: replace or merge? */}
+      <RestoreModeDialog
+        isOpen={Boolean(restoreInfo)}
+        fileName={restoreInfo?.fileName}
+        questions={restoreInfo?.questions || 0}
+        papers={restoreInfo?.papers || 0}
+        busy={restoring}
+        onReplace={() => handleRunRestore('replace')}
+        onMerge={() => handleRunRestore('merge')}
+        onCancel={() => {
+          setRestoreInfo(null);
+          setRestoreJsonContent(null);
+        }}
       />
 
-      {/* Import / Export choices */}
-      <ActionSheet
-        isOpen={transferSheetOpen}
-        title="ইমপোর্ট / এক্সপোর্ট"
-        subtitle="প্রশ্ন কালেকশন (JSON ফাইল)"
-        onClose={() => setTransferSheetOpen(false)}
-        items={[
-          {
-            id: 'import-type',
-            label: 'Type CQ ইমপোর্ট',
-            icon: <Upload className="w-5 h-5 text-emerald-600" />,
-            onClick: () => setShowImportModal(true),
-          },
-          {
-            id: 'export-type',
-            label: 'Type CQ এক্সপোর্ট',
-            icon: <Download className="w-5 h-5 text-indigo-600" />,
-            onClick: () => handleExportCollection('type'),
-          },
-          {
-            id: 'import-chapter',
-            label: 'Chapter CQ ইমপোর্ট',
-            icon: <Upload className="w-5 h-5 text-emerald-600" />,
-            onClick: () => setShowImportChapterModal(true),
-          },
-          {
-            id: 'export-chapter',
-            label: 'Chapter CQ এক্সপোর্ট',
-            icon: <Download className="w-5 h-5 text-indigo-600" />,
-            onClick: () => handleExportCollection('chapter'),
-          },
-        ]}
-      />
-
-      {/* Multi-select action bar (inside a category) */}
-      {selectMode && viewMode === 'category-detail' && (
-        <div
-          className="fixed left-0 right-0 z-40"
-          style={{ bottom: 'calc(4rem + env(safe-area-inset-bottom, 0px))' }}
-        >
-          <div className="max-w-[390px] mx-auto bg-white dark:bg-slate-900 border-t border-[#D5D9E2] dark:border-slate-700 shadow-[0_-4px_14px_rgba(0,0,0,0.08)] px-2 py-1.5 grid grid-cols-3 gap-1">
-            {[
-              { id: 'pdf', label: 'PDF', icon: <FileDown className="w-5 h-5" />, onClick: handleExportPickedPdfs, danger: false },
-              { id: 'move', label: 'ক্যাটেগরি', icon: <FolderInput className="w-5 h-5" />, onClick: () => setMovePickerOpen(true), danger: false },
-              { id: 'delete', label: 'ডিলিট', icon: <Trash2 className="w-5 h-5" />, onClick: () => setDeletePickedOpen(true), danger: true },
-            ].map((a) => (
-              <button
-                key={a.id}
-                type="button"
-                disabled={picked.size === 0}
-                onClick={a.onClick}
-                className={`min-h-[48px] rounded-xl flex flex-col items-center justify-center gap-0.5 text-[0.625rem] font-bold disabled:opacity-35 active:bg-[#F2F4F8] dark:active:bg-slate-800 ${
-                  a.danger ? 'text-red-600 dark:text-red-400' : 'text-[#3B4FD8] dark:text-indigo-300'
-                }`}
-              >
-                {a.icon}
-                <span>{a.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <CategoryPickerDialog
-        isOpen={movePickerOpen}
-        title={`${toBn(picked.size)}টি প্রশ্নপত্র কোন ক্যাটেগরিতে নেবেন?`}
-        categories={categories}
-        excludeId={selectedCategory?.id ?? null}
-        stats={catStats}
-        onPick={handleMovePicked}
-        onCancel={() => setMovePickerOpen(false)}
-      />
-
-      <ConfirmDialog
-        isOpen={deletePickedOpen}
-        title="প্রশ্নপত্র মুছবেন?"
-        message={`নির্বাচিত ${toBn(picked.size)}টি প্রশ্নপত্র স্থায়ীভাবে মুছে ফেলতে চান? (কালেকশনের প্রশ্নগুলো মুছবে না)`}
-        confirmText="হ্যাঁ, মুছে ফেলুন"
-        cancelText="না"
-        isDestructive={true}
-        onConfirm={handleDeletePicked}
-        onCancel={() => setDeletePickedOpen(false)}
-      />
-
-      {/* Batch PDF export progress */}
-      {batchProgress && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
-        >
-          <div className="w-full max-w-[300px] bg-white dark:bg-slate-900 rounded-2xl p-5 border border-[#D5D9E2] dark:border-slate-700 shadow-2xl text-center space-y-3">
-            <Loader2 className="w-8 h-8 animate-spin text-[#3B4FD8] mx-auto" />
-            <p className="text-sm font-bold text-[#1B1F2A] dark:text-slate-100">PDF তৈরি হচ্ছে…</p>
+      {/* PDF export progress */}
+      {pdfProgress && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-[300px] bg-white dark:bg-slate-900 rounded-2xl p-5 text-center space-y-2 shadow-2xl">
+            <p className="text-sm font-bold text-[#1B1F2A] dark:text-slate-100">PDF বানানো হচ্ছে…</p>
             <p className="text-xs text-[#64748B] dark:text-slate-400">
-              {toBn(Math.min(batchProgress.done + 1, batchProgress.total))} / {toBn(batchProgress.total)} — অনুগ্রহ করে অপেক্ষা করুন
+              {toBn(Math.min(pdfProgress.done + 1, pdfProgress.total))} / {toBn(pdfProgress.total)} — অনুগ্রহ করে অপেক্ষা করুন
             </p>
           </div>
         </div>
       )}
 
-      {/* Batch PDF export result */}
-      {(batchResult || batchError) && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
-        >
-          <div className="w-full max-w-[340px] bg-white dark:bg-slate-900 rounded-2xl p-5 border border-[#D5D9E2] dark:border-slate-700 shadow-2xl space-y-3.5">
-            {batchError ? (
-              <>
-                <p className="text-sm font-bold text-red-600">PDF তৈরিতে ত্রুটি</p>
-                <p className="text-xs text-[#1B1F2A] dark:text-slate-200 bg-red-50 dark:bg-red-950/40 p-3 rounded-xl border border-red-100 dark:border-red-900 break-all leading-relaxed">
-                  {batchError}
-                </p>
-              </>
-            ) : (
-              batchResult && (
-                <>
-                  <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold text-sm">
-                    <CheckCircle2 className="w-5 h-5" />
-                    <span>{toBn(batchResult.saved)}টি PDF সেভ হয়েছে</span>
-                  </div>
-                  <div className="text-[11px] text-[#64748B] dark:text-slate-400 bg-[#F2F4F8] dark:bg-slate-800 rounded-xl p-2.5 break-all">
-                    {batchResult.folder ? (
-                      <>
-                        নতুন ফোল্ডার: <span className="font-semibold">{batchResult.folder}</span>
-                      </>
-                    ) : (
-                      'ব্রাউজারের ডাউনলোড ফোল্ডারে সেভ হয়েছে'
-                    )}
-                  </div>
-                  {batchResult.failed.length > 0 && (
-                    <p className="text-xs text-red-600 dark:text-red-400 leading-relaxed">
-                      তৈরি করা যায়নি: {batchResult.failed.join(', ')}
-                    </p>
-                  )}
-                </>
-              )
+      {/* PDF export result */}
+      {pdfResult && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-[340px] bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-2xl space-y-3">
+            <p className="text-sm font-bold text-[#1B1F2A] dark:text-slate-100">
+              {toBn(pdfResult.saved)}টি PDF সেভ হয়েছে
+            </p>
+            {pdfResult.folders.length > 0 && Capacitor.isNativePlatform() && (
+              <div className="text-xs text-[#334155] dark:text-slate-300 space-y-1 max-h-40 overflow-y-auto">
+                {pdfResult.folders.map((f) => (
+                  <p key={f.folder} className="break-all">
+                    <span className="font-semibold">{f.folder}</span> ({toBn(f.saved)}টি)
+                  </p>
+                ))}
+              </div>
             )}
-            <div className="flex flex-col gap-2 pt-1">
-              {batchResult?.folder && Capacitor.isNativePlatform() && (
+            {pdfResult.emptyCategories.length > 0 && (
+              <p className="text-[0.6875rem] text-amber-600">
+                প্রশ্নপত্র না থাকায় বাদ: {pdfResult.emptyCategories.join(', ')}
+              </p>
+            )}
+            {pdfResult.failed.length > 0 && (
+              <p className="text-[0.6875rem] text-red-600 break-words">তৈরি করা যায়নি: {pdfResult.failed.join(', ')}</p>
+            )}
+            <div className="flex justify-end gap-2 pt-1">
+              {Capacitor.isNativePlatform() && pdfResult.folders.length > 0 && (
                 <button
                   type="button"
                   onClick={async () => {
-                    await openSavedFolder(`${batchResult.folder}/x.pdf`);
+                    const target = pdfResult.folders.length === 1 ? pdfResult.folders[0].folder : PDF_SAVE_FOLDER;
+                    await openSavedFolder(`${target}/x.pdf`);
                   }}
-                  className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] text-white text-xs font-bold"
+                  className="min-h-[44px] px-4 rounded-xl border border-[#3B4FD8] text-[#3B4FD8] text-xs font-bold"
                 >
                   ফোল্ডার খুলুন
                 </button>
               )}
               <button
                 type="button"
-                onClick={() => {
-                  setBatchResult(null);
-                  setBatchError(null);
-                }}
-                className="w-full min-h-[44px] px-4 py-2.5 rounded-xl border border-[#D5D9E2] dark:border-slate-700 text-xs font-semibold text-[#1B1F2A] dark:text-slate-200"
+                onClick={() => setPdfResult(null)}
+                className="min-h-[44px] px-4 rounded-xl bg-[#3B4FD8] text-white text-xs font-bold"
               >
                 ঠিক আছে
               </button>

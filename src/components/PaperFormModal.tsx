@@ -8,7 +8,6 @@ import {
   saveCategory,
   getImageBlobUrl,
   getNextPaperLabel,
-  isUncategorizedName,
 } from '../db/api';
 import { getAppSettings } from '../utils/settings';
 import { useToast } from './Toast';
@@ -77,7 +76,7 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
       if (editPaper) {
         setTitle(editPaper.title);
         setSubjectLine(editPaper.subjectLine || 'বিষয়: পদার্থবিজ্ঞান ১ম পত্র');
-        setSelectedCategoryId(editPaper.categoryId || (cats.find((c) => !isUncategorizedName(c.name)) ?? cats[0])?.id || '');
+        setSelectedCategoryId(editPaper.categoryId || (cats[0]?.id ?? ''));
         setDuration(String(editPaper.duration || '২ ঘণ্টা ৩০ মিনিট'));
         setTotalMarks(editPaper.totalMarks || 50);
         setNote(editPaper.note ?? settings.defaultPaperNote ?? DEFAULT_PAPER_NOTE);
@@ -85,7 +84,7 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
       } else {
         setTitle(settings.defaultPaperTitle || 'পদার্থবিজ্ঞান ১ম পত্র - মডেল টেস্ট');
         setSubjectLine('বিষয়: পদার্থবিজ্ঞান (প্রথম পত্র)');
-        setSelectedCategoryId((cats.find((c) => !isUncategorizedName(c.name)) ?? cats[0])?.id || '');
+        setSelectedCategoryId(cats[0]?.id || '');
         setDuration('২ ঘণ্টা ৩০ মিনিট');
         setTotalMarks(50);
         setNote(settings.defaultPaperNote ?? DEFAULT_PAPER_NOTE);
