@@ -61,11 +61,25 @@ export interface MultiClipGroup {
 }
 
 const MULTI_CLIPBOARD_KEY = 'multi_question_clipboard';
+const MULTI_CLIPBOARD_MODE_KEY = 'multi_question_clipboard_mode';
 
-export async function setMultiClipboard(groups: MultiClipGroup[]): Promise<void> {
+export type MultiClipMode = 'copy' | 'cut';
+
+/**
+ * Put questions on the shared clipboard.
+ * mode 'copy' -> pasting makes NEW copies.
+ * mode 'cut'  -> pasting MOVES the original questions (the Filter tab's "কাট করুন").
+ */
+export async function setMultiClipboard(groups: MultiClipGroup[], mode: MultiClipMode = 'copy'): Promise<void> {
   // only one clipboard is active at a time
   await Promise.all([typeApi.clearGroupClipboard(), chapterApi.clearGroupClipboard()]);
   await db.meta.put({ key: MULTI_CLIPBOARD_KEY, value: JSON.parse(JSON.stringify(groups)) });
+  await db.meta.put({ key: MULTI_CLIPBOARD_MODE_KEY, value: mode });
+}
+
+export async function getMultiClipboardMode(): Promise<MultiClipMode> {
+  const rec = await db.meta.get(MULTI_CLIPBOARD_MODE_KEY);
+  return rec?.value === 'cut' ? 'cut' : 'copy';
 }
 
 export async function getMultiClipboard(): Promise<MultiClipGroup[]> {
@@ -76,6 +90,7 @@ export async function getMultiClipboard(): Promise<MultiClipGroup[]> {
 
 export async function clearMultiClipboard(): Promise<void> {
   await db.meta.put({ key: MULTI_CLIPBOARD_KEY, value: null });
+  await db.meta.put({ key: MULTI_CLIPBOARD_MODE_KEY, value: 'copy' });
 }
 
 export function countMultiClipboard(groups: MultiClipGroup[]): number {
@@ -132,6 +147,58 @@ export async function pasteMultiClipboard(
       const img = await sdb.images.get(id);
       if (img) await tdb.images.put(img);
     }
+  }
+
+  // ---------- CUT: move the original questions (ids stay the same, so papers keep working) ----------
+  if ((await getMultiClipboardMode()) === 'cut') {
+    const cutIds = new Set<string>();
+    groups.forEach((g) => g.questions.forEach((q) => cutIds.add(q.id)));
+
+    // shift the questions that are already there to make room
+    for (const q of topicQuestions) {
+      if (cutIds.has(q.id)) continue;
+      if (q.order >= insertOrder) await tdb.questions.update(q.id, { order: q.order + total });
+    }
+
+    let cutOrder = insertOrder;
+    for (const g of groups) {
+      const sdb = getDb(g.source);
+      let stimulusId: string | undefined;
+
+      if (g.stimulus) {
+        // does some other question still use this stimulus in the source database?
+        const siblings = await sdb.questions.where('stimulusId').equals(g.stimulus.id).toArray();
+        const stays = siblings.some((q) => !cutIds.has(q.id));
+        const srcStimulus = (await sdb.stimuli.get(g.stimulus.id)) ?? g.stimulus;
+
+        if (stays) {
+          // only some questions of the group were cut -> the moved ones get their own copy of the stimulus
+          stimulusId = generateId();
+          await tdb.stimuli.put({ ...srcStimulus, id: stimulusId, topicId: targetTopicId });
+        } else {
+          stimulusId = srcStimulus.id;
+          await tdb.stimuli.put({ ...srcStimulus, topicId: targetTopicId });
+          if (g.source !== scope) await sdb.stimuli.delete(srcStimulus.id);
+        }
+      }
+
+      for (const q of g.questions) {
+        const fresh = (await sdb.questions.get(q.id)) ?? q;
+        await tdb.questions.put({ ...fresh, topicId: targetTopicId, stimulusId, order: cutOrder++ });
+        if (g.source !== scope) await sdb.questions.delete(q.id);
+      }
+
+      // moved to another database -> drop them from that database's selection list
+      if (g.source !== scope) {
+        const api = g.source === 'chapter' ? chapterApi : typeApi;
+        const selected = await api.getSelectedIds();
+        const remaining = selected.filter((id) => !g.questions.some((q) => q.id === id));
+        if (remaining.length !== selected.length) await api.reorderSelected(remaining);
+      }
+    }
+
+    await clearMultiClipboard(); // a cut can only be pasted once
+    return total;
   }
 
   await tdb.transaction('rw', [tdb.questions, tdb.stimuli], async () => {

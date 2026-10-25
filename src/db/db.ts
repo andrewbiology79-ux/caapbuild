@@ -26,6 +26,12 @@ export interface Stimulus {
   text: string;
   imageIds: string[];
   boardTag?: string;
+  /** boards/years in which the stimulus itself appeared (প্রশ্ন ইডিটে উদ্দীপকের নিচে বাছা হয়) */
+  usedInBoards?: BoardUsage[];
+  /** difficulty rating chosen for the stimulus (1-5) */
+  rating?: number;
+  /** where the question was collected from, e.g. "মেরি জি প্রশ্ন ব্যাংক" */
+  reference?: string;
 }
 
 export type QuestionType = 'ক' | 'খ' | 'গ' | 'ঘ';
@@ -73,6 +79,8 @@ export interface Paper {
   duration?: string | number;
   totalMarks?: number;
   questionIds: string[];
+  /** manual position inside its category (smaller = higher). undefined = sorted by createdAt desc */
+  order?: number;
 }
 
 export interface DbImage {

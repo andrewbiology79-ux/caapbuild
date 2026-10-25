@@ -7,12 +7,14 @@ import { QuestionFormModal } from '../components/QuestionFormModal';
 import { ImportCollectionModal } from '../components/ImportCollectionModal';
 import {
   getMultiClipboard,
+  getMultiClipboardMode,
   clearMultiClipboard,
   pasteMultiClipboard,
   countMultiClipboard,
 } from '../db/crossDb';
 import { PasteQuestionsModal } from '../components/PasteQuestionsModal';
 import { ImageViewerModal } from '../components/ImageViewerModal';
+import { ReferenceDialog } from '../components/ReferenceDialog';
 import { exportQuestionCollection } from '../utils/collectionTransfer';
 import { RichText } from '../components/RichText';
 import { KebabMenu, type MenuItem } from '../components/KebabMenu';
@@ -54,6 +56,7 @@ import {
   ClipboardPaste,
   Download,
   Square,
+  BookMarked,
 } from 'lucide-react';
 
 type DrillView =
@@ -141,6 +144,9 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
   const [groupClipboard, setGroupClipboard] = useState<GroupClipboardData | null>(null);
   // Questions copied from the Filter tab (many at once)
   const [multiClipCount, setMultiClipCount] = useState<number>(0);
+  const [multiClipMode, setMultiClipMode] = useState<'copy' | 'cut'>('copy');
+  // "রেফারেন্স দেখুন" dialog of a question card
+  const [referenceView, setReferenceView] = useState<{ isOpen: boolean; text: string }>({ isOpen: false, text: '' });
 
   // Loading & Modes
   const [loading, setLoading] = useState(true);
@@ -206,14 +212,16 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
     try {
       await seedInitialDataIfNeeded();
 
-      const [subList, statsData, selIds, clip, multiClip] = await Promise.all([
+      const [subList, statsData, selIds, clip, multiClip, multiMode] = await Promise.all([
         getSubjects(),
         getHierarchyStats(),
         getSelectedIds(),
         getGroupClipboard(),
         getMultiClipboard(),
+        getMultiClipboardMode(),
       ]);
       setMultiClipCount(countMultiClipboard(multiClip));
+      setMultiClipMode(multiMode);
 
       setSubjects(subList);
       setStats(statsData);
@@ -716,7 +724,10 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
       });
       items.push({
         id: 'paste-copied',
-        label: multiClipCount > 0 ? `কপি করা প্রশ্ন পেস্ট করুন (${toBn(multiClipCount)}টি)` : 'কপি করা প্রশ্ন পেস্ট করুন',
+        label:
+          multiClipCount > 0
+            ? `${multiClipMode === 'cut' ? 'কাট' : 'কপি'} করা প্রশ্ন পেস্ট করুন (${toBn(multiClipCount)}টি)`
+            : 'কপি/কাট করা প্রশ্ন পেস্ট করুন',
         icon: <ClipboardPaste className="w-4 h-4 text-emerald-600" />,
         onClick: handlePasteMultiAtEnd,
       });
@@ -1336,7 +1347,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
             {multiClipCount > 0 && (
               <div className="bg-[#ECFDF5] border border-emerald-500 rounded-xl px-3.5 py-2.5 flex items-center justify-between text-xs text-emerald-800 font-bold shadow-2xs">
                 <span>
-                  {toBn(multiClipCount)}টি প্রশ্ন কপি করা আছে — প্রশ্নের মেনু থেকে "Paste after / before" বা রিবন মেনু থেকে পেস্ট করুন
+                  {toBn(multiClipCount)}টি প্রশ্ন {multiClipMode === 'cut' ? 'কাট' : 'কপি'} করা আছে — প্রশ্নের মেনু থেকে "Paste after / before" বা রিবন মেনু থেকে পেস্ট করুন
                 </span>
                 <button
                   type="button"
@@ -1407,14 +1418,19 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
                 const allBoards: Array<{ board: string; years: number[] }> = [];
                 const allUsages: QuestionPaperUsage[] = [];
 
-                grp.questions.forEach((q) => {
-                  if (q.usedInBoards) {
-                    q.usedInBoards.forEach((b) => {
-                      if (!allBoards.some((ex) => ex.board === b.board)) {
-                        allBoards.push(b);
-                      }
-                    });
+                // boards of the stimulus + of every question, same board merged (years combined)
+                const addBoardUsage = (b: { board: string; years: number[] }) => {
+                  const ex = allBoards.find((x) => x.board === b.board);
+                  if (ex) {
+                    ex.years = Array.from(new Set([...ex.years, ...(b.years || [])])).sort((x, y) => x - y);
+                  } else {
+                    allBoards.push({ board: b.board, years: [...(b.years || [])] });
                   }
+                };
+                (grp.stimulus?.usedInBoards || []).forEach(addBoardUsage);
+
+                grp.questions.forEach((q) => {
+                  (q.usedInBoards || []).forEach(addBoardUsage);
                   const usages = questionUsages[q.id] || [];
                   usages.forEach((u) => {
                     if (!allUsages.some((ex) => ex.paperId === u.paperId)) {
@@ -1474,6 +1490,13 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
                             label: 'Edit this Q&A',
                             icon: <FileEdit className="w-4 h-4 text-[#3B4FD8]" />,
                             onClick: () => handleEditGroup(grp),
+                          },
+                          {
+                            id: 'reference',
+                            label: 'রেফারেন্স দেখুন',
+                            icon: <BookMarked className="w-4 h-4 text-[#3B4FD8]" />,
+                            onClick: () =>
+                              setReferenceView({ isOpen: true, text: grp.stimulus?.reference || '' }),
                           },
                           {
                             id: 'copy',
@@ -1696,6 +1719,12 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
           <span>Add question</span>
         </button>
       )}
+
+      <ReferenceDialog
+        isOpen={referenceView.isOpen}
+        reference={referenceView.text}
+        onClose={() => setReferenceView({ isOpen: false, text: '' })}
+      />
 
       {/* Full-screen Zoomable Image Viewer (Requirement 4) */}
       <ImageViewerModal

@@ -108,6 +108,22 @@ export async function exportPaperShare(paperId: string): Promise<boolean> {
 }
 
 /**
+ * Export several selected papers of one category into ONE file (the file can be imported
+ * again with the normal category/paper import, it lands in a category with the same name)
+ */
+export async function exportPapersShare(paperIds: string[], categoryName?: string): Promise<boolean> {
+  const found = ((await db.papers.bulkGet(paperIds)).filter(Boolean) as Paper[]);
+  // keep the order the papers were selected in
+  const byId = new Map(found.map((p) => [p.id, p]));
+  const papers = paperIds.map((id) => byId.get(id)).filter(Boolean) as Paper[];
+  if (papers.length === 0) throw new Error('কোনো প্রশ্নপত্র পাওয়া যায়নি');
+  const name = categoryName?.trim() || papers[0].category?.trim() || 'সাধারণ';
+  const payload = await buildPayload(name, papers);
+  const dateStr = new Date().toISOString().split('T')[0];
+  return await exportJsonFile(`qb-papers-${dateStr}.json`, JSON.stringify(payload));
+}
+
+/**
  * Backup several categories into ONE file (select categories -> export)
  */
 export async function exportCategoriesBackup(categoryIds: string[]): Promise<boolean> {

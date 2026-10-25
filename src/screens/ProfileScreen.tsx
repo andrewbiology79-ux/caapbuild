@@ -27,6 +27,10 @@ import {
   deletePaper,
   movePaperToCategory,
   duplicatePaper,
+  duplicatePapers,
+  movePapersToCategory,
+  deletePapers,
+  reorderPapers,
   duplicateCategory,
   deleteCategories,
   reorderCategories,
@@ -83,6 +87,7 @@ import {
   ArrowUpDown,
   ListOrdered,
   Check,
+  Scissors,
 } from 'lucide-react';
 import { Share } from '@capacitor/share';
 import { exportPaperById, exportCategoriesToFolders, type CategoriesPdfResult } from '../utils/pdfGenerator';
@@ -92,6 +97,7 @@ import {
   exportCategoryShare,
   exportCategoriesBackup,
   exportPaperShare,
+  exportPapersShare,
   parseCategoryShare,
   importCategoryShare,
 } from '../utils/categoryTransfer';
@@ -109,6 +115,30 @@ const SORT_OPTIONS: Array<{ id: CategorySortMode; label: string }> = [
 ];
 
 const CATEGORY_SORT_META_KEY = 'category_sort_mode';
+
+type PaperSortMode =
+  | 'custom'
+  | 'newest'
+  | 'oldest'
+  | 'name-asc'
+  | 'name-desc'
+  | 'questions-desc'
+  | 'questions-asc';
+
+const PAPER_SORT_OPTIONS: Array<{ id: PaperSortMode; label: string }> = [
+  { id: 'custom', label: 'আমার সাজানো ক্রম (রি-অর্ডার)' },
+  { id: 'newest', label: 'নতুন আগে' },
+  { id: 'oldest', label: 'পুরোনো আগে' },
+  { id: 'name-asc', label: 'নাম (অ → হ)' },
+  { id: 'name-desc', label: 'নাম (হ → অ)' },
+  { id: 'questions-desc', label: 'বেশি প্রশ্ন আগে' },
+  { id: 'questions-asc', label: 'কম প্রশ্ন আগে' },
+];
+
+const PAPER_SORT_META_KEY = 'paper_sort_mode';
+
+/** what the bottom bar of the paper multi-select mode shows */
+type PaperSelectPurpose = 'copy' | 'cut' | 'export' | 'pdf' | 'delete' | null;
 
 type ProfileViewMode = 'main' | 'categories' | 'category-detail';
 
@@ -191,6 +221,15 @@ export const ProfileScreen: React.FC = () => {
   const [showSortDialog, setShowSortDialog] = useState<boolean>(false);
   const [reorderMode, setReorderMode] = useState<boolean>(false);
   const [selectedCatIds, setSelectedCatIds] = useState<string[]>([]);
+  // Multi-select / sort / re-order of the papers INSIDE a category
+  const [paperSortMode, setPaperSortMode] = useState<PaperSortMode>('custom');
+  const [showPaperSortDialog, setShowPaperSortDialog] = useState<boolean>(false);
+  const [paperReorderMode, setPaperReorderMode] = useState<boolean>(false);
+  const [paperSelectMode, setPaperSelectMode] = useState<boolean>(false);
+  const [paperSelectPurpose, setPaperSelectPurpose] = useState<PaperSelectPurpose>(null);
+  const [selectedPaperIds, setSelectedPaperIds] = useState<string[]>([]);
+  const [paperBulkDeleteConfirm, setPaperBulkDeleteConfirm] = useState<boolean>(false);
+  const [paperClip, setPaperClip] = useState<{ mode: 'copy' | 'cut'; ids: string[] } | null>(null);
   const [pdfProgress, setPdfProgress] = useState<{ done: number; total: number } | null>(null);
   const [pdfResult, setPdfResult] = useState<CategoriesPdfResult | null>(null);
 
@@ -302,6 +341,16 @@ export const ProfileScreen: React.FC = () => {
 
   // Back button handling
   const handleGoBack = useCallback((): boolean => {
+    if (paperReorderMode) {
+      setPaperReorderMode(false);
+      return true;
+    }
+    if (paperSelectMode) {
+      setPaperSelectMode(false);
+      setPaperSelectPurpose(null);
+      setSelectedPaperIds([]);
+      return true;
+    }
     if (reorderMode) {
       setReorderMode(false);
       return true;
@@ -321,7 +370,7 @@ export const ProfileScreen: React.FC = () => {
       return true;
     }
     return false;
-  }, [viewMode, selectMode, reorderMode]);
+  }, [viewMode, selectMode, reorderMode, paperReorderMode, paperSelectMode]);
 
   useEffect(() => {
     const unregister = registerBackHandler(() => {
@@ -467,6 +516,7 @@ export const ProfileScreen: React.FC = () => {
   // ---------- Advanced category options ----------
 
   const handleCopyCategory = async (cat: Category) => {
+    setPaperClip(null);
     await setCategoryClipboard({ type: 'category', id: cat.id, name: cat.name });
     setClipboard({ type: 'category', id: cat.id, name: cat.name });
     showToast('ক্যাটেগরি কপি হয়েছে — "পেস্ট" চাপলে নতুন কপি তৈরি হবে', 3000);
@@ -474,6 +524,7 @@ export const ProfileScreen: React.FC = () => {
 
   const handleCopyPaper = async (paper: Paper) => {
     const name = paper.title || paper.shortName;
+    setPaperClip(null);
     await setCategoryClipboard({ type: 'paper', id: paper.id, name });
     setClipboard({ type: 'paper', id: paper.id, name });
     showToast('প্রশ্নপত্র কপি হয়েছে — যেকোনো ক্যাটেগরিতে "পেস্ট" করুন', 3000);
@@ -482,10 +533,15 @@ export const ProfileScreen: React.FC = () => {
   const handleClearClipboard = async () => {
     await setCategoryClipboard(null);
     setClipboard(null);
+    setPaperClip(null);
   };
 
   // Paste: category -> duplicates the category, paper -> copies the paper into target category
   const handlePaste = async (targetCategory?: Category | null) => {
+    if (paperClip && targetCategory) {
+      await handlePastePapers(targetCategory);
+      return;
+    }
     if (!clipboard) return;
     try {
       if (clipboard.type === 'category') {
@@ -608,6 +664,237 @@ export const ProfileScreen: React.FC = () => {
           type="button"
           aria-label="কপি বাতিল"
           onClick={handleClearClipboard}
+          className="min-h-[36px] w-8 flex items-center justify-center text-[#64748B] dark:text-slate-400"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+    );
+  };
+
+// ---------- Papers inside a category: sort / re-order / multi-select ----------
+
+  // remembered paper sort mode
+  useEffect(() => {
+    db.meta
+      .get(PAPER_SORT_META_KEY)
+      .then((rec) => {
+        const v = rec?.value as PaperSortMode | undefined;
+        if (v && PAPER_SORT_OPTIONS.some((o) => o.id === v)) setPaperSortMode(v);
+      })
+      .catch(() => {});
+  }, []);
+
+  const changePaperSortMode = async (mode: PaperSortMode) => {
+    setPaperSortMode(mode);
+    try {
+      await db.meta.put({ key: PAPER_SORT_META_KEY, value: mode });
+    } catch (err) {
+      console.warn('Could not save paper sort mode', err);
+    }
+  };
+
+  // papers in the order the user wants to see them ('custom' = the saved manual order)
+  const visiblePapers = React.useMemo(() => {
+    const collator = new Intl.Collator('bn', { numeric: true });
+    const label = (p: Paper) => p.title || p.shortName || '';
+    const qCount = (p: Paper) => p.questionIds?.length || 0;
+    if (paperSortMode === 'custom') return categoryPapers;
+    return [...categoryPapers].sort((a, b) => {
+      switch (paperSortMode) {
+        case 'newest':
+          return (b.createdAt || 0) - (a.createdAt || 0);
+        case 'oldest':
+          return (a.createdAt || 0) - (b.createdAt || 0);
+        case 'name-asc':
+          return collator.compare(label(a), label(b));
+        case 'name-desc':
+          return collator.compare(label(b), label(a));
+        case 'questions-desc':
+          return qCount(b) - qCount(a);
+        case 'questions-asc':
+          return qCount(a) - qCount(b);
+        default:
+          return 0;
+      }
+    });
+  }, [categoryPapers, paperSortMode]);
+
+  const enterPaperReorderMode = async () => {
+    // the manual order starts from what is currently shown
+    await reorderPapers(visiblePapers.map((p) => p.id));
+    await changePaperSortMode('custom');
+    await loadData();
+    setPaperReorderMode(true);
+  };
+
+  const movePaperInList = async (id: string, dir: -1 | 1) => {
+    const ids = visiblePapers.map((p) => p.id);
+    const idx = ids.indexOf(id);
+    const to = idx + dir;
+    if (idx < 0 || to < 0 || to >= ids.length) return;
+    [ids[idx], ids[to]] = [ids[to], ids[idx]];
+    try {
+      await reorderPapers(ids);
+      await loadData();
+    } catch (err) {
+      console.error('Paper reorder failed:', err);
+      showToast('ক্রম বদলানো যায়নি');
+    }
+  };
+
+  const enterPaperSelectMode = (purpose: PaperSelectPurpose) => {
+    setPaperSelectMode(true);
+    setPaperSelectPurpose(purpose);
+    setSelectedPaperIds([]);
+  };
+
+  const exitPaperSelectMode = () => {
+    setPaperSelectMode(false);
+    setPaperSelectPurpose(null);
+    setSelectedPaperIds([]);
+  };
+
+  const togglePaperSelected = (id: string) =>
+    setSelectedPaperIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+  const selectAllPapers = () => setSelectedPaperIds(visiblePapers.map((p) => p.id));
+
+  // selected ids in the order they are shown on screen
+  const orderedSelectedPaperIds = () => visiblePapers.filter((p) => selectedPaperIds.includes(p.id)).map((p) => p.id);
+
+  const requirePaperSelection = (): string[] | null => {
+    const ids = orderedSelectedPaperIds();
+    if (ids.length === 0) {
+      showToast('কমপক্ষে একটি প্রশ্নপত্র নির্বাচন করুন');
+      return null;
+    }
+    return ids;
+  };
+
+  const handleCopyOrCutSelectedPapers = async (mode: 'copy' | 'cut') => {
+    const ids = requirePaperSelection();
+    if (!ids) return;
+    // only one clipboard is active at a time
+    await setCategoryClipboard(null);
+    setClipboard(null);
+    setPaperClip({ mode, ids });
+    exitPaperSelectMode();
+    showToast(
+      mode === 'cut'
+        ? `${toBn(ids.length)}টি প্রশ্নপত্র কাট হয়েছে — যেকোনো ক্যাটেগরিতে "পেস্ট" করলে সরে যাবে`
+        : `${toBn(ids.length)}টি প্রশ্নপত্র কপি হয়েছে — যেকোনো ক্যাটেগরিতে "পেস্ট" করুন`,
+      3500
+    );
+  };
+
+  const handlePastePapers = async (target: Category) => {
+    if (!paperClip) return;
+    try {
+      if (paperClip.mode === 'cut') {
+        const n = await movePapersToCategory(paperClip.ids, target.id);
+        setPaperClip(null);
+        showToast(`${toBn(n)}টি প্রশ্নপত্র "${target.name}" ক্যাটেগরিতে সরানো হয়েছে`);
+      } else {
+        const n = await duplicatePapers(paperClip.ids, target.id);
+        showToast(`${toBn(n)}টি প্রশ্নপত্র "${target.name}" ক্যাটেগরিতে পেস্ট হয়েছে`);
+      }
+      await loadData();
+    } catch (err: any) {
+      console.error('Paper paste failed:', err);
+      showToast(err?.message || 'পেস্ট করতে সমস্যা হয়েছে');
+    }
+  };
+
+  const handleExportSelectedPapers = async () => {
+    const ids = requirePaperSelection();
+    if (!ids) return;
+    setIsExporting(true);
+    try {
+      const ok = await exportPapersShare(ids, selectedCategory?.name);
+      showToast(ok ? 'প্রশ্নপত্রের এক্সপোর্ট ফাইল তৈরি হয়েছে' : 'এক্সপোর্ট ফাইল তৈরি করা যায়নি');
+      if (ok) exitPaperSelectMode();
+    } catch (err: any) {
+      console.error('Paper export failed:', err);
+      showToast(err?.message || 'এক্সপোর্ট ব্যর্থ হয়েছে');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportSelectedPapersPdf = async () => {
+    const ids = requirePaperSelection();
+    if (!ids || !selectedCategory || pdfProgress) return;
+    setPdfProgress({ done: 0, total: ids.length });
+    try {
+      const result = await exportCategoriesToFolders(
+        [{ name: selectedCategory.name, paperIds: ids }],
+        (done, total) => setPdfProgress({ done, total })
+      );
+      setPdfResult(result);
+      exitPaperSelectMode();
+    } catch (err: any) {
+      console.error('Paper PDF export failed:', err);
+      setPdfErrorMessage(err?.message || 'পিডিএফ তৈরিতে অপ্রত্যাশিত সমস্যা হয়েছে।');
+    } finally {
+      setPdfProgress(null);
+    }
+  };
+
+  const handleConfirmBulkDeletePapers = async () => {
+    setPaperBulkDeleteConfirm(false);
+    const ids = orderedSelectedPaperIds();
+    try {
+      await deletePapers(ids);
+      // a deleted paper can no longer be pasted
+      setPaperClip((prev) => {
+        if (!prev) return prev;
+        const left = prev.ids.filter((id) => !ids.includes(id));
+        return left.length > 0 ? { ...prev, ids: left } : null;
+      });
+      showToast(`${toBn(ids.length)}টি প্রশ্নপত্র মুছে ফেলা হয়েছে`);
+      exitPaperSelectMode();
+      await loadData();
+    } catch (err: any) {
+      console.error('Paper bulk delete failed:', err);
+      showToast(err?.message || 'মুছতে সমস্যা হয়েছে');
+    }
+  };
+
+  // Paste banner for the papers that were copied / cut with the multi-select
+  const renderPaperClipBanner = (target?: Category | null) => {
+    if (!paperClip) return null;
+    const isCut = paperClip.mode === 'cut';
+    return (
+      <div className="flex items-center gap-2 rounded-2xl border border-[#3B4FD8] dark:border-indigo-500 bg-[#EEF2FF] dark:bg-indigo-950/60 px-3 py-2">
+        {isCut ? (
+          <Scissors className="w-4 h-4 text-amber-600 shrink-0" />
+        ) : (
+          <ClipboardPaste className="w-4 h-4 text-[#3B4FD8] dark:text-indigo-300 shrink-0" />
+        )}
+        <div className="flex-1 min-w-0">
+          <p className="text-[0.6875rem] font-bold text-[#2A3BB0] dark:text-indigo-200 truncate">
+            {toBn(paperClip.ids.length)}টি প্রশ্নপত্র {isCut ? 'কাট' : 'কপি'} করা আছে
+          </p>
+          {!target && (
+            <p className="text-[0.625rem] text-[#64748B] dark:text-slate-400">
+              ক্যাটেগরির মেনু থেকে "এখানে প্রশ্নপত্র পেস্ট করুন" চাপুন
+            </p>
+          )}
+        </div>
+        {target && (
+          <button
+            type="button"
+            onClick={() => handlePastePapers(target)}
+            className="min-h-[36px] px-3 py-1 rounded-lg bg-[#3B4FD8] text-white text-xs font-bold"
+          >
+            পেস্ট
+          </button>
+        )}
+        <button
+          type="button"
+          aria-label="ক্লিপবোর্ড বাতিল"
+          onClick={() => setPaperClip(null)}
           className="min-h-[36px] w-8 flex items-center justify-center text-[#64748B] dark:text-slate-400"
         >
           <X className="w-4 h-4" />
@@ -937,7 +1224,7 @@ export const ProfileScreen: React.FC = () => {
       icon: <FolderDown className="w-5 h-5 text-[#3B4FD8]" />,
       onClick: () => runCategoriesPdfExport([cat]),
     },
-    ...(clipboard?.type === 'paper'
+    ...(clipboard?.type === 'paper' || paperClip
       ? [
           {
             id: 'paste-paper',
@@ -972,7 +1259,7 @@ export const ProfileScreen: React.FC = () => {
       icon: <Copy className="w-5 h-5 text-[#3B4FD8]" />,
       onClick: () => handleCopyCategory(cat),
     },
-    ...(clipboard?.type === 'paper'
+    ...(clipboard?.type === 'paper' || paperClip
       ? [
           {
             id: 'paste-paper',
@@ -996,6 +1283,93 @@ export const ProfileScreen: React.FC = () => {
       onClick: () => setDeleteCatConfirm({ isOpen: true, catId: cat.id, catName: cat.name }),
     },
   ];
+
+  // Ribbon (header) 3-dot menu of the category detail screen (the papers of one category)
+  const paperMenuItems = paperReorderMode
+    ? [
+        {
+          id: 'reorder-done',
+          label: 'সম্পন্ন',
+          icon: <Check className="w-4 h-4 text-emerald-600" />,
+          onClick: () => setPaperReorderMode(false),
+        },
+      ]
+    : paperSelectMode
+    ? [
+        {
+          id: 'select-all',
+          label: 'সব নির্বাচন করুন',
+          icon: <CheckSquare className="w-4 h-4 text-[#3B4FD8]" />,
+          onClick: selectAllPapers,
+        },
+        {
+          id: 'clear-selection',
+          label: 'নির্বাচন বাতিল',
+          icon: <X className="w-4 h-4 text-[#64748B]" />,
+          onClick: exitPaperSelectMode,
+        },
+      ]
+    : [
+        {
+          id: 'sort',
+          label: 'সর্ট করুন',
+          icon: <ArrowUpDown className="w-4 h-4 text-[#3B4FD8]" />,
+          onClick: () => setShowPaperSortDialog(true),
+        },
+        {
+          id: 'reorder',
+          label: 'রি-অর্ডার (ক্রম বদলান)',
+          icon: <ListOrdered className="w-4 h-4 text-[#3B4FD8]" />,
+          onClick: enterPaperReorderMode,
+        },
+        {
+          id: 'select',
+          label: 'সিলেক্ট',
+          icon: <CheckSquare className="w-4 h-4 text-[#3B4FD8]" />,
+          onClick: () => enterPaperSelectMode(null),
+        },
+        {
+          id: 'copy',
+          label: 'কপি (সিলেক্ট করে)',
+          icon: <Copy className="w-4 h-4 text-[#3B4FD8]" />,
+          onClick: () => enterPaperSelectMode('copy'),
+        },
+        {
+          id: 'cut',
+          label: 'কাট (সিলেক্ট করে)',
+          icon: <Scissors className="w-4 h-4 text-amber-600" />,
+          onClick: () => enterPaperSelectMode('cut'),
+        },
+        ...(paperClip && selectedCategory
+          ? [
+              {
+                id: 'paste',
+                label: `পেস্ট (${toBn(paperClip.ids.length)}টি ${paperClip.mode === 'cut' ? 'কাট' : 'কপি'} করা)`,
+                icon: <ClipboardPaste className="w-4 h-4 text-emerald-600" />,
+                onClick: () => handlePastePapers(selectedCategory),
+              },
+            ]
+          : []),
+        {
+          id: 'export',
+          label: 'এক্সপোর্ট (ব্যাকআপ ফাইল)',
+          icon: <Download className="w-4 h-4 text-indigo-600" />,
+          onClick: () => enterPaperSelectMode('export'),
+        },
+        {
+          id: 'export-pdf',
+          label: 'Export PDF',
+          icon: <FileDown className="w-4 h-4 text-[#3B4FD8]" />,
+          onClick: () => enterPaperSelectMode('pdf'),
+        },
+        {
+          id: 'delete-papers',
+          label: 'ডিলিট (সিলেক্ট করে)',
+          icon: <Trash2 className="w-4 h-4 text-red-500" />,
+          isDestructive: true,
+          onClick: () => enterPaperSelectMode('delete'),
+        },
+      ];
 
   // Popup menu (3 dots) of one paper card
   const paperPopupItems = (paper: Paper) => [
@@ -1044,14 +1418,44 @@ export const ProfileScreen: React.FC = () => {
       {viewMode === 'category-detail' && selectedCategory && (
         <>
           <Header
-            title={selectedCategory.name}
-            subtitle="ক্যাটেগরির প্রশ্নপত্রসমূহ"
+            title={
+              paperReorderMode
+                ? 'প্রশ্নপত্র রি-অর্ডার'
+                : paperSelectMode
+                  ? `${toBn(selectedPaperIds.length)}টি নির্বাচিত`
+                  : selectedCategory.name
+            }
+            subtitle={
+              paperReorderMode
+                ? 'তীর চেপে ক্রম বদলান'
+                : paperSelectMode
+                  ? paperSelectPurpose === 'copy'
+                    ? 'কপির জন্য প্রশ্নপত্র বাছুন'
+                    : paperSelectPurpose === 'cut'
+                      ? 'কাটের জন্য প্রশ্নপত্র বাছুন'
+                      : paperSelectPurpose === 'export'
+                        ? 'এক্সপোর্টের জন্য প্রশ্নপত্র বাছুন'
+                        : paperSelectPurpose === 'pdf'
+                          ? 'PDF এক্সপোর্টের জন্য প্রশ্নপত্র বাছুন'
+                          : paperSelectPurpose === 'delete'
+                            ? 'মোছার জন্য প্রশ্নপত্র বাছুন'
+                            : 'প্রশ্নপত্র নির্বাচন'
+                  : 'ক্যাটেগরির প্রশ্নপত্রসমূহ'
+            }
             showBack={true}
-            onBack={() => setViewMode('categories')}
+            onBack={
+              paperReorderMode
+                ? () => setPaperReorderMode(false)
+                : paperSelectMode
+                  ? exitPaperSelectMode
+                  : () => setViewMode('categories')
+            }
+            menuItems={paperMenuItems}
           />
 
-          <main className="flex-1 p-3.5 space-y-3">
+          <main className={`flex-1 p-3.5 space-y-3 ${paperSelectMode ? 'pb-24' : ''}`}>
             {renderClipboardBanner(selectedCategory)}
+            {renderPaperClipBanner(selectedCategory)}
             {categoryPapers.length === 0 ? (
               <div className="bg-white dark:bg-slate-800 rounded-3xl p-7 text-center border border-[#D5D9E2] dark:border-slate-700 space-y-3">
                 <p className="text-sm font-semibold text-[#1B1F2A] dark:text-slate-100">
@@ -1070,8 +1474,9 @@ export const ProfileScreen: React.FC = () => {
               </div>
             ) : (
               <div className="space-y-3">
-                {categoryPapers.map((paper) => {
-                  const isExpanded = expandedPaperIds[paper.id];
+                {visiblePapers.map((paper, paperIdx) => {
+                  const isExpanded = expandedPaperIds[paper.id] && !paperSelectMode && !paperReorderMode;
+                  const isPaperSelected = selectedPaperIds.includes(paper.id);
                   const details = paperDetailsMap[paper.id] || [];
                   const dateStr = new Date(paper.createdAt || Date.now()).toLocaleDateString('bn-BD', {
                     year: 'numeric',
@@ -1082,13 +1487,33 @@ export const ProfileScreen: React.FC = () => {
                   return (
                     <div
                       key={paper.id}
-                      className="bg-white dark:bg-slate-800 rounded-2xl border border-[#D5D9E2] dark:border-slate-700 shadow-xs overflow-hidden"
+                      className={`bg-white dark:bg-slate-800 rounded-2xl border shadow-xs overflow-hidden ${
+                        isPaperSelected
+                          ? 'border-[#3B4FD8] dark:border-indigo-500 bg-[#EEF2FF] dark:bg-indigo-950/40'
+                          : 'border-[#D5D9E2] dark:border-slate-700'
+                      }`}
                     >
                       {/* Paper Top Card Summary */}
                       <div
-                        onClick={() => togglePaperExpand(paper)}
+                        onClick={() => {
+                          if (paperReorderMode) return;
+                          if (paperSelectMode) {
+                            togglePaperSelected(paper.id);
+                            return;
+                          }
+                          togglePaperExpand(paper);
+                        }}
                         className="p-3.5 flex items-center justify-between gap-3 cursor-pointer hover:bg-[#F8FAFC] dark:hover:bg-slate-750 transition-colors"
                       >
+                        {paperSelectMode && (
+                          <span className="shrink-0 text-[#3B4FD8] dark:text-indigo-300">
+                            {isPaperSelected ? (
+                              <CheckSquare className="w-5 h-5" />
+                            ) : (
+                              <Square className="w-5 h-5 text-[#94A3B8]" />
+                            )}
+                          </span>
+                        )}
                         <div className="flex-1 min-w-0 space-y-1">
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-xs text-[#3B4FD8] dark:text-indigo-400 bg-[#EEF2FF] dark:bg-indigo-950 px-2 py-0.5 rounded-md border border-[#D5D9E2] dark:border-indigo-900 truncate">
@@ -1106,17 +1531,44 @@ export const ProfileScreen: React.FC = () => {
                           </p>
                         </div>
 
-                        <div onClick={(e) => e.stopPropagation()} className="shrink-0">
-                          <PopupMenu items={paperPopupItems(paper)} />
-                        </div>
+                        {paperReorderMode && (
+                          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              aria-label="উপরে নিন"
+                              disabled={paperIdx <= 0}
+                              onClick={() => movePaperInList(paper.id, -1)}
+                              className="w-10 h-10 rounded-full flex items-center justify-center bg-[#EEF2FF] dark:bg-indigo-950/60 text-[#3B4FD8] dark:text-indigo-300 disabled:opacity-30"
+                            >
+                              <ArrowUp className="w-5 h-5" />
+                            </button>
+                            <button
+                              type="button"
+                              aria-label="নিচে নিন"
+                              disabled={paperIdx >= visiblePapers.length - 1}
+                              onClick={() => movePaperInList(paper.id, 1)}
+                              className="w-10 h-10 rounded-full flex items-center justify-center bg-[#EEF2FF] dark:bg-indigo-950/60 text-[#3B4FD8] dark:text-indigo-300 disabled:opacity-30"
+                            >
+                              <ArrowDown className="w-5 h-5" />
+                            </button>
+                          </div>
+                        )}
 
-                        <div className="text-[#64748B] shrink-0 p-1">
-                          {isExpanded ? (
-                            <ChevronDown className="w-5 h-5 text-[#3B4FD8]" />
-                          ) : (
-                            <ChevronRight className="w-5 h-5" />
-                          )}
-                        </div>
+                        {!paperSelectMode && !paperReorderMode && (
+                          <>
+                            <div onClick={(e) => e.stopPropagation()} className="shrink-0">
+                              <PopupMenu items={paperPopupItems(paper)} />
+                            </div>
+
+                            <div className="text-[#64748B] shrink-0 p-1">
+                              {isExpanded ? (
+                                <ChevronDown className="w-5 h-5 text-[#3B4FD8]" />
+                              ) : (
+                                <ChevronRight className="w-5 h-5" />
+                              )}
+                            </div>
+                          </>
+                        )}
                       </div>
 
                       {/* Expanded Questions preview & Actions */}
@@ -1190,6 +1642,90 @@ export const ProfileScreen: React.FC = () => {
               </div>
             )}
           </main>
+
+          {paperSelectMode && (
+            <div
+              className="fixed left-0 right-0 bottom-16 z-40 px-3.5 pb-2 pt-2 bg-[#F2F4F8]/95 dark:bg-slate-900/95 border-t border-[#D5D9E2] dark:border-slate-700"
+            >
+              <div className="max-w-[390px] mx-auto flex gap-1.5">
+                {(paperSelectPurpose === null || paperSelectPurpose === 'copy') && (
+                  <button
+                    type="button"
+                    disabled={selectedPaperIds.length === 0}
+                    onClick={() => handleCopyOrCutSelectedPapers('copy')}
+                    className={`flex-1 min-w-0 min-h-[46px] rounded-xl text-[0.6875rem] font-bold flex items-center justify-center gap-1 disabled:opacity-40 ${
+                      paperSelectPurpose === 'copy'
+                        ? 'bg-[#3B4FD8] text-white'
+                        : 'bg-white dark:bg-slate-800 border border-[#3B4FD8] text-[#3B4FD8] dark:text-indigo-300'
+                    }`}
+                  >
+                    <Copy className="w-4 h-4 shrink-0" />
+                    <span>কপি</span>
+                  </button>
+                )}
+                {(paperSelectPurpose === null || paperSelectPurpose === 'cut') && (
+                  <button
+                    type="button"
+                    disabled={selectedPaperIds.length === 0}
+                    onClick={() => handleCopyOrCutSelectedPapers('cut')}
+                    className={`flex-1 min-w-0 min-h-[46px] rounded-xl text-[0.6875rem] font-bold flex items-center justify-center gap-1 disabled:opacity-40 ${
+                      paperSelectPurpose === 'cut'
+                        ? 'bg-amber-600 text-white'
+                        : 'bg-white dark:bg-slate-800 border border-amber-500 text-amber-700'
+                    }`}
+                  >
+                    <Scissors className="w-4 h-4 shrink-0" />
+                    <span>কাট</span>
+                  </button>
+                )}
+                {(paperSelectPurpose === null || paperSelectPurpose === 'export') && (
+                  <button
+                    type="button"
+                    disabled={selectedPaperIds.length === 0 || isExporting}
+                    onClick={handleExportSelectedPapers}
+                    className={`flex-1 min-w-0 min-h-[46px] rounded-xl text-[0.6875rem] font-bold flex items-center justify-center gap-1 disabled:opacity-40 ${
+                      paperSelectPurpose === 'export'
+                        ? 'bg-[#3B4FD8] text-white'
+                        : 'bg-white dark:bg-slate-800 border border-[#3B4FD8] text-[#3B4FD8] dark:text-indigo-300'
+                    }`}
+                  >
+                    <FileArchive className="w-4 h-4 shrink-0" />
+                    <span>{isExporting ? 'তৈরি…' : 'এক্সপোর্ট'}</span>
+                  </button>
+                )}
+                {(paperSelectPurpose === null || paperSelectPurpose === 'pdf') && (
+                  <button
+                    type="button"
+                    disabled={selectedPaperIds.length === 0 || Boolean(pdfProgress)}
+                    onClick={handleExportSelectedPapersPdf}
+                    className={`flex-1 min-w-0 min-h-[46px] rounded-xl text-[0.6875rem] font-bold flex items-center justify-center gap-1 disabled:opacity-40 ${
+                      paperSelectPurpose === 'pdf'
+                        ? 'bg-[#3B4FD8] text-white'
+                        : 'bg-white dark:bg-slate-800 border border-[#3B4FD8] text-[#3B4FD8] dark:text-indigo-300'
+                    }`}
+                  >
+                    <FileDown className="w-4 h-4 shrink-0" />
+                    <span>PDF</span>
+                  </button>
+                )}
+                {(paperSelectPurpose === null || paperSelectPurpose === 'delete') && (
+                  <button
+                    type="button"
+                    disabled={selectedPaperIds.length === 0}
+                    onClick={() => setPaperBulkDeleteConfirm(true)}
+                    className={`flex-1 min-w-0 min-h-[46px] rounded-xl text-[0.6875rem] font-bold flex items-center justify-center gap-1 disabled:opacity-40 ${
+                      paperSelectPurpose === 'delete'
+                        ? 'bg-red-600 text-white'
+                        : 'bg-white dark:bg-slate-800 border border-red-500 text-red-600'
+                    }`}
+                  >
+                    <Trash2 className="w-4 h-4 shrink-0" />
+                    <span>ডিলিট</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </>
       )}
 
@@ -1220,6 +1756,7 @@ export const ProfileScreen: React.FC = () => {
 
           <main className="flex-1 p-3.5 space-y-3.5">
             {renderClipboardBanner(null)}
+            {renderPaperClipBanner(null)}
 
             {/* Top Bar with + New Category Button */}
             <div className="flex items-center justify-between px-1">
@@ -1568,6 +2105,53 @@ export const ProfileScreen: React.FC = () => {
         onConfirm={handleConfirmBulkDelete}
         onCancel={() => setBulkDeleteConfirm(false)}
       />
+
+      {/* Bulk delete of papers (inside a category) */}
+      <ConfirmDialog
+        isOpen={paperBulkDeleteConfirm}
+        title="নির্বাচিত প্রশ্নপত্র মুছবেন?"
+        message={`${toBn(selectedPaperIds.length)}টি প্রশ্নপত্র মুছে যাবে (কালেকশনের প্রশ্নগুলো মুছবে না)।`}
+        confirmText="হ্যাঁ, মুছে ফেলুন"
+        cancelText="না"
+        isDestructive={true}
+        onConfirm={handleConfirmBulkDeletePapers}
+        onCancel={() => setPaperBulkDeleteConfirm(false)}
+      />
+
+      {/* Paper sort dialog */}
+      {showPaperSortDialog && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in duration-150"
+          onClick={() => setShowPaperSortDialog(false)}
+        >
+          <div
+            className="w-full max-w-[340px] bg-white dark:bg-slate-900 rounded-3xl border border-[#D5D9E2] dark:border-slate-700 shadow-2xl p-4 space-y-1"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-bold text-[#1B1F2A] dark:text-slate-100 px-2 pb-2">প্রশ্নপত্র সর্ট করুন</h3>
+            {PAPER_SORT_OPTIONS.map((o) => (
+              <button
+                key={o.id}
+                type="button"
+                onClick={() => {
+                  changePaperSortMode(o.id);
+                  setShowPaperSortDialog(false);
+                }}
+                className={`w-full min-h-[46px] px-3 rounded-xl text-left text-sm font-medium flex items-center justify-between ${
+                  paperSortMode === o.id
+                    ? 'bg-[#EEF2FF] dark:bg-indigo-950/60 text-[#3B4FD8] dark:text-indigo-300 font-bold'
+                    : 'text-[#1B1F2A] dark:text-slate-100 hover:bg-[#F2F4F8] dark:hover:bg-slate-800'
+                }`}
+              >
+                <span>{o.label}</span>
+                {paperSortMode === o.id && <Check className="w-4 h-4" />}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Sort dialog */}
       {showSortDialog && (

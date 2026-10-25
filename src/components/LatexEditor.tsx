@@ -10,6 +10,8 @@ export interface LatexEditorProps {
   rows?: number;
   previewTitle?: string;
   className?: string;
+  /** show the built-in live preview card under the editor (default true) */
+  showPreview?: boolean;
 }
 
 interface InsertSpec {
@@ -26,6 +28,7 @@ export const LatexEditor: React.FC<LatexEditorProps> = ({
   rows = 5,
   previewTitle = 'লাইভ প্রিভিউ (KaTeX)',
   className = '',
+  showPreview = true,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [showGreekMenu, setShowGreekMenu] = useState(false);
@@ -259,6 +262,7 @@ export const LatexEditor: React.FC<LatexEditorProps> = ({
       </div>
 
       {/* Live KaTeX Preview Section */}
+      {showPreview && (
       <div className="bg-white rounded-xl border border-[#D5D9E2] p-4 shadow-2xs">
         <div className="flex items-center gap-1.5 text-xs font-semibold text-[#2A3BB0] pb-2 border-b border-[#F2F4F8] mb-2">
           <Eye className="w-3.5 h-3.5" />
@@ -273,6 +277,7 @@ export const LatexEditor: React.FC<LatexEditorProps> = ({
           </div>
         )}
       </div>
+      )}
     </div>
   );
 };

@@ -22,6 +22,8 @@ import {
   Tag,
   Award,
   FolderOpen,
+  Scissors,
+  BookMarked,
 } from 'lucide-react';
 import { Header } from '../components/Header';
 import { KebabMenu, type MenuItem } from '../components/KebabMenu';
@@ -29,6 +31,7 @@ import { RichText } from '../components/RichText';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ActionSheet } from '../components/ActionSheet';
 import { ImageViewerModal } from '../components/ImageViewerModal';
+import { ReferenceDialog } from '../components/ReferenceDialog';
 import { useToast } from '../components/Toast';
 import { FilterPdfDialog, type FilterPdfValues } from '../components/FilterPdfDialog';
 import { exportRowsToPdf } from '../utils/filterPdf';
@@ -173,6 +176,7 @@ const ResultCard: React.FC<ResultCardProps> = React.memo(
     const q = row.question;
     const isChapter = row.source === 'chapter';
     const [solutionOpen, setSolutionOpen] = useState(false);
+    const [referenceOpen, setReferenceOpen] = useState(false);
     const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
 
     // Load the images this card needs (stimulus always, solution when it is opened)
@@ -193,7 +197,16 @@ const ResultCard: React.FC<ResultCardProps> = React.memo(
     }, [row.source, row.stimulus, q.solutionImageIds, solutionOpen]);
 
     const solutionUrls = (q.solutionImageIds || []).map((id) => imageUrls[id]).filter(Boolean) as string[];
-    const boards = q.usedInBoards || [];
+    // boards of the stimulus + of this question (same board merged, years combined)
+    const boards = (() => {
+      const merged: Array<{ board: string; years: number[] }> = [];
+      [...(row.stimulus?.usedInBoards || []), ...(q.usedInBoards || [])].forEach((b) => {
+        const ex = merged.find((m) => m.board === b.board);
+        if (ex) ex.years = Array.from(new Set([...ex.years, ...(b.years || [])])).sort((x, y) => x - y);
+        else merged.push({ board: b.board, years: [...(b.years || [])] });
+      });
+      return merged;
+    })();
     const hasTags = boards.length > 0 || !!row.stimulus?.boardTag || row.usages.length > 0;
 
     return (
@@ -228,6 +241,12 @@ const ResultCard: React.FC<ResultCardProps> = React.memo(
             buttonAriaLabel="মেনু"
             buttonClassName="text-white hover:bg-white/20 active:bg-white/30"
             items={[
+              {
+                id: 'reference',
+                label: 'রেফারেন্স দেখুন',
+                icon: <BookMarked className="w-4 h-4 text-[#3B4FD8]" />,
+                onClick: () => setReferenceOpen(true),
+              },
               {
                 id: 'locate',
                 label: isChapter ? 'Chapter CQ-তে খুলুন' : 'Type CQ-তে খুলুন',
@@ -374,6 +393,11 @@ const ResultCard: React.FC<ResultCardProps> = React.memo(
             </div>
           </div>
         </div>
+        <ReferenceDialog
+          isOpen={referenceOpen}
+          reference={row.stimulus?.reference}
+          onClose={() => setReferenceOpen(false)}
+        />
       </article>
     );
   }
@@ -1101,7 +1125,7 @@ export const FilterScreen: React.FC = () => {
 
   // Copy the selected questions (stimulus included) to the shared clipboard.
   // They can then be pasted into any Type CQ type / Chapter CQ chapter (Paste before / after / end).
-  const handleBulkCopy = async () => {
+  const handleBulkClip = async (mode: 'copy' | 'cut') => {
     if (selectedRows.length === 0) return;
     try {
       const groups: MultiClipGroup[] = [];
@@ -1121,13 +1145,20 @@ export const FilterScreen: React.FC = () => {
         }
       }
       groups.forEach((g) => g.questions.sort((a, b) => a.order - b.order));
-      await setMultiClipboard(groups);
-      showToast(`${toBn(selectedRows.length)}টি প্রশ্ন কপি হয়েছে — Type CQ / Chapter CQ তে গিয়ে পেস্ট করুন`, 3500);
+      await setMultiClipboard(groups, mode);
+      showToast(
+        mode === 'cut'
+          ? `${toBn(selectedRows.length)}টি প্রশ্ন কাট হয়েছে — Type CQ / Chapter CQ তে গিয়ে পেস্ট করলে সেখানে সরে যাবে`
+          : `${toBn(selectedRows.length)}টি প্রশ্ন কপি হয়েছে — Type CQ / Chapter CQ তে গিয়ে পেস্ট করুন`,
+        3500
+      );
     } catch (err) {
-      console.error('Bulk copy failed:', err);
-      showToast('কপি করা যায়নি');
+      console.error('Bulk clipboard failed:', err);
+      showToast(mode === 'cut' ? 'কাট করা যায়নি' : 'কপি করা যায়নি');
     }
   };
+  const handleBulkCopy = () => handleBulkClip('copy');
+  const handleBulkCut = () => handleBulkClip('cut');
 
   const handleBulkDelete = async () => {
     setConfirmDelete(false);
@@ -1187,6 +1218,12 @@ export const FilterScreen: React.FC = () => {
           label: 'কপি করুন',
           icon: <Copy className="w-4 h-4 text-[#1B1F2A]" />,
           onClick: handleBulkCopy,
+        },
+        {
+          id: 'cut',
+          label: 'কাট করুন',
+          icon: <Scissors className="w-4 h-4 text-amber-600" />,
+          onClick: handleBulkCut,
         },
         {
           id: 'delete',

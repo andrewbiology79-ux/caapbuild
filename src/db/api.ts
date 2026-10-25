@@ -125,6 +125,9 @@ export interface SaveQuestionGroupPayload {
   stimulusText: string;
   stimulusImageIds: string[];
   boardTag?: string;
+  stimulusUsedInBoards?: BoardUsage[];
+  stimulusRating?: number;
+  reference?: string;
   questions: QuestionBlockInput[];
   deletedQuestionIds?: string[];
 }
@@ -925,6 +928,9 @@ async function saveQuestionGroup(payload: SaveQuestionGroupPayload): Promise<{ s
       text: payload.stimulusText,
       imageIds: payload.stimulusImageIds,
       boardTag: payload.boardTag,
+      usedInBoards: payload.stimulusUsedInBoards ?? [],
+      rating: payload.stimulusRating,
+      reference: payload.reference ?? '',
     });
   } else {
     stimulusId = generateId();
@@ -934,6 +940,9 @@ async function saveQuestionGroup(payload: SaveQuestionGroupPayload): Promise<{ s
       text: payload.stimulusText,
       imageIds: payload.stimulusImageIds,
       boardTag: payload.boardTag,
+      usedInBoards: payload.stimulusUsedInBoards ?? [],
+      rating: payload.stimulusRating,
+      reference: payload.reference ?? '',
     });
   }
 
@@ -1284,7 +1293,25 @@ async function reorderCategories(orderedIds: string[]): Promise<void> {
 
 async function getPapersByCategory(categoryId: string): Promise<Paper[]> {
   const list = await db.papers.where('categoryId').equals(categoryId).toArray();
-  return list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  return list.sort((a, b) => {
+    const ao = a.order;
+    const bo = b.order;
+    if (ao !== undefined && bo !== undefined && ao !== bo) return ao - bo;
+    if (ao !== undefined && bo === undefined) return -1; // manually ordered papers first
+    if (ao === undefined && bo !== undefined) return 1;
+    return (b.createdAt || 0) - (a.createdAt || 0);
+  });
+}
+
+
+/** Save a manual order of papers inside a category: the given ids get order 1,2,3… */
+async function reorderPapers(orderedIds: string[]): Promise<void> {
+  await db.transaction('rw', db.papers, async () => {
+    let n = 1;
+    for (const id of orderedIds) {
+      await db.papers.update(id, { order: n++ });
+    }
+  });
 }
 
 
@@ -1705,6 +1732,7 @@ async function seedInitialDataIfNeeded(): Promise<boolean> {
     reorderCategories,
     ensureUncategorized,
     getPapersByCategory,
+    reorderPapers,
     getCategoryStats,
     getCategoryClipboard,
     setCategoryClipboard,
@@ -1798,6 +1826,7 @@ export const {
   reorderCategories,
   ensureUncategorized,
   getPapersByCategory,
+  reorderPapers,
   getCategoryStats,
   getCategoryClipboard,
   setCategoryClipboard,
