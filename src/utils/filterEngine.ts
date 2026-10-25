@@ -10,6 +10,12 @@ import {
   type Stimulus,
 } from '../db/db';
 
+export interface FilterPaperUsage {
+  paperId: string;
+  shortName: string;
+  count: number;
+}
+
 /** One question joined with everything the Filter tab needs (both databases, one flat list) */
 export interface FilterRow {
   /** unique across both databases */
@@ -27,6 +33,8 @@ export interface FilterRow {
   haystack: string;
   /** ids of the paper categories whose papers contain this question */
   categoryIds: string[];
+  /** question papers this question is part of (with how many times) */
+  usages: FilterPaperUsage[];
 }
 
 export interface FilterCriteria {
@@ -89,7 +97,8 @@ async function loadScope(
   source: CqScope,
   database: typeof db,
   startSeq: number,
-  questionCategories: Map<string, Set<string>>
+  questionCategories: Map<string, Set<string>>,
+  questionUsages: Map<string, Map<string, FilterPaperUsage>>
 ): Promise<FilterRow[]> {
   const subjects: Subject[] = await database.subjects.toArray();
   const chapters: Chapter[] = await database.chapters.toArray();
@@ -126,6 +135,7 @@ async function loadScope(
       seq: 0,
       haystack,
       categoryIds: [...(questionCategories.get(q.id) ?? [])],
+      usages: [...(questionUsages.get(q.id)?.values() ?? [])],
     });
   }
 
@@ -155,17 +165,24 @@ export async function loadFilterDataset(): Promise<FilterDataset> {
   // Which paper categories each question has been used in (papers live in the main database)
   const [categoryList, papers] = await Promise.all([db.categories.toArray(), db.papers.toArray()]);
   const questionCategories = new Map<string, Set<string>>();
+  const questionUsages = new Map<string, Map<string, FilterPaperUsage>>();
   for (const paper of papers) {
-    if (!paper.categoryId) continue;
     for (const qid of paper.questionIds || []) {
-      let set = questionCategories.get(qid);
-      if (!set) questionCategories.set(qid, (set = new Set<string>()));
-      set.add(paper.categoryId);
+      if (paper.categoryId) {
+        let set = questionCategories.get(qid);
+        if (!set) questionCategories.set(qid, (set = new Set<string>()));
+        set.add(paper.categoryId);
+      }
+      let usage = questionUsages.get(qid);
+      if (!usage) questionUsages.set(qid, (usage = new Map<string, FilterPaperUsage>()));
+      const prev = usage.get(paper.id);
+      if (prev) prev.count += 1;
+      else usage.set(paper.id, { paperId: paper.id, shortName: paper.shortName, count: 1 });
     }
   }
 
-  const typeRows = await loadScope('type', db, 0, questionCategories);
-  const chapterRows = await loadScope('chapter', chapterDb, typeRows.length, questionCategories);
+  const typeRows = await loadScope('type', db, 0, questionCategories, questionUsages);
+  const chapterRows = await loadScope('chapter', chapterDb, typeRows.length, questionCategories, questionUsages);
   const rows = [...typeRows, ...chapterRows];
 
   const subjects = new Set<string>();

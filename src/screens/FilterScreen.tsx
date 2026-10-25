@@ -17,18 +17,26 @@ import {
   Copy,
   FileText,
   ChevronDown,
+  Eye,
+  EyeOff,
+  Tag,
+  Award,
+  FolderOpen,
 } from 'lucide-react';
 import { Header } from '../components/Header';
 import { KebabMenu, type MenuItem } from '../components/KebabMenu';
 import { RichText } from '../components/RichText';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ActionSheet } from '../components/ActionSheet';
+import { ImageViewerModal } from '../components/ImageViewerModal';
 import { useToast } from '../components/Toast';
 import { FilterPdfDialog, type FilterPdfValues } from '../components/FilterPdfDialog';
 import { exportRowsToPdf } from '../utils/filterPdf';
 import { showPdfSavedDialog } from '../utils/storageAccess';
 import { getRatingStarsText, getApi } from '../db/api';
 import { getSelectedIdsAll } from '../db/crossDb';
+import { getDb } from '../db/db';
+import { openCollectionAtQuestion } from './CollectionScreen';
 import type { CqScope, QuestionType } from '../db/db';
 import { toBn } from '../utils/toBn';
 import { useNavigation } from '../utils/navigation';
@@ -133,81 +141,243 @@ const Segmented: React.FC<{
 );
 
 /* ------------------------------------------------------------------ */
-/* Result card (full question — no truncation)                         */
+/* Result card (same look as the Type CQ / Chapter CQ question cards)  */
 /* ------------------------------------------------------------------ */
+
+const imageUrlCache = new Map<string, string>();
+
+async function loadImageUrl(source: CqScope, imageId: string): Promise<string | null> {
+  const key = `${source}:${imageId}`;
+  const cached = imageUrlCache.get(key);
+  if (cached) return cached;
+  try {
+    const url = await getApi(source).getImageBlobUrl(imageId);
+    if (url) imageUrlCache.set(key, url);
+    return url;
+  } catch {
+    return null;
+  }
+}
 
 interface ResultCardProps {
   row: FilterRow;
+  index: number;
   selected: boolean;
   onToggle: (row: FilterRow) => void;
+  onLocate: (row: FilterRow) => void;
+  onOpenImages: (urls: string[], index: number) => void;
 }
 
-const ResultCard: React.FC<ResultCardProps> = React.memo(({ row, selected, onToggle }) => {
-  const q = row.question;
-  const path = [row.subjectName, row.chapterName, row.topicName].filter(Boolean).join(' › ');
-  const boards = q.usedInBoards || [];
+const ResultCard: React.FC<ResultCardProps> = React.memo(
+  ({ row, index, selected, onToggle, onLocate, onOpenImages }) => {
+    const q = row.question;
+    const isChapter = row.source === 'chapter';
+    const [solutionOpen, setSolutionOpen] = useState(false);
+    const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
 
-  return (
-    <article
-      onClick={() => onToggle(row)}
-      aria-selected={selected}
-      className={`rounded-2xl border shadow-2xs p-3.5 space-y-2.5 transition-colors cursor-pointer ${
-        selected ? 'bg-[#EEF2FF] border-[#3B4FD8] ring-1 ring-[#3B4FD8]' : 'bg-white border-[#D5D9E2]'
-      }`}
-    >
-      <div className="flex items-center gap-1.5 flex-wrap">
-        {selected ? (
-          <CheckSquare className="w-5 h-5 text-[#3B4FD8] shrink-0" />
-        ) : (
-          <Square className="w-5 h-5 text-[#94A3B8] shrink-0" />
-        )}
-        <span
-          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[0.6875rem] font-bold ${
-            row.source === 'chapter' ? 'bg-emerald-50 text-emerald-700' : 'bg-[#EEF2FF] text-[#2A3BB0]'
-          }`}
-        >
-          {row.source === 'chapter' ? <BookOpen className="w-3 h-3" /> : <Layers className="w-3 h-3" />}
-          {row.source === 'chapter' ? 'Chapter CQ' : 'Type CQ'}
-        </span>
-        <span className="px-2 py-0.5 rounded-full bg-[#1B1F2A] text-white text-[0.6875rem] font-bold">
-          {q.type}
-        </span>
-        <span className="px-2 py-0.5 rounded-full bg-[#F2F4F8] text-[#1B1F2A] text-[0.6875rem] font-bold border border-[#D5D9E2]">
-          {toBn(q.marks)} নম্বর
-        </span>
-        <span className="ml-auto text-[0.6875rem] text-amber-600 font-semibold">
-          {getRatingStarsText(q.rating)}
-        </span>
-      </div>
+    // Load the images this card needs (stimulus always, solution when it is opened)
+    useEffect(() => {
+      let cancelled = false;
+      const ids = [...(row.stimulus?.imageIds ?? []), ...(solutionOpen ? q.solutionImageIds ?? [] : [])];
+      (async () => {
+        const found: Record<string, string> = {};
+        for (const id of ids) {
+          const url = await loadImageUrl(row.source, id);
+          if (url) found[id] = url;
+        }
+        if (!cancelled) setImageUrls((prev) => ({ ...prev, ...found }));
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [row.source, row.stimulus, q.solutionImageIds, solutionOpen]);
 
-      <p className="text-[0.6875rem] text-[#64748B] leading-snug">{path}</p>
+    const solutionUrls = (q.solutionImageIds || []).map((id) => imageUrls[id]).filter(Boolean) as string[];
+    const boards = q.usedInBoards || [];
+    const hasTags = boards.length > 0 || !!row.stimulus?.boardTag || row.usages.length > 0;
 
-      {row.stimulus?.text && (
-        <div className="rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] px-3 py-2 text-xs text-[#334155] leading-relaxed">
-          <RichText text={row.stimulus.text} />
-        </div>
-      )}
-
-      <div className="text-sm text-[#1B1F2A] leading-relaxed">
-        <RichText text={q.questionText} />
-      </div>
-
-      {boards.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {boards.map((b) => (
-            <span
-              key={b.board}
-              className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 text-[0.6875rem] font-semibold border border-amber-200"
+    return (
+      <article
+        className={`bg-white rounded-2xl border-[1.5px] shadow-xs overflow-hidden ${
+          selected ? 'border-[#3B4FD8] ring-2 ring-[#3B4FD8]/40' : 'border-[#3B4FD8]'
+        }`}
+      >
+        {/* Ribbon: serial, checkbox, rating, menu */}
+        <div className="bg-[#3B4FD8] text-white px-3.5 py-2.5 flex items-center justify-between gap-2 rounded-t-2xl">
+          <div className="flex items-center gap-2.5">
+            <span className="font-bold text-xs text-white tracking-tight shrink-0">প্রশ্ন {toBn(index + 1)}</span>
+            <button
+              type="button"
+              aria-label={selected ? 'নির্বাচন বাতিল করুন' : 'নির্বাচন করুন'}
+              onClick={() => onToggle(row)}
+              className="min-h-[44px] min-w-[44px] -my-2 flex items-center justify-center rounded-lg text-white hover:bg-white/10 active:bg-white/20 transition-colors"
             >
-              {b.board}
-              {b.years?.length ? ` · ${b.years.map((y) => toBn(y)).join(', ')}` : ''}
+              <div
+                className={`w-5 h-5 rounded border-2 border-white flex items-center justify-center transition-colors ${
+                  selected ? 'bg-white text-[#3B4FD8]' : 'bg-transparent text-transparent'
+                }`}
+              >
+                <Check className="w-3.5 h-3.5 stroke-[3]" />
+              </div>
+            </button>
+            <span className="px-2 py-0.5 rounded-md bg-[#FEF9C3] text-[#713F12] text-[0.625rem] font-bold border border-[#FDE047] whitespace-nowrap shadow-2xs">
+              {getRatingStarsText(q.rating)}
+            </span>
+          </div>
+          <KebabMenu
+            buttonAriaLabel="মেনু"
+            buttonClassName="text-white hover:bg-white/20 active:bg-white/30"
+            items={[
+              {
+                id: 'locate',
+                label: isChapter ? 'Chapter CQ-তে খুলুন' : 'Type CQ-তে খুলুন',
+                icon: <FolderOpen className="w-4 h-4 text-[#3B4FD8]" />,
+                onClick: () => onLocate(row),
+              },
+            ]}
+          />
+        </div>
+
+        {/* Where this question lives: source tag + type (Type CQ) or chapter (Chapter CQ) */}
+        <div className="bg-[#F8FAFC] border-b border-[#E2E8F0] px-3.5 py-2 space-y-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[0.6875rem] font-bold ${
+                isChapter ? 'bg-emerald-50 text-emerald-700' : 'bg-[#EEF2FF] text-[#2A3BB0]'
+              }`}
+            >
+              {isChapter ? <BookOpen className="w-3 h-3" /> : <Layers className="w-3 h-3" />}
+              {isChapter ? 'Chapter CQ' : 'Type CQ'}
+            </span>
+            {!isChapter && row.topicName && (
+              <span className="px-2 py-0.5 rounded-full bg-white text-[#1B1F2A] text-[0.6875rem] font-bold border border-[#D5D9E2]">
+                টাইপ: {row.topicName}
+              </span>
+            )}
+            <span className="px-2 py-0.5 rounded-full bg-white text-[#1B1F2A] text-[0.6875rem] font-bold border border-[#D5D9E2]">
+              অধ্যায়: {row.chapterName}
+            </span>
+            <span className="px-2 py-0.5 rounded-full bg-white text-[#1B1F2A] text-[0.6875rem] font-bold border border-[#D5D9E2]">
+              {toBn(q.marks)} নম্বর
+            </span>
+          </div>
+          <p className="text-[0.625rem] text-[#64748B] leading-snug">{row.subjectName}</p>
+        </div>
+
+        {/* Board tags & paper usages */}
+        <div className="bg-[#F8FAFC] border-b border-[#E2E8F0] px-3.5 py-2 flex flex-wrap items-center gap-1.5">
+          {boards.length > 0 ? (
+            boards.map((b, i) => (
+              <span
+                key={i}
+                className="px-2 py-0.5 rounded bg-white text-[#1B1F2A] text-[0.625rem] font-semibold border border-[#D5D9E2] flex items-center gap-1 shadow-2xs"
+              >
+                <Tag className="w-3 h-3 text-[#64748B]" />
+                <span>
+                  {b.board}'{(b.years || []).map((y) => toBn(String(y).slice(-2))).join(',')}
+                </span>
+              </span>
+            ))
+          ) : row.stimulus?.boardTag ? (
+            <span className="px-2 py-0.5 rounded bg-white text-[#1B1F2A] text-[0.625rem] font-semibold border border-[#D5D9E2] flex items-center gap-1 shadow-2xs">
+              <Tag className="w-3 h-3 text-[#64748B]" />
+              <span>{row.stimulus.boardTag}</span>
+            </span>
+          ) : null}
+
+          {row.usages.map((u) => (
+            <span
+              key={u.paperId}
+              className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 text-[0.625rem] font-bold border border-emerald-200 flex items-center gap-1"
+            >
+              <Award className="w-3 h-3 text-emerald-600" />
+              <span>
+                {u.shortName} ×{toBn(u.count)}
+              </span>
             </span>
           ))}
+
+          {!hasTags && <span className="text-[0.625rem] text-[#94A3B8] italic">ট্যাগ নেই</span>}
         </div>
-      )}
-    </article>
-  );
-});
+
+        {/* Content */}
+        <div className="p-3.5 space-y-3.5">
+          {row.stimulus && (
+            <div className="space-y-2">
+              <RichText text={row.stimulus.text} className="text-xs font-medium text-[#1B1F2A] leading-relaxed" />
+              {row.stimulus.imageIds?.map((imgId) => {
+                const url = imageUrls[imgId];
+                if (!url) return null;
+                return (
+                  <div
+                    key={imgId}
+                    className="w-full my-2 overflow-hidden rounded-xl border border-[#D5D9E2] bg-white text-center"
+                  >
+                    <img src={url} alt="উদ্দীপকের চিত্র" className="w-full h-auto object-contain max-h-60 mx-auto" />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="space-y-2 pt-1 border-t border-[#F2F4F8]">
+            <div className="flex items-start gap-1.5 text-xs text-[#1B1F2A]">
+              <span className="font-bold shrink-0 text-[#1B1F2A]">{q.type ? `${q.type}.` : ''}</span>
+              <RichText
+                text={q.questionText}
+                className="text-xs text-[#1B1F2A] leading-relaxed flex-1 font-medium"
+              />
+            </div>
+
+            <div>
+              <button
+                type="button"
+                aria-label={solutionOpen ? 'সমাধান লুকান' : 'সমাধান দেখুন'}
+                onClick={() => setSolutionOpen((o) => !o)}
+                className="min-h-[44px] px-3.5 py-1.5 rounded-xl border border-[#D5D9E2] bg-white hover:bg-[#F2F4F8] text-xs font-semibold text-[#2A3BB0] flex items-center gap-1.5 transition-colors"
+              >
+                {solutionOpen ? (
+                  <>
+                    <EyeOff className="w-4 h-4" />
+                    <span>সমাধান লুকাও</span>
+                  </>
+                ) : (
+                  <>
+                    <Eye className="w-4 h-4" />
+                    <span>সমাধান দেখো</span>
+                  </>
+                )}
+              </button>
+
+              {solutionOpen && (
+                <div className="mt-2.5 p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-2">
+                  <div className="text-[0.6875rem] font-bold text-[#2A3BB0] uppercase tracking-wider">সমাধান:</div>
+                  <RichText text={q.solutionText} className="text-xs text-[#1B1F2A] leading-relaxed" />
+                  {solutionUrls.length > 0 && (
+                    <div className="space-y-2 pt-1">
+                      {solutionUrls.map((url, i) => (
+                        <div
+                          key={i}
+                          onClick={() => onOpenImages(solutionUrls, i)}
+                          className="w-full overflow-hidden rounded-xl border border-[#D5D9E2] bg-white cursor-pointer hover:opacity-95 transition-opacity"
+                        >
+                          <img src={url} alt="সমাধান চিত্র" className="w-full h-auto object-contain max-h-56 mx-auto" />
+                        </div>
+                      ))}
+                      <p className="text-[0.625rem] text-[#64748B] text-center italic">
+                        (ছবিতে ট্যাপ করে বড় ও জুম করে দেখুন)
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </article>
+    );
+  }
+);
 ResultCard.displayName = 'ResultCard';
 
 /* ------------------------------------------------------------------ */
@@ -597,7 +767,12 @@ export const FilterScreen: React.FC = () => {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const chipRowRef = useRef<HTMLDivElement>(null);
   const { showToast } = useToast();
-  const { registerBackHandler } = useNavigation();
+  const { registerBackHandler, switchTab } = useNavigation();
+  const [viewer, setViewer] = useState<{ isOpen: boolean; images: Array<{ url: string }>; initialIndex: number }>({
+    isOpen: false,
+    images: [],
+    initialIndex: 0,
+  });
 
   // Selection lives in the same database selection list the Type CQ / Chapter CQ tabs use,
   // so the Create tab picks it up automatically.
@@ -838,23 +1013,45 @@ export const FilterScreen: React.FC = () => {
     [refreshSelection]
   );
 
-  /** Rewrite the selection list of each collection from the current result set */
-  const rewriteSelection = async (mode: 'add' | 'invert') => {
+  /**
+   * "Select all" / "Invert" act on the current filter result only. Questions selected earlier
+   * that are not part of the result are dropped from the selection.
+   */
+  const rewriteSelection = async (mode: 'all' | 'invert') => {
     for (const scope of ['type', 'chapter'] as CqScope[]) {
       const api = getApi(scope);
       const current = await api.getSelectedIds();
       const ids = results.filter((r) => r.source === scope).map((r) => r.question.id);
-      const idSet = new Set(ids);
-      let next: string[];
-      if (mode === 'add') {
-        next = [...current, ...ids.filter((id) => !current.includes(id))];
-      } else {
-        next = [...current.filter((id) => !idSet.has(id)), ...ids.filter((id) => !current.includes(id))];
-      }
+      const next = mode === 'all' ? ids : ids.filter((id) => !current.includes(id));
       await api.reorderSelected(next);
     }
     await refreshSelection();
   };
+
+  const handleLocate = useCallback(
+    async (row: FilterRow) => {
+      try {
+        const database = getDb(row.source);
+        const topic = await database.topics.get(row.question.topicId);
+        const chapter = topic ? await database.chapters.get(topic.chapterId) : undefined;
+        const subject = chapter ? await database.subjects.get(chapter.subjectId) : undefined;
+        if (!topic || !chapter || !subject) {
+          showToast('প্রশ্নটির অবস্থান পাওয়া যায়নি');
+          return;
+        }
+        openCollectionAtQuestion(row.source, { subject, chapter, topic }, row.question.id);
+        switchTab(row.source === 'chapter' ? 'chapterCq' : 'typeCq');
+      } catch (err) {
+        console.error('Open question location failed:', err);
+        showToast('প্রশ্নটি খুলতে সমস্যা হয়েছে');
+      }
+    },
+    [showToast, switchTab]
+  );
+
+  const openImageViewer = useCallback((urls: string[], index: number) => {
+    setViewer({ isOpen: true, images: urls.map((url) => ({ url })), initialIndex: index });
+  }, []);
 
   const clearSelectionAll = async () => {
     await Promise.all([getApi('type').clearSelection(), getApi('chapter').clearSelection()]);
@@ -932,7 +1129,7 @@ export const FilterScreen: React.FC = () => {
         id: 'select-all',
         label: `সব সিলেক্ট করুন (${toBn(results.length)})`,
         icon: <ListChecks className="w-4 h-4 text-[#3B4FD8]" />,
-        onClick: () => rewriteSelection('add'),
+        onClick: () => rewriteSelection('all'),
       },
       {
         id: 'invert',
@@ -980,6 +1177,12 @@ export const FilterScreen: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchOpen, selectedIds, results, selectedRows]);
 
+  const resultIdSet = useMemo(() => new Set(results.map((r) => r.question.id)), [results]);
+  const hiddenSelected = useMemo(
+    () => [...selectedIds].filter((id) => !resultIdSet.has(id)).length,
+    [selectedIds, resultIdSet]
+  );
+
   const openDef = openDropdown ? dropdowns[openDropdown] : null;
 
   return (
@@ -1014,7 +1217,7 @@ export const FilterScreen: React.FC = () => {
       />
 
       {/* Sticky control bar */}
-      <div className="sticky top-14 z-30 bg-white/95 backdrop-blur border-b border-[#D5D9E2] px-3.5 pt-2.5 pb-2.5 space-y-2.5">
+      <div className="sticky top-14 z-30 bg-white dark:bg-slate-900 border-b border-[#D5D9E2] dark:border-slate-700 px-3.5 pt-2.5 pb-2.5 space-y-2.5">
         {searchOpen && (
           <div className="relative">
             <Search className="w-4 h-4 text-[#64748B] absolute left-3 top-1/2 -translate-y-1/2" />
@@ -1152,7 +1355,9 @@ export const FilterScreen: React.FC = () => {
                 onClick={clearSelectionAll}
                 className="min-h-[32px] px-2.5 rounded-lg text-[0.6875rem] font-bold text-[#2A3BB0] bg-[#EEF2FF] flex items-center gap-1"
               >
-                {toBn(selectedIds.size)} নির্বাচিত
+                {hiddenSelected > 0
+                  ? `${toBn(selectedIds.size - hiddenSelected)} এখানে · ${toBn(selectedIds.size)} মোট`
+                  : `${toBn(selectedIds.size)} নির্বাচিত`}
                 <X className="w-3 h-3" />
               </button>
             )}
@@ -1187,12 +1392,15 @@ export const FilterScreen: React.FC = () => {
           </div>
         ) : (
           <>
-            {results.slice(0, visible).map((row) => (
+            {results.slice(0, visible).map((row, i) => (
               <ResultCard
                 key={row.key}
                 row={row}
+                index={i}
                 selected={selectedIds.has(row.question.id)}
                 onToggle={toggleRow}
+                onLocate={handleLocate}
+                onOpenImages={openImageViewer}
               />
             ))}
             {visible < results.length && (
@@ -1203,6 +1411,13 @@ export const FilterScreen: React.FC = () => {
           </>
         )}
       </div>
+
+      <ImageViewerModal
+        isOpen={viewer.isOpen}
+        images={viewer.images}
+        initialIndex={viewer.initialIndex}
+        onClose={() => setViewer((v) => ({ ...v, isOpen: false }))}
+      />
 
       <FilterSheet
         isOpen={sheetOpen}

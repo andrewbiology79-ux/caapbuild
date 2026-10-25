@@ -66,6 +66,21 @@ interface CollectionScreenProps {
   scope?: CqScope;
 }
 
+/**
+ * Used by the Filter tab ("open where this question is"): jump straight to a topic's question list
+ * the next time the Type CQ / Chapter CQ tab opens, and highlight the question there.
+ */
+const pendingFocusQuestion: Record<CqScope, string | null> = { type: null, chapter: null };
+
+export function openCollectionAtQuestion(
+  scope: CqScope,
+  location: { subject: Subject; chapter: Chapter; topic: Topic },
+  questionId: string
+): void {
+  lastDrillViews[scope] = { level: 'questions', ...location };
+  pendingFocusQuestion[scope] = questionId;
+}
+
 export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'type' as CqScope }) => {
   const db = getDb(scope);
   const { seedInitialDataIfNeeded, getSubjects, getChapters, getTopics, getQuestionsByTopicGrouped, getHierarchyStats, getSelectedIds, toggleStimulusSelect, getSelectedStimuliCount, clearSelection, copyStimulusGroup, getGroupClipboard, clearGroupClipboard, pasteStimulusGroup, deleteStimulusGroup, getQuestionPaperUsage, getImageBlobUrl, addSubject, updateSubject, deleteSubject, reorderSubjects, addChapter, updateChapter, deleteChapter, reorderChapters, addTopic, updateTopic, deleteTopic, reorderTopics } = getApi(scope);
@@ -313,6 +328,19 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
     });
     return unregister;
   }, [handleGoBack, registerBackHandler]);
+
+  // Arrived from the Filter tab: scroll to the question and flash it
+  useEffect(() => {
+    const qid = pendingFocusQuestion[scope];
+    if (!qid || currentView.level !== 'questions' || loading || questionGroups.length === 0) return;
+    const el = document.querySelector<HTMLElement>(`[data-qids~="${qid}"]`);
+    if (!el) return;
+    pendingFocusQuestion[scope] = null;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    const cls = ['ring-4', 'ring-amber-400'];
+    el.classList.add(...cls);
+    window.setTimeout(() => el.classList.remove(...cls), 2200);
+  }, [scope, currentView, loading, questionGroups]);
 
   // Auto-scroll breadcrumb to the right end whenever currentView changes
   useEffect(() => {
@@ -1334,6 +1362,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
                 return (
                   <article
                     key={grp.stimulus?.id || `group-${grpIdx}`}
+                    data-qids={groupQuestionIds.join(' ')}
                     className="bg-white rounded-2xl border-[1.5px] border-[#3B4FD8] shadow-xs overflow-hidden mb-4"
                   >
                     {/* Top Ribbon (Full width, bg #3B4FD8, rounded-t-2xl, white text & icons) */}
