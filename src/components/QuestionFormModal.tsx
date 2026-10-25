@@ -91,7 +91,7 @@ const RatingSelect: React.FC<{ value: number; onChange: (v: number) => void; ari
     aria-label={ariaLabel}
     value={value || 3}
     onChange={(e) => onChange(parseInt(e.target.value, 10))}
-    className="min-h-[40px] max-w-[116px] px-2 py-1 rounded-lg border border-[#FDE047] bg-[#FEF9C3] text-[#713F12] text-[0.6875rem] font-bold focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
+    className="min-h-[40px] max-w-[116px] px-2 py-1 rounded-lg border border-[#FDE047] dark:border-[#854D0E] bg-[#FEF9C3] dark:bg-[#422006] text-[#713F12] dark:text-amber-200 text-[0.6875rem] font-bold focus:outline-none focus:ring-2 focus:ring-brand"
   >
     {RATING_OPTIONS.map((r) => (
       <option key={r.value} value={r.value}>
@@ -110,8 +110,8 @@ const EyeToggle: React.FC<{ open: boolean; onClick: () => void }> = ({ open, onC
     onClick={onClick}
     className={`min-h-[40px] min-w-[40px] flex items-center justify-center rounded-lg border transition-colors ${
       open
-        ? 'bg-[#3B4FD8] border-[#3B4FD8] text-white'
-        : 'bg-[#EEF2FF] border-[#D5D9E2] text-[#3B4FD8] hover:bg-[#E0E7FF]'
+        ? 'bg-brand border-brand text-white'
+        : 'bg-brand-soft border-line text-brand-fg hover:bg-press'
     }`}
   >
     {open ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -120,15 +120,15 @@ const EyeToggle: React.FC<{ open: boolean; onClick: () => void }> = ({ open, onC
 
 /** Live KaTeX preview card shown when the eye button is on */
 const LivePreview: React.FC<{ text: string }> = ({ text }) => (
-  <div className="rounded-xl border border-[#D5D9E2] bg-[#F8FAFF] p-3.5 animate-in fade-in duration-150">
-    <div className="flex items-center gap-1.5 text-[0.6875rem] font-semibold text-[#2A3BB0] pb-1.5 mb-2 border-b border-[#E2E8F0]">
+  <div className="rounded-xl border border-line bg-[#F8FAFF] p-3.5 animate-in fade-in duration-150">
+    <div className="flex items-center gap-1.5 text-[0.6875rem] font-semibold text-brand-ink pb-1.5 mb-2 border-b border-line">
       <Eye className="w-3.5 h-3.5" />
       <span>লাইভ প্রিভিউ (KaTeX)</span>
     </div>
     {text.trim() ? (
       <RichText text={text} className="text-sm" />
     ) : (
-      <div className="text-xs text-[#64748B] italic">উপরে লিখলে এখানে প্রিভিউ দেখা যাবে।</div>
+      <div className="text-xs text-ink-muted italic">উপরে লিখলে এখানে প্রিভিউ দেখা যাবে।</div>
     )}
   </div>
 );
@@ -152,7 +152,7 @@ const BoardSelect: React.FC<{
       }
       onPick(v);
     }}
-    className="min-h-[40px] w-[64px] px-1 py-1 rounded-lg border border-[#D5D9E2] bg-white text-[#2A3BB0] text-[0.6875rem] font-bold focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
+    className="min-h-[40px] w-[64px] px-1 py-1 rounded-lg border border-line bg-surface text-brand-ink text-[0.6875rem] font-bold focus:outline-none focus:ring-2 focus:ring-brand"
   >
     <option value="" disabled>
       বোর্ড
@@ -174,12 +174,12 @@ const BoardChips: React.FC<{ chips: BoardUsage[]; onRemove: (board: string, year
   if (chips.length === 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <Tag className="w-3.5 h-3.5 text-[#3B4FD8] shrink-0" />
+      <Tag className="w-3.5 h-3.5 text-brand-fg shrink-0" />
       {chips.map((c) =>
         c.years.map((y) => (
           <span
             key={`${c.board}-${y}`}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#EEF2FF] text-[#2A3BB0] border border-[#D5D9E2] text-xs font-semibold"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-brand-soft text-brand-ink border border-line text-xs font-semibold"
           >
             <span>
               {c.board}'{toBn(String(y).slice(-2))}
@@ -188,7 +188,7 @@ const BoardChips: React.FC<{ chips: BoardUsage[]; onRemove: (board: string, year
               type="button"
               aria-label={`${c.board} ${y} ট্যাগ মুছুন`}
               onClick={() => onRemove(c.board, y)}
-              className="w-4 h-4 rounded-full flex items-center justify-center text-[#64748B] hover:text-red-600 hover:bg-white transition-colors"
+              className="w-4 h-4 rounded-full flex items-center justify-center text-ink-muted hover:text-red-600 hover:bg-hover transition-colors"
             >
               <X className="w-3 h-3" />
             </button>
@@ -256,18 +256,18 @@ const BoardYearWindow: React.FC<BoardYearWindowProps> = ({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full rounded-2xl bg-white p-4 space-y-3 shadow-2xl"
+        className="w-full rounded-2xl bg-surface p-4 space-y-3 shadow-2xl"
       >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <div className="text-sm font-bold text-[#2A3BB0]">সাল বাছুন</div>
-            <div className="text-[0.6875rem] font-medium text-[#64748B] truncate">{boardLabel}</div>
+            <div className="text-sm font-bold text-brand-ink">সাল বাছুন</div>
+            <div className="text-[0.6875rem] font-medium text-ink-muted truncate">{boardLabel}</div>
           </div>
           <button
             type="button"
             aria-label="বন্ধ করুন"
             onClick={onClose}
-            className="min-h-[36px] min-w-[36px] -mt-1 -mr-1.5 flex items-center justify-center rounded-full text-[#64748B] hover:bg-[#F2F4F8]"
+            className="min-h-[36px] min-w-[36px] -mt-1 -mr-1.5 flex items-center justify-center rounded-full text-ink-muted hover:bg-hover"
           >
             <X className="w-4 h-4" />
           </button>
@@ -285,18 +285,18 @@ const BoardYearWindow: React.FC<BoardYearWindowProps> = ({
                 onClick={() => onPickYear(y)}
                 className={`min-h-[44px] rounded-xl border text-xs font-semibold transition-colors flex items-center justify-center gap-1 ${
                   added
-                    ? 'bg-[#EEF2FF] border-[#C7D2FE] text-[#94A3B8]'
-                    : 'bg-white border-[#D5D9E2] text-[#1B1F2A] hover:bg-[#EEF2FF] active:bg-[#E0E7FF]'
+                    ? 'bg-brand-soft border-[#C7D2FE] text-[#94A3B8]'
+                    : 'bg-surface border-line text-ink hover:bg-brand-hover active:bg-press'
                 }`}
               >
-                {added && <Check className="w-3.5 h-3.5 text-[#3B4FD8]" />}
+                {added && <Check className="w-3.5 h-3.5 text-brand-fg" />}
                 <span>{toBn(y)}</span>
               </button>
             );
           })}
         </div>
 
-        <div className="flex items-center gap-2 pt-2.5 border-t border-[#F2F4F8]">
+        <div className="flex items-center gap-2 pt-2.5 border-t border-line-soft">
           <input
             type="text"
             inputMode="numeric"
@@ -310,12 +310,12 @@ const BoardYearWindow: React.FC<BoardYearWindowProps> = ({
               }
             }}
             placeholder="অন্য সাল (যেমন: ২০০৯)"
-            className="flex-1 min-w-0 min-h-[44px] px-3 py-2 rounded-xl border border-[#D5D9E2] bg-white text-xs text-[#1B1F2A] font-medium focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
+            className="flex-1 min-w-0 min-h-[44px] px-3 py-2 rounded-xl border border-line bg-surface text-xs text-ink font-medium focus:outline-none focus:ring-2 focus:ring-brand"
           />
           <button
             type="button"
             onClick={submitManual}
-            className="min-h-[44px] px-3.5 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] active:bg-[#202E91] text-white text-xs font-semibold shrink-0"
+            className="min-h-[44px] px-3.5 rounded-xl bg-brand hover:bg-brand-strong active:bg-[#202E91] text-white text-xs font-semibold shrink-0"
           >
             + যোগ
           </button>
@@ -363,16 +363,16 @@ const ImageStrip: React.FC<ImageStripProps> = ({
   onOpenViewer,
   addAriaLabel,
 }) => (
-  <div className="pt-2.5 border-t border-[#F2F4F8] space-y-2.5">
+  <div className="pt-2.5 border-t border-line-soft space-y-2.5">
     <div className="flex items-center justify-between">
-      <span className="text-xs font-semibold text-[#1B1F2A]">{title}</span>
+      <span className="text-xs font-semibold text-ink">{title}</span>
       <button
         type="button"
         aria-label={addAriaLabel}
         onClick={onAdd}
-        className="min-h-[44px] px-3.5 py-1.5 rounded-xl bg-[#EEF2FF] hover:bg-[#E0E7FF] text-[#2A3BB0] text-xs font-semibold flex items-center gap-1.5 transition-colors"
+        className="min-h-[44px] px-3.5 py-1.5 rounded-xl bg-brand-soft hover:bg-press text-brand-ink text-xs font-semibold flex items-center gap-1.5 transition-colors"
       >
-        <ImageIcon className="w-4 h-4 text-[#3B4FD8]" />
+        <ImageIcon className="w-4 h-4 text-brand-fg" />
         <span>ছবি যোগ করো</span>
       </button>
     </div>
@@ -383,7 +383,7 @@ const ImageStrip: React.FC<ImageStripProps> = ({
           const url = urls[imgId];
           return (
             <div key={imgId} className="space-y-1.5">
-              <div className="relative rounded-xl overflow-hidden border border-[#D5D9E2] aspect-video bg-[#F8FAFC]">
+              <div className="relative rounded-xl overflow-hidden border border-line aspect-video bg-surface-2">
                 {url ? (
                   <img
                     src={url}
@@ -392,7 +392,7 @@ const ImageStrip: React.FC<ImageStripProps> = ({
                     className={`w-full h-full object-cover ${fullFeatures ? 'cursor-zoom-in' : ''}`}
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-[0.625rem] text-[#64748B]">
+                  <div className="w-full h-full flex items-center justify-center text-[0.625rem] text-ink-muted">
                     লোড হচ্ছে...
                   </div>
                 )}
@@ -412,7 +412,7 @@ const ImageStrip: React.FC<ImageStripProps> = ({
                     aria-label="ছবি বদলান"
                     title="বদলান"
                     onClick={() => onReplace(imgId)}
-                    className="flex-1 min-h-[36px] rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#EEF2FF] active:bg-[#E0E7FF] text-[#2A3BB0] flex items-center justify-center"
+                    className="flex-1 min-h-[36px] rounded-lg border border-line bg-surface hover:bg-brand-hover active:bg-press text-brand-ink flex items-center justify-center"
                   >
                     <RefreshCw className="w-4 h-4" />
                   </button>
@@ -422,7 +422,7 @@ const ImageStrip: React.FC<ImageStripProps> = ({
                     title="এক্সপোর্ট (ডাউনলোড)"
                     disabled={!url}
                     onClick={() => onExport(imgId)}
-                    className="flex-1 min-h-[36px] rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#EEF2FF] active:bg-[#E0E7FF] text-[#2A3BB0] flex items-center justify-center disabled:opacity-40 disabled:pointer-events-none"
+                    className="flex-1 min-h-[36px] rounded-lg border border-line bg-surface hover:bg-brand-hover active:bg-press text-brand-ink flex items-center justify-center disabled:opacity-40 disabled:pointer-events-none"
                   >
                     <Download className="w-4 h-4" />
                   </button>
@@ -431,7 +431,7 @@ const ImageStrip: React.FC<ImageStripProps> = ({
                     aria-label="বড় প্রিভিউ দেখুন"
                     title="বড় দেখুন"
                     onClick={() => onOpenViewer(idx)}
-                    className="flex-1 min-h-[36px] rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#EEF2FF] active:bg-[#E0E7FF] text-[#2A3BB0] flex items-center justify-center"
+                    className="flex-1 min-h-[36px] rounded-lg border border-line bg-surface hover:bg-brand-hover active:bg-press text-brand-ink flex items-center justify-center"
                   >
                     <Maximize2 className="w-4 h-4" />
                   </button>
@@ -1185,10 +1185,10 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
     >
       {/* 390px Mobile Viewport Frame */}
-      <div className="w-full max-w-[390px] h-full sm:h-[844px] bg-[#F2F4F8] text-[#1B1F2A] flex flex-col relative overflow-hidden shadow-2xl sm:rounded-[32px] border border-[#D5D9E2]">
+      <div className="w-full max-w-[390px] h-full sm:h-[844px] bg-app text-ink flex flex-col relative overflow-hidden shadow-2xl sm:rounded-[32px] border border-line">
         
         {/* Header */}
-        <header className="sticky top-0 z-30 bg-[#3B4FD8] text-white px-4 h-14 flex items-center justify-between shadow-md shrink-0">
+        <header className="sticky top-0 z-30 bg-brand text-white px-4 h-14 flex items-center justify-between shadow-md shrink-0">
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -1205,7 +1205,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
 
           <div className="flex items-center">
             {isDirty && (
-              <span className="text-[0.6875rem] bg-amber-400 text-amber-950 font-bold px-2 py-0.5 rounded-full shadow-2xs">
+              <span className="text-[0.6875rem] bg-amber-400 text-amber-950 dark:text-amber-200 font-bold px-2 py-0.5 rounded-full shadow-2xs">
                 অসংরক্ষিত
               </span>
             )}
@@ -1213,11 +1213,11 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
         </header>
 
         {/* Mode switch: Minimum (default) | Full Editor */}
-        <div className="shrink-0 bg-white border-b border-[#D5D9E2] px-4 py-2">
+        <div className="shrink-0 bg-surface border-b border-line px-4 py-2">
           <div
             role="tablist"
             aria-label="এডিটর মোড"
-            className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-[#F2F4F8] border border-[#D5D9E2]"
+            className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-app border border-line"
           >
             {(['minimum', 'full'] as EditorMode[]).map((m) => {
               const active = editorMode === m;
@@ -1229,7 +1229,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                   aria-selected={active}
                   onClick={() => setEditorMode(m)}
                   className={`min-h-[40px] rounded-lg text-xs font-bold transition-colors ${
-                    active ? 'bg-[#3B4FD8] text-white shadow-sm' : 'text-[#2A3BB0] hover:bg-white'
+                    active ? 'bg-brand text-white shadow-sm' : 'text-brand-ink hover:bg-hover'
                   }`}
                 >
                   {m === 'minimum' ? 'Minimum' : 'Full Editor'}
@@ -1246,20 +1246,20 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
 
           {/* Section 1: Subject, Chapter, Topic Selection — Full Editor only */}
           {isFull && (
-            <section className="bg-white rounded-2xl p-4 border border-[#D5D9E2] shadow-xs space-y-3.5">
-              <div className="flex items-center gap-2 pb-2 border-b border-[#F2F4F8] text-xs font-bold text-[#2A3BB0]">
-                <Layers className="w-4 h-4 text-[#3B4FD8]" />
+            <section className="bg-surface rounded-2xl p-4 border border-line shadow-xs space-y-3.5">
+              <div className="flex items-center gap-2 pb-2 border-b border-line-soft text-xs font-bold text-brand-ink">
+                <Layers className="w-4 h-4 text-brand-fg" />
                 <span>বিষয়, অধ্যায় ও টপিক নির্বাচন</span>
               </div>
 
               {/* Subject Select */}
               <div className="space-y-1">
-                <label className="block text-xs font-semibold text-[#1B1F2A]">বিষয়</label>
+                <label className="block text-xs font-semibold text-ink">বিষয়</label>
                 <div className="relative">
                   <select
                     value={selectedSubjectId}
                     onChange={(e) => handleSubjectChange(e.target.value)}
-                    className="w-full min-h-[44px] px-3.5 pr-8 py-2.5 rounded-xl border border-[#D5D9E2] bg-white text-xs font-medium text-[#1B1F2A] appearance-none focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
+                    className="w-full min-h-[44px] px-3.5 pr-8 py-2.5 rounded-xl border border-line bg-surface text-xs font-medium text-ink appearance-none focus:outline-none focus:ring-2 focus:ring-brand"
                   >
                     <option value="">-- বিষয় নির্বাচন করুন --</option>
                     {allSubjects.map((s) => (
@@ -1268,19 +1268,19 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                       </option>
                     ))}
                   </select>
-                  <ChevronDown className="w-4 h-4 text-[#64748B] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <ChevronDown className="w-4 h-4 text-ink-muted absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
               </div>
 
               {/* Chapter Select */}
               <div className="space-y-1">
-                <label className="block text-xs font-semibold text-[#1B1F2A]">অধ্যায়</label>
+                <label className="block text-xs font-semibold text-ink">অধ্যায়</label>
                 <div className="relative">
                   <select
                     value={selectedChapterId}
                     disabled={!selectedSubjectId}
                     onChange={(e) => handleChapterChange(e.target.value)}
-                    className="w-full min-h-[44px] px-3.5 pr-8 py-2.5 rounded-xl border border-[#D5D9E2] bg-white text-xs font-medium text-[#1B1F2A] appearance-none focus:outline-none focus:ring-2 focus:ring-[#3B4FD8] disabled:bg-[#F2F4F8] disabled:text-[#94A3B8]"
+                    className="w-full min-h-[44px] px-3.5 pr-8 py-2.5 rounded-xl border border-line bg-surface text-xs font-medium text-ink appearance-none focus:outline-none focus:ring-2 focus:ring-brand disabled:bg-app disabled:text-[#94A3B8]"
                   >
                     <option value="">-- অধ্যায় নির্বাচন করুন --</option>
                     {filteredChapters.map((c) => (
@@ -1289,13 +1289,13 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                       </option>
                     ))}
                   </select>
-                  <ChevronDown className="w-4 h-4 text-[#64748B] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <ChevronDown className="w-4 h-4 text-ink-muted absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
               </div>
 
               {/* Topic Select */}
               <div className="space-y-1">
-                <label className="block text-xs font-semibold text-[#1B1F2A]">টপিক *</label>
+                <label className="block text-xs font-semibold text-ink">টপিক *</label>
                 <div className="relative">
                   <select
                     value={selectedTopicId}
@@ -1303,9 +1303,9 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                     onChange={(e) => handleTopicChange(e.target.value)}
                     className={`w-full min-h-[44px] px-3.5 pr-8 py-2.5 rounded-xl border text-xs font-medium appearance-none focus:outline-none focus:ring-2 ${
                       errors.topic
-                        ? 'border-red-500 bg-red-50/30 focus:ring-red-400 text-red-900'
-                        : 'border-[#D5D9E2] bg-white text-[#1B1F2A] focus:ring-[#3B4FD8]'
-                    } disabled:bg-[#F2F4F8] disabled:text-[#94A3B8]`}
+                        ? 'border-red-500 bg-danger-soft/30 focus:ring-red-400 text-red-900 dark:text-red-200'
+                        : 'border-line bg-surface text-ink focus:ring-brand'
+                    } disabled:bg-app disabled:text-[#94A3B8]`}
                   >
                     <option value="">-- টপিক নির্বাচন করুন --</option>
                     {filteredTopics.map((t) => (
@@ -1314,7 +1314,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                       </option>
                     ))}
                   </select>
-                  <ChevronDown className="w-4 h-4 text-[#64748B] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <ChevronDown className="w-4 h-4 text-ink-muted absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
                 {errors.topic && (
                   <p className="text-xs text-red-600 font-semibold flex items-center gap-1 pt-0.5">
@@ -1327,10 +1327,10 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
           )}
 
           {/* Section 2: Stimulus (উদ্দীপক) — text, eye preview, rating, images, board */}
-          <section className="bg-white rounded-2xl p-4 border border-[#D5D9E2] shadow-xs space-y-3">
-            <div className="flex items-center justify-between gap-2 pb-2 border-b border-[#F2F4F8]">
-              <span className="flex items-center gap-1.5 text-xs font-bold text-[#2A3BB0] min-w-0">
-                <HelpCircle className="w-4 h-4 text-[#3B4FD8] shrink-0" />
+          <section className="bg-surface rounded-2xl p-4 border border-line shadow-xs space-y-3">
+            <div className="flex items-center justify-between gap-2 pb-2 border-b border-line-soft">
+              <span className="flex items-center gap-1.5 text-xs font-bold text-brand-ink min-w-0">
+                <HelpCircle className="w-4 h-4 text-brand-fg shrink-0" />
                 <span className="truncate">উদ্দীপক *</span>
               </span>
               <div className="flex items-center gap-1 shrink-0">
@@ -1403,9 +1403,9 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
 
           {/* Reference (Full Editor only) */}
           {isFull && (
-            <section className="bg-white rounded-2xl p-4 border border-[#D5D9E2] shadow-xs space-y-2.5">
-              <div className="flex items-center gap-2 pb-2 border-b border-[#F2F4F8] text-xs font-bold text-[#2A3BB0]">
-                <BookMarked className="w-4 h-4 text-[#3B4FD8]" />
+            <section className="bg-surface rounded-2xl p-4 border border-line shadow-xs space-y-2.5">
+              <div className="flex items-center gap-2 pb-2 border-b border-line-soft text-xs font-bold text-brand-ink">
+                <BookMarked className="w-4 h-4 text-brand-fg" />
                 <span>রেফারেন্স (প্রশ্নটি কোথা থেকে সংগ্রহ)</span>
               </div>
               <input
@@ -1416,9 +1416,9 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                   setReference(e.target.value);
                 }}
                 placeholder="যেমন: মেরি জি প্রশ্ন ব্যাংক"
-                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-[#D5D9E2] bg-white text-xs text-[#1B1F2A] focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
+                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-line bg-surface text-xs text-ink focus:outline-none focus:ring-2 focus:ring-brand"
               />
-              <p className="text-[0.6875rem] text-[#64748B]">
+              <p className="text-[0.6875rem] text-ink-muted">
                 প্রশ্ন কার্ডের থ্রি ডট মেনুর "রেফারেন্স দেখুন" অপশনে এটি দেখা যাবে।
               </p>
             </section>
@@ -1427,20 +1427,20 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
           {/* Section 3: Question Blocks (গ, ঘ …) */}
           <section className="space-y-4">
             {isFull && (
-              <div className="flex items-center justify-between text-xs font-bold text-[#1B1F2A] px-1">
+              <div className="flex items-center justify-between text-xs font-bold text-ink px-1">
                 <span>প্রশ্ন তালিকা ({toBn(questionBlocks.length)}টি প্রশ্ন)</span>
                 {questionBlocks.length > 1 ? (
                   <button
                     type="button"
                     aria-label="ক খ গ ঘ ক্রমে সাজাও"
                     onClick={handleSortBlocksByType}
-                    className="min-h-[36px] px-3 rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#EEF2FF] active:bg-[#E0E7FF] text-[#2A3BB0] text-[0.6875rem] font-bold flex items-center gap-1.5"
+                    className="min-h-[36px] px-3 rounded-lg border border-line bg-surface hover:bg-brand-hover active:bg-press text-brand-ink text-[0.6875rem] font-bold flex items-center gap-1.5"
                   >
                     <ArrowUpDown className="w-3.5 h-3.5" />
                     <span>ক-খ-গ-ঘ সাজাও</span>
                   </button>
                 ) : (
-                  <span className="text-[#64748B] text-[0.6875rem] font-normal">গ ও ঘ বা অন্য প্রকার</span>
+                  <span className="text-ink-muted text-[0.6875rem] font-normal">গ ও ঘ বা অন্য প্রকার</span>
                 )}
               </div>
             )}
@@ -1454,17 +1454,17 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                 <div
                   key={block.tempId}
                   id={`qblock-${block.tempId}`}
-                  className="bg-white rounded-2xl p-4 border border-[#D5D9E2] shadow-xs space-y-3"
+                  className="bg-surface rounded-2xl p-4 border border-line shadow-xs space-y-3"
                 >
                   {/* Block Header */}
-                  <div className="flex items-center justify-between pb-2.5 border-b border-[#F2F4F8]">
+                  <div className="flex items-center justify-between pb-2.5 border-b border-line-soft">
                     {isFull ? (
                       <div className="flex items-center gap-2">
                         {/* Type Dropdown */}
                         <select
                           value={block.type}
                           onChange={(e) => updateQuestionBlock(index, 'type', e.target.value as QuestionType)}
-                          className="min-h-[44px] px-3 py-1.5 rounded-xl bg-[#3B4FD8] text-white text-xs font-bold focus:outline-none focus:ring-2 focus:ring-white"
+                          className="min-h-[44px] px-3 py-1.5 rounded-xl bg-brand text-white text-xs font-bold focus:outline-none focus:ring-2 focus:ring-white"
                         >
                           <option value="ক">ক</option>
                           <option value="খ">খ</option>
@@ -1474,7 +1474,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
 
                         {/* Marks Input */}
                         <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-semibold text-[#1B1F2A]">নম্বর:</span>
+                          <span className="text-xs font-semibold text-ink">নম্বর:</span>
                           <input
                             type="number"
                             min={1}
@@ -1483,16 +1483,16 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                             onChange={(e) =>
                               updateQuestionBlock(index, 'marks', Math.max(1, parseInt(e.target.value, 10) || 1))
                             }
-                            className="w-14 min-h-[44px] px-2 py-1 text-center font-bold text-xs rounded-xl border border-[#D5D9E2] bg-white text-[#1B1F2A] focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
+                            className="w-14 min-h-[44px] px-2 py-1 text-center font-bold text-xs rounded-xl border border-line bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-brand"
                           />
                         </div>
                       </div>
                     ) : (
                       <div className="flex items-center gap-2">
-                        <span className="min-h-[32px] min-w-[32px] px-3 rounded-lg bg-[#3B4FD8] text-white text-xs font-bold flex items-center justify-center">
+                        <span className="min-h-[32px] min-w-[32px] px-3 rounded-lg bg-brand text-white text-xs font-bold flex items-center justify-center">
                           {block.type}
                         </span>
-                        <span className="text-[0.6875rem] font-semibold text-[#64748B]">
+                        <span className="text-[0.6875rem] font-semibold text-ink-muted">
                           {toBn(block.marks)} নম্বর
                         </span>
                       </div>
@@ -1506,7 +1506,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                           aria-label="এই প্রশ্নটি উপরে সরান"
                           disabled={index === 0}
                           onClick={() => handleMoveQuestionBlock(index, -1)}
-                          className="min-h-[44px] min-w-[40px] flex items-center justify-center rounded-xl text-[#2A3BB0] hover:bg-[#EEF2FF] active:bg-[#E0E7FF] disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                          className="min-h-[44px] min-w-[40px] flex items-center justify-center rounded-xl text-brand-ink hover:bg-brand-hover active:bg-press disabled:opacity-30 disabled:pointer-events-none transition-colors"
                         >
                           <ArrowUp className="w-4 h-4" />
                         </button>
@@ -1515,7 +1515,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                           aria-label="এই প্রশ্নটি নিচে সরান"
                           disabled={index === questionBlocks.length - 1}
                           onClick={() => handleMoveQuestionBlock(index, 1)}
-                          className="min-h-[44px] min-w-[40px] flex items-center justify-center rounded-xl text-[#2A3BB0] hover:bg-[#EEF2FF] active:bg-[#E0E7FF] disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                          className="min-h-[44px] min-w-[40px] flex items-center justify-center rounded-xl text-brand-ink hover:bg-brand-hover active:bg-press disabled:opacity-30 disabled:pointer-events-none transition-colors"
                         >
                           <ArrowDown className="w-4 h-4" />
                         </button>
@@ -1524,7 +1524,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                           aria-label="এই প্রশ্ন ব্লকটি মুছে ফেলুন"
                           disabled={questionBlocks.length <= 1}
                           onClick={() => handleRemoveQuestionBlock(index)}
-                          className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-red-500 hover:bg-red-50 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                          className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-red-500 hover:bg-danger-soft disabled:opacity-30 disabled:pointer-events-none transition-colors"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -1565,9 +1565,9 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                   </div>
 
                   {/* Solution: label + eye + rating */}
-                  <div className="space-y-2.5 pt-2.5 border-t border-[#F2F4F8]">
+                  <div className="space-y-2.5 pt-2.5 border-t border-line-soft">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-bold text-[#2A3BB0]">সমাধান</span>
+                      <span className="text-xs font-bold text-brand-ink">সমাধান</span>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <EyeToggle
                           open={solPreviewOpen}
@@ -1619,14 +1619,14 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
 
                   {/* Short Answer — Full Editor only */}
                   {isFull && (
-                    <div className="space-y-1 pt-2.5 border-t border-[#F2F4F8]">
-                      <label className="block text-xs font-semibold text-[#1B1F2A]">সংক্ষিপ্ত উত্তর (ঐচ্ছিক)</label>
+                    <div className="space-y-1 pt-2.5 border-t border-line-soft">
+                      <label className="block text-xs font-semibold text-ink">সংক্ষিপ্ত উত্তর (ঐচ্ছিক)</label>
                       <input
                         type="text"
                         value={block.answerText || ''}
                         onChange={(e) => updateQuestionBlock(index, 'answerText', e.target.value)}
                         placeholder="যেমন: -5.78 × 10⁻¹⁰ J kg⁻¹"
-                        className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-[#D5D9E2] bg-[#F2F4F8]/40 text-xs text-[#1B1F2A] focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
+                        className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-line bg-app/40 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-brand"
                       />
                     </div>
                   )}
@@ -1640,9 +1640,9 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                 type="button"
                 aria-label="আরও প্রশ্ন যোগ করো"
                 onClick={handleAddQuestionBlock}
-                className="w-full min-h-[44px] px-4 py-2.5 rounded-2xl border-2 border-dashed border-[#3B4FD8] bg-[#EEF2FF]/50 hover:bg-[#EEF2FF] text-[#2A3BB0] text-xs font-bold flex items-center justify-center gap-2 transition-colors shadow-2xs"
+                className="w-full min-h-[44px] px-4 py-2.5 rounded-2xl border-2 border-dashed border-brand bg-brand-soft/50 hover:bg-brand-hover text-brand-ink text-xs font-bold flex items-center justify-center gap-2 transition-colors shadow-2xs"
               >
-                <Plus className="w-4 h-4 text-[#3B4FD8]" />
+                <Plus className="w-4 h-4 text-brand-fg" />
                 <span>+ আরও প্রশ্ন যোগ করো</span>
               </button>
             )}
@@ -1650,13 +1650,13 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
         </div>
 
         {/* Fixed Bottom Action Bar (Cancel & Save) */}
-        <footer className="absolute bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-[#D5D9E2] px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
+        <footer className="absolute bottom-0 left-0 right-0 z-40 bg-surface/95 backdrop-blur-md border-t border-line px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
           <div className="grid grid-cols-2 gap-3 max-w-[360px] mx-auto">
             <button
               type="button"
               onClick={handleAttemptClose}
               disabled={loading}
-              className="w-full min-h-[44px] px-4 py-2.5 rounded-xl border border-[#D5D9E2] bg-white hover:bg-[#F2F4F8] active:bg-[#E5E9F0] text-sm font-semibold text-[#1B1F2A] transition-colors"
+              className="w-full min-h-[44px] px-4 py-2.5 rounded-xl border border-line bg-surface hover:bg-hover active:bg-hover text-sm font-semibold text-ink transition-colors"
             >
               Cancel
             </button>
@@ -1665,7 +1665,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
               type="button"
               onClick={handleSave}
               disabled={loading}
-              className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] active:bg-[#202E91] text-sm font-bold text-white shadow-md flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+              className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-brand hover:bg-brand-strong active:bg-[#202E91] text-sm font-bold text-white shadow-md flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
             >
               {loading ? (
                 <span>সংরক্ষণ হচ্ছে...</span>
@@ -1682,29 +1682,29 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
         {/* Add a new custom board */}
         {showAddBoard && (
           <div className="absolute inset-0 z-50 bg-black/50 flex items-center justify-center px-5">
-            <div className="w-full rounded-2xl bg-white p-4 space-y-3 shadow-2xl">
-              <div className="text-sm font-bold text-[#2A3BB0]">নতুন বোর্ড যুক্ত করুন</div>
+            <div className="w-full rounded-2xl bg-surface p-4 space-y-3 shadow-2xl">
+              <div className="text-sm font-bold text-brand-ink">নতুন বোর্ড যুক্ত করুন</div>
               <div className="flex items-center gap-2">
                 <input
                   type="text"
                   value={newBoardCode}
                   onChange={(e) => setNewBoardCode(e.target.value)}
                   placeholder="কোড (যেমন: CTB)"
-                  className="w-28 min-h-[44px] px-3 py-2 rounded-xl border border-[#D5D9E2] bg-white text-xs text-[#1B1F2A] font-medium focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
+                  className="w-28 min-h-[44px] px-3 py-2 rounded-xl border border-line bg-surface text-xs text-ink font-medium focus:outline-none focus:ring-2 focus:ring-brand"
                 />
                 <input
                   type="text"
                   value={newBoardName}
                   onChange={(e) => setNewBoardName(e.target.value)}
                   placeholder="নাম (যেমন: চট্টগ্রাম বোর্ড)"
-                  className="flex-1 min-w-0 min-h-[44px] px-3 py-2 rounded-xl border border-[#D5D9E2] bg-white text-xs text-[#1B1F2A] font-medium focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
+                  className="flex-1 min-w-0 min-h-[44px] px-3 py-2 rounded-xl border border-line bg-surface text-xs text-ink font-medium focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={handleSaveNewBoard}
-                  className="flex-1 min-h-[44px] rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] text-white text-xs font-semibold"
+                  className="flex-1 min-h-[44px] rounded-xl bg-brand hover:bg-brand-strong text-white text-xs font-semibold"
                 >
                   সংরক্ষণ
                 </button>
@@ -1715,7 +1715,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                     setNewBoardCode('');
                     setNewBoardName('');
                   }}
-                  className="flex-1 min-h-[44px] rounded-xl border border-[#D5D9E2] bg-white text-[#1B1F2A] text-xs font-semibold"
+                  className="flex-1 min-h-[44px] rounded-xl border border-line bg-surface text-ink text-xs font-semibold"
                 >
                   বাতিল
                 </button>

@@ -77,7 +77,7 @@ export const PopupMenu: React.FC<PopupMenuProps> = ({
         }}
         className={
           buttonClassName ||
-          'min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full text-[#64748B] dark:text-slate-400 hover:bg-[#F2F4F8] dark:hover:bg-slate-700 focus:outline-none'
+          'min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full text-ink-muted hover:bg-hover dark:hover:bg-slate-700 focus:outline-none'
         }
       >
         <MoreVertical className={iconClassName} />
@@ -104,7 +104,7 @@ export const PopupMenu: React.FC<PopupMenuProps> = ({
               width: Math.min(MENU_WIDTH, window.innerWidth - MARGIN * 2),
               visibility: pos ? 'visible' : 'hidden',
             }}
-            className="fixed z-[61] bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-[#D5D9E2] dark:border-slate-700 py-1.5 animate-in fade-in zoom-in-95 duration-100"
+            className="fixed z-[61] bg-surface rounded-2xl shadow-xl border border-line py-1.5 animate-in fade-in zoom-in-95 duration-100"
           >
             {items.map((item) => (
               <button
@@ -118,8 +118,8 @@ export const PopupMenu: React.FC<PopupMenuProps> = ({
                 }}
                 className={`w-full min-h-[46px] px-4 py-2 text-left text-sm font-medium flex items-center gap-3 transition-colors ${
                   item.isDestructive
-                    ? 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40'
-                    : 'text-[#1B1F2A] dark:text-slate-100 hover:bg-[#F2F4F8] dark:hover:bg-slate-700'
+                    ? 'text-red-600 dark:text-red-400 hover:bg-danger-soft dark:hover:bg-red-950/40'
+                    : 'text-ink hover:bg-hover dark:hover:bg-slate-700'
                 }`}
               >
                 {item.icon && <span className="w-5 h-5 flex items-center justify-center shrink-0">{item.icon}</span>}

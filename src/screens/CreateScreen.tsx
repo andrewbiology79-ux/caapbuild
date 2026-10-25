@@ -1,4 +1,6 @@
-import { getSelectedIdsAll, getSelectedStimuliCountAll } from '../db/crossDb';
+import { getSelectedStimuliCountAll } from '../db/crossDb';
+import { EmptyState } from '../ui/EmptyState';
+import { PaperListItem } from '../features/create/PaperListItem';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Header } from '../components/Header';
 import { useToast } from '../components/Toast';
@@ -24,11 +26,9 @@ import {
   FileText,
   Plus,
   Calendar,
-  Clock,
   Award,
   ChevronRight,
   FolderCheck,
-  Sparkles,
   RefreshCw,
   Layers,
   Search,
@@ -94,7 +94,7 @@ export const CreateScreen: React.FC = () => {
     try {
       // categories first: this also gives every paper its "<category>-<number>" name
       const cats = await getCategories();
-      const [list, selIds] = await Promise.all([getPapers(), getSelectedIdsAll()]);
+      const list = await getPapers();
       const stimCount = await getSelectedStimuliCountAll();
       setCategories(cats);
       setPapers(list);
@@ -273,13 +273,13 @@ export const CreateScreen: React.FC = () => {
         {
           id: 'select-all',
           label: 'সব নির্বাচন করুন',
-          icon: <CheckSquare className="w-4 h-4 text-[#3B4FD8]" />,
+          icon: <CheckSquare className="w-4 h-4 text-brand-fg" />,
           onClick: selectAllVisible,
         },
         {
           id: 'clear-selection',
           label: 'নির্বাচন বাতিল',
-          icon: <X className="w-4 h-4 text-[#64748B]" />,
+          icon: <X className="w-4 h-4 text-ink-muted" />,
           onClick: exitSelectMode,
         },
       ]
@@ -287,13 +287,13 @@ export const CreateScreen: React.FC = () => {
         {
           id: 'new-paper',
           label: 'নতুন প্রশ্নপত্র তৈরি',
-          icon: <Plus className="w-4 h-4 text-[#3B4FD8]" />,
+          icon: <Plus className="w-4 h-4 text-brand-fg" />,
           onClick: handleOpenCreateNew,
         },
         {
           id: 'select-papers',
           label: 'প্রশ্নপত্র নির্বাচন করুন',
-          icon: <CheckSquare className="w-4 h-4 text-[#3B4FD8]" />,
+          icon: <CheckSquare className="w-4 h-4 text-brand-fg" />,
           onClick: enterSelectMode,
         },
         ...(clipboard
@@ -301,7 +301,7 @@ export const CreateScreen: React.FC = () => {
               {
                 id: 'paste-papers',
                 label: `পেস্ট করুন (${toBn(clipboard.ids.length)})`,
-                icon: <ClipboardPaste className="w-4 h-4 text-[#3B4FD8]" />,
+                icon: <ClipboardPaste className="w-4 h-4 text-brand-fg" />,
                 onClick: handlePasteClick,
               },
             ]
@@ -309,13 +309,13 @@ export const CreateScreen: React.FC = () => {
         {
           id: 'go-collection',
           label: 'কালেকশন থেকে প্রশ্ন নির্বাচন',
-          icon: <Layers className="w-4 h-4 text-[#2A3BB0]" />,
+          icon: <Layers className="w-4 h-4 text-brand-ink" />,
           onClick: () => switchTab('typeCq'),
         },
       ];
 
   return (
-    <div className="flex-1 flex flex-col min-h-full pb-24 bg-[#F2F4F8] dark:bg-slate-900 transition-colors">
+    <div className="flex-1 flex flex-col min-h-full pb-24 bg-app dark:bg-slate-900 transition-colors">
       <Header
         title={selectMode ? `${toBn(picked.size)}টি নির্বাচিত` : 'তৈরি (Create)'}
         subtitle={selectMode ? 'প্রশ্নপত্র নির্বাচন মোড' : 'পরীক্ষা ও প্রশ্নপত্র ব্যবস্থাপনা'}
@@ -327,18 +327,18 @@ export const CreateScreen: React.FC = () => {
       <main className={`flex-1 p-3.5 space-y-3.5 ${selectMode ? 'pb-20' : ''}`}>
         {/* Selected Questions Notice / Action Banner */}
         {!selectMode && (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl p-3.5 border border-[#D5D9E2] dark:border-slate-700 shadow-xs flex items-center justify-between gap-3">
+        <div className="bg-surface rounded-2xl p-3.5 border border-line shadow-xs flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#EEF2FF] dark:bg-indigo-950 flex items-center justify-center text-[#3B4FD8] dark:text-indigo-400 shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-brand-soft flex items-center justify-center text-brand shrink-0">
               <FolderCheck className="w-5 h-5" />
             </div>
             <div>
-              <span className="text-xs font-bold text-[#1B1F2A] dark:text-slate-100 block">
+              <span className="text-xs font-bold text-ink block">
                 {selectedCount > 0
                   ? `${toBn(selectedCount)}টি প্রশ্ন নির্বাচিত আছে`
                   : 'কোনো প্রশ্ন নির্বাচন করা হয়নি'}
               </span>
-              <p className="text-[0.6875rem] text-[#64748B] dark:text-slate-400">
+              <p className="text-[0.6875rem] text-ink-muted">
                 {selectedCount > 0
                   ? 'নির্বাচিত প্রশ্নগুলো দিয়ে সরাসরি প্রশ্নপত্র তৈরি করতে পারেন'
                   : 'কালেকশন ট্যাবে গিয়ে প্রশ্ন নির্বাচন করুন'}
@@ -349,7 +349,7 @@ export const CreateScreen: React.FC = () => {
           <button
             type="button"
             onClick={selectedCount > 0 ? handleOpenCreateNew : () => switchTab('typeCq')}
-            className="min-h-[44px] px-3.5 py-1.5 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] active:bg-[#202E91] text-white text-xs font-bold shrink-0 shadow-2xs transition-colors"
+            className="min-h-[44px] px-3.5 py-1.5 rounded-xl bg-brand hover:bg-brand-strong active:bg-[#202E91] text-white text-xs font-bold shrink-0 shadow-2xs transition-colors"
           >
             {selectedCount > 0 ? '+ তৈরি করো' : 'নির্বাচন করো'}
           </button>
@@ -358,14 +358,14 @@ export const CreateScreen: React.FC = () => {
 
         {/* Paste banner (after copy / cut) */}
         {!selectMode && clipboard && (
-          <div className="bg-[#EEF2FF] dark:bg-indigo-950/60 rounded-2xl p-3 border border-[#C7D2FE] dark:border-indigo-900 flex items-center justify-between gap-2">
+          <div className="bg-brand-soft rounded-2xl p-3 border border-[#C7D2FE] dark:border-indigo-900 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               {clipboard.mode === 'copy' ? (
-                <Copy className="w-4 h-4 text-[#3B4FD8] dark:text-indigo-300 shrink-0" />
+                <Copy className="w-4 h-4 text-brand shrink-0" />
               ) : (
-                <Scissors className="w-4 h-4 text-[#3B4FD8] dark:text-indigo-300 shrink-0" />
+                <Scissors className="w-4 h-4 text-brand shrink-0" />
               )}
-              <span className="text-xs font-bold text-[#1B1F2A] dark:text-slate-100 truncate">
+              <span className="text-xs font-bold text-ink truncate">
                 {toBn(clipboard.ids.length)}টি প্রশ্নপত্র {clipboard.mode === 'copy' ? 'কপি' : 'কাট'} করা আছে
               </span>
             </div>
@@ -373,7 +373,7 @@ export const CreateScreen: React.FC = () => {
               <button
                 type="button"
                 onClick={handlePasteClick}
-                className="min-h-[40px] px-3 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] text-white text-xs font-bold flex items-center gap-1"
+                className="min-h-[40px] px-3 rounded-xl bg-brand hover:bg-brand-strong text-white text-xs font-bold flex items-center gap-1"
               >
                 <ClipboardPaste className="w-4 h-4" />
                 <span>{activeCategory ? 'এখানে পেস্ট' : 'পেস্ট'}</span>
@@ -382,7 +382,7 @@ export const CreateScreen: React.FC = () => {
                 type="button"
                 aria-label="ক্লিপবোর্ড খালি করুন"
                 onClick={() => setClipboard(null)}
-                className="w-10 h-10 min-h-0 rounded-xl flex items-center justify-center text-[#64748B] dark:text-slate-300 hover:bg-white/70 dark:hover:bg-slate-800"
+                className="w-10 h-10 min-h-0 rounded-xl flex items-center justify-center text-ink-muted dark:text-slate-300 hover:bg-white/70 dark:hover:bg-slate-800"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -392,7 +392,7 @@ export const CreateScreen: React.FC = () => {
 
         {/* Papers Section Title */}
         <div className="flex items-center justify-between px-1">
-          <h2 className="text-xs font-bold text-[#1B1F2A] dark:text-slate-200">
+          <h2 className="text-xs font-bold text-ink">
             তৈরি প্রশ্নপত্রের তালিকা ({toBn(visiblePapers.length)}টি
             {visiblePapers.length !== papers.length ? ` / ${toBn(papers.length)}টির মধ্যে` : ''})
           </h2>
@@ -400,7 +400,7 @@ export const CreateScreen: React.FC = () => {
             <button
               type="button"
               onClick={allVisiblePicked ? () => setPicked(new Set()) : selectAllVisible}
-              className="text-xs font-bold text-[#3B4FD8] dark:text-indigo-400 hover:underline"
+              className="text-xs font-bold text-brand hover:underline"
             >
               {allVisiblePicked ? 'কোনোটি নয়' : 'সব নির্বাচন'}
             </button>
@@ -408,7 +408,7 @@ export const CreateScreen: React.FC = () => {
             <button
               type="button"
               onClick={handleOpenCreateNew}
-              className="text-xs font-bold text-[#3B4FD8] dark:text-indigo-400 hover:underline"
+              className="text-xs font-bold text-brand hover:underline"
             >
               + নতুন প্রশ্নপত্র
             </button>
@@ -425,14 +425,14 @@ export const CreateScreen: React.FC = () => {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="নাম বা শিরোনাম দিয়ে খুঁজুন"
-                className="w-full min-h-[44px] pl-9 pr-9 py-2 rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-[#1B1F2A] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
+                className="w-full min-h-[44px] pl-9 pr-9 py-2 rounded-xl border border-line bg-surface text-xs text-ink focus:outline-none focus:ring-2 focus:ring-brand"
               />
               {search && (
                 <button
                   type="button"
                   aria-label="খোঁজা মুছুন"
                   onClick={() => setSearch('')}
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 w-8 h-8 min-h-0 rounded-full flex items-center justify-center text-[#64748B]"
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 w-8 h-8 min-h-0 rounded-full flex items-center justify-center text-ink-muted"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -447,8 +447,8 @@ export const CreateScreen: React.FC = () => {
                   onClick={() => setFilterCat(chip.id)}
                   className={`min-h-[36px] px-3 py-1.5 rounded-full border text-[0.6875rem] font-bold whitespace-nowrap shrink-0 transition-colors ${
                     filterCat === chip.id
-                      ? 'bg-[#3B4FD8] border-[#3B4FD8] text-white'
-                      : 'bg-white dark:bg-slate-800 border-[#D5D9E2] dark:border-slate-700 text-[#475569] dark:text-slate-300'
+                      ? 'bg-brand border-brand text-white'
+                      : 'bg-surface border-line text-[#475569] dark:text-slate-300'
                   }`}
                 >
                   {chip.name} ({toBn(chip.count)})
@@ -460,111 +460,46 @@ export const CreateScreen: React.FC = () => {
 
         {/* Loading */}
         {loading && (
-          <div className="py-12 text-center text-xs text-[#64748B] dark:text-slate-400 flex flex-col items-center gap-2">
-            <RefreshCw className="w-6 h-6 animate-spin text-[#3B4FD8]" />
+          <div className="py-12 text-center text-xs text-ink-muted flex flex-col items-center gap-2">
+            <RefreshCw className="w-6 h-6 animate-spin text-brand-fg" />
             <span>প্রশ্নপত্র লোড হচ্ছে...</span>
           </div>
         )}
 
         {/* Empty State */}
         {!loading && papers.length === 0 && (
-          <div className="bg-white dark:bg-slate-800 rounded-3xl p-7 text-center border border-[#D5D9E2] dark:border-slate-700 shadow-xs space-y-3">
-            <div className="w-14 h-14 rounded-full bg-[#EEF2FF] dark:bg-indigo-950 flex items-center justify-center mx-auto text-[#3B4FD8] dark:text-indigo-400">
-              <FileText className="w-7 h-7" />
-            </div>
-            <h3 className="text-sm font-bold text-[#1B1F2A] dark:text-slate-100">
-              কোনো প্রশ্নপত্র তৈরি করা হয়নি
-            </h3>
-            <p className="text-xs text-[#64748B] dark:text-slate-400 max-w-xs mx-auto leading-relaxed">
-              কালেকশন থেকে প্রশ্ন সিলেক্ট করে বা সরাসরি তথ্য দিয়ে সুন্দর A4 সাইজের পরীক্ষার প্রশ্নপত্র তৈরি ও প্রিন্ট করুন।
-            </p>
-            <button
-              type="button"
-              onClick={handleOpenCreateNew}
-              className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] text-white text-xs font-bold shadow-xs transition-colors"
-            >
-              + প্রথম প্রশ্নপত্র তৈরি করুন
-            </button>
-          </div>
+          <EmptyState
+            title="কোনো প্রশ্নপত্র তৈরি করা হয়নি"
+            description="কালেকশন থেকে প্রশ্ন সিলেক্ট করে বা সরাসরি তথ্য দিয়ে A4 সাইজের পরীক্ষার প্রশ্নপত্র তৈরি ও প্রিন্ট করুন।"
+            action={
+              <button
+                type="button"
+                onClick={handleOpenCreateNew}
+                className="min-h-[44px] px-5 py-2.5 rounded-xl bg-brand hover:bg-brand-strong text-white text-xs font-bold shadow-xs transition-colors"
+              >
+                + প্রথম প্রশ্নপত্র তৈরি করুন
+              </button>
+            }
+          />
         )}
 
         {/* List of Created Papers */}
         {!loading && papers.length > 0 && visiblePapers.length === 0 && (
-          <div className="py-8 text-center text-xs text-[#64748B] dark:text-slate-400">
-            এই ফিল্টারে কোনো প্রশ্নপত্র পাওয়া যায়নি
-          </div>
+          <EmptyState title="এই ফিল্টারে কোনো প্রশ্নপত্র পাওয়া যায়নি" />
         )}
 
         {!loading && visiblePapers.length > 0 && (
           <div className="space-y-2.5">
-            {visiblePapers.map((paper) => {
-              const qCount = paper.questionIds?.length || 0;
-              const dateStr = new Date(paper.createdAt || Date.now()).toLocaleDateString('bn-BD', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-              });
-
-              return (
-                <div
-                  key={paper.id}
-                  onClick={() => (selectMode ? togglePicked(paper.id) : setViewPaperId(paper.id))}
-                  className={`bg-white dark:bg-slate-800 hover:border-[#3B4FD8] dark:hover:border-indigo-500 rounded-2xl p-4 border shadow-xs flex items-center justify-between gap-3 cursor-pointer transition-all group ${
-                    selectMode && picked.has(paper.id)
-                      ? 'border-[#3B4FD8] dark:border-indigo-500 ring-1 ring-[#3B4FD8]'
-                      : 'border-[#D5D9E2] dark:border-slate-700'
-                  }`}
-                >
-                  {selectMode && (
-                    <span
-                      aria-hidden="true"
-                      className={`w-6 h-6 rounded-md border-2 flex items-center justify-center shrink-0 ${
-                        picked.has(paper.id)
-                          ? 'bg-[#3B4FD8] border-[#3B4FD8] text-white'
-                          : 'border-[#94A3B8] dark:border-slate-500 bg-white dark:bg-slate-800'
-                      }`}
-                    >
-                      {picked.has(paper.id) && <Check className="w-4 h-4 stroke-[3]" />}
-                    </span>
-                  )}
-                  <div className="flex-1 min-w-0 space-y-1.5">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded-md bg-[#EEF2FF] dark:bg-indigo-950 text-[#3B4FD8] dark:text-indigo-300 font-bold text-[0.6875rem] border border-[#D5D9E2] dark:border-indigo-900 truncate">
-                        {paper.shortName}
-                      </span>
-                    </div>
-
-                    <h3 className="text-sm font-bold text-[#1B1F2A] dark:text-slate-100 truncate group-hover:text-[#3B4FD8] dark:group-hover:text-indigo-400 transition-colors">
-                      {paper.title}
-                    </h3>
-
-                    <div className="flex flex-wrap items-center gap-3 text-[0.6875rem] text-[#64748B] dark:text-slate-400">
-                      <span className="flex items-center gap-1 font-medium">
-                        <Award className="w-3.5 h-3.5 text-[#3B4FD8]" />
-                        <span>{toBn(paper.totalMarks || 50)} নম্বর</span>
-                      </span>
-
-                      <span className="flex items-center gap-1 font-medium">
-                        <FileText className="w-3.5 h-3.5 text-[#2A3BB0]" />
-                        <span>{toBn(qCount)}টি প্রশ্ন</span>
-                      </span>
-
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                        <span>{dateStr}</span>
-                      </span>
-                    </div>
-                  </div>
-
-                  {!selectMode && (
-                    <div className="flex items-center gap-1 text-[#3B4FD8] dark:text-indigo-400 shrink-0">
-                      <span className="text-xs font-semibold hidden sm:inline">দেখুন</span>
-                      <ChevronRight className="w-5 h-5 text-[#94A3B8] group-hover:translate-x-0.5 transition-transform" />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            {visiblePapers.map((paper) => (
+              <PaperListItem
+                key={paper.id}
+                paper={paper}
+                selectMode={selectMode}
+                picked={picked}
+                togglePicked={togglePicked}
+                setViewPaperId={setViewPaperId}
+              />
+            ))}
           </div>
         )}
       </main>
@@ -576,7 +511,7 @@ export const CreateScreen: React.FC = () => {
         aria-label="নতুন প্রশ্নপত্র তৈরি করুন"
         onClick={handleOpenCreateNew}
         style={{ bottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}
-        className="fixed right-4 z-40 min-h-[48px] px-4 py-2.5 rounded-full bg-[#3B4FD8] hover:bg-[#2A3BB0] active:bg-[#202E91] text-white font-bold text-xs shadow-xl flex items-center gap-2 transition-transform hover:scale-105 active:scale-95"
+        className="fixed right-4 z-40 min-h-[48px] px-4 py-2.5 rounded-full bg-brand hover:bg-brand-strong active:bg-[#202E91] text-white font-bold text-xs shadow-xl flex items-center gap-2 transition-transform hover:scale-105 active:scale-95"
       >
         <Plus className="w-5 h-5 stroke-[2.5]" />
         <span>নতুন প্রশ্নপত্র</span>
@@ -589,7 +524,7 @@ export const CreateScreen: React.FC = () => {
           className="fixed left-0 right-0 z-40"
           style={{ bottom: 'calc(4rem + env(safe-area-inset-bottom, 0px))' }}
         >
-          <div className="max-w-[390px] mx-auto bg-white dark:bg-slate-900 border-t border-[#D5D9E2] dark:border-slate-700 shadow-[0_-4px_14px_rgba(0,0,0,0.08)] px-2 py-1.5 grid grid-cols-5 gap-1">
+          <div className="max-w-[390px] mx-auto bg-surface border-t border-line shadow-[0_-4px_14px_rgba(0,0,0,0.08)] px-2 py-1.5 grid grid-cols-5 gap-1">
             {[
               { id: 'move', label: 'ক্যাটেগরি', icon: <FolderInput className="w-5 h-5" />, onClick: () => setMovePickerOpen(true), danger: false },
               { id: 'copy', label: 'কপি', icon: <Copy className="w-5 h-5" />, onClick: handleCopy, danger: false },
@@ -602,8 +537,8 @@ export const CreateScreen: React.FC = () => {
                 type="button"
                 disabled={picked.size === 0}
                 onClick={a.onClick}
-                className={`min-h-[48px] rounded-xl flex flex-col items-center justify-center gap-0.5 text-[0.625rem] font-bold disabled:opacity-35 active:bg-[#F2F4F8] dark:active:bg-slate-800 ${
-                  a.danger ? 'text-red-600 dark:text-red-400' : 'text-[#3B4FD8] dark:text-indigo-300'
+                className={`min-h-[48px] rounded-xl flex flex-col items-center justify-center gap-0.5 text-[0.625rem] font-bold disabled:opacity-35 active:bg-hover dark:active:bg-slate-800 ${
+                  a.danger ? 'text-red-600 dark:text-red-400' : 'text-brand'
                 }`}
               >
                 {a.icon}
@@ -652,10 +587,10 @@ export const CreateScreen: React.FC = () => {
           aria-modal="true"
           className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
         >
-          <div className="w-full max-w-[300px] bg-white dark:bg-slate-900 rounded-2xl p-5 border border-[#D5D9E2] dark:border-slate-700 shadow-2xl text-center space-y-3">
-            <Loader2 className="w-8 h-8 animate-spin text-[#3B4FD8] mx-auto" />
-            <p className="text-sm font-bold text-[#1B1F2A] dark:text-slate-100">PDF তৈরি হচ্ছে…</p>
-            <p className="text-xs text-[#64748B] dark:text-slate-400">
+          <div className="w-full max-w-[300px] bg-surface rounded-2xl p-5 border border-line shadow-2xl text-center space-y-3">
+            <Loader2 className="w-8 h-8 animate-spin text-brand-fg mx-auto" />
+            <p className="text-sm font-bold text-ink">PDF তৈরি হচ্ছে…</p>
+            <p className="text-xs text-ink-muted">
               {toBn(Math.min(batchProgress.done + 1, batchProgress.total))} / {toBn(batchProgress.total)} — অনুগ্রহ করে অপেক্ষা করুন
             </p>
           </div>
@@ -669,11 +604,11 @@ export const CreateScreen: React.FC = () => {
           aria-modal="true"
           className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
         >
-          <div className="w-full max-w-[340px] bg-white dark:bg-slate-900 rounded-2xl p-5 border border-[#D5D9E2] dark:border-slate-700 shadow-2xl space-y-3.5">
+          <div className="w-full max-w-[340px] bg-surface rounded-2xl p-5 border border-line shadow-2xl space-y-3.5">
             {batchError ? (
               <>
                 <p className="text-sm font-bold text-red-600">PDF তৈরিতে ত্রুটি</p>
-                <p className="text-xs text-[#1B1F2A] dark:text-slate-200 bg-red-50 dark:bg-red-950/40 p-3 rounded-xl border border-red-100 dark:border-red-900 break-all leading-relaxed">
+                <p className="text-xs text-ink bg-danger-soft dark:bg-red-950/40 p-3 rounded-xl border border-red-100 dark:border-red-900 break-all leading-relaxed">
                   {batchError}
                 </p>
               </>
@@ -684,7 +619,7 @@ export const CreateScreen: React.FC = () => {
                     <CheckCircle2 className="w-5 h-5" />
                     <span>{toBn(batchResult.saved)}টি PDF সেভ হয়েছে</span>
                   </div>
-                  <div className="text-[11px] text-[#64748B] dark:text-slate-400 bg-[#F2F4F8] dark:bg-slate-800 rounded-xl p-2.5 break-all">
+                  <div className="text-[11px] text-ink-muted bg-app dark:bg-slate-800 rounded-xl p-2.5 break-all">
                     {batchResult.folder
                       ? <>নতুন ফোল্ডার: <span className="font-semibold">{batchResult.folder}</span></>
                       : 'ব্রাউজারের ডাউনলোড ফোল্ডারে সেভ হয়েছে'}
@@ -704,7 +639,7 @@ export const CreateScreen: React.FC = () => {
                   onClick={async () => {
                     await openSavedFolder(`${batchResult.folder}/x.pdf`);
                   }}
-                  className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] text-white text-xs font-bold"
+                  className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-brand hover:bg-brand-strong text-white text-xs font-bold"
                 >
                   ফোল্ডার খুলুন
                 </button>
@@ -715,7 +650,7 @@ export const CreateScreen: React.FC = () => {
                   setBatchResult(null);
                   setBatchError(null);
                 }}
-                className="w-full min-h-[44px] px-4 py-2.5 rounded-xl border border-[#D5D9E2] dark:border-slate-700 text-xs font-semibold text-[#1B1F2A] dark:text-slate-200"
+                className="w-full min-h-[44px] px-4 py-2.5 rounded-xl border border-line text-xs font-semibold text-ink"
               >
                 ঠিক আছে
               </button>

@@ -21,8 +21,11 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   return (
     <header
-      className="sticky top-0 z-40 bg-[#3B4FD8] text-white shadow-md select-none transition-colors"
-      style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+      className="sticky top-0 z-40 text-white shadow-card select-none transition-colors"
+      style={{
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+        background: 'linear-gradient(135deg, var(--c-brand) 0%, var(--c-brand-strong) 100%)',
+      }}
     >
       <div className="flex items-center justify-between px-3 h-14 max-w-[390px] mx-auto">
         {/* Left Side: Back button or placeholder */}

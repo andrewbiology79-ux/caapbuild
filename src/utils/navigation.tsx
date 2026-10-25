@@ -38,15 +38,15 @@ interface NavigationProviderProps {
   children: React.ReactNode;
 }
 
-const getInitialRoute = (tab: TabType = 'typeCq'): RouteItem => ({
+const getInitialRoute = (tab: TabType = 'home'): RouteItem => ({
   id: `root-${tab}-${Date.now()}`,
   name: tab,
   tab,
 });
 
 export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children }) => {
-  const [activeTab, setActiveTab] = useState<TabType>('typeCq');
-  const [stack, setStack] = useState<RouteItem[]>([getInitialRoute('typeCq')]);
+  const [activeTab, setActiveTab] = useState<TabType>('home');
+  const [stack, setStack] = useState<RouteItem[]>([getInitialRoute('home')]);
   const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
   const exitConfirmOpenRef = useRef(false);
   exitConfirmOpenRef.current = exitConfirmOpen;

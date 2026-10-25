@@ -257,8 +257,8 @@ export const PasteQuestionsModal: React.FC<PasteQuestionsModalProps> = ({
       aria-labelledby="paste-q-title"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
     >
-      <div className="w-full max-w-[370px] bg-white dark:bg-slate-900 text-[#1B1F2A] dark:text-slate-100 rounded-3xl border border-[#D5D9E2] dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[88vh]">
-        <div className="bg-[#3B4FD8] text-white px-5 py-3.5 flex items-center justify-between shrink-0">
+      <div className="w-full max-w-[370px] bg-surface text-ink rounded-3xl border border-line shadow-2xl overflow-hidden flex flex-col max-h-[88vh]">
+        <div className="bg-brand text-white px-5 py-3.5 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <ClipboardPaste className="w-5 h-5 shrink-0" />
             <h2 id="paste-q-title" className="text-base font-bold truncate">
@@ -276,15 +276,15 @@ export const PasteQuestionsModal: React.FC<PasteQuestionsModalProps> = ({
         </div>
 
         <div className="p-4 space-y-3 overflow-y-auto flex-1">
-          <p className="text-[0.6875rem] text-[#64748B] dark:text-slate-400 leading-snug">
-            প্রশ্নগুলো টপিক <span className="font-bold text-[#1B1F2A] dark:text-slate-200">{topicName}</span>-এ যুক্ত হবে। বিদ্যমান কিছু পরিবর্তন হবে না।
+          <p className="text-[0.6875rem] text-ink-muted leading-snug">
+            প্রশ্নগুলো টপিক <span className="font-bold text-ink">{topicName}</span>-এ যুক্ত হবে। বিদ্যমান কিছু পরিবর্তন হবে না।
           </p>
 
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={handlePasteFromClipboard}
-              className="flex-1 min-h-[44px] px-3 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] text-white text-xs font-bold flex items-center justify-center gap-1.5"
+              className="flex-1 min-h-[44px] px-3 rounded-xl bg-brand hover:bg-brand-strong text-white text-xs font-bold flex items-center justify-center gap-1.5"
             >
               <ClipboardPaste className="w-4 h-4" />
               <span>পেস্ট করুন</span>
@@ -292,7 +292,7 @@ export const PasteQuestionsModal: React.FC<PasteQuestionsModalProps> = ({
             <button
               type="button"
               onClick={handleCopySample}
-              className="min-h-[44px] px-3 rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#2A3BB0] dark:text-indigo-300 text-xs font-semibold flex items-center gap-1.5 shrink-0"
+              className="min-h-[44px] px-3 rounded-xl border border-line bg-surface text-brand-ink dark:text-indigo-300 text-xs font-semibold flex items-center gap-1.5 shrink-0"
             >
               <Copy className="w-4 h-4" />
               <span>নমুনা কপি</span>
@@ -307,22 +307,22 @@ export const PasteQuestionsModal: React.FC<PasteQuestionsModalProps> = ({
             }}
             placeholder="এখানে ফরম্যাটেড JSON পেস্ট করুন..."
             spellCheck={false}
-            className="w-full h-56 p-3 rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-[#F8FAFC] dark:bg-slate-800 text-xs font-mono leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]/40"
+            className="w-full h-56 p-3 rounded-xl border border-line bg-surface-2 dark:bg-slate-800 text-xs font-mono leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-brand/40"
           />
 
           {error && (
-            <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 text-red-700 dark:text-red-300 text-xs flex gap-1.5">
+            <div className="p-3 rounded-xl bg-danger-soft dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 text-red-700 dark:text-red-300 text-xs flex gap-1.5">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               <span className="leading-relaxed">{error}</span>
             </div>
           )}
         </div>
 
-        <div className="p-4 bg-[#F8FAFC] dark:bg-slate-800/60 border-t border-[#D5D9E2] dark:border-slate-800 flex items-center justify-end gap-2.5 shrink-0">
+        <div className="p-4 bg-surface-2 dark:bg-slate-800/60 border-t border-line flex items-center justify-end gap-2.5 shrink-0">
           <button
             type="button"
             onClick={handleClose}
-            className="min-h-[44px] px-4 rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold"
+            className="min-h-[44px] px-4 rounded-xl border border-line bg-surface text-xs font-semibold"
           >
             বাতিল
           </button>
@@ -330,7 +330,7 @@ export const PasteQuestionsModal: React.FC<PasteQuestionsModalProps> = ({
             type="button"
             disabled={!text.trim() || saving}
             onClick={handleSave}
-            className="min-h-[44px] px-5 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"
+            className="min-h-[44px] px-5 rounded-xl bg-brand hover:bg-brand-strong text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"
           >
             {saving ? (
               <span>যুক্ত হচ্ছে...</span>

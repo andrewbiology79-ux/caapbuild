@@ -40,13 +40,13 @@ export const PdfSavedDialog: React.FC = () => {
       aria-modal="true"
       className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
     >
-      <div className="w-full max-w-[340px] bg-white dark:bg-slate-900 rounded-2xl p-5 border border-[#D5D9E2] dark:border-slate-700 shadow-2xl space-y-3.5">
+      <div className="w-full max-w-[340px] bg-surface rounded-2xl p-5 border border-line shadow-2xl space-y-3.5">
         <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold text-sm">
           <CheckCircle2 className="w-5 h-5" />
           <span>PDF সেভ হয়েছে</span>
         </div>
 
-        <div className="flex items-start gap-2 text-[11px] text-[#64748B] dark:text-slate-400 bg-[#F2F4F8] dark:bg-slate-800 rounded-xl p-2.5">
+        <div className="flex items-start gap-2 text-[11px] text-ink-muted bg-app dark:bg-slate-800 rounded-xl p-2.5">
           <FileText className="w-4 h-4 shrink-0 mt-0.5" />
           <span className="break-all">
             <span className="font-semibold">{getFolderOfPath(savedPath)}</span>
@@ -66,7 +66,7 @@ export const PdfSavedDialog: React.FC = () => {
           <button
             type="button"
             onClick={handleOpen}
-            className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] text-white text-xs font-bold flex items-center justify-center gap-1.5"
+            className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-brand hover:bg-brand-strong text-white text-xs font-bold flex items-center justify-center gap-1.5"
           >
             <FileText className="w-4 h-4" />
             <span>Open (PDF খুলুন)</span>
@@ -74,7 +74,7 @@ export const PdfSavedDialog: React.FC = () => {
           <button
             type="button"
             onClick={closePdfSavedDialog}
-            className="w-full min-h-[44px] px-4 py-2.5 rounded-xl border border-[#D5D9E2] dark:border-slate-700 text-xs font-semibold text-[#1B1F2A] dark:text-slate-200"
+            className="w-full min-h-[44px] px-4 py-2.5 rounded-xl border border-line text-xs font-semibold text-ink"
           >
             ঠিক আছে
           </button>

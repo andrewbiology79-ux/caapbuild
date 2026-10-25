@@ -1,6 +1,7 @@
-import { getDb, type CqScope, type Category, type Subject, type Chapter, type Topic, type Stimulus, type Question, type Paper, type DbImage } from '../db/db';
+import { getDb, type CqScope, type Category, type Subject, type Chapter, type Topic, type Stimulus, type Question, type Paper } from '../db/db';
 import { blobToBase64, base64ToBlob, exportJsonFile } from './fileExport';
 import { compressImageToWebP } from './imageCompressor';
+import { recordBackup } from './backupHistory';
 
 export interface CollectionJsonSchema {
   version: string;
@@ -17,25 +18,6 @@ export interface CollectionJsonSchema {
     id: string;
     fileName: string;
     data?: string; // base64
-  }>;
-}
-
-export interface FullBackupJsonSchema {
-  version: string;
-  type: 'qb-full-backup';
-  scope?: CqScope;
-  exportedAt: string;
-  subjects: Subject[];
-  chapters: Chapter[];
-  topics: Topic[];
-  stimuli: Stimulus[];
-  questions: Question[];
-  papers: Paper[];
-  meta: Array<{ key: string; value: any }>;
-  images: Array<{
-    id: string;
-    fileName: string;
-    data: string; // base64
   }>;
 }
 
@@ -115,7 +97,9 @@ export async function exportQuestionCollection(scope: CqScope = 'type'): Promise
 
     const dateStr = new Date().toISOString().split('T')[0];
     const fileName = `qb-${scope === 'chapter' ? 'chapter' : 'type'}-cq-${dateStr}.json`;
-    return await exportJsonFile(fileName, JSON.stringify(payload, null, 2));
+    const saved = await exportJsonFile(fileName, JSON.stringify(payload, null, 2));
+    if (saved) recordBackup({ kind: scope, questions: questions.length, papers: 0 });
+    return saved;
   } catch (err) {
     console.error('Failed to export question collection:', err);
     throw err;
@@ -446,117 +430,6 @@ export function getSampleCollectionJson(scope: CqScope = 'type'): string {
   return JSON.stringify(sampleData, null, 2);
 }
 
-/**
- * Full System Backup: exports all tables and image blobs
- */
-export async function exportFullBackup(scope: CqScope = 'type'): Promise<boolean> {
-  const db = getDb(scope);
-  try {
-    const [subjects, chapters, topics, stimuli, questions, papers, meta, images] = await Promise.all([
-      db.subjects.toArray(),
-      db.chapters.toArray(),
-      db.topics.toArray(),
-      db.stimuli.toArray(),
-      db.questions.toArray(),
-      db.papers.toArray(),
-      db.meta.toArray(),
-      db.images.toArray(),
-    ]);
-
-    const exportedImages: Array<{ id: string; fileName: string; data: string }> = [];
-    for (const img of images) {
-      if (img.blob) {
-        const b64 = await blobToBase64(img.blob);
-        exportedImages.push({
-          id: img.id,
-          fileName: img.fileName,
-          data: b64,
-        });
-      }
-    }
-
-    const fullPayload: FullBackupJsonSchema = {
-      version: '1.0',
-      type: 'qb-full-backup',
-      scope,
-      exportedAt: new Date().toISOString(),
-      subjects,
-      chapters,
-      topics,
-      stimuli,
-      questions,
-      papers,
-      meta,
-      images: exportedImages,
-    };
-
-    const dateStr = new Date().toISOString().split('T')[0];
-    const fileName = `qb-${scope === 'chapter' ? 'chapter' : 'type'}-backup-${dateStr}.json`;
-    return await exportJsonFile(fileName, JSON.stringify(fullPayload, null, 2));
-  } catch (err) {
-    console.error('Full backup export failed:', err);
-    throw err;
-  }
-}
-
-/**
- * Full System Restore: completely replaces database with backup content
- */
-/** `scope` omitted = decided by the backup file itself (old files without a scope = Type CQ) */
-export async function restoreFullBackup(jsonText: string, scope?: CqScope): Promise<void> {
-  const data = JSON.parse(jsonText);
-  const target: CqScope = scope ?? (data && data.scope === 'chapter' ? 'chapter' : 'type');
-  const db = getDb(target);
-
-  if (!data || typeof data !== 'object' || !Array.isArray(data.subjects) || !Array.isArray(data.questions)) {
-    throw new Error('অবৈধ ব্যাকআপ ফাইল। ফাইলে ডাটাবেসের টেবিল পাওয়া যায়নি।');
-  }
-
-  // Clear all Dexie tables
-  await db.transaction(
-    'rw',
-    [db.subjects, db.chapters, db.topics, db.stimuli, db.questions, db.papers, db.meta, db.images],
-    async () => {
-      await Promise.all([
-        db.subjects.clear(),
-        db.chapters.clear(),
-        db.topics.clear(),
-        db.stimuli.clear(),
-        db.questions.clear(),
-        db.papers.clear(),
-        db.meta.clear(),
-        db.images.clear(),
-      ]);
-
-      if (data.subjects?.length) await db.subjects.bulkAdd(data.subjects);
-      if (data.chapters?.length) await db.chapters.bulkAdd(data.chapters);
-      if (data.topics?.length) await db.topics.bulkAdd(data.topics);
-      if (data.stimuli?.length) await db.stimuli.bulkAdd(data.stimuli);
-      if (data.questions?.length) await db.questions.bulkAdd(data.questions);
-      if (data.papers?.length) await db.papers.bulkAdd(data.papers);
-      if (data.meta?.length) await db.meta.bulkAdd(data.meta);
-
-      if (data.images && Array.isArray(data.images)) {
-        for (const img of data.images) {
-          if (img.id && img.data) {
-            const blob = base64ToBlob(img.data);
-            await db.images.add({
-              id: img.id,
-              fileName: img.fileName,
-              blob,
-            });
-          }
-        }
-      }
-    }
-  );
-}
-
-
-/* ------------------------------------------------------------------
- * Whole-app FULL backup (Type CQ + Chapter CQ + categories + papers + images + meta)
- * ---------------------------------------------------------------- */
-
 export type RestoreMode = 'replace' | 'merge';
 
 interface DbDump {
@@ -610,7 +483,15 @@ export async function exportAppFullBackup(): Promise<boolean> {
     databases: { type: typeDump, chapter: chapterDump },
   };
   const dateStr = new Date().toISOString().split('T')[0];
-  return await exportJsonFile(`qb-full-backup-${dateStr}.json`, JSON.stringify(payload));
+  const saved = await exportJsonFile(`qb-full-backup-${dateStr}.json`, JSON.stringify(payload));
+  if (saved) {
+    recordBackup({
+      kind: 'full',
+      questions: typeDump.questions.length + chapterDump.questions.length,
+      papers: typeDump.papers.length + chapterDump.papers.length,
+    });
+  }
+  return saved;
 }
 
 export interface BackupFileInfo {

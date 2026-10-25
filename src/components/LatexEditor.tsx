@@ -118,9 +118,9 @@ export const LatexEditor: React.FC<LatexEditorProps> = ({
   ];
 
   const hintNode = (
-    <span className="text-xs font-normal text-[#64748B]">
-      ইনলাইন: <code className="text-[#2A3BB0]">$সূত্ৰ$</code> | ব্লক:{' '}
-      <code className="text-[#2A3BB0]">$$সূত্ৰ$$</code>
+    <span className="text-xs font-normal text-ink-muted">
+      ইনলাইন: <code className="text-brand-ink">$সূত্ৰ$</code> | ব্লক:{' '}
+      <code className="text-brand-ink">$$সূত্ৰ$$</code>
     </span>
   );
 
@@ -128,9 +128,9 @@ export const LatexEditor: React.FC<LatexEditorProps> = ({
     <div className={`space-y-3 ${className}`}>
       {label && (
         <div className="space-y-1">
-          <div className="text-sm font-semibold text-[#1B1F2A] flex items-center justify-between gap-2">
+          <div className="text-sm font-semibold text-ink flex items-center justify-between gap-2">
             <span className="flex items-center gap-1.5 min-w-0">
-              <Edit3 className="w-4 h-4 text-[#3B4FD8] shrink-0" />
+              <Edit3 className="w-4 h-4 text-brand-fg shrink-0" />
               <span className="truncate">{label}</span>
             </span>
             {headerRight ? (
@@ -144,17 +144,17 @@ export const LatexEditor: React.FC<LatexEditorProps> = ({
       )}
 
       {/* Editor Box */}
-      <div className="bg-white rounded-xl border border-[#D5D9E2] shadow-xs overflow-hidden focus-within:ring-2 focus-within:ring-[#3B4FD8]/40 focus-within:border-[#3B4FD8]">
+      <div className="bg-surface rounded-xl border border-line shadow-xs overflow-hidden focus-within:ring-2 focus-within:ring-brand/40 focus-within:border-brand">
         {/* Toolbar (hidden in the Minimum editor) */}
         {showToolbar && (
-        <div className="bg-[#F2F4F8] border-b border-[#D5D9E2] px-2 py-1.5 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+        <div className="bg-app border-b border-line px-2 py-1.5 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
           {/* Inline Math $ */}
           <button
             type="button"
             aria-label="ইনলাইন সূত্র যোগ করুন"
             title="ইনলাইন সূত্র ($$)"
             onClick={() => insertSnippet({ template: '$$', cursorOffset: 1, wrapSelection: true })}
-            className="min-h-[44px] px-3 py-1.5 bg-white hover:bg-[#EEF2FF] active:bg-[#E0E7FF] text-[#1B1F2A] border border-[#D5D9E2] rounded-lg text-xs font-semibold shrink-0 transition-colors"
+            className="min-h-[44px] px-3 py-1.5 bg-surface hover:bg-brand-hover active:bg-press text-ink border border-line rounded-lg text-xs font-semibold shrink-0 transition-colors"
           >
             $ ইনলাইন
           </button>
@@ -165,7 +165,7 @@ export const LatexEditor: React.FC<LatexEditorProps> = ({
             aria-label="ব্লক সূত্র যোগ করুন"
             title="ব্লক সূত্র ($$...$$)"
             onClick={() => insertSnippet({ template: '\n$$\n\n$$\n', cursorOffset: 4 })}
-            className="min-h-[44px] px-3 py-1.5 bg-white hover:bg-[#EEF2FF] active:bg-[#E0E7FF] text-[#1B1F2A] border border-[#D5D9E2] rounded-lg text-xs font-semibold shrink-0 transition-colors"
+            className="min-h-[44px] px-3 py-1.5 bg-surface hover:bg-brand-hover active:bg-press text-ink border border-line rounded-lg text-xs font-semibold shrink-0 transition-colors"
           >
             $$ ব্লক
           </button>
@@ -176,7 +176,7 @@ export const LatexEditor: React.FC<LatexEditorProps> = ({
             aria-label="ভগ্নাংশ সূত্র যোগ করুন"
             title="ভগ্নাংশ (\frac{}{})"
             onClick={() => insertSnippet({ template: '\\frac{}{}', cursorOffset: 6, wrapSelection: true })}
-            className="min-h-[44px] px-3 py-1.5 bg-white hover:bg-[#EEF2FF] active:bg-[#E0E7FF] text-[#1B1F2A] border border-[#D5D9E2] rounded-lg text-xs font-medium shrink-0 transition-colors"
+            className="min-h-[44px] px-3 py-1.5 bg-surface hover:bg-brand-hover active:bg-press text-ink border border-line rounded-lg text-xs font-medium shrink-0 transition-colors"
           >
             ভগ্নাংশ
           </button>
@@ -187,7 +187,7 @@ export const LatexEditor: React.FC<LatexEditorProps> = ({
             aria-label="বর্গমূল সূত্র যোগ করুন"
             title="বর্গমূল (\sqrt{})"
             onClick={() => insertSnippet({ template: '\\sqrt{}', cursorOffset: 6, wrapSelection: true })}
-            className="min-h-[44px] px-3 py-1.5 bg-white hover:bg-[#EEF2FF] active:bg-[#E0E7FF] text-[#1B1F2A] border border-[#D5D9E2] rounded-lg text-xs font-medium shrink-0 transition-colors"
+            className="min-h-[44px] px-3 py-1.5 bg-surface hover:bg-brand-hover active:bg-press text-ink border border-line rounded-lg text-xs font-medium shrink-0 transition-colors"
           >
             বর্গমূল
           </button>
@@ -198,7 +198,7 @@ export const LatexEditor: React.FC<LatexEditorProps> = ({
             aria-label="ঘাত বা পাওয়ার যোগ করুন"
             title="ঘাত (^{})"
             onClick={() => insertSnippet({ template: '^{}', cursorOffset: 2 })}
-            className="min-h-[44px] px-3 py-1.5 bg-white hover:bg-[#EEF2FF] active:bg-[#E0E7FF] text-[#1B1F2A] border border-[#D5D9E2] rounded-lg text-xs font-medium shrink-0 transition-colors font-mono"
+            className="min-h-[44px] px-3 py-1.5 bg-surface hover:bg-brand-hover active:bg-press text-ink border border-line rounded-lg text-xs font-medium shrink-0 transition-colors font-mono"
           >
             ঘাত
           </button>
@@ -209,7 +209,7 @@ export const LatexEditor: React.FC<LatexEditorProps> = ({
             aria-label="সাবস্ক্রিপ্ট যোগ করুন"
             title="সাবস্ক্রিপ্ট (_{})"
             onClick={() => insertSnippet({ template: '_{}', cursorOffset: 2 })}
-            className="min-h-[44px] px-3 py-1.5 bg-white hover:bg-[#EEF2FF] active:bg-[#E0E7FF] text-[#1B1F2A] border border-[#D5D9E2] rounded-lg text-xs font-medium shrink-0 transition-colors font-mono"
+            className="min-h-[44px] px-3 py-1.5 bg-surface hover:bg-brand-hover active:bg-press text-ink border border-line rounded-lg text-xs font-medium shrink-0 transition-colors font-mono"
           >
             সাবস্ক্রিপ্ট
           </button>
@@ -220,7 +220,7 @@ export const LatexEditor: React.FC<LatexEditorProps> = ({
             aria-label="সামেশন যোগ করুন"
             title="সামেশন (\sum)"
             onClick={() => insertSnippet('\\sum ')}
-            className="min-h-[44px] px-3 py-1.5 bg-white hover:bg-[#EEF2FF] active:bg-[#E0E7FF] text-[#1B1F2A] border border-[#D5D9E2] rounded-lg text-xs font-semibold shrink-0 transition-colors"
+            className="min-h-[44px] px-3 py-1.5 bg-surface hover:bg-brand-hover active:bg-press text-ink border border-line rounded-lg text-xs font-semibold shrink-0 transition-colors"
           >
             ∑
           </button>
@@ -231,7 +231,7 @@ export const LatexEditor: React.FC<LatexEditorProps> = ({
             aria-label="ইন্টিগ্রেশন যোগ করুন"
             title="ইন্টিগ্রেশন (\int)"
             onClick={() => insertSnippet('\\int ')}
-            className="min-h-[44px] px-3 py-1.5 bg-white hover:bg-[#EEF2FF] active:bg-[#E0E7FF] text-[#1B1F2A] border border-[#D5D9E2] rounded-lg text-xs font-semibold shrink-0 transition-colors"
+            className="min-h-[44px] px-3 py-1.5 bg-surface hover:bg-brand-hover active:bg-press text-ink border border-line rounded-lg text-xs font-semibold shrink-0 transition-colors"
           >
             ∫
           </button>
@@ -244,14 +244,14 @@ export const LatexEditor: React.FC<LatexEditorProps> = ({
               aria-haspopup="true"
               aria-expanded={showGreekMenu}
               onClick={() => setShowGreekMenu((prev) => !prev)}
-              className="min-h-[44px] px-3 py-1.5 bg-white hover:bg-[#EEF2FF] active:bg-[#E0E7FF] text-[#2A3BB0] border border-[#D5D9E2] rounded-lg text-xs font-semibold shrink-0 transition-colors flex items-center gap-1"
+              className="min-h-[44px] px-3 py-1.5 bg-surface hover:bg-brand-hover active:bg-press text-brand-ink border border-line rounded-lg text-xs font-semibold shrink-0 transition-colors flex items-center gap-1"
             >
               <span>α β θ</span>
               <ChevronDown className="w-3.5 h-3.5" />
             </button>
 
             {showGreekMenu && (
-              <div className="absolute right-0 top-full mt-1 z-50 bg-white border border-[#D5D9E2] rounded-xl shadow-xl p-2 grid grid-cols-3 gap-1.5 w-44 animate-in fade-in zoom-in-95">
+              <div className="absolute right-0 top-full mt-1 z-50 bg-surface border border-line rounded-xl shadow-xl p-2 grid grid-cols-3 gap-1.5 w-44 animate-in fade-in zoom-in-95">
                 {greekSymbols.map((item) => (
                   <button
                     key={item.label}
@@ -261,7 +261,7 @@ export const LatexEditor: React.FC<LatexEditorProps> = ({
                       insertSnippet(item.code);
                       setShowGreekMenu(false);
                     }}
-                    className="min-h-[44px] py-2 px-2 text-center rounded-lg hover:bg-[#EEF2FF] text-[#1B1F2A] font-semibold text-sm border border-transparent hover:border-[#D5D9E2] transition-colors"
+                    className="min-h-[44px] py-2 px-2 text-center rounded-lg hover:bg-brand-hover text-ink font-semibold text-sm border border-transparent hover:border-line transition-colors"
                   >
                     {item.label}
                   </button>
@@ -279,14 +279,14 @@ export const LatexEditor: React.FC<LatexEditorProps> = ({
           onChange={(e) => onChange(e.target.value)}
           rows={rows}
           placeholder={placeholder}
-          className="w-full min-h-[3.25rem] p-3.5 text-sm text-[#1B1F2A] bg-white border-0 outline-none resize-y font-sans leading-relaxed block"
+          className="w-full min-h-[3.25rem] p-3.5 text-sm text-ink bg-surface border-0 outline-none resize-y font-sans leading-relaxed block"
         />
       </div>
 
       {/* Live KaTeX Preview Section */}
       {showPreview && (
-      <div className="bg-white rounded-xl border border-[#D5D9E2] p-4 shadow-2xs">
-        <div className="flex items-center gap-1.5 text-xs font-semibold text-[#2A3BB0] pb-2 border-b border-[#F2F4F8] mb-2">
+      <div className="bg-surface rounded-xl border border-line p-4 shadow-2xs">
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-brand-ink pb-2 border-b border-line-soft mb-2">
           <Eye className="w-3.5 h-3.5" />
           <span>{previewTitle}</span>
         </div>
@@ -294,7 +294,7 @@ export const LatexEditor: React.FC<LatexEditorProps> = ({
         {value.trim() ? (
           <RichText text={value} className="text-sm" />
         ) : (
-          <div className="text-xs text-[#64748B] italic py-1">
+          <div className="text-xs text-ink-muted italic py-1">
             উপরে লিখলে এখানে তাৎক্ষণিক প্রিভিউ দেখা যাবে।
           </div>
         )}

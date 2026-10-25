@@ -13,6 +13,23 @@ import { TransferChoiceDialog } from '../components/TransferChoiceDialog';
 import { RestoreModeDialog } from '../components/RestoreModeDialog';
 import { CategoryPickerDialog } from '../components/CategoryPickerDialog';
 import { toBn } from '../utils/toBn';
+import { Button } from '../ui/Button';
+import { EmptyState } from '../ui/EmptyState';
+import { ProfileHome } from '../features/profile/ProfileHome';
+import { SortDialog } from '../features/profile/SortDialog';
+import { BackupHistoryDialog } from '../features/profile/BackupHistoryDialog';
+import { getBackupReminderState, snoozeReminder } from '../utils/backupHistory';
+import { PdfProgressDialog, PdfResultDialog } from '../features/profile/PdfDialogs';
+import {
+  SORT_OPTIONS,
+  PAPER_SORT_OPTIONS,
+  CATEGORY_SORT_META_KEY,
+  PAPER_SORT_META_KEY,
+  type CategorySortMode,
+  type PaperSortMode,
+  type PaperSelectPurpose,
+  type ProfileViewMode,
+} from '../features/profile/profileConstants';
 import { useNavigation } from '../utils/navigation';
 import {
   getPaperCount,
@@ -23,7 +40,6 @@ import {
   deleteCategory,
   getPapersByCategory,
   getCategoryStats,
-  savePaper,
   deletePaper,
   movePaperToCategory,
   duplicatePaper,
@@ -42,6 +58,7 @@ import {
   type Paper,
   type Question,
   type Stimulus,
+  getApi,
 } from '../db/api';
 import { db, type CqScope } from '../db/db';
 import {
@@ -52,8 +69,6 @@ import {
   type RestoreMode,
 } from '../utils/collectionTransfer';
 import {
-  FileText,
-  HelpCircle,
   Upload,
   Download,
   Settings,
@@ -62,7 +77,7 @@ import {
   Share2,
   Info,
   HardDriveDownload,
-  HardDriveUpload,
+  History,
   FolderKanban,
   Plus,
   Edit2,
@@ -70,9 +85,7 @@ import {
   ExternalLink,
   FileDown,
   Layers,
-  ArrowLeft,
   AlertTriangle,
-  MoreVertical,
   Copy,
   ClipboardPaste,
   FolderInput,
@@ -91,8 +104,7 @@ import {
 } from 'lucide-react';
 import { Share } from '@capacitor/share';
 import { exportPaperById, exportCategoriesToFolders, type CategoriesPdfResult } from '../utils/pdfGenerator';
-import { showPdfSavedDialog, openSavedFolder, PDF_SAVE_FOLDER } from '../utils/storageAccess';
-import { Capacitor } from '@capacitor/core';
+import { showPdfSavedDialog } from '../utils/storageAccess';
 import {
   exportCategoryShare,
   exportCategoriesBackup,
@@ -102,45 +114,13 @@ import {
   importCategoryShare,
 } from '../utils/categoryTransfer';
 
-type CategorySortMode = 'custom' | 'name-asc' | 'name-desc' | 'newest' | 'oldest' | 'papers-desc' | 'papers-asc';
-
-const SORT_OPTIONS: Array<{ id: CategorySortMode; label: string }> = [
-  { id: 'custom', label: 'আমার সাজানো ক্রম (রি-অর্ডার)' },
-  { id: 'name-asc', label: 'নাম (অ → হ)' },
-  { id: 'name-desc', label: 'নাম (হ → অ)' },
-  { id: 'newest', label: 'নতুন আগে' },
-  { id: 'oldest', label: 'পুরোনো আগে' },
-  { id: 'papers-desc', label: 'বেশি প্রশ্নপত্র আগে' },
-  { id: 'papers-asc', label: 'কম প্রশ্নপত্র আগে' },
-];
-
-const CATEGORY_SORT_META_KEY = 'category_sort_mode';
-
-type PaperSortMode =
-  | 'custom'
-  | 'newest'
-  | 'oldest'
-  | 'name-asc'
-  | 'name-desc'
-  | 'questions-desc'
-  | 'questions-asc';
-
-const PAPER_SORT_OPTIONS: Array<{ id: PaperSortMode; label: string }> = [
-  { id: 'custom', label: 'আমার সাজানো ক্রম (রি-অর্ডার)' },
-  { id: 'newest', label: 'নতুন আগে' },
-  { id: 'oldest', label: 'পুরোনো আগে' },
-  { id: 'name-asc', label: 'নাম (অ → হ)' },
-  { id: 'name-desc', label: 'নাম (হ → অ)' },
-  { id: 'questions-desc', label: 'বেশি প্রশ্ন আগে' },
-  { id: 'questions-asc', label: 'কম প্রশ্ন আগে' },
-];
-
-const PAPER_SORT_META_KEY = 'paper_sort_mode';
-
-/** what the bottom bar of the paper multi-select mode shows */
-type PaperSelectPurpose = 'copy' | 'cut' | 'export' | 'pdf' | 'delete' | null;
-
-type ProfileViewMode = 'main' | 'categories' | 'category-detail';
+/** Used by the global search: open this paper the next time the Profile tab shows. */
+let pendingOpenPaperId: string | null = null;
+export function openPaperOnProfile(paperId: string): void {
+  pendingOpenPaperId = paperId;
+  // If the Profile tab is already mounted, tell it directly
+  window.dispatchEvent(new CustomEvent('qb:open-paper', { detail: paperId }));
+}
 
 export const ProfileScreen: React.FC = () => {
   const { showToast } = useToast();
@@ -151,6 +131,7 @@ export const ProfileScreen: React.FC = () => {
 
   const [paperCount, setPaperCount] = useState<number>(0);
   const [questionCount, setQuestionCount] = useState<number>(0);
+  const [chapterQuestionCount, setChapterQuestionCount] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
 
   // Category state
@@ -168,7 +149,20 @@ export const ProfileScreen: React.FC = () => {
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
   const [showImportModal, setShowImportModal] = useState<boolean>(false);
   const [showImportChapterModal, setShowImportChapterModal] = useState<boolean>(false);
-  const [viewPaperId, setViewPaperId] = useState<string | null>(null);
+  const [viewPaperId, setViewPaperId] = useState<string | null>(() => {
+    const id = pendingOpenPaperId;
+    pendingOpenPaperId = null;
+    return id;
+  });
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail;
+      pendingOpenPaperId = null;
+      if (id) setViewPaperId(id);
+    };
+    window.addEventListener('qb:open-paper', onOpen);
+    return () => window.removeEventListener('qb:open-paper', onOpen);
+  }, []);
   const [exportingPaperId, setExportingPaperId] = useState<string | null>(null);
   const [pdfErrorMessage, setPdfErrorMessage] = useState<string | null>(null);
 
@@ -219,6 +213,8 @@ export const ProfileScreen: React.FC = () => {
   // Sort / manual re-order of categories
   const [sortMode, setSortMode] = useState<CategorySortMode>('custom');
   const [showSortDialog, setShowSortDialog] = useState<boolean>(false);
+  const [showBackupHistory, setShowBackupHistory] = useState<boolean>(false);
+  const [backupTick, setBackupTick] = useState<number>(0);
   const [reorderMode, setReorderMode] = useState<boolean>(false);
   const [selectedCatIds, setSelectedCatIds] = useState<string[]>([]);
   // Multi-select / sort / re-order of the papers INSIDE a category
@@ -237,13 +233,15 @@ export const ProfileScreen: React.FC = () => {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [pCount, qCount, catList] = await Promise.all([
+      const [pCount, qCount, cqCount, catList] = await Promise.all([
         getPaperCount(),
         getQuestionCount(),
+        getApi('chapter').getQuestionCount(),
         getCategories(),
       ]);
       setPaperCount(pCount);
       setQuestionCount(qCount);
+      setChapterQuestionCount(cqCount);
       setCategories(catList);
       setClipboard(await getCategoryClipboard());
 
@@ -639,14 +637,14 @@ export const ProfileScreen: React.FC = () => {
     if (!clipboard) return null;
     const isPaper = clipboard.type === 'paper';
     return (
-      <div className="flex items-center gap-2 rounded-2xl border border-[#3B4FD8] dark:border-indigo-500 bg-[#EEF2FF] dark:bg-indigo-950/60 px-3 py-2">
-        <ClipboardPaste className="w-4 h-4 text-[#3B4FD8] dark:text-indigo-300 shrink-0" />
+      <div className="flex items-center gap-2 rounded-2xl border border-brand dark:border-indigo-500 bg-brand-soft px-3 py-2">
+        <ClipboardPaste className="w-4 h-4 text-brand shrink-0" />
         <div className="flex-1 min-w-0">
-          <p className="text-[0.6875rem] font-bold text-[#2A3BB0] dark:text-indigo-200 truncate">
+          <p className="text-[0.6875rem] font-bold text-brand-ink dark:text-indigo-200 truncate">
             {isPaper ? 'কপি করা প্রশ্নপত্র' : 'কপি করা ক্যাটেগরি'}: {clipboard.name}
           </p>
           {isPaper && !target && (
-            <p className="text-[0.625rem] text-[#64748B] dark:text-slate-400">
+            <p className="text-[0.625rem] text-ink-muted">
               ক্যাটেগরির মেনু থেকে "এখানে পেস্ট করুন" চাপুন
             </p>
           )}
@@ -655,7 +653,7 @@ export const ProfileScreen: React.FC = () => {
           <button
             type="button"
             onClick={() => handlePaste(target)}
-            className="min-h-[36px] px-3 py-1 rounded-lg bg-[#3B4FD8] text-white text-xs font-bold"
+            className="min-h-[36px] px-3 py-1 rounded-lg bg-brand text-white text-xs font-bold"
           >
             পেস্ট
           </button>
@@ -664,7 +662,7 @@ export const ProfileScreen: React.FC = () => {
           type="button"
           aria-label="কপি বাতিল"
           onClick={handleClearClipboard}
-          className="min-h-[36px] w-8 flex items-center justify-center text-[#64748B] dark:text-slate-400"
+          className="min-h-[36px] w-8 flex items-center justify-center text-ink-muted"
         >
           <X className="w-4 h-4" />
         </button>
@@ -866,18 +864,18 @@ export const ProfileScreen: React.FC = () => {
     if (!paperClip) return null;
     const isCut = paperClip.mode === 'cut';
     return (
-      <div className="flex items-center gap-2 rounded-2xl border border-[#3B4FD8] dark:border-indigo-500 bg-[#EEF2FF] dark:bg-indigo-950/60 px-3 py-2">
+      <div className="flex items-center gap-2 rounded-2xl border border-brand dark:border-indigo-500 bg-brand-soft px-3 py-2">
         {isCut ? (
           <Scissors className="w-4 h-4 text-amber-600 shrink-0" />
         ) : (
-          <ClipboardPaste className="w-4 h-4 text-[#3B4FD8] dark:text-indigo-300 shrink-0" />
+          <ClipboardPaste className="w-4 h-4 text-brand shrink-0" />
         )}
         <div className="flex-1 min-w-0">
-          <p className="text-[0.6875rem] font-bold text-[#2A3BB0] dark:text-indigo-200 truncate">
+          <p className="text-[0.6875rem] font-bold text-brand-ink dark:text-indigo-200 truncate">
             {toBn(paperClip.ids.length)}টি প্রশ্নপত্র {isCut ? 'কাট' : 'কপি'} করা আছে
           </p>
           {!target && (
-            <p className="text-[0.625rem] text-[#64748B] dark:text-slate-400">
+            <p className="text-[0.625rem] text-ink-muted">
               ক্যাটেগরির মেনু থেকে "এখানে প্রশ্নপত্র পেস্ট করুন" চাপুন
             </p>
           )}
@@ -886,7 +884,7 @@ export const ProfileScreen: React.FC = () => {
           <button
             type="button"
             onClick={() => handlePastePapers(target)}
-            className="min-h-[36px] px-3 py-1 rounded-lg bg-[#3B4FD8] text-white text-xs font-bold"
+            className="min-h-[36px] px-3 py-1 rounded-lg bg-brand text-white text-xs font-bold"
           >
             পেস্ট
           </button>
@@ -895,7 +893,7 @@ export const ProfileScreen: React.FC = () => {
           type="button"
           aria-label="ক্লিপবোর্ড বাতিল"
           onClick={() => setPaperClip(null)}
-          className="min-h-[36px] w-8 flex items-center justify-center text-[#64748B] dark:text-slate-400"
+          className="min-h-[36px] w-8 flex items-center justify-center text-ink-muted"
         >
           <X className="w-4 h-4" />
         </button>
@@ -1039,6 +1037,7 @@ export const ProfileScreen: React.FC = () => {
     setIsExporting(true);
     try {
       const ok = await exportAppFullBackup();
+      if (ok) setBackupTick((n) => n + 1);
       showToast(ok ? 'সম্পূর্ণ অ্যাপ ব্যাকআপ সম্পন্ন হয়েছে' : 'ব্যাকআপ ফাইল সংরক্ষণ করা যায়নি');
     } catch (err) {
       console.error('Backup failed:', err);
@@ -1085,17 +1084,25 @@ export const ProfileScreen: React.FC = () => {
     }
   };
 
+  // Backup reminder (recomputed whenever data finishes loading or a backup/snooze happens)
+  const backupReminder = React.useMemo(() => {
+    void backupTick;
+    if (loading) return null;
+    const s = getBackupReminderState(questionCount + chapterQuestionCount + paperCount > 0);
+    return s.due ? { daysSince: s.daysSince } : null;
+  }, [loading, questionCount, chapterQuestionCount, paperCount, backupTick]);
+
   const menuItems = [
     {
       id: 'share',
       label: 'অ্যাপ শেয়ার করুন',
-      icon: <Share2 className="w-4 h-4 text-[#3B4FD8]" />,
+      icon: <Share2 className="w-4 h-4 text-brand-fg" />,
       onClick: handleShareApp,
     },
     {
       id: 'about',
       label: 'অ্যাপ পরিচিতি',
-      icon: <Info className="w-4 h-4 text-[#64748B]" />,
+      icon: <Info className="w-4 h-4 text-ink-muted" />,
       onClick: () =>
         showToast(`Qb Collection & Exam • অফলাইন মোড • ভার্সন ${toBn('1.0')}`, 3000),
     },
@@ -1106,7 +1113,7 @@ export const ProfileScreen: React.FC = () => {
       id: 'categories',
       title: 'ক্যাটেগরি',
       description: 'প্রশ্নপত্রের ক্যাটেগরি তৈরি, সম্পাদনা ও সংরক্ষিত প্রশ্নপত্র',
-      icon: <FolderKanban className="w-5 h-5 text-[#3B4FD8]" />,
+      icon: <FolderKanban className="w-5 h-5 text-brand-fg" />,
       action: () => setViewMode('categories'),
     },
     {
@@ -1131,10 +1138,17 @@ export const ProfileScreen: React.FC = () => {
       action: () => setTransferChoice('full'),
     },
     {
+      id: 'backup-history',
+      title: 'ব্যাকআপ ইতিহাস ও রিমাইন্ডার',
+      description: 'কবে কবে ব্যাকআপ নেওয়া হয়েছে দেখুন এবং স্বয়ংক্রিয় রিমাইন্ডার ঠিক করুন',
+      icon: <History className="w-5 h-5 text-brand-fg" />,
+      action: () => setShowBackupHistory(true),
+    },
+    {
       id: 'settings',
       title: 'Settings (সেটিংস)',
       description: 'থিম (লাইট/ডার্ক), লেখার সাইজ ও ডিফল্ট শিরোনাম পরিবর্তন',
-      icon: <Settings className="w-5 h-5 text-[#2A3BB0]" />,
+      icon: <Settings className="w-5 h-5 text-brand-ink" />,
       action: () => setShowSettingsModal(true),
     },
   ];
@@ -1154,13 +1168,13 @@ export const ProfileScreen: React.FC = () => {
         {
           id: 'select-all',
           label: 'সব নির্বাচন করুন',
-          icon: <CheckSquare className="w-4 h-4 text-[#3B4FD8]" />,
+          icon: <CheckSquare className="w-4 h-4 text-brand-fg" />,
           onClick: selectAllCategories,
         },
         {
           id: 'clear-selection',
           label: 'নির্বাচন বাতিল',
-          icon: <X className="w-4 h-4 text-[#64748B]" />,
+          icon: <X className="w-4 h-4 text-ink-muted" />,
           onClick: exitSelectMode,
         },
       ]
@@ -1168,25 +1182,25 @@ export const ProfileScreen: React.FC = () => {
         {
           id: 'new-category',
           label: 'নতুন ক্যাটেগরি',
-          icon: <Plus className="w-4 h-4 text-[#3B4FD8]" />,
+          icon: <Plus className="w-4 h-4 text-brand-fg" />,
           onClick: handleOpenAddCategory,
         },
         {
           id: 'sort',
           label: 'সর্ট করুন',
-          icon: <ArrowUpDown className="w-4 h-4 text-[#3B4FD8]" />,
+          icon: <ArrowUpDown className="w-4 h-4 text-brand-fg" />,
           onClick: () => setShowSortDialog(true),
         },
         {
           id: 'reorder',
           label: 'রি-অর্ডার (ক্রম বদলান)',
-          icon: <ListOrdered className="w-4 h-4 text-[#3B4FD8]" />,
+          icon: <ListOrdered className="w-4 h-4 text-brand-fg" />,
           onClick: enterReorderMode,
         },
         {
           id: 'select',
           label: 'সিলেক্ট',
-          icon: <CheckSquare className="w-4 h-4 text-[#3B4FD8]" />,
+          icon: <CheckSquare className="w-4 h-4 text-brand-fg" />,
           onClick: () => enterSelectMode(null),
         },
         {
@@ -1204,7 +1218,7 @@ export const ProfileScreen: React.FC = () => {
         {
           id: 'export-pdf',
           label: 'Export PDF',
-          icon: <FileDown className="w-4 h-4 text-[#3B4FD8]" />,
+          icon: <FileDown className="w-4 h-4 text-brand-fg" />,
           onClick: () => enterSelectMode('pdf'),
         },
         {
@@ -1221,7 +1235,7 @@ export const ProfileScreen: React.FC = () => {
     {
       id: 'pdf',
       label: 'PDF এক্সপোর্ট (নতুন ফোল্ডারে)',
-      icon: <FolderDown className="w-5 h-5 text-[#3B4FD8]" />,
+      icon: <FolderDown className="w-5 h-5 text-brand-fg" />,
       onClick: () => runCategoriesPdfExport([cat]),
     },
     ...(clipboard?.type === 'paper' || paperClip
@@ -1237,26 +1251,26 @@ export const ProfileScreen: React.FC = () => {
     {
       id: 'share',
       label: 'শেয়ার করুন (ফাইল)',
-      icon: <Share2 className="w-5 h-5 text-[#3B4FD8]" />,
+      icon: <Share2 className="w-5 h-5 text-brand-fg" />,
       onClick: () => handleShareCategory(cat),
     },
   ] : [
     {
       id: 'pdf',
       label: 'PDF এক্সপোর্ট (নতুন ফোল্ডারে)',
-      icon: <FolderDown className="w-5 h-5 text-[#3B4FD8]" />,
+      icon: <FolderDown className="w-5 h-5 text-brand-fg" />,
       onClick: () => runCategoriesPdfExport([cat]),
     },
     {
       id: 'rename',
       label: 'নাম সম্পাদনা (Edit)',
-      icon: <Edit2 className="w-5 h-5 text-[#3B4FD8]" />,
+      icon: <Edit2 className="w-5 h-5 text-brand-fg" />,
       onClick: () => handleRenameCategory(cat),
     },
     {
       id: 'copy',
       label: 'ক্যাটেগরি কপি করুন',
-      icon: <Copy className="w-5 h-5 text-[#3B4FD8]" />,
+      icon: <Copy className="w-5 h-5 text-brand-fg" />,
       onClick: () => handleCopyCategory(cat),
     },
     ...(clipboard?.type === 'paper' || paperClip
@@ -1272,7 +1286,7 @@ export const ProfileScreen: React.FC = () => {
     {
       id: 'share',
       label: 'শেয়ার করুন (ফাইল)',
-      icon: <Share2 className="w-5 h-5 text-[#3B4FD8]" />,
+      icon: <Share2 className="w-5 h-5 text-brand-fg" />,
       onClick: () => handleShareCategory(cat),
     },
     {
@@ -1299,13 +1313,13 @@ export const ProfileScreen: React.FC = () => {
         {
           id: 'select-all',
           label: 'সব নির্বাচন করুন',
-          icon: <CheckSquare className="w-4 h-4 text-[#3B4FD8]" />,
+          icon: <CheckSquare className="w-4 h-4 text-brand-fg" />,
           onClick: selectAllPapers,
         },
         {
           id: 'clear-selection',
           label: 'নির্বাচন বাতিল',
-          icon: <X className="w-4 h-4 text-[#64748B]" />,
+          icon: <X className="w-4 h-4 text-ink-muted" />,
           onClick: exitPaperSelectMode,
         },
       ]
@@ -1313,25 +1327,25 @@ export const ProfileScreen: React.FC = () => {
         {
           id: 'sort',
           label: 'সর্ট করুন',
-          icon: <ArrowUpDown className="w-4 h-4 text-[#3B4FD8]" />,
+          icon: <ArrowUpDown className="w-4 h-4 text-brand-fg" />,
           onClick: () => setShowPaperSortDialog(true),
         },
         {
           id: 'reorder',
           label: 'রি-অর্ডার (ক্রম বদলান)',
-          icon: <ListOrdered className="w-4 h-4 text-[#3B4FD8]" />,
+          icon: <ListOrdered className="w-4 h-4 text-brand-fg" />,
           onClick: enterPaperReorderMode,
         },
         {
           id: 'select',
           label: 'সিলেক্ট',
-          icon: <CheckSquare className="w-4 h-4 text-[#3B4FD8]" />,
+          icon: <CheckSquare className="w-4 h-4 text-brand-fg" />,
           onClick: () => enterPaperSelectMode(null),
         },
         {
           id: 'copy',
           label: 'কপি (সিলেক্ট করে)',
-          icon: <Copy className="w-4 h-4 text-[#3B4FD8]" />,
+          icon: <Copy className="w-4 h-4 text-brand-fg" />,
           onClick: () => enterPaperSelectMode('copy'),
         },
         {
@@ -1359,7 +1373,7 @@ export const ProfileScreen: React.FC = () => {
         {
           id: 'export-pdf',
           label: 'Export PDF',
-          icon: <FileDown className="w-4 h-4 text-[#3B4FD8]" />,
+          icon: <FileDown className="w-4 h-4 text-brand-fg" />,
           onClick: () => enterPaperSelectMode('pdf'),
         },
         {
@@ -1376,31 +1390,31 @@ export const ProfileScreen: React.FC = () => {
     {
       id: 'edit',
       label: 'সম্পাদনা (Create-এ খুলুন)',
-      icon: <Edit2 className="w-5 h-5 text-[#3B4FD8]" />,
+      icon: <Edit2 className="w-5 h-5 text-brand-fg" />,
       onClick: () => handleOpenInCreate(paper),
     },
     {
       id: 'move',
       label: 'অন্য ক্যাটেগরিতে সরান (Move)',
-      icon: <FolderInput className="w-5 h-5 text-[#3B4FD8]" />,
+      icon: <FolderInput className="w-5 h-5 text-brand-fg" />,
       onClick: () => setPicker({ mode: 'move', paper }),
     },
     {
       id: 'copy-to',
       label: 'অন্য ক্যাটেগরিতে কপি করুন',
-      icon: <Layers className="w-5 h-5 text-[#3B4FD8]" />,
+      icon: <Layers className="w-5 h-5 text-brand-fg" />,
       onClick: () => setPicker({ mode: 'copy', paper }),
     },
     {
       id: 'copy',
       label: 'কপি করুন (পরে পেস্ট করতে)',
-      icon: <Copy className="w-5 h-5 text-[#3B4FD8]" />,
+      icon: <Copy className="w-5 h-5 text-brand-fg" />,
       onClick: () => handleCopyPaper(paper),
     },
     {
       id: 'share',
       label: 'শেয়ার করুন (ফাইল)',
-      icon: <Share2 className="w-5 h-5 text-[#3B4FD8]" />,
+      icon: <Share2 className="w-5 h-5 text-brand-fg" />,
       onClick: () => handleSharePaper(paper),
     },
     {
@@ -1413,7 +1427,7 @@ export const ProfileScreen: React.FC = () => {
   ];
 
   return (
-    <div className="flex-1 flex flex-col min-h-full pb-20 bg-[#F2F4F8] dark:bg-slate-900 transition-colors">
+    <div className="flex-1 flex flex-col min-h-full pb-20 bg-app dark:bg-slate-900 transition-colors">
       {/* ----------------- SUB-VIEW: CATEGORY DETAIL ----------------- */}
       {viewMode === 'category-detail' && selectedCategory && (
         <>
@@ -1457,21 +1471,15 @@ export const ProfileScreen: React.FC = () => {
             {renderClipboardBanner(selectedCategory)}
             {renderPaperClipBanner(selectedCategory)}
             {categoryPapers.length === 0 ? (
-              <div className="bg-white dark:bg-slate-800 rounded-3xl p-7 text-center border border-[#D5D9E2] dark:border-slate-700 space-y-3">
-                <p className="text-sm font-semibold text-[#1B1F2A] dark:text-slate-100">
-                  এই ক্যাটেগরিতে কোনো প্রশ্নপত্র নেই
-                </p>
-                <p className="text-xs text-[#64748B] dark:text-slate-400">
-                  Create ট্যাব থেকে নতুন প্রশ্নপত্র তৈরি করার সময় এই ক্যাটেগরি নির্বাচন করুন।
-                </p>
-                <button
-                  type="button"
-                  onClick={() => switchTab('create')}
-                  className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#3B4FD8] text-white text-xs font-bold"
-                >
-                  Create ট্যাবে যান
-                </button>
-              </div>
+              <EmptyState
+                title="এই ক্যাটেগরিতে কোনো প্রশ্নপত্র নেই"
+                description="Create ট্যাব থেকে নতুন প্রশ্নপত্র তৈরি করার সময় এই ক্যাটেগরি নির্বাচন করুন।"
+                action={
+                  <Button size="sm" onClick={() => switchTab('create')}>
+                    Create ট্যাবে যান
+                  </Button>
+                }
+              />
             ) : (
               <div className="space-y-3">
                 {visiblePapers.map((paper, paperIdx) => {
@@ -1487,10 +1495,10 @@ export const ProfileScreen: React.FC = () => {
                   return (
                     <div
                       key={paper.id}
-                      className={`bg-white dark:bg-slate-800 rounded-2xl border shadow-xs overflow-hidden ${
+                      className={`bg-surface rounded-2xl border shadow-xs overflow-hidden ${
                         isPaperSelected
-                          ? 'border-[#3B4FD8] dark:border-indigo-500 bg-[#EEF2FF] dark:bg-indigo-950/40'
-                          : 'border-[#D5D9E2] dark:border-slate-700'
+                          ? 'border-brand dark:border-indigo-500 bg-brand-soft'
+                          : 'border-line'
                       }`}
                     >
                       {/* Paper Top Card Summary */}
@@ -1503,10 +1511,10 @@ export const ProfileScreen: React.FC = () => {
                           }
                           togglePaperExpand(paper);
                         }}
-                        className="p-3.5 flex items-center justify-between gap-3 cursor-pointer hover:bg-[#F8FAFC] dark:hover:bg-slate-750 transition-colors"
+                        className="p-3.5 flex items-center justify-between gap-3 cursor-pointer hover:bg-surface-2 dark:hover:bg-slate-750 transition-colors"
                       >
                         {paperSelectMode && (
-                          <span className="shrink-0 text-[#3B4FD8] dark:text-indigo-300">
+                          <span className="shrink-0 text-brand">
                             {isPaperSelected ? (
                               <CheckSquare className="w-5 h-5" />
                             ) : (
@@ -1516,17 +1524,17 @@ export const ProfileScreen: React.FC = () => {
                         )}
                         <div className="flex-1 min-w-0 space-y-1">
                           <div className="flex items-center gap-2">
-                            <span className="font-bold text-xs text-[#3B4FD8] dark:text-indigo-400 bg-[#EEF2FF] dark:bg-indigo-950 px-2 py-0.5 rounded-md border border-[#D5D9E2] dark:border-indigo-900 truncate">
+                            <span className="font-bold text-xs text-brand bg-brand-soft px-2 py-0.5 rounded-md border border-line dark:border-indigo-900 truncate">
                               {paper.shortName}
                             </span>
-                            <span className="text-[0.6875rem] text-[#64748B] dark:text-slate-400">
+                            <span className="text-[0.6875rem] text-ink-muted">
                               {dateStr}
                             </span>
                           </div>
-                          <h3 className="text-sm font-bold text-[#1B1F2A] dark:text-slate-100 truncate">
+                          <h3 className="text-sm font-bold text-ink truncate">
                             {paper.title}
                           </h3>
-                          <p className="text-[0.6875rem] text-[#64748B] dark:text-slate-400 font-medium">
+                          <p className="text-[0.6875rem] text-ink-muted font-medium">
                             {toBn(paper.questionIds?.length || 0)}টি প্রশ্ন · পূর্ণমান {toBn(paper.totalMarks || 50)}
                           </p>
                         </div>
@@ -1538,7 +1546,7 @@ export const ProfileScreen: React.FC = () => {
                               aria-label="উপরে নিন"
                               disabled={paperIdx <= 0}
                               onClick={() => movePaperInList(paper.id, -1)}
-                              className="w-10 h-10 rounded-full flex items-center justify-center bg-[#EEF2FF] dark:bg-indigo-950/60 text-[#3B4FD8] dark:text-indigo-300 disabled:opacity-30"
+                              className="w-10 h-10 rounded-full flex items-center justify-center bg-brand-soft text-brand disabled:opacity-30"
                             >
                               <ArrowUp className="w-5 h-5" />
                             </button>
@@ -1547,7 +1555,7 @@ export const ProfileScreen: React.FC = () => {
                               aria-label="নিচে নিন"
                               disabled={paperIdx >= visiblePapers.length - 1}
                               onClick={() => movePaperInList(paper.id, 1)}
-                              className="w-10 h-10 rounded-full flex items-center justify-center bg-[#EEF2FF] dark:bg-indigo-950/60 text-[#3B4FD8] dark:text-indigo-300 disabled:opacity-30"
+                              className="w-10 h-10 rounded-full flex items-center justify-center bg-brand-soft text-brand disabled:opacity-30"
                             >
                               <ArrowDown className="w-5 h-5" />
                             </button>
@@ -1560,9 +1568,9 @@ export const ProfileScreen: React.FC = () => {
                               <PopupMenu items={paperPopupItems(paper)} />
                             </div>
 
-                            <div className="text-[#64748B] shrink-0 p-1">
+                            <div className="text-ink-muted shrink-0 p-1">
                               {isExpanded ? (
-                                <ChevronDown className="w-5 h-5 text-[#3B4FD8]" />
+                                <ChevronDown className="w-5 h-5 text-brand-fg" />
                               ) : (
                                 <ChevronRight className="w-5 h-5" />
                               )}
@@ -1573,25 +1581,25 @@ export const ProfileScreen: React.FC = () => {
 
                       {/* Expanded Questions preview & Actions */}
                       {isExpanded && (
-                        <div className="px-3.5 pb-3.5 pt-1 border-t border-[#F2F4F8] dark:border-slate-700 space-y-3 bg-[#FAFCFF] dark:bg-slate-850">
+                        <div className="px-3.5 pb-3.5 pt-1 border-t border-line-soft dark:border-slate-700 space-y-3 bg-[#FAFCFF] dark:bg-slate-850">
                           {/* Questions summary */}
                           <div className="space-y-2.5 pt-2">
                             {details.length === 0 ? (
-                              <p className="text-xs text-[#64748B] italic">প্রশ্ন লোড হচ্ছে...</p>
+                              <p className="text-xs text-ink-muted italic">প্রশ্ন লোড হচ্ছে...</p>
                             ) : (
                               details.map((group, gIdx) => (
                                 <div
                                   key={gIdx}
-                                  className="text-xs p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-[#E2E8F0] dark:border-slate-700 space-y-1.5"
+                                  className="text-xs p-2.5 rounded-xl bg-surface border border-line dark:border-slate-700 space-y-1.5"
                                 >
                                   {group.stimulus && (
                                     <div className="space-y-1">
-                                      <span className="font-bold text-[#3B4FD8] text-[0.6875rem] block">
+                                      <span className="font-bold text-brand-fg text-[0.6875rem] block">
                                         উদ্দীপক {toBn(gIdx + 1)}:
                                       </span>
                                       <RichText
                                         text={group.stimulus.text}
-                                        className="text-xs text-[#1B1F2A] dark:text-slate-200 line-clamp-2 leading-relaxed"
+                                        className="text-xs text-ink line-clamp-2 leading-relaxed"
                                       />
                                     </div>
                                   )}
@@ -1603,7 +1611,7 @@ export const ProfileScreen: React.FC = () => {
                                       >
                                         <span className="font-bold shrink-0">{q.type || 'গ'}.</span>
                                         <RichText text={q.questionText} className="flex-1 truncate" />
-                                        <span className="font-semibold text-[#64748B] shrink-0">
+                                        <span className="font-semibold text-ink-muted shrink-0">
                                           ({toBn(q.marks)})
                                         </span>
                                       </div>
@@ -1619,7 +1627,7 @@ export const ProfileScreen: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => handleOpenInCreate(paper)}
-                              className="flex-1 min-h-[44px] px-3 py-2 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+                              className="flex-1 min-h-[44px] px-3 py-2 rounded-xl bg-brand hover:bg-brand-strong text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
                             >
                               <ExternalLink className="w-4 h-4" />
                               <span>Create-এ খোলো</span>
@@ -1628,7 +1636,7 @@ export const ProfileScreen: React.FC = () => {
                               type="button"
                               disabled={exportingPaperId === paper.id}
                               onClick={() => handleExportPaperPdf(paper)}
-                              className="flex-1 min-h-[44px] px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-[#3B4FD8] text-[#3B4FD8] dark:text-indigo-400 hover:bg-[#EEF2FF] text-xs font-bold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                              className="flex-1 min-h-[44px] px-3 py-2 rounded-xl bg-surface border border-brand text-brand hover:bg-brand-hover text-xs font-bold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
                             >
                               <FileDown className="w-4 h-4" />
                               <span>{exportingPaperId === paper.id ? 'তৈরি হচ্ছে...' : 'PDF'}</span>
@@ -1645,7 +1653,7 @@ export const ProfileScreen: React.FC = () => {
 
           {paperSelectMode && (
             <div
-              className="fixed left-0 right-0 bottom-16 z-40 px-3.5 pb-2 pt-2 bg-[#F2F4F8]/95 dark:bg-slate-900/95 border-t border-[#D5D9E2] dark:border-slate-700"
+              className="fixed left-0 right-0 bottom-16 z-40 px-3.5 pb-2 pt-2 bg-app/95 dark:bg-slate-900/95 border-t border-line"
             >
               <div className="max-w-[390px] mx-auto flex gap-1.5">
                 {(paperSelectPurpose === null || paperSelectPurpose === 'copy') && (
@@ -1655,8 +1663,8 @@ export const ProfileScreen: React.FC = () => {
                     onClick={() => handleCopyOrCutSelectedPapers('copy')}
                     className={`flex-1 min-w-0 min-h-[46px] rounded-xl text-[0.6875rem] font-bold flex items-center justify-center gap-1 disabled:opacity-40 ${
                       paperSelectPurpose === 'copy'
-                        ? 'bg-[#3B4FD8] text-white'
-                        : 'bg-white dark:bg-slate-800 border border-[#3B4FD8] text-[#3B4FD8] dark:text-indigo-300'
+                        ? 'bg-brand text-white'
+                        : 'bg-surface border border-brand text-brand'
                     }`}
                   >
                     <Copy className="w-4 h-4 shrink-0" />
@@ -1671,7 +1679,7 @@ export const ProfileScreen: React.FC = () => {
                     className={`flex-1 min-w-0 min-h-[46px] rounded-xl text-[0.6875rem] font-bold flex items-center justify-center gap-1 disabled:opacity-40 ${
                       paperSelectPurpose === 'cut'
                         ? 'bg-amber-600 text-white'
-                        : 'bg-white dark:bg-slate-800 border border-amber-500 text-amber-700'
+                        : 'bg-surface border border-amber-500 text-amber-700'
                     }`}
                   >
                     <Scissors className="w-4 h-4 shrink-0" />
@@ -1685,8 +1693,8 @@ export const ProfileScreen: React.FC = () => {
                     onClick={handleExportSelectedPapers}
                     className={`flex-1 min-w-0 min-h-[46px] rounded-xl text-[0.6875rem] font-bold flex items-center justify-center gap-1 disabled:opacity-40 ${
                       paperSelectPurpose === 'export'
-                        ? 'bg-[#3B4FD8] text-white'
-                        : 'bg-white dark:bg-slate-800 border border-[#3B4FD8] text-[#3B4FD8] dark:text-indigo-300'
+                        ? 'bg-brand text-white'
+                        : 'bg-surface border border-brand text-brand'
                     }`}
                   >
                     <FileArchive className="w-4 h-4 shrink-0" />
@@ -1700,8 +1708,8 @@ export const ProfileScreen: React.FC = () => {
                     onClick={handleExportSelectedPapersPdf}
                     className={`flex-1 min-w-0 min-h-[46px] rounded-xl text-[0.6875rem] font-bold flex items-center justify-center gap-1 disabled:opacity-40 ${
                       paperSelectPurpose === 'pdf'
-                        ? 'bg-[#3B4FD8] text-white'
-                        : 'bg-white dark:bg-slate-800 border border-[#3B4FD8] text-[#3B4FD8] dark:text-indigo-300'
+                        ? 'bg-brand text-white'
+                        : 'bg-surface border border-brand text-brand'
                     }`}
                   >
                     <FileDown className="w-4 h-4 shrink-0" />
@@ -1716,7 +1724,7 @@ export const ProfileScreen: React.FC = () => {
                     className={`flex-1 min-w-0 min-h-[46px] rounded-xl text-[0.6875rem] font-bold flex items-center justify-center gap-1 disabled:opacity-40 ${
                       paperSelectPurpose === 'delete'
                         ? 'bg-red-600 text-white'
-                        : 'bg-white dark:bg-slate-800 border border-red-500 text-red-600'
+                        : 'bg-surface border border-red-500 text-red-600'
                     }`}
                   >
                     <Trash2 className="w-4 h-4 shrink-0" />
@@ -1760,7 +1768,7 @@ export const ProfileScreen: React.FC = () => {
 
             {/* Top Bar with + New Category Button */}
             <div className="flex items-center justify-between px-1">
-              <span className="text-xs font-bold text-[#1B1F2A] dark:text-slate-300">
+              <span className="text-xs font-bold text-ink dark:text-slate-300">
                 সকল ক্যাটেগরি ({toBn(categories.length)}টি)
               </span>
               {reorderMode ? (
@@ -1776,7 +1784,7 @@ export const ProfileScreen: React.FC = () => {
                 <button
                   type="button"
                   onClick={selectedCatIds.length === visibleCategories.length ? () => setSelectedCatIds([]) : selectAllCategories}
-                  className="min-h-[44px] px-3.5 py-1.5 rounded-xl border border-[#3B4FD8] text-[#3B4FD8] dark:text-indigo-300 text-xs font-bold flex items-center gap-1"
+                  className="min-h-[44px] px-3.5 py-1.5 rounded-xl border border-brand text-brand text-xs font-bold flex items-center gap-1"
                 >
                   <CheckSquare className="w-4 h-4" />
                   <span>{selectedCatIds.length === visibleCategories.length ? 'সব বাদ দিন' : 'সব নির্বাচন'}</span>
@@ -1785,7 +1793,7 @@ export const ProfileScreen: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleOpenAddCategory}
-                  className="min-h-[44px] px-3.5 py-1.5 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] text-white text-xs font-bold flex items-center gap-1 shadow-2xs"
+                  className="min-h-[44px] px-3.5 py-1.5 rounded-xl bg-brand hover:bg-brand-strong text-white text-xs font-bold flex items-center gap-1 shadow-2xs"
                 >
                   <Plus className="w-4 h-4" />
                   <span>নতুন ক্যাটেগরি</span>
@@ -1798,7 +1806,7 @@ export const ProfileScreen: React.FC = () => {
             <button
               type="button"
               onClick={() => importCategoryInputRef.current?.click()}
-              className="w-full min-h-[44px] px-3.5 py-2 rounded-xl border border-dashed border-[#3B4FD8] dark:border-indigo-500 text-[#3B4FD8] dark:text-indigo-300 text-xs font-bold flex items-center justify-center gap-1.5"
+              className="w-full min-h-[44px] px-3.5 py-2 rounded-xl border border-dashed border-brand dark:border-indigo-500 text-brand text-xs font-bold flex items-center justify-center gap-1.5"
             >
               <Upload className="w-4 h-4" />
               <span>শেয়ার করা ক্যাটেগরি/প্রশ্নপত্র ফাইল ইমপোর্ট করুন</span>
@@ -1814,14 +1822,14 @@ export const ProfileScreen: React.FC = () => {
 
             {/* List of Category Cards */}
             {categories.length === 0 ? (
-              <div className="bg-white dark:bg-slate-800 rounded-3xl p-7 text-center border border-[#D5D9E2] dark:border-slate-700 space-y-3">
-                <p className="text-sm font-semibold text-[#1B1F2A] dark:text-slate-100">
+              <div className="bg-surface rounded-3xl p-7 text-center border border-line space-y-3">
+                <p className="text-sm font-semibold text-ink">
                   কোনো ক্যাটেগরি নেই
                 </p>
                 <button
                   type="button"
                   onClick={handleOpenAddCategory}
-                  className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#3B4FD8] text-white text-xs font-bold"
+                  className="min-h-[44px] px-5 py-2.5 rounded-xl bg-brand text-white text-xs font-bold"
                 >
                   + ক্যাটেগরি তৈরি করুন
                 </button>
@@ -1848,23 +1856,23 @@ export const ProfileScreen: React.FC = () => {
                         setSelectedCategory(cat);
                         setViewMode('category-detail');
                       }}
-                      className={`bg-white dark:bg-slate-800 rounded-2xl p-4 border shadow-xs flex items-center justify-between gap-3 cursor-pointer transition-all group ${
+                      className={`bg-surface rounded-2xl p-4 border shadow-xs flex items-center justify-between gap-3 cursor-pointer transition-all group ${
                         isSelected
-                          ? 'border-[#3B4FD8] dark:border-indigo-500 bg-[#EEF2FF] dark:bg-indigo-950/40'
-                          : 'border-[#D5D9E2] dark:border-slate-700 hover:border-[#3B4FD8] dark:hover:border-indigo-500'
+                          ? 'border-brand dark:border-indigo-500 bg-brand-soft'
+                          : 'border-line hover:border-brand dark:hover:border-indigo-500'
                       }`}
                     >
                       {selectMode && (
-                        <span className="shrink-0 text-[#3B4FD8] dark:text-indigo-300">
+                        <span className="shrink-0 text-brand">
                           {isSelected ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5 text-[#94A3B8]" />}
                         </span>
                       )}
                       <div className="flex-1 min-w-0">
-                        <h3 className="text-sm font-bold text-[#1B1F2A] dark:text-slate-100 group-hover:text-[#3B4FD8] transition-colors truncate flex items-center gap-1.5">
-                          {pinned && <Pin className="w-4 h-4 text-[#3B4FD8] shrink-0" />}
+                        <h3 className="text-sm font-bold text-ink group-hover:text-brand-fg transition-colors truncate flex items-center gap-1.5">
+                          {pinned && <Pin className="w-4 h-4 text-brand-fg shrink-0" />}
                           <span className="truncate">{cat.name}</span>
                         </h3>
-                        <p className="text-[0.6875rem] text-[#64748B] dark:text-slate-400 font-medium mt-0.5">
+                        <p className="text-[0.6875rem] text-ink-muted font-medium mt-0.5">
                           {toBn(stats.paperCount)}টি প্রশ্নপত্র · {toBn(stats.questionCount)}টি প্রশ্ন
                         </p>
                       </div>
@@ -1876,7 +1884,7 @@ export const ProfileScreen: React.FC = () => {
                             aria-label="উপরে নিন"
                             disabled={movIdx <= 0}
                             onClick={() => moveCategory(cat.id, -1)}
-                            className="w-10 h-10 rounded-full flex items-center justify-center bg-[#EEF2FF] dark:bg-indigo-950/60 text-[#3B4FD8] dark:text-indigo-300 disabled:opacity-30"
+                            className="w-10 h-10 rounded-full flex items-center justify-center bg-brand-soft text-brand disabled:opacity-30"
                           >
                             <ArrowUp className="w-5 h-5" />
                           </button>
@@ -1885,7 +1893,7 @@ export const ProfileScreen: React.FC = () => {
                             aria-label="নিচে নিন"
                             disabled={movIdx < 0 || movIdx >= movable.length - 1}
                             onClick={() => moveCategory(cat.id, 1)}
-                            className="w-10 h-10 rounded-full flex items-center justify-center bg-[#EEF2FF] dark:bg-indigo-950/60 text-[#3B4FD8] dark:text-indigo-300 disabled:opacity-30"
+                            className="w-10 h-10 rounded-full flex items-center justify-center bg-brand-soft text-brand disabled:opacity-30"
                           >
                             <ArrowDown className="w-5 h-5" />
                           </button>
@@ -1907,7 +1915,7 @@ export const ProfileScreen: React.FC = () => {
 
           {selectMode && (
             <div
-              className="fixed left-0 right-0 bottom-16 z-40 px-3.5 pb-2 pt-2 bg-[#F2F4F8]/95 dark:bg-slate-900/95 border-t border-[#D5D9E2] dark:border-slate-700"
+              className="fixed left-0 right-0 bottom-16 z-40 px-3.5 pb-2 pt-2 bg-app/95 dark:bg-slate-900/95 border-t border-line"
               style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px) * 0)' }}
             >
               <div className="max-w-[390px] mx-auto flex gap-2">
@@ -1916,7 +1924,7 @@ export const ProfileScreen: React.FC = () => {
                     type="button"
                     disabled={selectedCatIds.length === 0 || isExporting}
                     onClick={handleExportSelectedBackup}
-                    className="flex-1 min-h-[46px] rounded-xl bg-[#3B4FD8] text-white text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-40"
+                    className="flex-1 min-h-[46px] rounded-xl bg-brand text-white text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-40"
                   >
                     <FileArchive className="w-4 h-4" />
                     <span>{isExporting ? 'তৈরি হচ্ছে...' : 'ব্যাকআপ'}</span>
@@ -1929,8 +1937,8 @@ export const ProfileScreen: React.FC = () => {
                     onClick={handleExportSelectedPdf}
                     className={`flex-1 min-h-[46px] rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-40 ${
                       selectPurpose === 'pdf'
-                        ? 'bg-[#3B4FD8] text-white'
-                        : 'bg-white dark:bg-slate-800 border border-[#3B4FD8] text-[#3B4FD8] dark:text-indigo-300'
+                        ? 'bg-brand text-white'
+                        : 'bg-surface border border-brand text-brand'
                     }`}
                   >
                     <FileDown className="w-4 h-4" />
@@ -1945,7 +1953,7 @@ export const ProfileScreen: React.FC = () => {
                     className={`flex-1 min-h-[46px] rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-40 ${
                       selectPurpose === 'delete'
                         ? 'bg-red-600 text-white'
-                        : 'bg-white dark:bg-slate-800 border border-red-500 text-red-600'
+                        : 'bg-surface border border-red-500 text-red-600'
                     }`}
                   >
                     <Trash2 className="w-4 h-4" />
@@ -1960,92 +1968,23 @@ export const ProfileScreen: React.FC = () => {
 
       {/* ----------------- SUB-VIEW: MAIN PROFILE ----------------- */}
       {viewMode === 'main' && (
-        <>
-          <Header
-            title="প্রোফাইল (Profile)"
-            subtitle="পরিসংখ্যান, ব্যাকআপ ও সেটিংস"
-            menuItems={menuItems}
-          />
-
-          <main className="flex-1 p-4 space-y-4">
-            {/* Top Two Statistics Cards Side by Side */}
-            <section className="grid grid-cols-2 gap-3">
-              {/* Card 1: তৈরি প্রশ্নপত্র */}
-              <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-[#D5D9E2] dark:border-slate-700 shadow-xs flex flex-col justify-between">
-                <div className="w-9 h-9 rounded-xl bg-[#EEF2FF] dark:bg-indigo-950 flex items-center justify-center text-[#3B4FD8] dark:text-indigo-400 mb-2">
-                  <FileText className="w-5 h-5" />
-                </div>
-                <div>
-                  <span className="text-2xl font-black text-[#1B1F2A] dark:text-slate-100 tracking-tight">
-                    {loading ? '...' : toBn(paperCount)}
-                  </span>
-                  <p className="text-xs font-semibold text-[#64748B] dark:text-slate-400 mt-0.5">
-                    তৈরি প্রশ্নপত্র
-                  </p>
-                </div>
-              </div>
-
-              {/* Card 2: মোট প্রশ্ন */}
-              <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-[#D5D9E2] dark:border-slate-700 shadow-xs flex flex-col justify-between">
-                <div className="w-9 h-9 rounded-xl bg-[#EEF2FF] dark:bg-indigo-950 flex items-center justify-center text-[#3B4FD8] dark:text-indigo-400 mb-2">
-                  <HelpCircle className="w-5 h-5" />
-                </div>
-                <div>
-                  <span className="text-2xl font-black text-[#2A3BB0] dark:text-indigo-300 tracking-tight">
-                    {loading ? '...' : toBn(questionCount)}
-                  </span>
-                  <p className="text-xs font-semibold text-[#64748B] dark:text-slate-400 mt-0.5">
-                    মোট প্রশ্ন
-                  </p>
-                </div>
-              </div>
-            </section>
-
-            {/* Action List Section */}
-            <section className="space-y-2.5">
-              <h2 className="text-xs font-bold text-[#64748B] dark:text-slate-400 uppercase tracking-wider px-1">
-                ডাটা ব্যবস্থাপনা ও সেটিংস
-              </h2>
-
-              <div className="space-y-2">
-                {profileRows.map((row) => (
-                  <div
-                    key={row.id}
-                    onClick={row.action}
-                    className="bg-white dark:bg-slate-800 hover:border-[#3B4FD8] dark:hover:border-indigo-500 rounded-2xl p-3.5 border border-[#D5D9E2] dark:border-slate-700 shadow-2xs flex items-center justify-between gap-3 cursor-pointer transition-all active:scale-[0.99] select-none group"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-xl bg-[#F2F4F8] dark:bg-slate-700/60 flex items-center justify-center shrink-0 group-hover:bg-[#EEF2FF] dark:group-hover:bg-indigo-950/60 transition-colors">
-                        {row.icon}
-                      </div>
-                      <div className="min-w-0">
-                        <h3 className="text-xs font-bold text-[#1B1F2A] dark:text-slate-100 group-hover:text-[#3B4FD8] dark:group-hover:text-indigo-400 transition-colors truncate">
-                          {row.title}
-                        </h3>
-                        <p className="text-[0.6875rem] text-[#64748B] dark:text-slate-400 leading-snug line-clamp-1 mt-0.5">
-                          {row.description}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="min-h-[44px] min-w-[32px] flex items-center justify-end text-[#94A3B8] group-hover:text-[#3B4FD8] transition-colors shrink-0">
-                      <ChevronRight className="w-5 h-5 group-hover:translate-x-0.5 transition-transform" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            {/* Hidden File Input for Database Restore */}
-            <input
-              ref={restoreFileInputRef}
-              type="file"
-              accept=".json,application/json"
-              onChange={handleRestoreFileSelected}
-              className="hidden"
-            />
-          </main>
-        </>
+        <ProfileHome
+          menuItems={menuItems}
+          rows={profileRows}
+          loading={loading}
+          paperCount={paperCount}
+          questionCount={questionCount}
+          chapterQuestionCount={chapterQuestionCount}
+          categoryCount={categories.length}
+          restoreFileInputRef={restoreFileInputRef}
+          onRestoreFileSelected={handleRestoreFileSelected}
+          backupReminder={backupReminder}
+          onBackupReminderOpen={() => setShowBackupHistory(true)}
+          onBackupReminderSnooze={() => {
+            snoozeReminder(1);
+            setBackupTick((n) => n + 1);
+          }}
+        />
       )}
 
       {/* Destination picker for Move / Copy */}
@@ -2118,78 +2057,34 @@ export const ProfileScreen: React.FC = () => {
         onCancel={() => setPaperBulkDeleteConfirm(false)}
       />
 
-      {/* Paper sort dialog */}
-      {showPaperSortDialog && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in duration-150"
-          onClick={() => setShowPaperSortDialog(false)}
-        >
-          <div
-            className="w-full max-w-[340px] bg-white dark:bg-slate-900 rounded-3xl border border-[#D5D9E2] dark:border-slate-700 shadow-2xl p-4 space-y-1"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-sm font-bold text-[#1B1F2A] dark:text-slate-100 px-2 pb-2">প্রশ্নপত্র সর্ট করুন</h3>
-            {PAPER_SORT_OPTIONS.map((o) => (
-              <button
-                key={o.id}
-                type="button"
-                onClick={() => {
-                  changePaperSortMode(o.id);
-                  setShowPaperSortDialog(false);
-                }}
-                className={`w-full min-h-[46px] px-3 rounded-xl text-left text-sm font-medium flex items-center justify-between ${
-                  paperSortMode === o.id
-                    ? 'bg-[#EEF2FF] dark:bg-indigo-950/60 text-[#3B4FD8] dark:text-indigo-300 font-bold'
-                    : 'text-[#1B1F2A] dark:text-slate-100 hover:bg-[#F2F4F8] dark:hover:bg-slate-800'
-                }`}
-              >
-                <span>{o.label}</span>
-                {paperSortMode === o.id && <Check className="w-4 h-4" />}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      <BackupHistoryDialog
+        isOpen={showBackupHistory}
+        busy={isExporting}
+        onBackupNow={handleFullBackup}
+        onClose={() => {
+          setShowBackupHistory(false);
+          setBackupTick((n) => n + 1);
+        }}
+      />
 
-      {/* Sort dialog */}
-      {showSortDialog && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in duration-150"
-          onClick={() => setShowSortDialog(false)}
-        >
-          <div
-            className="w-full max-w-[340px] bg-white dark:bg-slate-900 rounded-3xl border border-[#D5D9E2] dark:border-slate-700 shadow-2xl p-4 space-y-1"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-sm font-bold text-[#1B1F2A] dark:text-slate-100 px-2 pb-2">ক্যাটেগরি সর্ট করুন</h3>
-            {SORT_OPTIONS.map((o) => (
-              <button
-                key={o.id}
-                type="button"
-                onClick={() => {
-                  changeSortMode(o.id);
-                  setShowSortDialog(false);
-                }}
-                className={`w-full min-h-[46px] px-3 rounded-xl text-left text-sm font-medium flex items-center justify-between ${
-                  sortMode === o.id
-                    ? 'bg-[#EEF2FF] dark:bg-indigo-950/60 text-[#3B4FD8] dark:text-indigo-300 font-bold'
-                    : 'text-[#1B1F2A] dark:text-slate-100 hover:bg-[#F2F4F8] dark:hover:bg-slate-800'
-                }`}
-              >
-                <span>{o.label}</span>
-                {sortMode === o.id && <Check className="w-4 h-4" />}
-              </button>
-            ))}
-            <p className="text-[0.6875rem] text-[#64748B] dark:text-slate-400 px-2 pt-2 leading-snug">
-              "অশ্রেণিবদ্ধ" ক্যাটেগরি সবসময় সবার উপরে থাকে।
-            </p>
-          </div>
-        </div>
-      )}
+      <SortDialog
+        isOpen={showPaperSortDialog}
+        title="প্রশ্নপত্র সর্ট করুন"
+        options={PAPER_SORT_OPTIONS}
+        value={paperSortMode}
+        onSelect={changePaperSortMode}
+        onClose={() => setShowPaperSortDialog(false)}
+      />
+
+      <SortDialog
+        isOpen={showSortDialog}
+        title="ক্যাটেগরি সর্ট করুন"
+        options={SORT_OPTIONS}
+        value={sortMode}
+        footer={'"অশ্রেণিবদ্ধ" ক্যাটেগরি সবসময় সবার উপরে থাকে।'}
+        onSelect={changeSortMode}
+        onClose={() => setShowSortDialog(false)}
+      />
 
       {/* Import / Export choice (Type CQ, Chapter CQ, Full backup) */}
       <TransferChoiceDialog
@@ -2234,66 +2129,8 @@ export const ProfileScreen: React.FC = () => {
         }}
       />
 
-      {/* PDF export progress */}
-      {pdfProgress && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-[300px] bg-white dark:bg-slate-900 rounded-2xl p-5 text-center space-y-2 shadow-2xl">
-            <p className="text-sm font-bold text-[#1B1F2A] dark:text-slate-100">PDF বানানো হচ্ছে…</p>
-            <p className="text-xs text-[#64748B] dark:text-slate-400">
-              {toBn(Math.min(pdfProgress.done + 1, pdfProgress.total))} / {toBn(pdfProgress.total)} — অনুগ্রহ করে অপেক্ষা করুন
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* PDF export result */}
-      {pdfResult && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true">
-          <div className="w-full max-w-[340px] bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-2xl space-y-3">
-            <p className="text-sm font-bold text-[#1B1F2A] dark:text-slate-100">
-              {toBn(pdfResult.saved)}টি PDF সেভ হয়েছে
-            </p>
-            {pdfResult.folders.length > 0 && Capacitor.isNativePlatform() && (
-              <div className="text-xs text-[#334155] dark:text-slate-300 space-y-1 max-h-40 overflow-y-auto">
-                {pdfResult.folders.map((f) => (
-                  <p key={f.folder} className="break-all">
-                    <span className="font-semibold">{f.folder}</span> ({toBn(f.saved)}টি)
-                  </p>
-                ))}
-              </div>
-            )}
-            {pdfResult.emptyCategories.length > 0 && (
-              <p className="text-[0.6875rem] text-amber-600">
-                প্রশ্নপত্র না থাকায় বাদ: {pdfResult.emptyCategories.join(', ')}
-              </p>
-            )}
-            {pdfResult.failed.length > 0 && (
-              <p className="text-[0.6875rem] text-red-600 break-words">তৈরি করা যায়নি: {pdfResult.failed.join(', ')}</p>
-            )}
-            <div className="flex justify-end gap-2 pt-1">
-              {Capacitor.isNativePlatform() && pdfResult.folders.length > 0 && (
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const target = pdfResult.folders.length === 1 ? pdfResult.folders[0].folder : PDF_SAVE_FOLDER;
-                    await openSavedFolder(`${target}/x.pdf`);
-                  }}
-                  className="min-h-[44px] px-4 rounded-xl border border-[#3B4FD8] text-[#3B4FD8] text-xs font-bold"
-                >
-                  ফোল্ডার খুলুন
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setPdfResult(null)}
-                className="min-h-[44px] px-4 rounded-xl bg-[#3B4FD8] text-white text-xs font-bold"
-              >
-                ঠিক আছে
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <PdfProgressDialog progress={pdfProgress} />
+      <PdfResultDialog result={pdfResult} onClose={() => setPdfResult(null)} />
 
       {/* Settings Modal */}
       <SettingsModal
@@ -2341,19 +2178,19 @@ export const ProfileScreen: React.FC = () => {
           aria-modal="true"
           className="fixed inset-0 z-60 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-in fade-in"
         >
-          <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-2xl p-5 border border-red-200 dark:border-red-900 shadow-2xl space-y-3">
+          <div className="w-full max-w-sm bg-surface rounded-2xl p-5 border border-red-200 dark:border-red-900 shadow-2xl space-y-3">
             <div className="flex items-center gap-2 text-red-600 font-bold text-sm">
               <AlertTriangle className="w-5 h-5" />
               <span>PDF তৈরিতে ত্রুটি</span>
             </div>
-            <p className="text-xs text-[#1B1F2A] dark:text-slate-200 bg-red-50 dark:bg-red-950/40 p-3 rounded-xl border border-red-100 dark:border-red-900 font-mono break-all leading-relaxed">
+            <p className="text-xs text-ink bg-danger-soft dark:bg-red-950/40 p-3 rounded-xl border border-red-100 dark:border-red-900 font-mono break-all leading-relaxed">
               {pdfErrorMessage}
             </p>
             <div className="flex justify-end pt-2">
               <button
                 type="button"
                 onClick={() => setPdfErrorMessage(null)}
-                className="min-h-[44px] px-4 py-2 rounded-xl bg-[#3B4FD8] text-white text-xs font-bold"
+                className="min-h-[44px] px-4 py-2 rounded-xl bg-brand text-white text-xs font-bold"
               >
                 ঠিক আছে
               </button>

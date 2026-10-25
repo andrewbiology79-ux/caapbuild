@@ -77,7 +77,7 @@ export const RichText: React.FC<RichTextProps> = ({ text, className = '', style 
 
   return (
     <div
-      className={`leading-relaxed text-[#1B1F2A] ${className}`}
+      className={`leading-relaxed ${/(^|\s)text-(black|\[#)/.test(className) ? '' : 'text-ink'} ${className}`}
       style={{
         overflowWrap: 'anywhere',
         wordBreak: 'break-word',

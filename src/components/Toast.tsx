@@ -44,7 +44,7 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
         <div
           role="status"
           aria-live="polite"
-          className={`fixed bottom-20 left-1/2 -translate-x-1/2 z-50 max-w-[340px] w-auto px-4 py-2.5 rounded-lg bg-[#1B1F2A]/90 text-white text-sm font-medium shadow-lg backdrop-blur-sm transition-all duration-200 pointer-events-none text-center ${
+          className={`fixed bottom-24 left-1/2 -translate-x-1/2 z-50 max-w-[340px] w-auto px-4 py-2.5 rounded-lg bg-ink/90 text-app text-sm font-medium shadow-pop backdrop-blur-sm transition-all duration-200 pointer-events-none text-center ${
             isVisible ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-2 scale-95'
           }`}
         >

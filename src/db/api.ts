@@ -243,20 +243,10 @@ async function getQuestionsByTopicGrouped(topicId: string): Promise<StimulusWith
 }
 
 
-async function getAllQuestions(): Promise<Question[]> {
-  const list = await db.questions.toArray();
-  return list.sort((a, b) => a.order - b.order);
-}
 
 
-async function getStimulus(id: string): Promise<Stimulus | undefined> {
-  return await db.stimuli.get(id);
-}
 
 
-async function getQuestion(id: string): Promise<Question | undefined> {
-  return await db.questions.get(id);
-}
 
 /* -------------------------------------------------------------
  * 2. Hierarchy Stats (Total Questions & Selected count per node)
@@ -381,19 +371,8 @@ async function updateTopic(id: string, name: string): Promise<void> {
 }
 
 
-async function addStimulus(data: Omit<Stimulus, 'id'>): Promise<Stimulus> {
-  const stimulus: Stimulus = {
-    ...data,
-    id: generateId(),
-  };
-  await db.stimuli.add(stimulus);
-  return stimulus;
-}
 
 
-async function updateStimulus(id: string, data: Partial<Omit<Stimulus, 'id'>>): Promise<void> {
-  await db.stimuli.update(id, data);
-}
 
 
 async function addQuestion(data: Omit<Question, 'id'>): Promise<Question> {
@@ -463,16 +442,6 @@ async function deleteStimulusOnly(stimulusId: string): Promise<void> {
 }
 
 
-async function deleteStimulus(stimulusId: string): Promise<void> {
-  const questions = await db.questions.where('stimulusId').equals(stimulusId).toArray();
-  for (const q of questions) {
-    if (q.solutionImageIds) {
-      await deleteImages(q.solutionImageIds);
-    }
-    await db.questions.delete(q.id);
-  }
-  await deleteStimulusOnly(stimulusId);
-}
 
 
 async function deleteTopic(topicId: string): Promise<void> {
@@ -541,13 +510,6 @@ async function reorderTopics(orderedIds: string[]): Promise<void> {
 }
 
 
-async function reorderQuestions(orderedIds: string[]): Promise<void> {
-  await db.transaction('rw', db.questions, async () => {
-    for (let i = 0; i < orderedIds.length; i++) {
-      await db.questions.update(orderedIds[i], { order: i + 1 });
-    }
-  });
-}
 
 /* -------------------------------------------------------------
  * 4. Selection APIs (ordered array in meta table)
@@ -563,10 +525,6 @@ async function getSelectedIds(): Promise<string[]> {
 }
 
 
-async function isQuestionSelected(questionId: string): Promise<boolean> {
-  const selected = await getSelectedIds();
-  return selected.includes(questionId);
-}
 
 
 async function toggleSelected(questionId: string): Promise<string[]> {
@@ -642,59 +600,10 @@ async function reorderSelected(newOrderedIds: string[]): Promise<void> {
  * ----------------------------------------------------------- */
 
 
-async function copyQuestion(questionId: string): Promise<void> {
-  const q = await db.questions.get(questionId);
-  if (!q) {
-    throw new Error('Question not found');
-  }
-  await db.meta.put({
-    key: META_CLIPBOARD_KEY,
-    value: JSON.parse(JSON.stringify(q)),
-  });
-}
 
 
-async function getClipboard(): Promise<Question | null> {
-  const record = await db.meta.get(META_CLIPBOARD_KEY);
-  return (record?.value as Question) || null;
-}
 
 
-async function pasteAfter(targetQuestionId: string): Promise<Question | null> {
-  const clipboard = await getClipboard();
-  if (!clipboard) {
-    return null;
-  }
-
-  const target = await db.questions.get(targetQuestionId);
-  if (!target) {
-    return null;
-  }
-
-  const siblings = await db.questions.where('topicId').equals(target.topicId).toArray();
-  siblings.sort((a, b) => a.order - b.order);
-
-  const newOrder = target.order + 1;
-
-  await db.transaction('rw', db.questions, async () => {
-    for (const q of siblings) {
-      if (q.order >= newOrder) {
-        await db.questions.update(q.id, { order: q.order + 1 });
-      }
-    }
-  });
-
-  const newQuestion: Question = {
-    ...clipboard,
-    id: generateId(),
-    topicId: target.topicId,
-    stimulusId: target.stimulusId || clipboard.stimulusId,
-    order: newOrder,
-  };
-
-  await db.questions.add(newQuestion);
-  return newQuestion;
-}
 
 
 /**
@@ -1042,10 +951,6 @@ async function getQuestionPaperUsage(questionId: string): Promise<QuestionPaperU
 }
 
 
-async function getQuestionTotalUsageCount(questionId: string): Promise<number> {
-  const usages = await getQuestionPaperUsage(questionId);
-  return usages.reduce((sum, u) => sum + u.count, 0);
-}
 
 /* -------------------------------------------------------------
  * 6.5 Paper Management & Statistics APIs
@@ -1068,9 +973,6 @@ async function getPapers(): Promise<Paper[]> {
 }
 
 
-async function getPaperById(id: string): Promise<Paper | undefined> {
-  return await db.papers.get(id);
-}
 
 
 async function getNextPaperLabel(
@@ -1204,9 +1106,6 @@ async function getCategories(): Promise<Category[]> {
 }
 
 
-async function getCategory(id: string): Promise<Category | undefined> {
-  return await db.categories.get(id);
-}
 
 
 async function saveCategory(name: string): Promise<Category> {
@@ -1688,9 +1587,6 @@ async function seedInitialDataIfNeeded(): Promise<boolean> {
     getChapters,
     getTopics,
     getQuestionsByTopicGrouped,
-    getAllQuestions,
-    getStimulus,
-    getQuestion,
     getHierarchyStats,
     addSubject,
     updateSubject,
@@ -1698,29 +1594,21 @@ async function seedInitialDataIfNeeded(): Promise<boolean> {
     updateChapter,
     addTopic,
     updateTopic,
-    addStimulus,
-    updateStimulus,
     addQuestion,
     updateQuestion,
     deleteQuestion,
-    deleteStimulus,
     deleteTopic,
     deleteChapter,
     deleteSubject,
     reorderSubjects,
     reorderChapters,
     reorderTopics,
-    reorderQuestions,
     getSelectedIds,
-    isQuestionSelected,
     toggleSelected,
     toggleStimulusSelect,
     getSelectedStimuliCount,
     clearSelection,
     reorderSelected,
-    copyQuestion,
-    getClipboard,
-    pasteAfter,
     copyStimulusGroup,
     getGroupClipboard,
     clearGroupClipboard,
@@ -1731,18 +1619,15 @@ async function seedInitialDataIfNeeded(): Promise<boolean> {
     getQuestionGroupForEdit,
     saveQuestionGroup,
     getQuestionPaperUsage,
-    getQuestionTotalUsageCount,
     getPaperCount,
     getQuestionCount,
     getPapers,
-    getPaperById,
     getNextPaperLabel,
     relabelPapersByCategory,
     savePaper,
     deletePaper,
     ensureDefaultCategories,
     getCategories,
-    getCategory,
     saveCategory,
     updateCategory,
     deleteCategory,
@@ -1782,9 +1667,6 @@ export const {
   getChapters,
   getTopics,
   getQuestionsByTopicGrouped,
-  getAllQuestions,
-  getStimulus,
-  getQuestion,
   getHierarchyStats,
   addSubject,
   updateSubject,
@@ -1792,29 +1674,21 @@ export const {
   updateChapter,
   addTopic,
   updateTopic,
-  addStimulus,
-  updateStimulus,
   addQuestion,
   updateQuestion,
   deleteQuestion,
-  deleteStimulus,
   deleteTopic,
   deleteChapter,
   deleteSubject,
   reorderSubjects,
   reorderChapters,
   reorderTopics,
-  reorderQuestions,
   getSelectedIds,
-  isQuestionSelected,
   toggleSelected,
   toggleStimulusSelect,
   getSelectedStimuliCount,
   clearSelection,
   reorderSelected,
-  copyQuestion,
-  getClipboard,
-  pasteAfter,
   copyStimulusGroup,
   getGroupClipboard,
   clearGroupClipboard,
@@ -1825,18 +1699,15 @@ export const {
   getQuestionGroupForEdit,
   saveQuestionGroup,
   getQuestionPaperUsage,
-  getQuestionTotalUsageCount,
   getPaperCount,
   getQuestionCount,
   getPapers,
-  getPaperById,
   getNextPaperLabel,
   relabelPapersByCategory,
   savePaper,
   deletePaper,
   ensureDefaultCategories,
   getCategories,
-  getCategory,
   saveCategory,
   updateCategory,
   deleteCategory,

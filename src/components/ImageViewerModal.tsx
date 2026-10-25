@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, } from 'react';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useNavigation } from '../utils/navigation';

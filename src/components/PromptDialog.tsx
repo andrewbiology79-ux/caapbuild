@@ -52,10 +52,10 @@ export const PromptDialog: React.FC<PromptDialogProps> = ({
       onClick={onCancel}
     >
       <div
-        className="w-full max-w-[340px] bg-white rounded-2xl p-5 shadow-2xl border border-[#D5D9E2] space-y-4"
+        className="w-full max-w-[340px] bg-surface rounded-2xl p-5 shadow-2xl border border-line space-y-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 id="prompt-dialog-title" className="text-base font-bold text-[#1B1F2A]">
+        <h3 id="prompt-dialog-title" className="text-base font-bold text-ink">
           {title}
         </h3>
 
@@ -66,21 +66,21 @@ export const PromptDialog: React.FC<PromptDialogProps> = ({
             value={value}
             onChange={(e) => setValue(e.target.value)}
             placeholder={placeholder}
-            className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-[#D5D9E2] bg-[#F2F4F8]/50 text-sm text-[#1B1F2A] focus:outline-none focus:ring-2 focus:ring-[#3B4FD8] focus:bg-white transition-all"
+            className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-line bg-app/50 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand focus:bg-surface transition-all"
           />
 
           <div className="grid grid-cols-2 gap-3 pt-1">
             <button
               type="button"
               onClick={onCancel}
-              className="w-full min-h-[44px] px-4 py-2.5 rounded-xl border border-[#D5D9E2] text-sm font-medium text-[#1B1F2A] bg-white hover:bg-[#F2F4F8] active:bg-[#E5E9F0] transition-colors"
+              className="w-full min-h-[44px] px-4 py-2.5 rounded-xl border border-line text-sm font-medium text-ink bg-surface hover:bg-hover active:bg-hover transition-colors"
             >
               {cancelText}
             </button>
             <button
               type="submit"
               disabled={!value.trim()}
-              className="w-full min-h-[44px] px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-[#3B4FD8] hover:bg-[#2A3BB0] active:bg-[#202E91] disabled:opacity-50 disabled:pointer-events-none transition-colors"
+              className="w-full min-h-[44px] px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-brand hover:bg-brand-strong active:bg-[#202E91] disabled:opacity-50 disabled:pointer-events-none transition-colors"
             >
               {confirmText}
             </button>

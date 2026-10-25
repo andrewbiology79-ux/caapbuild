@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { AlertCircle } from 'lucide-react';
+import { Button } from '../ui/Button';
 
 export interface ConfirmDialogProps {
   isOpen: boolean;
@@ -47,44 +48,32 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       onClick={onCancel}
     >
       <div
-        className="w-full max-w-[340px] bg-white rounded-2xl p-5 shadow-2xl border border-[#D5D9E2] space-y-4"
+        className="w-full max-w-[340px] bg-surface rounded-2xl p-5 shadow-pop border border-line space-y-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start gap-3">
           <div
             className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
-              isDestructive ? 'bg-red-50 text-red-600' : 'bg-[#EEF2FF] text-[#3B4FD8]'
+              isDestructive ? 'bg-danger-soft text-danger' : 'bg-brand-soft text-brand'
             }`}
           >
             <AlertCircle className="w-5 h-5" />
           </div>
           <div className="space-y-1">
-            <h3 id="confirm-dialog-title" className="text-base font-semibold text-[#1B1F2A]">
+            <h3 id="confirm-dialog-title" className="text-base font-semibold text-ink">
               {title}
             </h3>
-            {message && <p className="text-sm text-[#64748B] leading-relaxed">{message}</p>}
+            {message && <p className="text-sm text-ink-muted leading-relaxed">{message}</p>}
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3 pt-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="w-full min-h-[44px] px-4 py-2.5 rounded-xl border border-[#D5D9E2] text-sm font-medium text-[#1B1F2A] bg-white hover:bg-[#F2F4F8] active:bg-[#E5E9F0] transition-colors focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
-          >
+          <Button variant="secondary" onClick={onCancel} block>
             {cancelText}
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className={`w-full min-h-[44px] px-4 py-2.5 rounded-xl text-sm font-medium text-white transition-colors focus:outline-none focus:ring-2 ${
-              isDestructive
-                ? 'bg-red-600 hover:bg-red-700 active:bg-red-800 focus:ring-red-400'
-                : 'bg-[#3B4FD8] hover:bg-[#2A3BB0] active:bg-[#202E91] focus:ring-[#3B4FD8]'
-            }`}
-          >
+          </Button>
+          <Button variant={isDestructive ? 'danger' : 'primary'} onClick={onConfirm} block>
             {confirmText}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

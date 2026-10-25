@@ -10,22 +10,95 @@
 /* Tailwind v4: make `dark:` variants follow the `.dark` class set by Settings (not the OS theme) */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ============================================================
+ * Design tokens (single source of truth for colours)
+ * Light = default, dark = `.dark` class set from Settings.
+ * Use via Tailwind: bg-app, bg-surface, text-ink, border-line, bg-brand ...
+ * ========================================================== */
 :root {
-  --color-primary: #3B4FD8;
-  --color-primary-dark: #2A3BB0;
-  --color-bg: #F2F4F8;
-  --color-card: #FFFFFF;
-  --color-border: #D5D9E2;
-  --color-text-main: #1B1F2A;
-  --color-text-blue: #2A3BB0;
+  --c-outer: #E5E9F0;
+  --c-bg: #F2F4F8;
+  --c-surface: #FFFFFF;
+  --c-surface-2: #F8FAFC;
+  --c-line: #D5D9E2;
+  --c-ink: #1B1F2A;
+  --c-ink-muted: #64748B;
+  --c-brand: #3B4FD8;
+  --c-brand-strong: #2A3BB0;
+  --c-brand-soft: #EEF2FF;
+  --c-danger: #DC2626;
+  --c-danger-strong: #B91C1C;
+  --c-danger-soft: #FEF2F2;
+  --c-success: #059669;
+  --c-success-soft: #ECFDF5;
+  --c-brand-fg: #3B4FD8;
+  --c-brand-ink: #2A3BB0;
+  --c-brand-hover: #EEF2FF;
+  --c-press: #E0E7FF;
+  --c-hover: #F2F4F8;
+  --c-line-soft: #F2F4F8;
+  --c-shadow-card: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 14px rgba(15, 23, 42, 0.05);
+  --c-shadow-pop: 0 10px 40px rgba(15, 23, 42, 0.22);
   font-family: 'Hind Siliguri', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.dark {
+  --c-outer: #020617;
+  --c-bg: #0F172A;
+  --c-surface: #1E293B;
+  --c-surface-2: #162033;
+  --c-line: #334155;
+  --c-ink: #F1F5F9;
+  --c-ink-muted: #94A3B8;
+  --c-brand: #6366F1;
+  --c-brand-strong: #4F46E5;
+  --c-brand-soft: #1E1B4B;
+  --c-danger: #F87171;
+  --c-danger-strong: #EF4444;
+  --c-danger-soft: #450A0A;
+  --c-success: #34D399;
+  --c-success-soft: #052E16;
+  --c-brand-fg: #818CF8;
+  --c-brand-ink: #A5B4FC;
+  --c-brand-hover: #312E81;
+  --c-press: #3730A3;
+  --c-hover: #334155;
+  --c-line-soft: #1E293B;
+  --c-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 14px rgba(0, 0, 0, 0.3);
+  --c-shadow-pop: 0 10px 40px rgba(0, 0, 0, 0.6);
+}
+
+@theme inline {
+  --color-outer: var(--c-outer);
+  --color-app: var(--c-bg);
+  --color-surface: var(--c-surface);
+  --color-surface-2: var(--c-surface-2);
+  --color-line: var(--c-line);
+  --color-ink: var(--c-ink);
+  --color-ink-muted: var(--c-ink-muted);
+  --color-brand: var(--c-brand);
+  --color-brand-strong: var(--c-brand-strong);
+  --color-brand-soft: var(--c-brand-soft);
+  --color-danger: var(--c-danger);
+  --color-danger-strong: var(--c-danger-strong);
+  --color-danger-soft: var(--c-danger-soft);
+  --color-success: var(--c-success);
+  --color-success-soft: var(--c-success-soft);
+  --color-brand-fg: var(--c-brand-fg);
+  --color-brand-ink: var(--c-brand-ink);
+  --color-brand-hover: var(--c-brand-hover);
+  --color-press: var(--c-press);
+  --color-hover: var(--c-hover);
+  --color-line-soft: var(--c-line-soft);
+  --shadow-card: var(--c-shadow-card);
+  --shadow-pop: var(--c-shadow-pop);
 }
 
 body {
   margin: 0;
   padding: 0;
-  background-color: #F2F4F8;
-  color: #1B1F2A;
+  background-color: var(--c-bg);
+  color: var(--c-ink);
   font-family: 'Hind Siliguri', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -64,7 +137,7 @@ button,
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #D5D9E2;
+  background: var(--c-line);
   border-radius: 4px;
 }
 
@@ -72,40 +145,4 @@ button,
   background: #B4B9C6;
 }
 
-/* ---- Dark theme: recolour hard-coded light colours in screens/components that have no `dark:` classes ---- */
-.dark .bg-white:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #1e293b; }
-.dark .bg-\[\#F2F4F8\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #0f172a; }
-.dark .bg-\[\#F2F4F8\]\/50:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: rgba(15,23,42,0.6); }
-.dark .bg-\[\#F2F4F8\]\/40:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: rgba(15,23,42,0.5); }
-.dark .bg-\[\#F8FAFC\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #162033; }
-.dark .bg-\[\#EEF2FF\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #1e1b4b; }
-.dark .bg-\[\#EEF2FF\]\/50:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: rgba(30,27,75,0.5); }
-.dark .bg-\[\#FEF9C3\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #422006; }
-.dark .bg-emerald-50:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #052e16; }
-.dark .bg-red-50:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #450a0a; }
-.dark .text-\[\#1B1F2A\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { color: #f1f5f9; }
-.dark .text-\[\#64748B\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { color: #94a3b8; }
-.dark .text-\[\#2A3BB0\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { color: #a5b4fc; }
-.dark .text-\[\#3B4FD8\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { color: #818cf8; }
-.dark .text-\[\#713F12\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { color: #fde68a; }
-.dark .text-emerald-800:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { color: #6ee7b7; }
-.dark .text-red-900:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { color: #fecaca; }
-.dark .text-amber-950:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { color: #fde68a; }
-.dark .border-\[\#D5D9E2\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { border-color: #334155; }
-.dark .border-\[\#E2E8F0\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { border-color: #334155; }
-.dark .border-\[\#F2F4F8\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { border-color: #1e293b; }
-.dark .border-\[\#FDE047\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { border-color: #854d0e; }
-.dark .border-emerald-200:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { border-color: #065f46; }
-.dark .hover\:bg-\[\#EEF2FF\]:hover:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #312e81; }
-.dark .hover\:bg-\[\#E0E7FF\]:hover:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #3730a3; }
-.dark .active\:bg-\[\#E0E7FF\]:active:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #3730a3; }
-.dark .hover\:bg-\[\#F2F4F8\]:hover:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #334155; }
-.dark .active\:bg-\[\#E5E9F0\]:active:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #334155; }
-.dark .hover\:bg-white:hover:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #334155; }
-.dark .focus\:bg-white:focus:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #0f172a; }
-.dark .hover\:bg-red-50:hover:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #450a0a; }
-.dark .hover\:text-\[\#1B1F2A\]:hover:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { color: #f1f5f9; }
-
 .dark { color-scheme: dark; }
-.dark body { background-color: #0f172a; color: #f1f5f9; }
-.dark ::-webkit-scrollbar-thumb { background: #475569; }

@@ -20,9 +20,9 @@ export const QuestionBoardTags: React.FC<QuestionBoardTagsProps> = ({ boards }) 
       {list.map((b) => (
         <span
           key={b.board}
-          className="px-1.5 py-0.5 rounded bg-white text-[#1B1F2A] text-[0.625rem] font-semibold border border-[#D5D9E2] flex items-center gap-1"
+          className="px-1.5 py-0.5 rounded bg-surface text-ink text-[0.625rem] font-semibold border border-line flex items-center gap-1"
         >
-          <Tag className="w-3 h-3 text-[#64748B]" />
+          <Tag className="w-3 h-3 text-ink-muted" />
           <span>
             {b.board}'{b.years.map((y) => toBn(String(y).slice(-2))).join(',')}
           </span>

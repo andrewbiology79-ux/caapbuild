@@ -19,6 +19,8 @@ import { exportQuestionCollection } from '../utils/collectionTransfer';
 import { RichText } from '../components/RichText';
 import { QuestionBoardTags } from '../components/QuestionBoardTags';
 import { KebabMenu, type MenuItem } from '../components/KebabMenu';
+import { HierarchyList } from '../features/collection/HierarchyList';
+import { QuestionGroupCard } from '../features/collection/QuestionGroupCard';
 import { toBn, toBnPad2 } from '../utils/toBn';
 import { useNavigation } from '../utils/navigation';
 import { getDb, type CqScope } from '../db/db';
@@ -28,21 +30,16 @@ import {
   type Subject,
   type Chapter,
   type Topic,
-  type Question,
   type StimulusWithQuestions,
   type HierarchyStats,
   type QuestionPaperUsage,
   type GroupClipboardData,
 } from '../db/api';
 import {
-  ChevronRight,
-  ArrowUp,
-  ArrowDown,
   Check,
   Search,
   Plus,
   RefreshCw,
-  FolderOpen,
   Eye,
   EyeOff,
   Copy,
@@ -57,6 +54,7 @@ import {
   ClipboardPaste,
   Download,
   Square,
+  CheckSquare,
   BookMarked,
 } from 'lucide-react';
 
@@ -439,6 +437,42 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
     }
   };
 
+  // Batch: select / unselect every question group currently visible in this topic (respects the search box)
+  const visibleGroupsRef = useRef<StimulusWithQuestions[]>([]);
+  const handleBatchSelectVisible = async (select: boolean) => {
+    try {
+      const groups = visibleGroupsRef.current;
+      let current = await getSelectedIds();
+      let changedGroups = 0;
+      for (const grp of groups) {
+        const qIds = grp.questions.map((q) => q.id);
+        if (qIds.length === 0) continue;
+        const allSel = qIds.every((id) => current.includes(id));
+        const anySel = qIds.some((id) => current.includes(id));
+        if (select && !allSel) {
+          current = await toggleStimulusSelect(grp.stimulus?.id, qIds);
+          changedGroups++;
+        } else if (!select && anySel) {
+          if (!allSel) current = await toggleStimulusSelect(grp.stimulus?.id, qIds); // make it "all" first
+          current = await toggleStimulusSelect(grp.stimulus?.id, qIds); // then unselect all
+          changedGroups++;
+        }
+      }
+      setSelectedIds(current);
+      setSelectedStimuliCount(await getSelectedStimuliCount(current));
+      setStats(await getHierarchyStats());
+      showToast(
+        changedGroups === 0
+          ? 'কোনো পরিবর্তন হয়নি'
+          : select
+          ? `${toBn(changedGroups)}টি গ্রুপের প্রশ্ন নির্বাচন করা হয়েছে`
+          : `${toBn(changedGroups)}টি গ্রুপের নির্বাচন বাতিল করা হয়েছে`
+      );
+    } catch {
+      showToast('নির্বাচন আপডেট করা যায়নি');
+    }
+  };
+
   // Clear all selections
   const handleClearAllSelection = async () => {
     setConfirmDialog({
@@ -712,7 +746,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
     items.push({
       id: 'add',
       label: addLabel,
-      icon: <PlusCircle className="w-4 h-4 text-[#3B4FD8]" />,
+      icon: <PlusCircle className="w-4 h-4 text-brand-fg" />,
       onClick: handleOpenAddDialog,
     });
 
@@ -720,7 +754,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
       items.push({
         id: 'paste-json',
         label: 'JSON পেস্ট করে প্রশ্ন যোগ',
-        icon: <Upload className="w-4 h-4 text-[#3B4FD8]" />,
+        icon: <Upload className="w-4 h-4 text-brand-fg" />,
         onClick: () => setShowPasteModal(true),
       });
       items.push({
@@ -739,7 +773,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
       items.push({
         id: 'rename-subj',
         label: 'বিষয়ের নাম পরিবর্তন',
-        icon: <FileEdit className="w-4 h-4 text-[#1B1F2A]" />,
+        icon: <FileEdit className="w-4 h-4 text-ink" />,
         onClick: () => handleRenameItem('subject', currentView.subject.id, currentView.subject.name),
       });
       items.push({
@@ -753,7 +787,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
       items.push({
         id: 'rename-chap',
         label: 'অধ্যায়ের নাম পরিবর্তন',
-        icon: <FileEdit className="w-4 h-4 text-[#1B1F2A]" />,
+        icon: <FileEdit className="w-4 h-4 text-ink" />,
         onClick: () => handleRenameItem('chapter', currentView.chapter.id, currentView.chapter.name),
       });
       items.push({
@@ -767,7 +801,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
       items.push({
         id: 'rename-top',
         label: 'টপিকের নাম পরিবর্তন',
-        icon: <FileEdit className="w-4 h-4 text-[#1B1F2A]" />,
+        icon: <FileEdit className="w-4 h-4 text-ink" />,
         onClick: () => handleRenameItem('topic', currentView.topic.id, currentView.topic.name),
       });
       items.push({
@@ -784,13 +818,13 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
       items.push({
         id: 'import',
         label: scope === 'chapter' ? 'Import Chapter CQ' : 'Import Type CQ',
-        icon: <Upload className="w-4 h-4 text-[#3B4FD8]" />,
+        icon: <Upload className="w-4 h-4 text-brand-fg" />,
         onClick: () => setShowImportModal(true),
       });
       items.push({
         id: 'export',
         label: scope === 'chapter' ? 'Export Chapter CQ' : 'Export Type CQ',
-        icon: <Download className="w-4 h-4 text-[#3B4FD8]" />,
+        icon: <Download className="w-4 h-4 text-brand-fg" />,
         onClick: async () => {
           try {
             const ok = await exportQuestionCollection(scope);
@@ -803,6 +837,22 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
             showToast('এক্সপোর্ট করা যায়নি');
           }
         },
+      });
+    }
+
+    // Batch selection (only inside a topic's question list)
+    if (currentView.level === 'questions') {
+      items.push({
+        id: 'batch-select-visible',
+        label: 'দেখা যাচ্ছে এমন সব প্রশ্ন নির্বাচন করুন',
+        icon: <CheckSquare className="w-4 h-4 text-brand-fg" />,
+        onClick: () => handleBatchSelectVisible(true),
+      });
+      items.push({
+        id: 'batch-unselect-visible',
+        label: 'দেখা যাচ্ছে এমন সব প্রশ্নের নির্বাচন বাতিল',
+        icon: <Square className="w-4 h-4 text-brand-fg" />,
+        onClick: () => handleBatchSelectVisible(false),
       });
     }
 
@@ -850,6 +900,8 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
       })
       .filter(Boolean) as StimulusWithQuestions[];
   }, [questionGroups, searchQuery]);
+
+  visibleGroupsRef.current = filteredQuestionGroups;
 
   // Construct Breadcrumb Items (Requirement 7)
   const breadcrumbItems = useMemo(() => {
@@ -921,7 +973,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
   }, [currentView, scope, openChapter]);
 
   return (
-    <div className="flex-1 flex flex-col min-h-full pb-20 bg-[#F2F4F8]">
+    <div className="flex-1 flex flex-col min-h-full pb-20 bg-app">
       {/* Top Header */}
       <Header
         title={currentTitle}
@@ -931,7 +983,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
       />
 
       {/* Top Control Bar (Requirement 7: Horizontal Scrollable Breadcrumb) */}
-      <div className="bg-white border-b border-[#D5D9E2] px-3.5 py-2 shadow-2xs space-y-2">
+      <div className="bg-surface border-b border-line px-3.5 py-2 shadow-2xs space-y-2">
         {/* Breadcrumb Path on all levels */}
         <div
           ref={breadcrumbContainerRef}
@@ -955,8 +1007,8 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
                 onClick={item.onClick}
                 className={`min-h-[44px] px-2 py-1 rounded-lg text-xs flex items-center shrink-0 transition-colors ${
                   item.isCurrent
-                    ? 'font-bold text-[#1B1F2A] cursor-default pointer-events-none'
-                    : 'text-[#2A3BB0] hover:bg-[#EEF2FF] font-medium active:bg-[#E0E7FF]'
+                    ? 'font-bold text-ink cursor-default pointer-events-none'
+                    : 'text-brand-ink hover:bg-brand-hover font-medium active:bg-press'
                 }`}
               >
                 {item.label}
@@ -975,8 +1027,8 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
               onClick={isReordering ? handleSaveReorder : () => setIsReordering(true)}
               className={`min-h-[44px] px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors border ${
                 isReordering
-                  ? 'bg-[#3B4FD8] text-white border-[#3B4FD8]'
-                  : 'bg-[#EEF2FF] text-[#2A3BB0] border-[#D5D9E2] hover:bg-[#E0E7FF]'
+                  ? 'bg-brand text-white border-brand'
+                  : 'bg-brand-soft text-brand-ink border-line hover:bg-press'
               }`}
             >
               {isReordering ? (
@@ -986,14 +1038,14 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
                 </>
               ) : (
                 <>
-                  <Layers className="w-3.5 h-3.5 text-[#3B4FD8]" />
+                  <Layers className="w-3.5 h-3.5 text-brand-fg" />
                   <span>Reorder</span>
                 </>
               )}
             </button>
           ) : (
             <div className="flex items-center gap-2">
-              <span className="px-2.5 py-1 rounded-full bg-[#EEF2FF] text-[#2A3BB0] text-xs font-bold border border-[#D5D9E2]">
+              <span className="px-2.5 py-1 rounded-full bg-brand-soft text-brand-ink text-xs font-bold border border-line">
                 {toBn(selectedStimuliCount)} নির্বাচিত
               </span>
               {selectedIds.length > 0 && (
@@ -1009,7 +1061,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
           )}
 
           {/* Right: Quick Total Counter (Requirement 3: "মোট প্রশ্ন: ...টি") */}
-          <div className="text-xs text-[#64748B] font-medium">
+          <div className="text-xs text-ink-muted font-medium">
             {currentView.level === 'subjects' && `মোট বিষয়: ${toBn(subjects.length)}টি`}
             {currentView.level === 'chapters' && `মোট অধ্যায়: ${toBn(chapters.length)}টি`}
             {currentView.level === 'topics' && `মোট টপিক: ${toBn(topics.length)}টি`}
@@ -1020,20 +1072,20 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
         {/* Search Box on Questions Screen */}
         {currentView.level === 'questions' && (
           <div className="relative pt-1">
-            <Search className="w-4 h-4 text-[#64748B] absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-ink-muted absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="প্রশ্ন, উদ্দীপক বা বোর্ড ট্যাগ খুঁজুন..."
-              className="w-full min-h-[44px] pl-9 pr-8 py-2 rounded-xl bg-[#F2F4F8] border border-[#D5D9E2] text-xs text-[#1B1F2A] focus:outline-none focus:ring-2 focus:ring-[#3B4FD8] focus:bg-white transition-all"
+              className="w-full min-h-[44px] pl-9 pr-8 py-2 rounded-xl bg-app border border-line text-xs text-ink focus:outline-none focus:ring-2 focus:ring-brand focus:bg-surface transition-all"
             />
             {searchQuery && (
               <button
                 type="button"
                 aria-label="অনুসন্ধান মুছুন"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-[#64748B] hover:text-[#1B1F2A] p-1 font-bold"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-ink-muted hover:text-ink p-1 font-bold"
               >
                 ✕
               </button>
@@ -1045,300 +1097,63 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
       {/* Main Content Area */}
       <main className="flex-1 p-3.5 space-y-3">
         {loading && (
-          <div className="py-16 text-center text-xs text-[#64748B] flex flex-col items-center gap-2">
-            <RefreshCw className="w-6 h-6 animate-spin text-[#3B4FD8]" />
+          <div className="py-16 text-center text-xs text-ink-muted flex flex-col items-center gap-2">
+            <RefreshCw className="w-6 h-6 animate-spin text-brand-fg" />
             <span>ডাটা লোড হচ্ছে...</span>
           </div>
         )}
 
-        {/* ---------------- LEVEL 0: SUBJECTS ---------------- */}
+        {/* ---------------- LEVEL 0-2: SUBJECTS / CHAPTERS / TOPICS ---------------- */}
         {!loading && currentView.level === 'subjects' && (
-          <div className="space-y-2.5">
-            {subjects.length === 0 ? (
-              <div className="bg-white rounded-2xl p-8 text-center border border-[#D5D9E2] space-y-3">
-                <p className="text-sm text-[#64748B]">কোনো বিষয় যুক্ত করা হয়নি</p>
-                <button
-                  type="button"
-                  onClick={handleOpenAddDialog}
-                  className="min-h-[44px] px-4 py-2 rounded-xl bg-[#3B4FD8] text-white text-xs font-semibold"
-                >
-                  + বিষয় যোগ করুন
-                </button>
-              </div>
-            ) : (
-              subjects.map((subject, index) => {
-                const subStat = stats.subjectStats[subject.id] || { total: 0, selected: 0 };
-                const padOrder = toBnPad2(subject.order || index + 1);
-
-                return (
-                  <div
-                    key={subject.id}
-                    className="bg-white rounded-2xl p-3.5 border border-[#D5D9E2] shadow-xs flex items-center justify-between gap-3 hover:border-[#3B4FD8] transition-all cursor-pointer select-none"
-                    onClick={() => {
-                      if (!isReordering) {
-                        setCurrentView({ level: 'chapters', subject });
-                      }
-                    }}
-                  >
-                    {/* Left: Blue Square with Bengali Serial */}
-                    <div className="w-10 h-10 rounded-xl bg-[#3B4FD8] text-white font-bold text-sm flex items-center justify-center shrink-0 shadow-2xs">
-                      {padOrder}
-                    </div>
-
-                    {/* Middle: Name & Count Subtitle */}
-                    <div className="flex-1 min-w-0">
-                      <h2 className="text-sm font-bold text-[#1B1F2A] truncate leading-snug">
-                        {subject.name}
-                      </h2>
-                      <p className="text-[0.6875rem] text-[#64748B] font-medium mt-0.5">
-                        {toBn(subStat.total)}টি প্রশ্ন · {toBn(subStat.selected)} নির্বাচিত
-                      </p>
-                    </div>
-
-                    {/* Right: Reorder or Kebab + Chevron */}
-                    <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                      {isReordering ? (
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            aria-label="উপরে সরান"
-                            disabled={index === 0}
-                            onClick={() => handleMoveItem(index, 'up')}
-                            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-[#F2F4F8] hover:bg-[#EEF2FF] text-[#1B1F2A] disabled:opacity-30 disabled:pointer-events-none"
-                          >
-                            <ArrowUp className="w-4 h-4" />
-                          </button>
-                          <button
-                            type="button"
-                            aria-label="নিচে সরান"
-                            disabled={index === subjects.length - 1}
-                            onClick={() => handleMoveItem(index, 'down')}
-                            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-[#F2F4F8] hover:bg-[#EEF2FF] text-[#1B1F2A] disabled:opacity-30 disabled:pointer-events-none"
-                          >
-                            <ArrowDown className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          <KebabMenu
-                            items={[
-                              {
-                                id: 'rename',
-                                label: 'নাম পরিবর্তন',
-                                onClick: () => handleRenameItem('subject', subject.id, subject.name),
-                              },
-                              {
-                                id: 'delete',
-                                label: 'মুছে ফেলুন',
-                                isDestructive: true,
-                                onClick: () => handleDeleteItem('subject', subject.id, subject.name),
-                              },
-                            ]}
-                          />
-                          <ChevronRight className="w-5 h-5 text-[#64748B]" />
-                        </>
-                      )}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
+          <HierarchyList
+            items={subjects}
+            stats={stats.subjectStats}
+            isReordering={isReordering}
+            emptyText="কোনো বিষয় যুক্ত করা হয়নি"
+            addLabel="+ বিষয় যোগ করুন"
+            onAdd={handleOpenAddDialog}
+            onOpen={(subject) => setCurrentView({ level: 'chapters', subject })}
+            onRename={(i) => handleRenameItem('subject', i.id, i.name)}
+            onDelete={(i) => handleDeleteItem('subject', i.id, i.name)}
+            onMove={handleMoveItem}
+          />
         )}
 
-        {/* ---------------- LEVEL 1: CHAPTERS ---------------- */}
         {!loading && currentView.level === 'chapters' && (
-          <div className="space-y-2.5">
-            {chapters.length === 0 ? (
-              <div className="bg-white rounded-2xl p-8 text-center border border-[#D5D9E2] space-y-3">
-                <p className="text-sm text-[#64748B]">এই বিষয়ে এখনো কোনো অধ্যায় নেই</p>
-                <button
-                  type="button"
-                  onClick={handleOpenAddDialog}
-                  className="min-h-[44px] px-4 py-2 rounded-xl bg-[#3B4FD8] text-white text-xs font-semibold"
-                >
-                  + অধ্যায় যোগ করুন
-                </button>
-              </div>
-            ) : (
-              chapters.map((chapter, index) => {
-                const chStat = stats.chapterStats[chapter.id] || { total: 0, selected: 0 };
-                const padOrder = toBnPad2(chapter.order || index + 1);
-
-                return (
-                  <div
-                    key={chapter.id}
-                    className="bg-white rounded-2xl p-3.5 border border-[#D5D9E2] shadow-xs flex items-center justify-between gap-3 hover:border-[#3B4FD8] transition-all cursor-pointer select-none"
-                    onClick={() => {
-                      if (!isReordering) {
-                        openChapter(currentView.subject, chapter);
-                      }
-                    }}
-                  >
-                    {/* Left: Blue Square with Bengali Serial */}
-                    <div className="w-10 h-10 rounded-xl bg-[#3B4FD8] text-white font-bold text-sm flex items-center justify-center shrink-0 shadow-2xs">
-                      {padOrder}
-                    </div>
-
-                    {/* Middle: Name & Count Subtitle */}
-                    <div className="flex-1 min-w-0">
-                      <h2 className="text-sm font-bold text-[#1B1F2A] truncate leading-snug">
-                        {chapter.name}
-                      </h2>
-                      <p className="text-[0.6875rem] text-[#64748B] font-medium mt-0.5">
-                        {toBn(chStat.total)}টি প্রশ্ন · {toBn(chStat.selected)} নির্বাচিত
-                      </p>
-                    </div>
-
-                    {/* Right: Reorder or Kebab + Chevron */}
-                    <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                      {isReordering ? (
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            aria-label="উপরে সরান"
-                            disabled={index === 0}
-                            onClick={() => handleMoveItem(index, 'up')}
-                            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-[#F2F4F8] hover:bg-[#EEF2FF] text-[#1B1F2A] disabled:opacity-30 disabled:pointer-events-none"
-                          >
-                            <ArrowUp className="w-4 h-4" />
-                          </button>
-                          <button
-                            type="button"
-                            aria-label="নিচে সরান"
-                            disabled={index === chapters.length - 1}
-                            onClick={() => handleMoveItem(index, 'down')}
-                            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-[#F2F4F8] hover:bg-[#EEF2FF] text-[#1B1F2A] disabled:opacity-30 disabled:pointer-events-none"
-                          >
-                            <ArrowDown className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          <KebabMenu
-                            items={[
-                              {
-                                id: 'rename',
-                                label: 'নাম পরিবর্তন',
-                                onClick: () => handleRenameItem('chapter', chapter.id, chapter.name),
-                              },
-                              {
-                                id: 'delete',
-                                label: 'মুছে ফেলুন',
-                                isDestructive: true,
-                                onClick: () => handleDeleteItem('chapter', chapter.id, chapter.name),
-                              },
-                            ]}
-                          />
-                          <ChevronRight className="w-5 h-5 text-[#64748B]" />
-                        </>
-                      )}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
+          <HierarchyList
+            items={chapters}
+            stats={stats.chapterStats}
+            isReordering={isReordering}
+            emptyText="এই বিষয়ে এখনো কোনো অধ্যায় নেই"
+            addLabel="+ অধ্যায় যোগ করুন"
+            onAdd={handleOpenAddDialog}
+            onOpen={(chapter) => openChapter(currentView.subject, chapter)}
+            onRename={(i) => handleRenameItem('chapter', i.id, i.name)}
+            onDelete={(i) => handleDeleteItem('chapter', i.id, i.name)}
+            onMove={handleMoveItem}
+          />
         )}
 
-        {/* ---------------- LEVEL 2: TOPICS ---------------- */}
         {!loading && currentView.level === 'topics' && (
-          <div className="space-y-2.5">
-            {topics.length === 0 ? (
-              <div className="bg-white rounded-2xl p-8 text-center border border-[#D5D9E2] space-y-3">
-                <p className="text-sm text-[#64748B]">এই অধ্যায়ে এখনো কোনো টপিক নেই</p>
-                <button
-                  type="button"
-                  onClick={handleOpenAddDialog}
-                  className="min-h-[44px] px-4 py-2 rounded-xl bg-[#3B4FD8] text-white text-xs font-semibold"
-                >
-                  + টপিক যোগ করুন
-                </button>
-              </div>
-            ) : (
-              topics.map((topic, index) => {
-                const topStat = stats.topicStats[topic.id] || { total: 0, selected: 0 };
-                const padOrder = toBnPad2(topic.order || index + 1);
-
-                return (
-                  <div
-                    key={topic.id}
-                    className="bg-white rounded-2xl p-3.5 border border-[#D5D9E2] shadow-xs flex items-center justify-between gap-3 hover:border-[#3B4FD8] transition-all cursor-pointer select-none"
-                    onClick={() => {
-                      if (!isReordering) {
-                        setCurrentView({
-                          level: 'questions',
-                          subject: currentView.subject,
-                          chapter: currentView.chapter,
-                          topic,
-                        });
-                      }
-                    }}
-                  >
-                    {/* Left: Blue Square with Bengali Serial */}
-                    <div className="w-10 h-10 rounded-xl bg-[#3B4FD8] text-white font-bold text-sm flex items-center justify-center shrink-0 shadow-2xs">
-                      {padOrder}
-                    </div>
-
-                    {/* Middle: Name & Count Subtitle */}
-                    <div className="flex-1 min-w-0">
-                      <h2 className="text-sm font-bold text-[#1B1F2A] truncate leading-snug">
-                        {topic.name}
-                      </h2>
-                      <p className="text-[0.6875rem] text-[#64748B] font-medium mt-0.5">
-                        {toBn(topStat.total)}টি প্রশ্ন · {toBn(topStat.selected)} নির্বাচিত
-                      </p>
-                    </div>
-
-                    {/* Right: Reorder or Kebab + Chevron */}
-                    <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                      {isReordering ? (
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            aria-label="উপরে সরান"
-                            disabled={index === 0}
-                            onClick={() => handleMoveItem(index, 'up')}
-                            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-[#F2F4F8] hover:bg-[#EEF2FF] text-[#1B1F2A] disabled:opacity-30 disabled:pointer-events-none"
-                          >
-                            <ArrowUp className="w-4 h-4" />
-                          </button>
-                          <button
-                            type="button"
-                            aria-label="নিচে সরান"
-                            disabled={index === topics.length - 1}
-                            onClick={() => handleMoveItem(index, 'down')}
-                            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-[#F2F4F8] hover:bg-[#EEF2FF] text-[#1B1F2A] disabled:opacity-30 disabled:pointer-events-none"
-                          >
-                            <ArrowDown className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          <KebabMenu
-                            items={[
-                              {
-                                id: 'rename',
-                                label: 'নাম পরিবর্তন',
-                                onClick: () => handleRenameItem('topic', topic.id, topic.name),
-                              },
-                              {
-                                id: 'delete',
-                                label: 'মুছে ফেলুন',
-                                isDestructive: true,
-                                onClick: () => handleDeleteItem('topic', topic.id, topic.name),
-                              },
-                            ]}
-                          />
-                          <ChevronRight className="w-5 h-5 text-[#64748B]" />
-                        </>
-                      )}
-                    </div>
-                  </div>
-                );
+          <HierarchyList
+            items={topics}
+            stats={stats.topicStats}
+            isReordering={isReordering}
+            emptyText="এই অধ্যায়ে এখনো কোনো টপিক নেই"
+            addLabel="+ টপিক যোগ করুন"
+            onAdd={handleOpenAddDialog}
+            onOpen={(topic) =>
+              setCurrentView({
+                level: 'questions',
+                subject: currentView.subject,
+                chapter: currentView.chapter,
+                topic,
               })
-            )}
-          </div>
+            }
+            onRename={(i) => handleRenameItem('topic', i.id, i.name)}
+            onDelete={(i) => handleDeleteItem('topic', i.id, i.name)}
+            onMove={handleMoveItem}
+          />
         )}
 
         {/* ---------------- LEVEL 3: QUESTIONS LIST (Requirement 3) ---------------- */}
@@ -1346,7 +1161,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
           <div className="space-y-4">
             {/* Clipboard Notice Bar */}
             {multiClipCount > 0 && (
-              <div className="bg-[#ECFDF5] border border-emerald-500 rounded-xl px-3.5 py-2.5 flex items-center justify-between text-xs text-emerald-800 font-bold shadow-2xs">
+              <div className="bg-[#ECFDF5] border border-emerald-500 rounded-xl px-3.5 py-2.5 flex items-center justify-between text-xs text-emerald-800 dark:text-emerald-300 font-bold shadow-2xs">
                 <span>
                   {toBn(multiClipCount)}টি প্রশ্ন {multiClipMode === 'cut' ? 'কাট' : 'কপি'} করা আছে — প্রশ্নের মেনু থেকে "Paste after / before" বা রিবন মেনু থেকে পেস্ট করুন
                 </span>
@@ -1361,7 +1176,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
               </div>
             )}
             {groupClipboard && multiClipCount === 0 && (
-              <div className="bg-[#EEF2FF] border border-[#3B4FD8] rounded-xl px-3.5 py-2.5 flex items-center justify-between text-xs text-[#2A3BB0] font-bold shadow-2xs">
+              <div className="bg-brand-soft border border-brand rounded-xl px-3.5 py-2.5 flex items-center justify-between text-xs text-brand-ink font-bold shadow-2xs">
                 <span>
                   ১টি প্রশ্ন {groupClipboard.mode === 'cut' ? 'কাট' : 'কপি'} করা আছে
                 </span>
@@ -1369,7 +1184,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
                   type="button"
                   aria-label="ক্লিপবোর্ড খালি করুন"
                   onClick={handleClearClipboard}
-                  className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-white/80 text-[#3B4FD8] font-bold text-sm"
+                  className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-white/80 text-brand-fg font-bold text-sm"
                 >
                   ✕
                 </button>
@@ -1377,11 +1192,11 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
             )}
 
             {filteredQuestionGroups.length === 0 ? (
-              <div className="bg-white rounded-2xl p-8 text-center border border-[#D5D9E2] space-y-3">
-                <p className="text-sm font-semibold text-[#1B1F2A]">
+              <div className="bg-surface rounded-2xl p-8 text-center border border-line space-y-3">
+                <p className="text-sm font-semibold text-ink">
                   {searchQuery ? 'অনুসন্ধানের সাথে কোনো প্রশ্ন মেলেনি' : 'এই টপিকে এখনো প্রশ্ন নেই'}
                 </p>
-                <p className="text-xs text-[#64748B]">
+                <p className="text-xs text-ink-muted">
                   নতুন প্রশ্ন তৈরি করে এই টপিকে যুক্ত করুন।
                 </p>
                 <button
@@ -1393,312 +1208,31 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
                       editQuestionId: null,
                     })
                   }
-                  className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] text-white text-xs font-semibold shadow-xs"
+                  className="min-h-[44px] px-5 py-2.5 rounded-xl bg-brand hover:bg-brand-strong text-white text-xs font-semibold shadow-xs"
                 >
                   + Add question
                 </button>
               </div>
             ) : (
-              filteredQuestionGroups.map((grp, grpIdx) => {
-                const groupQuestionIds = grp.questions.map((q) => q.id);
-                const allGroupSelected =
-                  groupQuestionIds.length > 0 &&
-                  groupQuestionIds.every((id) => selectedIds.includes(id));
-
-                // Calculate average rating of questions in group
-                const avgRating =
-                  grp.questions.length > 0
-                    ? Math.round(
-                        grp.questions.reduce((sum, q) => sum + (q.rating || 3), 0) /
-                          grp.questions.length
-                      )
-                    : 3;
-                const starsText = getRatingStarsText(avgRating);
-
-                // Collect usage chips & board chips for group
-                const allBoards: Array<{ board: string; years: number[] }> = [];
-                const allUsages: QuestionPaperUsage[] = [];
-
-                // boards of the stimulus + of every question, same board merged (years combined)
-                const addBoardUsage = (b: { board: string; years: number[] }) => {
-                  const ex = allBoards.find((x) => x.board === b.board);
-                  if (ex) {
-                    ex.years = Array.from(new Set([...ex.years, ...(b.years || [])])).sort((x, y) => x - y);
-                  } else {
-                    allBoards.push({ board: b.board, years: [...(b.years || [])] });
-                  }
-                };
-                (grp.stimulus?.usedInBoards || []).forEach(addBoardUsage);
-
-                grp.questions.forEach((q) => {
-                  (q.usedInBoards || []).forEach(addBoardUsage);
-                  const usages = questionUsages[q.id] || [];
-                  usages.forEach((u) => {
-                    if (!allUsages.some((ex) => ex.paperId === u.paperId)) {
-                      allUsages.push(u);
-                    }
-                  });
-                });
-
-                return (
-                  <article
-                    key={grp.stimulus?.id || `group-${grpIdx}`}
-                    data-qids={groupQuestionIds.join(' ')}
-                    className="bg-white rounded-2xl border-[1.5px] border-[#3B4FD8] shadow-xs overflow-hidden mb-4"
-                  >
-                    {/* Top Ribbon (Full width, bg #3B4FD8, rounded-t-2xl, white text & icons) */}
-                    <div className="bg-[#3B4FD8] text-white px-3.5 py-2.5 flex items-center justify-between gap-2 rounded-t-2xl">
-                      {/* Left side: Serial, Checkbox, Rating Badge */}
-                      <div className="flex items-center gap-2.5">
-                        {/* 1. Serial: "প্রশ্ন ১" */}
-                        <span className="font-bold text-xs text-white tracking-tight shrink-0">
-                          প্রশ্ন {toBn(grpIdx + 1)}
-                        </span>
-
-                        {/* 2. Checkbox: White border, checkmark when selected */}
-                        <button
-                          type="button"
-                          aria-label={
-                            allGroupSelected
-                              ? 'এই উদ্দীপকের সব প্রশ্ন বাতিল করুন'
-                              : 'এই উদ্দীপকের সব প্রশ্ন নির্বাচন করুন'
-                          }
-                          onClick={() => handleToggleStimulusGroup(grp)}
-                          className="min-h-[44px] min-w-[44px] -my-2 flex items-center justify-center rounded-lg text-white hover:bg-white/10 active:bg-white/20 transition-colors"
-                        >
-                          <div
-                            className={`w-5 h-5 rounded border-2 border-white flex items-center justify-center transition-colors ${
-                              allGroupSelected ? 'bg-white text-[#3B4FD8]' : 'bg-transparent text-transparent'
-                            }`}
-                          >
-                            <Check className="w-3.5 h-3.5 stroke-[3]" />
-                          </div>
-                        </button>
-
-                        {/* 3. Rating Badge: Yellowish bg with dark brownish text */}
-                        <span className="px-2 py-0.5 rounded-md bg-[#FEF9C3] text-[#713F12] text-[0.625rem] font-bold border border-[#FDE047] whitespace-nowrap shadow-2xs">
-                          {starsText}
-                        </span>
-                      </div>
-
-                      {/* 4. Right side: Three-dot Kebab Menu (44px touch area, white icon) */}
-                      <KebabMenu
-                        buttonAriaLabel="মেনু"
-                        buttonClassName="text-white hover:bg-white/20 active:bg-white/30"
-                        items={[
-                          {
-                            id: 'edit',
-                            label: 'Edit this Q&A',
-                            icon: <FileEdit className="w-4 h-4 text-[#3B4FD8]" />,
-                            onClick: () => handleEditGroup(grp),
-                          },
-                          {
-                            id: 'reference',
-                            label: 'রেফারেন্স দেখুন',
-                            icon: <BookMarked className="w-4 h-4 text-[#3B4FD8]" />,
-                            onClick: () =>
-                              setReferenceView({ isOpen: true, text: grp.stimulus?.reference || '' }),
-                          },
-                          {
-                            id: 'copy',
-                            label: 'Copy',
-                            icon: <Copy className="w-4 h-4 text-[#3B4FD8]" />,
-                            onClick: () => handleCopyOrCutGroup(grp, 'copy'),
-                          },
-                          {
-                            id: 'cut',
-                            label: 'Cut',
-                            icon: <Scissors className="w-4 h-4 text-amber-600" />,
-                            onClick: () => handleCopyOrCutGroup(grp, 'cut'),
-                          },
-                          {
-                            id: 'paste-after',
-                            label: 'Paste after',
-                            icon: <Plus className="w-4 h-4 text-[#2A3BB0]" />,
-                            onClick: () => handlePasteGroup(grp, 'after'),
-                          },
-                          {
-                            id: 'paste-before',
-                            label: 'Paste before',
-                            icon: <Plus className="w-4 h-4 text-[#2A3BB0]" />,
-                            onClick: () => handlePasteGroup(grp, 'before'),
-                          },
-                          {
-                            id: 'delete',
-                            label: 'Delete',
-                            icon: <Trash2 className="w-4 h-4 text-red-500" />,
-                            isDestructive: true,
-                            onClick: () => handleDeleteGroupPrompt(grp),
-                          },
-                        ]}
-                      />
-                    </div>
-
-                    {/* Chips Row: Board Tags & Paper Usages (light gray background) */}
-                    <div className="bg-[#F8FAFC] border-b border-[#E2E8F0] px-3.5 py-2 flex flex-wrap items-center gap-1.5">
-                      {/* Board Tag Chips */}
-                      {allBoards.length > 0 ? (
-                        allBoards.map((b, bIdx) => (
-                          <span
-                            key={bIdx}
-                            className="px-2 py-0.5 rounded bg-white text-[#1B1F2A] text-[0.625rem] font-semibold border border-[#D5D9E2] flex items-center gap-1 shadow-2xs"
-                          >
-                            <Tag className="w-3 h-3 text-[#64748B]" />
-                            <span>
-                              {b.board}'{b.years.map((y) => toBn(String(y).slice(-2))).join(',')}
-                            </span>
-                          </span>
-                        ))
-                      ) : grp.stimulus?.boardTag ? (
-                        <span className="px-2 py-0.5 rounded bg-white text-[#1B1F2A] text-[0.625rem] font-semibold border border-[#D5D9E2] flex items-center gap-1 shadow-2xs">
-                          <Tag className="w-3 h-3 text-[#64748B]" />
-                          <span>{grp.stimulus.boardTag}</span>
-                        </span>
-                      ) : null}
-
-                      {/* Paper Usages Chips */}
-                      {allUsages.map((u) => (
-                        <span
-                          key={u.paperId}
-                          className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 text-[0.625rem] font-bold border border-emerald-200 flex items-center gap-1"
-                        >
-                          <Award className="w-3 h-3 text-emerald-600" />
-                          <span>
-                            {u.shortName} ×{toBn(u.count)}
-                          </span>
-                        </span>
-                      ))}
-
-                      {allBoards.length === 0 && !grp.stimulus?.boardTag && allUsages.length === 0 && (
-                        <span className="text-[0.625rem] text-[#94A3B8] italic">ট্যাগ নেই</span>
-                      )}
-                    </div>
-
-                    {/* Card Content Area: Stimulus -> Image -> Sub-questions */}
-                    <div className="p-3.5 space-y-3.5">
-                      {/* Stimulus Text & Image */}
-                      {grp.stimulus && (
-                        <div className="space-y-2">
-                          <RichText
-                            text={grp.stimulus.text}
-                            className="text-xs font-medium text-[#1B1F2A] leading-relaxed"
-                          />
-
-                          {grp.stimulus.imageIds?.map((imgId) => {
-                            const url = imageUrls[imgId];
-                            if (!url) return null;
-                            return (
-                              <div
-                                key={imgId}
-                                className="w-full my-2 overflow-hidden rounded-xl border border-[#D5D9E2] bg-white text-center"
-                              >
-                                <img
-                                  src={url}
-                                  alt="উদ্দীপকের চিত্র"
-                                  className="w-full h-auto object-contain max-h-60 mx-auto"
-                                />
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {/* Sub-questions (গ, ঘ, etc.) */}
-                      <div className="space-y-3 pt-1 border-t border-[#F2F4F8]">
-                        {grp.questions.map((question) => {
-                          const isSolutionOpen = expandedSolutions[question.id] || false;
-                          const solutionUrls = (question.solutionImageIds || [])
-                            .map((id) => imageUrls[id])
-                            .filter(Boolean) as string[];
-
-                          return (
-                            <div key={question.id} className="space-y-2">
-                              {/* Question line: plain "গ." or "ঘ." in front */}
-                              <div className="flex items-start gap-1.5 text-xs text-[#1B1F2A]">
-                                <span className="font-bold shrink-0 text-[#1B1F2A]">
-                                  {question.type ? `${question.type}.` : ''}
-                                </span>
-                                <RichText
-                                  text={question.questionText}
-                                  className="text-xs text-[#1B1F2A] leading-relaxed flex-1 font-medium"
-                                />
-                              </div>
-
-                              {/* "সমাধান দেখো" button + the boards this question (গ / ঘ) came in */}
-                              <div>
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <button
-                                    type="button"
-                                    aria-label={isSolutionOpen ? 'সমাধান লুকান' : 'সমাধান দেখুন'}
-                                    onClick={() =>
-                                      setExpandedSolutions((prev) => ({
-                                        ...prev,
-                                        [question.id]: !isSolutionOpen,
-                                      }))
-                                    }
-                                    className="min-h-[34px] px-2.5 py-1 rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#F2F4F8] text-[0.6875rem] font-semibold text-[#2A3BB0] flex items-center gap-1 transition-colors shrink-0"
-                                  >
-                                    {isSolutionOpen ? (
-                                      <>
-                                        <EyeOff className="w-3.5 h-3.5" />
-                                        <span>সমাধান লুকাও</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Eye className="w-3.5 h-3.5" />
-                                        <span>সমাধান দেখো</span>
-                                      </>
-                                    )}
-                                  </button>
-                                  <QuestionBoardTags boards={question.usedInBoards} />
-                                </div>
-
-                                {/* Solution expansion */}
-                                {isSolutionOpen && (
-                                  <div className="mt-2.5 p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-2 animate-in fade-in duration-150">
-                                    <div className="text-[0.6875rem] font-bold text-[#2A3BB0] uppercase tracking-wider">
-                                      সমাধান:
-                                    </div>
-                                    <RichText
-                                      text={question.solutionText}
-                                      className="text-xs text-[#1B1F2A] leading-relaxed"
-                                    />
-
-                                    {/* Solution images - Tapping opens full-screen zoomable viewer (Requirement 4) */}
-                                    {solutionUrls.length > 0 && (
-                                      <div className="space-y-2 pt-1">
-                                        {solutionUrls.map((url, imgIdx) => (
-                                          <div
-                                            key={imgIdx}
-                                            onClick={() =>
-                                              handleOpenImageViewer(solutionUrls, imgIdx)
-                                            }
-                                            className="w-full overflow-hidden rounded-xl border border-[#D5D9E2] bg-white cursor-pointer hover:opacity-95 transition-opacity"
-                                            title="পূর্ণ স্ক্রিনে দেখতে ট্যাপ করুন"
-                                          >
-                                            <img
-                                              src={url}
-                                              alt="সমাধান চিত্র"
-                                              className="w-full h-auto object-contain max-h-56 mx-auto"
-                                            />
-                                          </div>
-                                        ))}
-                                        <p className="text-[0.625rem] text-[#64748B] text-center italic">
-                                          (ছবিতে ট্যাপ করে বড় ও জুম করে দেখুন)
-                                        </p>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </article>
-                );
-              })
+              filteredQuestionGroups.map((grp, grpIdx) => (
+                <QuestionGroupCard
+                  key={grp.stimulus?.id || `group-${grpIdx}`}
+                  grp={grp}
+                  grpIdx={grpIdx}
+                  selectedIds={selectedIds}
+                  questionUsages={questionUsages}
+                  imageUrls={imageUrls}
+                  expandedSolutions={expandedSolutions}
+                  setExpandedSolutions={setExpandedSolutions}
+                  setReferenceView={setReferenceView}
+                  handleToggleStimulusGroup={handleToggleStimulusGroup}
+                  handleCopyOrCutGroup={handleCopyOrCutGroup}
+                  handlePasteGroup={handlePasteGroup}
+                  handleDeleteGroupPrompt={handleDeleteGroupPrompt}
+                  handleEditGroup={handleEditGroup}
+                  handleOpenImageViewer={handleOpenImageViewer}
+                />
+              ))
             )}
           </div>
         )}
@@ -1717,7 +1251,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
             })
           }
           style={{ bottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}
-          className="fixed right-4 z-40 min-h-[48px] px-4 py-2.5 rounded-full bg-[#3B4FD8] hover:bg-[#2A3BB0] active:bg-[#202E91] text-white font-bold text-xs shadow-xl flex items-center gap-2 transition-transform hover:scale-105 active:scale-95"
+          className="fixed right-4 z-40 min-h-[48px] px-4 py-2.5 rounded-full bg-brand hover:bg-brand-strong active:bg-[#202E91] text-white font-bold text-xs shadow-xl flex items-center gap-2 transition-transform hover:scale-105 active:scale-95"
         >
           <Plus className="w-5 h-5 stroke-[2.5]" />
           <span>Add question</span>

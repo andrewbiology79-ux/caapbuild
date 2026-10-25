@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { EmptyState } from '../ui/EmptyState';
 import {
   Search,
   SlidersHorizontal,
@@ -8,8 +9,6 @@ import {
   Trash2,
   Layers,
   BookOpen,
-  CheckSquare,
-  Square,
   ListChecks,
   FlipHorizontal,
   XCircle,
@@ -56,610 +55,17 @@ import {
 } from '../utils/filterEngine';
 import { filterTabState, persistDropdownOrder, type DropdownKey } from '../utils/filterStore';
 
+import { SORT_LABELS, TYPE_OPTIONS, NO_SCROLLBAR, toggleIn } from '../features/filter/FilterUi';
+import { ResultCard } from '../features/filter/ResultCard';
+import { FilterSheet } from '../features/filter/FilterSheet';
+
 const PAGE_SIZE = 30;
 
-const SORT_LABELS: Record<SortMode, string> = {
-  default: 'স্বাভাবিক ক্রম',
-  'rating-desc': 'রেটিং: বেশি → কম',
-  'rating-asc': 'রেটিং: কম → বেশি',
-  'marks-desc': 'নম্বর: বেশি → কম',
-  type: 'টাইপ (ক → ঘ)',
-};
-
-const TYPE_OPTIONS: QuestionType[] = ['ক', 'খ', 'গ', 'ঘ'];
 
 const EMPTY_DATASET: FilterDataset = {
   rows: [],
   loadedAt: 0,
   facets: { subjects: [], chapters: [], topics: [], marks: [], boards: [], years: [], categories: [] },
-};
-
-/** hides the scrollbar on the horizontal chip rows */
-const NO_SCROLLBAR: React.CSSProperties = { scrollbarWidth: 'none' };
-
-function toggleIn<T>(list: T[], value: T): T[] {
-  return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
-}
-
-/* ------------------------------------------------------------------ */
-/* Small building blocks                                               */
-/* ------------------------------------------------------------------ */
-
-const Chip: React.FC<{
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-  className?: string;
-}> = ({ active, onClick, children, className = '' }) => (
-  <button
-    type="button"
-    onClick={onClick}
-    aria-pressed={active}
-    className={`min-h-[36px] px-3 py-1.5 rounded-full border text-xs font-semibold transition-all active:scale-95 ${
-      active
-        ? 'bg-[#3B4FD8] border-[#3B4FD8] text-white shadow-sm'
-        : 'bg-white border-[#D5D9E2] text-[#1B1F2A] hover:bg-[#EEF2FF]'
-    } ${className}`}
-  >
-    {children}
-  </button>
-);
-
-const Section: React.FC<{ title: string; hint?: string; children: React.ReactNode }> = ({
-  title,
-  hint,
-  children,
-}) => (
-  <div className="space-y-2">
-    <div className="flex items-baseline justify-between">
-      <h4 className="text-xs font-bold text-[#1B1F2A]">{title}</h4>
-      {hint && <span className="text-[0.6875rem] text-[#64748B]">{hint}</span>}
-    </div>
-    <div className="flex flex-wrap gap-2">{children}</div>
-  </div>
-);
-
-const Segmented: React.FC<{
-  title?: string;
-  value: string;
-  options: Array<{ value: string; label: string }>;
-  onChange: (v: string) => void;
-}> = ({ title, value, options, onChange }) => (
-  <div className="space-y-2">
-    {title && <h4 className="text-xs font-bold text-[#1B1F2A]">{title}</h4>}
-    <div className="flex w-full rounded-xl bg-[#F2F4F8] p-1 border border-[#D5D9E2]">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          onClick={() => onChange(o.value)}
-          className={`flex-1 min-h-[34px] rounded-lg text-xs font-semibold transition-all ${
-            value === o.value ? 'bg-white text-[#2A3BB0] shadow-sm' : 'text-[#64748B]'
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  </div>
-);
-
-/* ------------------------------------------------------------------ */
-/* Result card (same look as the Type CQ / Chapter CQ question cards)  */
-/* ------------------------------------------------------------------ */
-
-const imageUrlCache = new Map<string, string>();
-
-async function loadImageUrl(source: CqScope, imageId: string): Promise<string | null> {
-  const key = `${source}:${imageId}`;
-  const cached = imageUrlCache.get(key);
-  if (cached) return cached;
-  try {
-    const url = await getApi(source).getImageBlobUrl(imageId);
-    if (url) imageUrlCache.set(key, url);
-    return url;
-  } catch {
-    return null;
-  }
-}
-
-interface ResultCardProps {
-  row: FilterRow;
-  index: number;
-  selected: boolean;
-  onToggle: (row: FilterRow) => void;
-  onLocate: (row: FilterRow) => void;
-  onOpenImages: (urls: string[], index: number) => void;
-}
-
-const ResultCard: React.FC<ResultCardProps> = React.memo(
-  ({ row, index, selected, onToggle, onLocate, onOpenImages }) => {
-    const q = row.question;
-    const isChapter = row.source === 'chapter';
-    const [solutionOpen, setSolutionOpen] = useState(false);
-    const [referenceOpen, setReferenceOpen] = useState(false);
-    const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
-
-    // Load the images this card needs (stimulus always, solution when it is opened)
-    useEffect(() => {
-      let cancelled = false;
-      const ids = [...(row.stimulus?.imageIds ?? []), ...(solutionOpen ? q.solutionImageIds ?? [] : [])];
-      (async () => {
-        const found: Record<string, string> = {};
-        for (const id of ids) {
-          const url = await loadImageUrl(row.source, id);
-          if (url) found[id] = url;
-        }
-        if (!cancelled) setImageUrls((prev) => ({ ...prev, ...found }));
-      })();
-      return () => {
-        cancelled = true;
-      };
-    }, [row.source, row.stimulus, q.solutionImageIds, solutionOpen]);
-
-    const solutionUrls = (q.solutionImageIds || []).map((id) => imageUrls[id]).filter(Boolean) as string[];
-    // boards of the stimulus + of this question (same board merged, years combined)
-    const boards = (() => {
-      const merged: Array<{ board: string; years: number[] }> = [];
-      [...(row.stimulus?.usedInBoards || []), ...(q.usedInBoards || [])].forEach((b) => {
-        const ex = merged.find((m) => m.board === b.board);
-        if (ex) ex.years = Array.from(new Set([...ex.years, ...(b.years || [])])).sort((x, y) => x - y);
-        else merged.push({ board: b.board, years: [...(b.years || [])] });
-      });
-      return merged;
-    })();
-    const hasTags = boards.length > 0 || !!row.stimulus?.boardTag || row.usages.length > 0;
-
-    return (
-      <article
-        className={`bg-white rounded-2xl border-[1.5px] shadow-xs overflow-hidden ${
-          selected ? 'border-[#3B4FD8] ring-2 ring-[#3B4FD8]/40' : 'border-[#3B4FD8]'
-        }`}
-      >
-        {/* Ribbon: serial, checkbox, rating, menu */}
-        <div className="bg-[#3B4FD8] text-white px-3.5 py-2.5 flex items-center justify-between gap-2 rounded-t-2xl">
-          <div className="flex items-center gap-2.5">
-            <span className="font-bold text-xs text-white tracking-tight shrink-0">প্রশ্ন {toBn(index + 1)}</span>
-            <button
-              type="button"
-              aria-label={selected ? 'নির্বাচন বাতিল করুন' : 'নির্বাচন করুন'}
-              onClick={() => onToggle(row)}
-              className="min-h-[44px] min-w-[44px] -my-2 flex items-center justify-center rounded-lg text-white hover:bg-white/10 active:bg-white/20 transition-colors"
-            >
-              <div
-                className={`w-5 h-5 rounded border-2 border-white flex items-center justify-center transition-colors ${
-                  selected ? 'bg-white text-[#3B4FD8]' : 'bg-transparent text-transparent'
-                }`}
-              >
-                <Check className="w-3.5 h-3.5 stroke-[3]" />
-              </div>
-            </button>
-            <span className="px-2 py-0.5 rounded-md bg-[#FEF9C3] text-[#713F12] text-[0.625rem] font-bold border border-[#FDE047] whitespace-nowrap shadow-2xs">
-              {getRatingStarsText(q.rating)}
-            </span>
-          </div>
-          <KebabMenu
-            buttonAriaLabel="মেনু"
-            buttonClassName="text-white hover:bg-white/20 active:bg-white/30"
-            items={[
-              {
-                id: 'reference',
-                label: 'রেফারেন্স দেখুন',
-                icon: <BookMarked className="w-4 h-4 text-[#3B4FD8]" />,
-                onClick: () => setReferenceOpen(true),
-              },
-              {
-                id: 'locate',
-                label: isChapter ? 'Chapter CQ-তে খুলুন' : 'Type CQ-তে খুলুন',
-                icon: <FolderOpen className="w-4 h-4 text-[#3B4FD8]" />,
-                onClick: () => onLocate(row),
-              },
-            ]}
-          />
-        </div>
-
-        {/* Where this question lives: source tag + type (Type CQ) or chapter (Chapter CQ) */}
-        <div className="bg-[#F8FAFC] border-b border-[#E2E8F0] px-3.5 py-2 space-y-1.5">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span
-              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[0.6875rem] font-bold ${
-                isChapter ? 'bg-emerald-50 text-emerald-700' : 'bg-[#EEF2FF] text-[#2A3BB0]'
-              }`}
-            >
-              {isChapter ? <BookOpen className="w-3 h-3" /> : <Layers className="w-3 h-3" />}
-              {isChapter ? 'Chapter CQ' : 'Type CQ'}
-            </span>
-            {!isChapter && row.topicName && (
-              <span className="px-2 py-0.5 rounded-full bg-white text-[#1B1F2A] text-[0.6875rem] font-bold border border-[#D5D9E2]">
-                টাইপ: {row.topicName}
-              </span>
-            )}
-            <span className="px-2 py-0.5 rounded-full bg-white text-[#1B1F2A] text-[0.6875rem] font-bold border border-[#D5D9E2]">
-              অধ্যায়: {row.chapterName}
-            </span>
-            <span className="px-2 py-0.5 rounded-full bg-white text-[#1B1F2A] text-[0.6875rem] font-bold border border-[#D5D9E2]">
-              {toBn(q.marks)} নম্বর
-            </span>
-          </div>
-          <p className="text-[0.625rem] text-[#64748B] leading-snug">{row.subjectName}</p>
-        </div>
-
-        {/* Board tags & paper usages */}
-        <div className="bg-[#F8FAFC] border-b border-[#E2E8F0] px-3.5 py-2 flex flex-wrap items-center gap-1.5">
-          {boards.length > 0 ? (
-            boards.map((b, i) => (
-              <span
-                key={i}
-                className="px-2 py-0.5 rounded bg-white text-[#1B1F2A] text-[0.625rem] font-semibold border border-[#D5D9E2] flex items-center gap-1 shadow-2xs"
-              >
-                <Tag className="w-3 h-3 text-[#64748B]" />
-                <span>
-                  {b.board}'{(b.years || []).map((y) => toBn(String(y).slice(-2))).join(',')}
-                </span>
-              </span>
-            ))
-          ) : row.stimulus?.boardTag ? (
-            <span className="px-2 py-0.5 rounded bg-white text-[#1B1F2A] text-[0.625rem] font-semibold border border-[#D5D9E2] flex items-center gap-1 shadow-2xs">
-              <Tag className="w-3 h-3 text-[#64748B]" />
-              <span>{row.stimulus.boardTag}</span>
-            </span>
-          ) : null}
-
-          {row.usages.map((u) => (
-            <span
-              key={u.paperId}
-              className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 text-[0.625rem] font-bold border border-emerald-200 flex items-center gap-1"
-            >
-              <Award className="w-3 h-3 text-emerald-600" />
-              <span>
-                {u.shortName} ×{toBn(u.count)}
-              </span>
-            </span>
-          ))}
-
-          {!hasTags && <span className="text-[0.625rem] text-[#94A3B8] italic">ট্যাগ নেই</span>}
-        </div>
-
-        {/* Content */}
-        <div className="p-3.5 space-y-3.5">
-          {row.stimulus && (
-            <div className="space-y-2">
-              <RichText text={row.stimulus.text} className="text-xs font-medium text-[#1B1F2A] leading-relaxed" />
-              {row.stimulus.imageIds?.map((imgId) => {
-                const url = imageUrls[imgId];
-                if (!url) return null;
-                return (
-                  <div
-                    key={imgId}
-                    className="w-full my-2 overflow-hidden rounded-xl border border-[#D5D9E2] bg-white text-center"
-                  >
-                    <img src={url} alt="উদ্দীপকের চিত্র" className="w-full h-auto object-contain max-h-60 mx-auto" />
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          <div className="space-y-2 pt-1 border-t border-[#F2F4F8]">
-            <div className="flex items-start gap-1.5 text-xs text-[#1B1F2A]">
-              <span className="font-bold shrink-0 text-[#1B1F2A]">{q.type ? `${q.type}.` : ''}</span>
-              <RichText
-                text={q.questionText}
-                className="text-xs text-[#1B1F2A] leading-relaxed flex-1 font-medium"
-              />
-            </div>
-
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <button
-                  type="button"
-                  aria-label={solutionOpen ? 'সমাধান লুকান' : 'সমাধান দেখুন'}
-                  onClick={() => setSolutionOpen((o) => !o)}
-                  className="min-h-[34px] px-2.5 py-1 rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#F2F4F8] text-[0.6875rem] font-semibold text-[#2A3BB0] flex items-center gap-1 transition-colors shrink-0"
-                >
-                  {solutionOpen ? (
-                    <>
-                      <EyeOff className="w-3.5 h-3.5" />
-                      <span>সমাধান লুকাও</span>
-                    </>
-                  ) : (
-                    <>
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>সমাধান দেখো</span>
-                    </>
-                  )}
-                </button>
-                <QuestionBoardTags boards={q.usedInBoards} />
-              </div>
-
-              {solutionOpen && (
-                <div className="mt-2.5 p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-2">
-                  <div className="text-[0.6875rem] font-bold text-[#2A3BB0] uppercase tracking-wider">সমাধান:</div>
-                  <RichText text={q.solutionText} className="text-xs text-[#1B1F2A] leading-relaxed" />
-                  {solutionUrls.length > 0 && (
-                    <div className="space-y-2 pt-1">
-                      {solutionUrls.map((url, i) => (
-                        <div
-                          key={i}
-                          onClick={() => onOpenImages(solutionUrls, i)}
-                          className="w-full overflow-hidden rounded-xl border border-[#D5D9E2] bg-white cursor-pointer hover:opacity-95 transition-opacity"
-                        >
-                          <img src={url} alt="সমাধান চিত্র" className="w-full h-auto object-contain max-h-56 mx-auto" />
-                        </div>
-                      ))}
-                      <p className="text-[0.625rem] text-[#64748B] text-center italic">
-                        (ছবিতে ট্যাপ করে বড় ও জুম করে দেখুন)
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-        <ReferenceDialog
-          isOpen={referenceOpen}
-          reference={row.stimulus?.reference}
-          onClose={() => setReferenceOpen(false)}
-        />
-      </article>
-    );
-  }
-);
-ResultCard.displayName = 'ResultCard';
-
-/* ------------------------------------------------------------------ */
-/* Filter sheet (bottom window)                                        */
-/* ------------------------------------------------------------------ */
-
-interface SheetProps {
-  isOpen: boolean;
-  dataset: FilterDataset;
-  criteria: FilterCriteria;
-  sort: SortMode;
-  resultCount: number;
-  onChange: (c: FilterCriteria) => void;
-  onSortChange: (s: SortMode) => void;
-  onClose: () => void;
-}
-
-const FilterSheet: React.FC<SheetProps> = ({
-  isOpen,
-  dataset,
-  criteria,
-  sort,
-  resultCount,
-  onChange,
-  onSortChange,
-  onClose,
-}) => {
-  const { registerBackHandler } = useNavigation();
-
-  // Hardware back button closes this window instead of leaving the app
-  useEffect(() => {
-    if (!isOpen) return;
-    return registerBackHandler(() => {
-      onClose();
-      return true;
-    });
-  }, [isOpen, onClose, registerBackHandler]);
-
-  if (!isOpen) return null;
-  const f = dataset.facets;
-  const set = (patch: Partial<FilterCriteria>) => onChange({ ...criteria, ...patch });
-
-  const chapters = f.chapters.filter((c) => criteria.subjects.length === 0 || criteria.subjects.includes(c.subject));
-  const active = countActiveFilters(criteria);
-  const plainChapterNames = f.subjects.length === 1 || criteria.subjects.length === 1;
-  const chapterOnly = criteria.sources.length === 1 && criteria.sources[0] === 'chapter';
-
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="ফিল্টার"
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-[390px] h-[88vh] bg-white rounded-t-3xl shadow-2xl flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="px-5 pt-3 pb-3 border-b border-[#E2E8F0]">
-          <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[#D5D9E2]" />
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold text-[#1B1F2A]">ফিল্টার</h3>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => onChange({ ...EMPTY_CRITERIA, text: criteria.text })}
-                disabled={active === 0}
-                className="min-h-[36px] px-3 text-xs font-bold text-[#3B4FD8] disabled:text-[#94A3B8]"
-              >
-                সব মুছুন
-              </button>
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="ফিল্টার বন্ধ করুন"
-                className="w-10 h-10 flex items-center justify-center rounded-full text-[#1B1F2A] hover:bg-[#F2F4F8] active:bg-[#E5E9F0]"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-          <Segmented
-            title="উৎস"
-            value={criteria.sources.length === 1 ? criteria.sources[0] : 'all'}
-            onChange={(v) =>
-              set({
-                sources: v === 'all' ? [] : [v as CqScope],
-                // Chapter CQ has no type/topic level
-                topics: v === 'chapter' ? [] : criteria.topics,
-              })
-            }
-            options={[
-              { value: 'all', label: 'সব' },
-              { value: 'type', label: 'Type CQ' },
-              { value: 'chapter', label: 'Chapter CQ' },
-            ]}
-          />
-
-          <Section title="সাজান">
-            {(Object.keys(SORT_LABELS) as SortMode[]).map((m) => (
-              <Chip key={m} active={sort === m} onClick={() => onSortChange(m)}>
-                {SORT_LABELS[m]}
-              </Chip>
-            ))}
-          </Section>
-
-          {f.subjects.length > 0 && (
-            <Section title="বিষয়">
-              {f.subjects.map((s) => (
-                <Chip
-                  key={s}
-                  active={criteria.subjects.includes(s)}
-                  onClick={() => set({ subjects: toggleIn(criteria.subjects, s), chapters: [] })}
-                >
-                  {s}
-                </Chip>
-              ))}
-            </Section>
-          )}
-
-          {chapters.length > 0 && (
-            <Section title="অধ্যায়" hint={`${toBn(chapters.length)}টি`}>
-              {chapters.map((c) => (
-                <Chip
-                  key={c.key}
-                  active={criteria.chapters.includes(c.key)}
-                  onClick={() => set({ chapters: toggleIn(criteria.chapters, c.key) })}
-                >
-                  {plainChapterNames ? c.name : `${c.subject} · ${c.name}`}
-                </Chip>
-              ))}
-            </Section>
-          )}
-
-          {!chapterOnly && f.topics.length > 0 && (
-            <Section title="টাইপ / টপিক (Type CQ)">
-              {f.topics.map((t) => (
-                <Chip key={t} active={criteria.topics.includes(t)} onClick={() => set({ topics: toggleIn(criteria.topics, t) })}>
-                  {t}
-                </Chip>
-              ))}
-            </Section>
-          )}
-
-          <Section title="প্রশ্নের ধরন">
-            {TYPE_OPTIONS.map((t) => (
-              <Chip key={t} active={criteria.types.includes(t)} onClick={() => set({ types: toggleIn(criteria.types, t) })}>
-                {t}
-              </Chip>
-            ))}
-          </Section>
-
-          <Section title="রেটিং">
-            {[5, 4, 3, 2, 1].map((r) => (
-              <Chip key={r} active={criteria.ratings.includes(r)} onClick={() => set({ ratings: toggleIn(criteria.ratings, r) })}>
-                {'★'.repeat(r)}
-              </Chip>
-            ))}
-          </Section>
-
-          {f.marks.length > 0 && (
-            <Section title="নম্বর">
-              {f.marks.map((m) => (
-                <Chip key={m} active={criteria.marks.includes(m)} onClick={() => set({ marks: toggleIn(criteria.marks, m) })}>
-                  {toBn(m)}
-                </Chip>
-              ))}
-            </Section>
-          )}
-
-          {f.boards.length > 0 && (
-            <Section title="বোর্ড">
-              {f.boards.map((b) => (
-                <Chip key={b} active={criteria.boards.includes(b)} onClick={() => set({ boards: toggleIn(criteria.boards, b) })}>
-                  {b}
-                </Chip>
-              ))}
-            </Section>
-          )}
-
-          {f.years.length > 0 && (
-            <Section title="সাল">
-              {f.years.map((y) => (
-                <Chip key={y} active={criteria.years.includes(y)} onClick={() => set({ years: toggleIn(criteria.years, y) })}>
-                  {toBn(y)}
-                </Chip>
-              ))}
-            </Section>
-          )}
-
-          {f.categories.length > 0 && (
-            <Section title="যে ক্যাটেগরিতে ব্যবহৃত হয়েছে">
-              {f.categories.map((c) => (
-                <Chip
-                  key={c.id}
-                  active={criteria.categories.includes(c.id)}
-                  onClick={() => set({ categories: toggleIn(criteria.categories, c.id) })}
-                >
-                  {c.name}
-                </Chip>
-              ))}
-            </Section>
-          )}
-
-          <Segmented
-            title="বোর্ডে এসেছে কিনা"
-            value={criteria.usage}
-            onChange={(v) => set({ usage: v as FilterCriteria['usage'] })}
-            options={[
-              { value: 'any', label: 'সব' },
-              { value: 'used', label: 'এসেছে' },
-              { value: 'unused', label: 'আসেনি' },
-            ]}
-          />
-
-          <Segmented
-            title="উদ্দীপক"
-            value={criteria.stimulus}
-            onChange={(v) => set({ stimulus: v as FilterCriteria['stimulus'] })}
-            options={[
-              { value: 'any', label: 'সব' },
-              { value: 'with', label: 'আছে' },
-              { value: 'without', label: 'নেই' },
-            ]}
-          />
-
-          <Segmented
-            title="সমাধান"
-            value={criteria.solution}
-            onChange={(v) => set({ solution: v as FilterCriteria['solution'] })}
-            options={[
-              { value: 'any', label: 'সব' },
-              { value: 'with', label: 'আছে' },
-              { value: 'without', label: 'নেই' },
-            ]}
-          />
-        </div>
-
-        <div className="px-5 py-3 border-t border-[#E2E8F0] bg-white">
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-full min-h-[48px] rounded-xl bg-[#3B4FD8] text-white text-sm font-bold active:scale-[0.98] transition-transform"
-          >
-            {toBn(resultCount)}টি প্রশ্ন দেখুন
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 };
 
 /* ------------------------------------------------------------------ */
@@ -1181,19 +587,19 @@ export const FilterScreen: React.FC = () => {
       {
         id: 'search',
         label: searchOpen ? 'সার্চ বন্ধ করুন' : 'প্রশ্ন সার্চ',
-        icon: <Search className="w-4 h-4 text-[#3B4FD8]" />,
+        icon: <Search className="w-4 h-4 text-brand-fg" />,
         onClick: () => (searchOpen ? closeSearch() : setSearchOpen(true)),
       },
       {
         id: 'select-all',
         label: `সব সিলেক্ট করুন (${toBn(results.length)})`,
-        icon: <ListChecks className="w-4 h-4 text-[#3B4FD8]" />,
+        icon: <ListChecks className="w-4 h-4 text-brand-fg" />,
         onClick: () => rewriteSelection('all'),
       },
       {
         id: 'invert',
         label: 'উল্টো সিলেক্ট',
-        icon: <FlipHorizontal className="w-4 h-4 text-[#3B4FD8]" />,
+        icon: <FlipHorizontal className="w-4 h-4 text-brand-fg" />,
         onClick: () => rewriteSelection('invert'),
       },
     ];
@@ -1202,13 +608,13 @@ export const FilterScreen: React.FC = () => {
         {
           id: 'clear',
           label: 'সিলেকশন মুছুন',
-          icon: <XCircle className="w-4 h-4 text-[#1B1F2A]" />,
+          icon: <XCircle className="w-4 h-4 text-ink" />,
           onClick: clearSelectionAll,
         },
         {
           id: 'pdf',
           label: 'PDF বানান',
-          icon: <FileText className="w-4 h-4 text-[#3B4FD8]" />,
+          icon: <FileText className="w-4 h-4 text-brand-fg" />,
           onClick: () => setPdfOpen(true),
         },
         {
@@ -1220,7 +626,7 @@ export const FilterScreen: React.FC = () => {
         {
           id: 'copy',
           label: 'কপি করুন',
-          icon: <Copy className="w-4 h-4 text-[#1B1F2A]" />,
+          icon: <Copy className="w-4 h-4 text-ink" />,
           onClick: handleBulkCopy,
         },
         {
@@ -1251,7 +657,7 @@ export const FilterScreen: React.FC = () => {
   const openDef = openDropdown ? dropdowns[openDropdown] : null;
 
   return (
-    <div className="flex-1 flex flex-col min-h-full pb-20 bg-[#F2F4F8]">
+    <div className="flex-1 flex flex-col min-h-full pb-20 bg-app">
       <Header
         title="Filter"
         subtitle={
@@ -1271,7 +677,7 @@ export const FilterScreen: React.FC = () => {
             >
               <SlidersHorizontal className="w-5 h-5" />
               {activeCount > 0 && (
-                <span className="absolute top-1 right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[0.625rem] font-bold flex items-center justify-center border-2 border-[#3B4FD8]">
+                <span className="absolute top-1 right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[0.625rem] font-bold flex items-center justify-center border-2 border-brand">
                   {toBn(activeCount)}
                 </span>
               )}
@@ -1282,23 +688,23 @@ export const FilterScreen: React.FC = () => {
       />
 
       {/* Sticky control bar */}
-      <div className="sticky top-14 z-30 bg-white dark:bg-slate-900 border-b border-[#D5D9E2] dark:border-slate-700 px-3.5 pt-2.5 pb-2.5 space-y-2.5">
+      <div className="sticky top-14 z-30 bg-surface border-b border-line px-3.5 pt-2.5 pb-2.5 space-y-2.5">
         {searchOpen && (
           <div className="relative">
-            <Search className="w-4 h-4 text-[#64748B] absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-ink-muted absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               autoFocus
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="প্রশ্ন, উদ্দীপক বা সমাধান খুঁজুন..."
-              className="w-full min-h-[44px] pl-9 pr-9 py-2 rounded-xl bg-[#F2F4F8] border border-[#D5D9E2] text-xs text-[#1B1F2A] focus:outline-none focus:ring-2 focus:ring-[#3B4FD8] focus:bg-white transition-all"
+              className="w-full min-h-[44px] pl-9 pr-9 py-2 rounded-xl bg-app border border-line text-xs text-ink focus:outline-none focus:ring-2 focus:ring-brand focus:bg-surface transition-all"
             />
             <button
               type="button"
               onClick={closeSearch}
               aria-label="সার্চ বন্ধ করুন"
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-[#64748B]"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-ink-muted"
             >
               <X className="w-4 h-4" />
             </button>
@@ -1326,14 +732,14 @@ export const FilterScreen: React.FC = () => {
                 aria-expanded={isOpen}
                 className={`shrink-0 min-h-[36px] pl-3 pr-2 rounded-full border text-xs font-semibold flex items-center gap-1 select-none transition-all ${
                   isDragging
-                    ? 'scale-110 shadow-lg ring-2 ring-[#3B4FD8] z-10'
+                    ? 'scale-110 shadow-lg ring-2 ring-brand z-10'
                     : 'active:scale-95'
                 } ${
                   count > 0
-                    ? 'bg-[#3B4FD8] border-[#3B4FD8] text-white'
+                    ? 'bg-brand border-brand text-white'
                     : isOpen
-                      ? 'bg-[#EEF2FF] border-[#3B4FD8] text-[#2A3BB0]'
-                      : 'bg-white border-[#D5D9E2] text-[#1B1F2A]'
+                      ? 'bg-brand-soft border-brand text-brand-ink'
+                      : 'bg-surface border-line text-ink'
                 }`}
                 style={{ WebkitUserSelect: 'none' }}
               >
@@ -1347,9 +753,9 @@ export const FilterScreen: React.FC = () => {
 
         {/* Open dropdown panel */}
         {openDef && (
-          <div className="rounded-xl border border-[#D5D9E2] bg-white shadow-lg overflow-hidden">
-            <div className="flex items-center justify-between px-3.5 py-2 bg-[#F8FAFC] border-b border-[#E2E8F0]">
-              <span className="text-xs font-bold text-[#1B1F2A]">{openDef.label}</span>
+          <div className="rounded-xl border border-line bg-surface shadow-lg overflow-hidden">
+            <div className="flex items-center justify-between px-3.5 py-2 bg-surface-2 border-b border-line">
+              <span className="text-xs font-bold text-ink">{openDef.label}</span>
               <div className="flex items-center gap-1">
                 {openDef.selected.length > 0 && openDef.onClear && (
                   <button
@@ -1364,7 +770,7 @@ export const FilterScreen: React.FC = () => {
                   type="button"
                   onClick={() => setOpenDropdown(null)}
                   aria-label="বন্ধ করুন"
-                  className="w-8 h-8 flex items-center justify-center text-[#64748B]"
+                  className="w-8 h-8 flex items-center justify-center text-ink-muted"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -1372,7 +778,7 @@ export const FilterScreen: React.FC = () => {
             </div>
             <div className="max-h-[45vh] overflow-y-auto">
               {openDef.options.length === 0 ? (
-                <p className="px-3.5 py-4 text-center text-xs text-[#64748B]">{openDef.emptyHint ?? 'কোনো অপশন নেই'}</p>
+                <p className="px-3.5 py-4 text-center text-xs text-ink-muted">{openDef.emptyHint ?? 'কোনো অপশন নেই'}</p>
               ) : (
                 openDef.options.map((o) => {
                   const on = openDef.selected.includes(o.value) || (openDef.single && openDef.key === 'sort' && o.value === 'default' && sort === 'default');
@@ -1384,10 +790,10 @@ export const FilterScreen: React.FC = () => {
                         openDef.onToggle(o.value);
                         if (openDef.single) setOpenDropdown(null);
                       }}
-                      className="w-full min-h-[42px] px-3.5 text-left text-xs font-medium text-[#1B1F2A] flex items-center justify-between gap-2 hover:bg-[#F2F4F8] border-b border-[#F2F4F8] last:border-b-0"
+                      className="w-full min-h-[42px] px-3.5 text-left text-xs font-medium text-ink flex items-center justify-between gap-2 hover:bg-hover border-b border-line-soft last:border-b-0"
                     >
                       <span className="min-w-0">{o.label}</span>
-                      {on && <Check className="w-4 h-4 text-[#3B4FD8] shrink-0" />}
+                      {on && <Check className="w-4 h-4 text-brand-fg shrink-0" />}
                     </button>
                   );
                 })
@@ -1398,10 +804,10 @@ export const FilterScreen: React.FC = () => {
 
         {/* Result count + selection */}
         <div className="flex items-center justify-between">
-          <p className="text-xs font-bold text-[#1B1F2A]">
+          <p className="text-xs font-bold text-ink">
             {toBn(results.length)}টি ফলাফল
             {hasAnyFilter && dataset && (
-              <span className="font-medium text-[#64748B]"> / {toBn(dataset.rows.length)}</span>
+              <span className="font-medium text-ink-muted"> / {toBn(dataset.rows.length)}</span>
             )}
           </p>
           <div className="flex items-center gap-1">
@@ -1418,7 +824,7 @@ export const FilterScreen: React.FC = () => {
               <button
                 type="button"
                 onClick={clearSelectionAll}
-                className="min-h-[32px] px-2.5 rounded-lg text-[0.6875rem] font-bold text-[#2A3BB0] bg-[#EEF2FF] flex items-center gap-1"
+                className="min-h-[32px] px-2.5 rounded-lg text-[0.6875rem] font-bold text-brand-ink bg-brand-soft flex items-center gap-1"
               >
                 {hiddenSelected > 0
                   ? `${toBn(selectedIds.size - hiddenSelected)} এখানে · ${toBn(selectedIds.size)} মোট`
@@ -1433,28 +839,29 @@ export const FilterScreen: React.FC = () => {
       {/* Results */}
       <div className="flex-1 px-3.5 py-3 space-y-3">
         {loading && !dataset ? (
-          <div className="py-16 text-center text-xs text-[#64748B] flex flex-col items-center gap-2">
-            <RefreshCw className="w-6 h-6 animate-spin text-[#3B4FD8]" />
+          <div className="py-16 text-center text-xs text-ink-muted flex flex-col items-center gap-2">
+            <RefreshCw className="w-6 h-6 animate-spin text-brand-fg" />
             লোড হচ্ছে...
           </div>
         ) : results.length === 0 ? (
-          <div className="bg-white rounded-2xl p-8 text-center border border-[#D5D9E2] space-y-3">
-            <Search className="w-8 h-8 mx-auto text-[#94A3B8]" />
-            <p className="text-sm text-[#64748B]">
-              {dataset && dataset.rows.length === 0
+          <EmptyState
+            title={
+              dataset && dataset.rows.length === 0
                 ? 'এখনো কোনো প্রশ্ন যুক্ত করা হয়নি'
-                : 'এই ফিল্টারে কোনো প্রশ্ন পাওয়া যায়নি'}
-            </p>
-            {hasAnyFilter && (
-              <button
-                type="button"
-                onClick={clearAllFilters}
-                className="min-h-[44px] px-4 py-2 rounded-xl bg-[#3B4FD8] text-white text-xs font-semibold"
-              >
-                ফিল্টার মুছুন
-              </button>
-            )}
-          </div>
+                : 'এই ফিল্টারে কোনো প্রশ্ন পাওয়া যায়নি'
+            }
+            action={
+              hasAnyFilter ? (
+                <button
+                  type="button"
+                  onClick={clearAllFilters}
+                  className="min-h-[44px] px-4 py-2 rounded-xl bg-brand text-white text-xs font-semibold"
+                >
+                  ফিল্টার মুছুন
+                </button>
+              ) : undefined
+            }
+          />
         ) : (
           <>
             {results.slice(0, visible).map((row, i) => (
@@ -1469,7 +876,7 @@ export const FilterScreen: React.FC = () => {
               />
             ))}
             {visible < results.length && (
-              <div ref={sentinelRef} className="py-4 text-center text-xs text-[#64748B]">
+              <div ref={sentinelRef} className="py-4 text-center text-xs text-ink-muted">
                 আরও লোড হচ্ছে...
               </div>
             )}

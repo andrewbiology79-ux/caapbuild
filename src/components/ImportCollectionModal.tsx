@@ -7,7 +7,6 @@ import {
   FileCheck,
   CheckCircle2,
   Image as ImageIcon,
-  HelpCircle,
   RefreshCw,
   FolderOpen,
 } from 'lucide-react';
@@ -164,9 +163,9 @@ export const ImportCollectionModal: React.FC<ImportCollectionModalProps> = ({
       aria-labelledby="import-modal-title"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150"
     >
-      <div className="w-full max-w-[370px] bg-white dark:bg-slate-900 text-[#1B1F2A] dark:text-slate-100 rounded-3xl border border-[#D5D9E2] dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+      <div className="w-full max-w-[370px] bg-surface text-ink rounded-3xl border border-line shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
         {/* Header */}
-        <div className="bg-[#3B4FD8] text-white px-5 py-3.5 flex items-center justify-between shrink-0">
+        <div className="bg-brand text-white px-5 py-3.5 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
             <Upload className="w-5 h-5 text-white" />
             <h2 id="import-modal-title" className="text-base font-bold text-white">
@@ -191,7 +190,7 @@ export const ImportCollectionModal: React.FC<ImportCollectionModalProps> = ({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="flex-1 min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] active:bg-[#202E91] text-white text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-colors"
+                className="flex-1 min-h-[44px] px-3.5 py-2.5 rounded-xl bg-brand hover:bg-brand-strong active:bg-[#202E91] text-white text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-colors"
               >
                 <FolderOpen className="w-4 h-4" />
                 <span>JSON ফাইল বাছুন</span>
@@ -200,10 +199,10 @@ export const ImportCollectionModal: React.FC<ImportCollectionModalProps> = ({
               <button
                 type="button"
                 onClick={handleDownloadSample}
-                className="min-h-[44px] px-3 py-2.5 rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-[#F2F4F8] dark:hover:bg-slate-700/60 text-[#2A3BB0] dark:text-indigo-300 text-xs font-semibold flex items-center gap-1.5 transition-colors shrink-0 shadow-2xs"
+                className="min-h-[44px] px-3 py-2.5 rounded-xl border border-line bg-surface hover:bg-hover dark:hover:bg-slate-700/60 text-brand-ink dark:text-indigo-300 text-xs font-semibold flex items-center gap-1.5 transition-colors shrink-0 shadow-2xs"
                 title="নমুনা ফাইল ডাউনলোড করুন"
               >
-                <Download className="w-4 h-4 text-[#3B4FD8] dark:text-indigo-400" />
+                <Download className="w-4 h-4 text-brand" />
                 <span>নমুনা ফাইল নামাও</span>
               </button>
             </div>
@@ -217,23 +216,23 @@ export const ImportCollectionModal: React.FC<ImportCollectionModalProps> = ({
             />
 
             {selectedFile && (
-              <p className="text-[0.6875rem] text-[#64748B] dark:text-slate-400 px-1 truncate">
-                বাছাইকৃত ফাইল: <span className="font-semibold text-[#1B1F2A] dark:text-slate-200">{selectedFile.name}</span>
+              <p className="text-[0.6875rem] text-ink-muted px-1 truncate">
+                বাছাইকৃত ফাইল: <span className="font-semibold text-ink">{selectedFile.name}</span>
               </p>
             )}
           </div>
 
           {/* Loading Indicator */}
           {analyzing && (
-            <div className="p-6 text-center text-xs text-[#64748B] dark:text-slate-400 flex flex-col items-center gap-2">
-              <RefreshCw className="w-6 h-6 animate-spin text-[#3B4FD8]" />
+            <div className="p-6 text-center text-xs text-ink-muted flex flex-col items-center gap-2">
+              <RefreshCw className="w-6 h-6 animate-spin text-brand-fg" />
               <span>ফাইল বিশ্লেষণ করা হচ্ছে...</span>
             </div>
           )}
 
           {/* Error Message Display */}
           {preview && !preview.valid && (
-            <div className="p-3.5 rounded-2xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 text-red-700 dark:text-red-300 space-y-1">
+            <div className="p-3.5 rounded-2xl bg-danger-soft dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 text-red-700 dark:text-red-300 space-y-1">
               <div className="flex items-center gap-1.5 text-xs font-bold">
                 <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" />
                 <span>ফাইল ত্রুটিযুক্ত</span>
@@ -246,30 +245,30 @@ export const ImportCollectionModal: React.FC<ImportCollectionModalProps> = ({
           {preview && preview.valid && (
             <div className="space-y-4">
               {/* Summary Stats Card */}
-              <div className="p-3.5 rounded-2xl bg-[#EEF2FF] dark:bg-indigo-950/40 border border-[#D5D9E2] dark:border-indigo-900/50 space-y-2">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-[#2A3BB0] dark:text-indigo-300">
-                  <FileCheck className="w-4 h-4 text-[#3B4FD8]" />
+              <div className="p-3.5 rounded-2xl bg-brand-soft border border-line dark:border-indigo-900/50 space-y-2">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-brand-ink dark:text-indigo-300">
+                  <FileCheck className="w-4 h-4 text-brand-fg" />
                   <span>ফাইল প্রিভিউ ও পরিসংখ্যান</span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 text-xs text-[#1B1F2A] dark:text-slate-200">
-                  <div className="bg-white dark:bg-slate-800/80 p-2.5 rounded-xl border border-[#D5D9E2] dark:border-slate-700">
-                    <span className="text-[0.6875rem] text-[#64748B] dark:text-slate-400 block">বিষয় / অধ্যায় / টপিক</span>
-                    <span className="font-bold text-[#2A3BB0] dark:text-indigo-300">
+                <div className="grid grid-cols-2 gap-2 text-xs text-ink">
+                  <div className="bg-surface dark:bg-slate-800/80 p-2.5 rounded-xl border border-line">
+                    <span className="text-[0.6875rem] text-ink-muted block">বিষয় / অধ্যায় / টপিক</span>
+                    <span className="font-bold text-brand-ink dark:text-indigo-300">
                       {toBn(preview.subjectsCount)}টি · {toBn(preview.chaptersCount)}টি · {toBn(preview.topicsCount)}টি
                     </span>
                   </div>
 
-                  <div className="bg-white dark:bg-slate-800/80 p-2.5 rounded-xl border border-[#D5D9E2] dark:border-slate-700">
-                    <span className="text-[0.6875rem] text-[#64748B] dark:text-slate-400 block">মোট প্রশ্ন</span>
-                    <span className="font-bold text-[#2A3BB0] dark:text-indigo-300">
+                  <div className="bg-surface dark:bg-slate-800/80 p-2.5 rounded-xl border border-line">
+                    <span className="text-[0.6875rem] text-ink-muted block">মোট প্রশ্ন</span>
+                    <span className="font-bold text-brand-ink dark:text-indigo-300">
                       {toBn(preview.totalQuestions)}টি
                     </span>
                   </div>
                 </div>
 
                 {/* Duplicate Analysis Tag */}
-                <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800/80 border border-[#D5D9E2] dark:border-slate-700 text-xs font-semibold text-[#1B1F2A] dark:text-slate-200">
+                <div className="p-2.5 rounded-xl bg-surface dark:bg-slate-800/80 border border-line text-xs font-semibold text-ink">
                   <span className="text-emerald-600 dark:text-emerald-400 font-bold">
                     {toBn(preview.newQuestionsCount)}টি নতুন প্রশ্ন
                   </span>
@@ -283,7 +282,7 @@ export const ImportCollectionModal: React.FC<ImportCollectionModalProps> = ({
 
               {/* Mode Selection */}
               <div className="space-y-2">
-                <label className="text-xs font-bold text-[#1B1F2A] dark:text-slate-200 block">
+                <label className="text-xs font-bold text-ink block">
                   ইমপোর্ট মোড নির্বাচন করুন
                 </label>
                 <div className="space-y-2">
@@ -291,8 +290,8 @@ export const ImportCollectionModal: React.FC<ImportCollectionModalProps> = ({
                     onClick={() => setImportMode('merge')}
                     className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition-all ${
                       importMode === 'merge'
-                        ? 'border-[#3B4FD8] bg-[#EEF2FF]/60 dark:bg-indigo-950/40 ring-1 ring-[#3B4FD8]'
-                        : 'border-[#D5D9E2] dark:border-slate-800 bg-white dark:bg-slate-800'
+                        ? 'border-brand bg-brand-soft/60 dark:bg-indigo-950/40 ring-1 ring-brand'
+                        : 'border-line bg-surface'
                     }`}
                   >
                     <input
@@ -300,13 +299,13 @@ export const ImportCollectionModal: React.FC<ImportCollectionModalProps> = ({
                       name="importMode"
                       checked={importMode === 'merge'}
                       onChange={() => setImportMode('merge')}
-                      className="mt-0.5 text-[#3B4FD8]"
+                      className="mt-0.5 text-brand-fg"
                     />
                     <div>
-                      <div className="text-xs font-bold text-[#1B1F2A] dark:text-slate-100">
+                      <div className="text-xs font-bold text-ink">
                         বিদ্যমান ডাটার সাথে যোগ করো
                       </div>
-                      <div className="text-[0.6875rem] text-[#64748B] dark:text-slate-400 leading-tight">
+                      <div className="text-[0.6875rem] text-ink-muted leading-tight">
                         নতুন প্রশ্নগুলো যুক্ত হবে এবং ডুপ্লিকেটগুলো আপডেট হবে। বর্তমান অন্য কোনো প্রশ্ন মুছবে না।
                       </div>
                     </div>
@@ -316,8 +315,8 @@ export const ImportCollectionModal: React.FC<ImportCollectionModalProps> = ({
                     onClick={() => setImportMode('replace')}
                     className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition-all ${
                       importMode === 'replace'
-                        ? 'border-red-500 bg-red-50/50 dark:bg-red-950/30 ring-1 ring-red-500'
-                        : 'border-[#D5D9E2] dark:border-slate-800 bg-white dark:bg-slate-800'
+                        ? 'border-red-500 bg-danger-soft/50 dark:bg-red-950/30 ring-1 ring-red-500'
+                        : 'border-line bg-surface'
                     }`}
                   >
                     <input
@@ -331,7 +330,7 @@ export const ImportCollectionModal: React.FC<ImportCollectionModalProps> = ({
                       <div className="text-xs font-bold text-red-600 dark:text-red-400">
                         সব বদলে দাও (প্রতিস্থাপন)
                       </div>
-                      <div className="text-[0.6875rem] text-[#64748B] dark:text-slate-400 leading-tight">
+                      <div className="text-[0.6875rem] text-ink-muted leading-tight">
                         বর্তমান সকল বিষয়, অধ্যায় ও প্রশ্ন মুছে দিয়ে এই ফাইলের ডাটা দিয়ে প্রতিস্থাপন করবে।
                       </div>
                     </div>
@@ -389,11 +388,11 @@ export const ImportCollectionModal: React.FC<ImportCollectionModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="p-4 bg-[#F8FAFC] dark:bg-slate-800/60 border-t border-[#D5D9E2] dark:border-slate-800 flex items-center justify-end gap-2.5 shrink-0">
+        <div className="p-4 bg-surface-2 dark:bg-slate-800/60 border-t border-line flex items-center justify-end gap-2.5 shrink-0">
           <button
             type="button"
             onClick={handleClose}
-            className="min-h-[44px] px-4 py-2 rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-[#1B1F2A] dark:text-slate-200 hover:bg-[#F2F4F8]"
+            className="min-h-[44px] px-4 py-2 rounded-xl border border-line bg-surface text-xs font-semibold text-ink hover:bg-hover"
           >
             বাতিল
           </button>
@@ -402,7 +401,7 @@ export const ImportCollectionModal: React.FC<ImportCollectionModalProps> = ({
             type="button"
             disabled={!preview || !preview.valid || importing}
             onClick={handleStartImport}
-            className="min-h-[44px] px-5 py-2 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] active:bg-[#202E91] text-white text-xs font-bold flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+            className="min-h-[44px] px-5 py-2 rounded-xl bg-brand hover:bg-brand-strong active:bg-[#202E91] text-white text-xs font-bold flex items-center gap-1.5 shadow-sm disabled:opacity-50"
           >
             {importing ? (
               <span>ইমপোর্ট হচ্ছে...</span>

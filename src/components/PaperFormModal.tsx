@@ -1,7 +1,7 @@
 import { getQuestionsByIds, getStimuliByIds, getSelectedIdsAll } from '../db/crossDb';
-import React, { useState, useEffect, useRef } from 'react';
-import { X, FileText, Check, Plus, ArrowUp, ArrowDown, Trash2, Layers } from 'lucide-react';
-import { db, DEFAULT_PAPER_NOTE, type Paper, type Question, type Stimulus, type Category } from '../db/db';
+import React, { useState, useEffect, } from 'react';
+import { X, FileText, Check, ArrowUp, ArrowDown, } from 'lucide-react';
+import { DEFAULT_PAPER_NOTE, type Paper, type Question, type Stimulus, type Category } from '../db/db';
 import {
   savePaper,
   getCategories,
@@ -296,10 +296,10 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
       aria-labelledby="paper-form-title"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-2 sm:p-4 animate-in fade-in duration-150"
     >
-      <div className="w-full max-w-[390px] h-full sm:h-[844px] bg-white dark:bg-slate-900 text-[#1B1F2A] dark:text-slate-100 flex flex-col relative overflow-hidden shadow-2xl sm:rounded-[36px] border border-[#D5D9E2] dark:border-slate-800">
+      <div className="w-full max-w-[390px] h-full sm:h-[844px] bg-surface text-ink flex flex-col relative overflow-hidden shadow-2xl sm:rounded-[36px] border border-line">
         {/* Header with Safe Area Inset */}
         <header
-          className="bg-[#3B4FD8] text-white px-4 h-14 flex items-center justify-between shrink-0 shadow-md"
+          className="bg-brand text-white px-4 h-14 flex items-center justify-between shrink-0 shadow-md"
           style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
         >
           <div className="flex items-center gap-2">
@@ -322,7 +322,7 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
         <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
           {/* Title */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-[#1B1F2A] dark:text-slate-200">
+            <label className="text-xs font-bold text-ink">
               প্রশ্নপত্রের শিরোনাম *
             </label>
             <input
@@ -333,19 +333,19 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
                 setValidationError(null);
               }}
               placeholder="যেমন: পদার্থবিজ্ঞান ১ম পত্র - মডেল টেস্ট ২০২৬"
-              className="w-full min-h-[44px] px-3.5 py-2 rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-[#1B1F2A] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
+              className="w-full min-h-[44px] px-3.5 py-2 rounded-xl border border-line bg-surface text-xs text-ink focus:outline-none focus:ring-2 focus:ring-brand"
             />
           </div>
 
           {/* Category (main) */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-[#1B1F2A] dark:text-slate-200">
+            <label className="text-xs font-bold text-ink">
               ক্যাটেগরি *
             </label>
             <select
               value={selectedCategoryId}
               onChange={handleCategorySelectChange}
-              className="w-full min-h-[44px] px-3 py-2 rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-[#1B1F2A] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
+              className="w-full min-h-[44px] px-3 py-2 rounded-xl border border-line bg-surface text-xs text-ink focus:outline-none focus:ring-2 focus:ring-brand"
             >
               {categories.length === 0 ? (
                 <option value="__ADD_NEW__">+ নতুন ক্যাটেগরি</option>
@@ -362,16 +362,16 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
               )}
             </select>
             {tagPreview && (
-              <p className="text-[0.6875rem] text-[#64748B] dark:text-slate-400">
+              <p className="text-[0.6875rem] text-ink-muted">
                 প্রশ্নপত্রের নাম:{' '}
-                <span className="font-bold text-[#3B4FD8] dark:text-indigo-300">{tagPreview}</span>
+                <span className="font-bold text-brand">{tagPreview}</span>
               </p>
             )}
           </div>
 
           {/* Subject Line */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-[#1B1F2A] dark:text-slate-200">
+            <label className="text-xs font-bold text-ink">
               বিষয় লাইন (প্রশ্নপত্রের ওপরে)
             </label>
             <input
@@ -379,13 +379,13 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
               value={subjectLine}
               onChange={(e) => setSubjectLine(e.target.value)}
               placeholder="যেমন: বিষয়: পদার্থবিজ্ঞান ১ম পত্র"
-              className="w-full min-h-[44px] px-3.5 py-2 rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-[#1B1F2A] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
+              className="w-full min-h-[44px] px-3.5 py-2 rounded-xl border border-line bg-surface text-xs text-ink focus:outline-none focus:ring-2 focus:ring-brand"
             />
           </div>
 
           {/* Note (দ্রষ্টব্য) */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-[#1B1F2A] dark:text-slate-200">
+            <label className="text-xs font-bold text-ink">
               দ্রষ্টব্য (প্রশ্নপত্রের হেডারের নিচে)
             </label>
             <textarea
@@ -393,14 +393,14 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
               onChange={(e) => setNote(e.target.value)}
               rows={3}
               placeholder="যেমন: [ দ্রষ্টব্য: ডান পাশের সংখ্যা প্রশ্নের পূর্ণমান নির্দেশক। ] — ফাঁকা রাখলে PDF-এ দ্রষ্টব্য আসবে না"
-              className="w-full px-3.5 py-2 rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-white dark:bg-slate-800 text-xs leading-relaxed text-[#1B1F2A] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#3B4FD8] resize-y"
+              className="w-full px-3.5 py-2 rounded-xl border border-line bg-surface text-xs leading-relaxed text-ink focus:outline-none focus:ring-2 focus:ring-brand resize-y"
             />
           </div>
 
           {/* Duration & Total Marks */}
           <div className="grid grid-cols-2 gap-2.5">
             <div className="space-y-1">
-              <label className="text-xs font-bold text-[#1B1F2A] dark:text-slate-200">
+              <label className="text-xs font-bold text-ink">
                 সময়
               </label>
               <input
@@ -408,12 +408,12 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
                 value={duration}
                 onChange={(e) => setDuration(e.target.value)}
                 placeholder="যেমন: ২ ঘণ্টা ৩০ মিনিট"
-                className="w-full min-h-[44px] px-3 py-2 rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-[#1B1F2A] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
+                className="w-full min-h-[44px] px-3 py-2 rounded-xl border border-line bg-surface text-xs text-ink focus:outline-none focus:ring-2 focus:ring-brand"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-[#1B1F2A] dark:text-slate-200">
+              <label className="text-xs font-bold text-ink">
                 পূর্ণমান
               </label>
               <input
@@ -421,15 +421,15 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
                 value={totalMarks}
                 onChange={(e) => setTotalMarks(parseInt(e.target.value, 10) || 50)}
                 placeholder="৫০"
-                className="w-full min-h-[44px] px-3 py-2 rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-[#1B1F2A] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
+                className="w-full min-h-[44px] px-3 py-2 rounded-xl border border-line bg-surface text-xs text-ink focus:outline-none focus:ring-2 focus:ring-brand"
               />
             </div>
           </div>
 
           {/* Included Questions Section */}
-          <div className="space-y-2.5 pt-2 border-t border-[#F2F4F8] dark:border-slate-800">
+          <div className="space-y-2.5 pt-2 border-t border-line-soft dark:border-slate-800">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-[#1B1F2A] dark:text-slate-200">
+              <span className="text-xs font-bold text-ink">
                 অন্তর্ভুক্ত প্রশ্ন ({toBn(includedGroups.length)}টি প্রশ্ন)
               </span>
 
@@ -439,8 +439,8 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
                   onClick={() => setIsReordering(!isReordering)}
                   className={`min-h-[44px] px-3 py-1 rounded-xl text-xs font-bold transition-colors border ${
                     isReordering
-                      ? 'bg-[#3B4FD8] text-white border-[#3B4FD8]'
-                      : 'bg-[#EEF2FF] dark:bg-indigo-950 text-[#3B4FD8] dark:text-indigo-300 border-[#D5D9E2] dark:border-indigo-900'
+                      ? 'bg-brand text-white border-brand'
+                      : 'bg-brand-soft text-brand border-line dark:border-indigo-900'
                   }`}
                 >
                   {isReordering ? 'Done' : 'Reorder'}
@@ -449,7 +449,7 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
             </div>
 
             {includedGroups.length === 0 ? (
-              <div className="p-4 rounded-xl border border-dashed border-[#D5D9E2] dark:border-slate-700 text-center text-xs text-[#64748B] dark:text-slate-400">
+              <div className="p-4 rounded-xl border border-dashed border-line text-center text-xs text-ink-muted">
                 কোনো প্রশ্ন নির্বাচন করা হয়নি। কালেকশন ট্যাব থেকে প্রশ্ন নির্বাচন করুন।
               </div>
             ) : (
@@ -457,11 +457,11 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
                 {includedGroups.map((group, idx) => (
                   <div
                     key={group.id}
-                    className="p-3 rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-white dark:bg-slate-800 shadow-2xs space-y-2"
+                    className="p-3 rounded-xl border border-line bg-surface shadow-2xs space-y-2"
                   >
                     <div className="flex items-start justify-between gap-2">
                       {/* Left: Serial Number */}
-                      <span className="text-xs font-black text-[#3B4FD8] dark:text-indigo-400 shrink-0">
+                      <span className="text-xs font-black text-brand shrink-0">
                         {toBn(idx + 1)}.
                       </span>
 
@@ -473,13 +473,13 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
                               <img
                                 src={group.stimulusImageUrl}
                                 alt="চিত্র"
-                                className="w-10 h-10 object-cover rounded-lg border border-[#D5D9E2] shrink-0"
+                                className="w-10 h-10 object-cover rounded-lg border border-line shrink-0"
                               />
                             )}
                             <div className="flex-1 min-w-0">
                               <RichText
                                 text={group.stimulus.text}
-                                className="text-xs text-[#1B1F2A] dark:text-slate-200 line-clamp-2 leading-relaxed"
+                                className="text-xs text-ink line-clamp-2 leading-relaxed"
                               />
                             </div>
                           </div>
@@ -494,7 +494,7 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
                             >
                               <span className="font-bold shrink-0">{q.type || 'গ'}.</span>
                               <span className="flex-1 truncate">{q.questionText}</span>
-                              <span className="font-semibold shrink-0 text-[#64748B]">
+                              <span className="font-semibold shrink-0 text-ink-muted">
                                 ({toBn(q.marks)})
                               </span>
                             </div>
@@ -511,7 +511,7 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
                               aria-label="উপরে"
                               disabled={idx === 0}
                               onClick={() => handleMoveGroup(idx, 'up')}
-                              className="w-8 h-8 rounded-lg bg-[#F2F4F8] dark:bg-slate-700 flex items-center justify-center text-[#1B1F2A] dark:text-slate-200 disabled:opacity-20"
+                              className="w-8 h-8 rounded-lg bg-app dark:bg-slate-700 flex items-center justify-center text-ink disabled:opacity-20"
                             >
                               <ArrowUp className="w-4 h-4" />
                             </button>
@@ -520,7 +520,7 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
                               aria-label="নিচে"
                               disabled={idx === includedGroups.length - 1}
                               onClick={() => handleMoveGroup(idx, 'down')}
-                              className="w-8 h-8 rounded-lg bg-[#F2F4F8] dark:bg-slate-700 flex items-center justify-center text-[#1B1F2A] dark:text-slate-200 disabled:opacity-20"
+                              className="w-8 h-8 rounded-lg bg-app dark:bg-slate-700 flex items-center justify-center text-ink disabled:opacity-20"
                             >
                               <ArrowDown className="w-4 h-4" />
                             </button>
@@ -530,7 +530,7 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
                             type="button"
                             aria-label="তালিকা থেকে বাদ দিন"
                             onClick={() => handleRemoveGroup(group.id)}
-                            className="w-8 h-8 rounded-lg flex items-center justify-center text-red-500 hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
+                            className="w-8 h-8 rounded-lg flex items-center justify-center text-red-500 hover:bg-danger-soft dark:hover:bg-red-950 transition-colors"
                           >
                             <X className="w-4 h-4" />
                           </button>
@@ -546,20 +546,20 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
 
         {/* Validation Error Message */}
         {validationError && (
-          <div className="px-4 py-2 bg-red-50 dark:bg-red-950/60 border-t border-red-200 dark:border-red-900 text-xs font-bold text-red-600 dark:text-red-400">
+          <div className="px-4 py-2 bg-danger-soft dark:bg-red-950/60 border-t border-red-200 dark:border-red-900 text-xs font-bold text-red-600 dark:text-red-400">
             {validationError}
           </div>
         )}
 
         {/* Fixed Footer with Safe Area */}
         <div
-          className="p-3 bg-[#F8FAFC] dark:bg-slate-800/80 border-t border-[#D5D9E2] dark:border-slate-800 flex items-center justify-end gap-2.5 shrink-0"
+          className="p-3 bg-surface-2 dark:bg-slate-800/80 border-t border-line flex items-center justify-end gap-2.5 shrink-0"
           style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
         >
           <button
             type="button"
             onClick={onClose}
-            className="min-h-[44px] px-4 py-2 rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-[#1B1F2A] dark:text-slate-200 hover:bg-[#F2F4F8]"
+            className="min-h-[44px] px-4 py-2 rounded-xl border border-line bg-surface text-xs font-semibold text-ink hover:bg-hover"
           >
             বাতিল
           </button>
@@ -567,7 +567,7 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className="min-h-[44px] px-5 py-2 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] active:bg-[#202E91] text-white text-xs font-bold flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+            className="min-h-[44px] px-5 py-2 rounded-xl bg-brand hover:bg-brand-strong active:bg-[#202E91] text-white text-xs font-bold flex items-center gap-1.5 shadow-sm disabled:opacity-50"
           >
             <Check className="w-4 h-4" />
             <span>{saving ? 'সংরক্ষণ হচ্ছে...' : 'সংরক্ষণ করুন'}</span>

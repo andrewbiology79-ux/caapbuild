@@ -1,5 +1,5 @@
 {
-  "name": "react-example",
+  "name": "qb-collection-exam",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -7,7 +7,6 @@
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
@@ -18,17 +17,13 @@
     "@capacitor/share": "^7.0.0",
     "@capacitor/status-bar": "^7.0.0",
     "@fontsource/hind-siliguri": "^5.3.0",
-    "@google/genai": "^2.4.0",
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^6.1.1",
     "dexie": "^4.4.6",
-    "dotenv": "^17.2.3",
-    "express": "^4.21.2",
     "html2canvas-pro": "^1.5.8",
     "jspdf": "^4.2.1",
     "katex": "^0.19.0",
     "lucide-react": "^0.546.0",
-    "motion": "^12.23.24",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "react-zoom-pan-pinch": "^3.6.1",
@@ -36,16 +31,13 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^7.0.0",
-    "@types/express": "^4.17.21",
     "@types/katex": "^0.16.8",
     "@types/node": "^22.14.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.4.21",
-    "esbuild": "^0.25.0",
     "postcss": "^8.5.31",
     "tailwindcss": "^4.3.3",
-    "tsx": "^4.21.0",
     "typescript": "^7.0.2"
   }
 }
