@@ -7,6 +7,7 @@ import { useToast } from './Toast';
 import { toBn, toEn } from '../utils/toBn';
 import { useNavigation } from '../utils/navigation';
 import { compressImageToWebP } from '../utils/imageCompressor';
+import { exportImageFromUrl } from '../utils/imageExport';
 import { loadCustomBoards, saveCustomBoards, customBoardToOption, type CustomBoard } from '../utils/boards';
 import {
   getApi,
@@ -35,6 +36,7 @@ import {
   Check,
   AlertCircle,
   ChevronDown,
+  Download,
 } from 'lucide-react';
 
 export interface QuestionFormModalProps {
@@ -128,137 +130,202 @@ const LivePreview: React.FC<{ text: string }> = ({ text }) => (
   </div>
 );
 
-interface BoardTagEditorProps {
-  title: string;
-  chips: BoardUsage[];
-  onChange: (next: BoardUsage[]) => void;
+/** Compact board dropdown — picking a board opens the year window (see BoardYearWindow) */
+const BoardSelect: React.FC<{
   options: Array<{ value: string; label: string }>;
-  customCodes: string[];
-  onRequestAddBoard: () => void;
-  onDeleteCustomBoard: (code: string) => void;
+  onPick: (board: string) => void;
+  onAddBoard: () => void;
+  ariaLabel: string;
+}> = ({ options, onPick, onAddBoard, ariaLabel }) => (
+  <select
+    aria-label={ariaLabel}
+    value=""
+    onChange={(e) => {
+      const v = e.target.value;
+      if (!v) return;
+      if (v === '__add_new_board__') {
+        onAddBoard();
+        return;
+      }
+      onPick(v);
+    }}
+    className="min-h-[40px] w-[64px] px-1 py-1 rounded-lg border border-[#D5D9E2] bg-white text-[#2A3BB0] text-[0.6875rem] font-bold focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
+  >
+    <option value="" disabled>
+      বোর্ড
+    </option>
+    {options.map((b) => (
+      <option key={b.value} value={b.value}>
+        {b.label}
+      </option>
+    ))}
+    <option value="__add_new_board__">+ নতুন বোর্ড যুক্ত করুন</option>
+  </select>
+);
+
+/** Board + year tags already added to one section (উদ্দীপক / গ / ঘ …). Nothing is shown when empty. */
+const BoardChips: React.FC<{ chips: BoardUsage[]; onRemove: (board: string, year: number) => void }> = ({
+  chips,
+  onRemove,
+}) => {
+  if (chips.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <Tag className="w-3.5 h-3.5 text-[#3B4FD8] shrink-0" />
+      {chips.map((c) =>
+        c.years.map((y) => (
+          <span
+            key={`${c.board}-${y}`}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#EEF2FF] text-[#2A3BB0] border border-[#D5D9E2] text-xs font-semibold"
+          >
+            <span>
+              {c.board}'{toBn(String(y).slice(-2))}
+            </span>
+            <button
+              type="button"
+              aria-label={`${c.board} ${y} ট্যাগ মুছুন`}
+              onClick={() => onRemove(c.board, y)}
+              className="w-4 h-4 rounded-full flex items-center justify-center text-[#64748B] hover:text-red-600 hover:bg-white transition-colors"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </span>
+        ))
+      )}
+    </div>
+  );
+};
+
+interface BoardYearWindowProps {
+  board: string;
+  boardLabel: string;
+  addedYears: number[];
+  isCustom: boolean;
+  onPickYear: (year: number) => void;
   onInvalidYear: () => void;
+  onDeleteBoard: () => void;
+  onClose: () => void;
 }
 
-/** "কোন বোর্ডে এসেছে" — board + year chips for ONE section (উদ্দীপক / গ / ঘ …) */
-const BoardTagEditor: React.FC<BoardTagEditorProps> = ({
-  title,
-  chips,
-  onChange,
-  options,
-  customCodes,
-  onRequestAddBoard,
-  onDeleteCustomBoard,
+/** Window that opens after a board is picked: tap a year to add the board + year tag */
+const BoardYearWindow: React.FC<BoardYearWindowProps> = ({
+  board,
+  boardLabel,
+  addedYears,
+  isCustom,
+  onPickYear,
   onInvalidYear,
+  onDeleteBoard,
+  onClose,
 }) => {
-  const [board, setBoard] = useState<string>('DB');
-  const [yearInput, setYearInput] = useState<string>('2025');
+  const { registerBackHandler } = useNavigation();
+  const [manualYear, setManualYear] = useState('');
 
-  const addChip = () => {
-    const yearNum = parseInt(toEn(yearInput).trim(), 10);
+  // Android back button closes this window first
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    return registerBackHandler(() => {
+      closeRef.current();
+      return true;
+    });
+  }, [registerBackHandler]);
+
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: Math.max(1, currentYear - 2010 + 1) }, (_, i) => currentYear - i);
+
+  const submitManual = () => {
+    const yearNum = parseInt(toEn(manualYear).trim(), 10);
     if (isNaN(yearNum) || yearNum < 1990 || yearNum > 2099) {
       onInvalidYear();
       return;
     }
-    const existing = chips.find((c) => c.board === board);
-    if (existing) {
-      if (existing.years.includes(yearNum)) return;
-      onChange(
-        chips.map((c) => (c.board === board ? { ...c, years: [...c.years, yearNum].sort((a, b) => a - b) } : c))
-      );
-    } else {
-      onChange([...chips, { board, years: [yearNum] }]);
-    }
-  };
-
-  const removeChip = (b: string, y: number) => {
-    onChange(
-      chips
-        .map((c) => (c.board === b ? { ...c, years: c.years.filter((x) => x !== y) } : c))
-        .filter((c) => c.years.length > 0)
-    );
+    onPickYear(yearNum);
   };
 
   return (
-    <div className="pt-2.5 border-t border-[#F2F4F8] space-y-2">
-      <div className="flex items-center gap-1.5 text-xs font-semibold text-[#1B1F2A]">
-        <Tag className="w-3.5 h-3.5 text-[#3B4FD8]" />
-        <span>{title}</span>
-      </div>
-      <div className="flex items-center gap-2">
-        <select
-          aria-label="বোর্ড বাছুন"
-          value={board}
-          onChange={(e) => {
-            if (e.target.value === '__add_new_board__') {
-              onRequestAddBoard();
-              return;
-            }
-            setBoard(e.target.value);
-          }}
-          className="flex-1 min-w-0 min-h-[44px] px-2.5 py-2 rounded-xl border border-[#D5D9E2] bg-white text-xs font-medium text-[#1B1F2A] focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
-        >
-          {options.map((b) => (
-            <option key={b.value} value={b.value}>
-              {b.label}
-            </option>
-          ))}
-          <option value="__add_new_board__">+ নতুন বোর্ড যুক্ত করুন</option>
-        </select>
-        <input
-          type="text"
-          inputMode="numeric"
-          aria-label="সাল"
-          value={yearInput}
-          onChange={(e) => setYearInput(e.target.value)}
-          className="w-16 min-h-[44px] px-2 py-2 rounded-xl border border-[#D5D9E2] bg-white text-xs text-[#1B1F2A] text-center font-medium focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
-        />
-        <button
-          type="button"
-          aria-label="বোর্ড যোগ করুন"
-          onClick={addChip}
-          className="min-h-[44px] px-3 py-2 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] active:bg-[#202E91] text-white text-xs font-semibold shrink-0"
-        >
-          + যোগ
-        </button>
-      </div>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="সাল বাছুন"
+      onClick={onClose}
+      className="absolute inset-0 z-[55] bg-black/50 flex items-center justify-center px-5"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full rounded-2xl bg-white p-4 space-y-3 shadow-2xl"
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="text-sm font-bold text-[#2A3BB0]">সাল বাছুন</div>
+            <div className="text-[0.6875rem] font-medium text-[#64748B] truncate">{boardLabel}</div>
+          </div>
+          <button
+            type="button"
+            aria-label="বন্ধ করুন"
+            onClick={onClose}
+            className="min-h-[36px] min-w-[36px] -mt-1 -mr-1.5 flex items-center justify-center rounded-full text-[#64748B] hover:bg-[#F2F4F8]"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
 
-      {customCodes.includes(board) && (
-        <button
-          type="button"
-          onClick={() => {
-            onDeleteCustomBoard(board);
-            setBoard('DB');
-          }}
-          className="text-[0.6875rem] font-medium text-red-600 underline"
-        >
-          এই বোর্ডটি তালিকা থেকে মুছুন ({board})
-        </button>
-      )}
-
-      <div className="flex flex-wrap gap-1.5 min-h-[28px]">
-        {chips.length === 0 ? (
-          <span className="text-xs text-[#64748B] italic">কোনো বোর্ড ট্যাগ যোগ করা হয়নি</span>
-        ) : (
-          chips.map((c) =>
-            c.years.map((y) => (
-              <span
-                key={`${c.board}-${y}`}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#EEF2FF] text-[#2A3BB0] border border-[#D5D9E2] text-xs font-semibold"
+        <div className="grid grid-cols-4 gap-1.5 max-h-[224px] overflow-y-auto pr-0.5">
+          {years.map((y) => {
+            const added = addedYears.includes(y);
+            return (
+              <button
+                key={y}
+                type="button"
+                disabled={added}
+                aria-label={`${board} ${y}`}
+                onClick={() => onPickYear(y)}
+                className={`min-h-[44px] rounded-xl border text-xs font-semibold transition-colors flex items-center justify-center gap-1 ${
+                  added
+                    ? 'bg-[#EEF2FF] border-[#C7D2FE] text-[#94A3B8]'
+                    : 'bg-white border-[#D5D9E2] text-[#1B1F2A] hover:bg-[#EEF2FF] active:bg-[#E0E7FF]'
+                }`}
               >
-                <span>
-                  {c.board}'{toBn(String(y).slice(-2))}
-                </span>
-                <button
-                  type="button"
-                  aria-label={`${c.board} ${y} ট্যাগ মুছুন`}
-                  onClick={() => removeChip(c.board, y)}
-                  className="w-4 h-4 rounded-full flex items-center justify-center text-[#64748B] hover:text-red-600 hover:bg-white transition-colors"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            ))
-          )
+                {added && <Check className="w-3.5 h-3.5 text-[#3B4FD8]" />}
+                <span>{toBn(y)}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center gap-2 pt-2.5 border-t border-[#F2F4F8]">
+          <input
+            type="text"
+            inputMode="numeric"
+            aria-label="অন্য সাল লিখুন"
+            value={manualYear}
+            onChange={(e) => setManualYear(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                submitManual();
+              }
+            }}
+            placeholder="অন্য সাল (যেমন: ২০০৯)"
+            className="flex-1 min-w-0 min-h-[44px] px-3 py-2 rounded-xl border border-[#D5D9E2] bg-white text-xs text-[#1B1F2A] font-medium focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
+          />
+          <button
+            type="button"
+            onClick={submitManual}
+            className="min-h-[44px] px-3.5 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] active:bg-[#202E91] text-white text-xs font-semibold shrink-0"
+          >
+            + যোগ
+          </button>
+        </div>
+
+        {isCustom && (
+          <button
+            type="button"
+            onClick={onDeleteBoard}
+            className="text-[0.6875rem] font-medium text-red-600 underline"
+          >
+            এই বোর্ডটি তালিকা থেকে মুছুন ({board})
+          </button>
         )}
       </div>
     </div>
@@ -274,6 +341,8 @@ interface ImageStripProps {
   onAdd: () => void;
   onRemove: (id: string) => void;
   onReplace: (id: string) => void;
+  /** Full Editor only: export (download) the picture to the phone */
+  onExport: (id: string) => void;
   onOpenViewer: (index: number) => void;
   addAriaLabel: string;
 }
@@ -287,6 +356,7 @@ const ImageStrip: React.FC<ImageStripProps> = ({
   onAdd,
   onRemove,
   onReplace,
+  onExport,
   onOpenViewer,
   addAriaLabel,
 }) => (
@@ -333,21 +403,33 @@ const ImageStrip: React.FC<ImageStripProps> = ({
                 </button>
               </div>
               {fullFeatures && (
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    aria-label="ছবি বদলান"
-                    onClick={() => onReplace(imgId)}
-                    className="flex-1 min-h-[36px] rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#EEF2FF] text-[#2A3BB0] text-[0.6875rem] font-semibold flex items-center justify-center gap-1"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>বদলান</span>
-                  </button>
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      aria-label="ছবি বদলান"
+                      onClick={() => onReplace(imgId)}
+                      className="flex-1 min-h-[36px] rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#EEF2FF] text-[#2A3BB0] text-[0.6875rem] font-semibold flex items-center justify-center gap-1"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>বদলান</span>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="ছবি এক্সপোর্ট করুন"
+                      title="ছবি এক্সপোর্ট (ডাউনলোড)"
+                      disabled={!url}
+                      onClick={() => onExport(imgId)}
+                      className="min-h-[36px] min-w-[40px] shrink-0 rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#EEF2FF] active:bg-[#E0E7FF] text-[#2A3BB0] flex items-center justify-center disabled:opacity-40 disabled:pointer-events-none"
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
+                  </div>
                   <button
                     type="button"
                     aria-label="বড় প্রিভিউ দেখুন"
                     onClick={() => onOpenViewer(idx)}
-                    className="flex-1 min-h-[36px] rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#EEF2FF] text-[#2A3BB0] text-[0.6875rem] font-semibold flex items-center justify-center gap-1"
+                    className="w-full min-h-[36px] rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#EEF2FF] text-[#2A3BB0] text-[0.6875rem] font-semibold flex items-center justify-center gap-1"
                   >
                     <Maximize2 className="w-3.5 h-3.5" />
                     <span>বড় দেখুন</span>
@@ -420,6 +502,10 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
     { kind: 'stimulus'; imageId: string } | { kind: 'solution'; blockIndex: number; imageId: string } | null
   >(null);
 
+  // Board → year window: which section (উদ্দীপক / a question block) and which board is being tagged
+  type BoardTarget = { kind: 'stimulus' } | { kind: 'question'; index: number };
+  const [yearPicker, setYearPicker] = useState<{ target: BoardTarget; board: string } | null>(null);
+
   // Custom boards (user-added)
   const [customBoards, setCustomBoards] = useState<CustomBoard[]>(() => loadCustomBoards());
   const [showAddBoard, setShowAddBoard] = useState(false);
@@ -457,6 +543,42 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
     const next = customBoards.filter((b) => b.code !== code);
     setCustomBoards(next);
     saveCustomBoards(next);
+  };
+
+  // ---- Board + year tags (board dropdown → year window) ----
+  const getBoardChips = (target: BoardTarget): BoardUsage[] =>
+    target.kind === 'stimulus' ? stimulusBoards : questionBlocks[target.index]?.usedInBoards || [];
+
+  const setBoardChips = (target: BoardTarget, next: BoardUsage[]) => {
+    if (target.kind === 'stimulus') {
+      setIsDirty(true);
+      setStimulusBoards(next);
+    } else {
+      updateQuestionBlock(target.index, 'usedInBoards', next);
+    }
+  };
+
+  const addBoardYear = (target: BoardTarget, board: string, year: number) => {
+    const chips = getBoardChips(target);
+    const existing = chips.find((c) => c.board === board);
+    if (existing) {
+      if (existing.years.includes(year)) return;
+      setBoardChips(
+        target,
+        chips.map((c) => (c.board === board ? { ...c, years: [...c.years, year].sort((a, b) => a - b) } : c))
+      );
+    } else {
+      setBoardChips(target, [...chips, { board, years: [year] }]);
+    }
+  };
+
+  const removeBoardYear = (target: BoardTarget, board: string, year: number) => {
+    setBoardChips(
+      target,
+      getBoardChips(target)
+        .map((c) => (c.board === board ? { ...c, years: c.years.filter((x) => x !== year) } : c))
+        .filter((c) => c.years.length > 0)
+    );
   };
 
   // Questions blocks state
@@ -767,6 +889,26 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
     const images = ids.map((id) => ({ url: urls[id], alt: 'ছবি' })).filter((i) => !!i.url);
     if (images.length === 0) return;
     setViewer({ images, index: Math.min(index, images.length - 1) });
+  };
+
+  // Full Editor: export a picture to the phone (Download/QbCollection/Images) or download it in the browser
+  const handleExportImage = async (imageId: string, urls: Record<string, string>) => {
+    const url = urls[imageId];
+    if (!url) {
+      showToast('ছবিটি এখনো লোড হয়নি');
+      return;
+    }
+    try {
+      const result = await exportImageFromUrl(url, 'qb-image');
+      if (!result) {
+        showToast('ছবি সেভ করতে স্টোরেজের অনুমতি লাগবে');
+        return;
+      }
+      showToast(result.native ? `ছবি সেভ হয়েছে: ${result.savedPath}` : 'ছবি ডাউনলোড হয়েছে', 3000);
+    } catch (err) {
+      console.error('Image export failed:', err);
+      showToast('ছবি এক্সপোর্ট করতে সমস্যা হয়েছে');
+    }
   };
 
   const handleRemoveStimulusImage = (imageId: string) => {
@@ -1160,7 +1302,13 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                 <HelpCircle className="w-4 h-4 text-[#3B4FD8] shrink-0" />
                 <span className="truncate">উদ্দীপক *</span>
               </span>
-              <div className="flex items-center gap-1.5 shrink-0">
+              <div className="flex items-center gap-1 shrink-0">
+                <BoardSelect
+                  ariaLabel="উদ্দীপকটি কোন বোর্ডে এসেছে"
+                  options={allBoardOptions}
+                  onPick={(board) => setYearPicker({ target: { kind: 'stimulus' }, board })}
+                  onAddBoard={() => setShowAddBoard(true)}
+                />
                 <EyeToggle open={stimulusPreviewOpen} onClick={() => setStimulusPreviewOpen((v) => !v)} />
                 <RatingSelect
                   value={stimulusRating}
@@ -1180,7 +1328,8 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                 setStimulusText(val);
                 if (errors.stimulus) setErrors((prev) => ({ ...prev, stimulus: undefined }));
               }}
-              rows={4}
+              rows={isFull ? 4 : 2}
+              showToolbar={isFull}
               showPreview={false}
               placeholder="এখানে উদ্দীপকের বিবরণ ও গাণিতিক সূত্র লিখুন..."
             />
@@ -1190,6 +1339,11 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                 <span>{errors.stimulus}</span>
               </p>
             )}
+
+            <BoardChips
+              chips={stimulusBoards}
+              onRemove={(board, year) => removeBoardYear({ kind: 'stimulus' }, board, year)}
+            />
 
             {stimulusPreviewOpen && <LivePreview text={stimulusText} />}
 
@@ -1203,6 +1357,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
               onAdd={() => stimulusFileInputRef.current?.click()}
               onRemove={handleRemoveStimulusImage}
               onReplace={(id) => startReplace({ kind: 'stimulus', imageId: id })}
+              onExport={(id) => handleExportImage(id, stimulusImageUrls)}
               onOpenViewer={(i) => openViewer(stimulusImageIds, stimulusImageUrls, i)}
             />
             <input
@@ -1212,21 +1367,6 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
               accept="image/*"
               onChange={handleUploadStimulusImages}
               className="hidden"
-            />
-
-            {/* Which board did the stimulus come in? */}
-            <BoardTagEditor
-              title="উদ্দীপকটি কোন বোর্ডে এসেছে"
-              chips={stimulusBoards}
-              onChange={(next) => {
-                setIsDirty(true);
-                setStimulusBoards(next);
-              }}
-              options={allBoardOptions}
-              customCodes={customBoards.map((b) => b.code)}
-              onRequestAddBoard={() => setShowAddBoard(true)}
-              onDeleteCustomBoard={handleDeleteCustomBoard}
-              onInvalidYear={() => showToast('সঠিক সাল লিখুন (যেমন: ২০২৫)')}
             />
           </section>
 
@@ -1334,7 +1474,17 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                       label={`প্রশ্ন (${block.type}) *`}
                       value={block.questionText}
                       onChange={(val) => updateQuestionBlock(index, 'questionText', val)}
-                      rows={3}
+                      rows={isFull ? 3 : 2}
+                      showToolbar={isFull}
+                      showHint={isFull}
+                      headerRight={
+                        <BoardSelect
+                          ariaLabel={`প্রশ্ন (${block.type}) কোন বোর্ডে এসেছে`}
+                          options={allBoardOptions}
+                          onPick={(board) => setYearPicker({ target: { kind: 'question', index }, board })}
+                          onAddBoard={() => setShowAddBoard(true)}
+                        />
+                      }
                       showPreview={false}
                       placeholder="প্রশ্নের মূল বক্তব্য লিখুন..."
                     />
@@ -1344,6 +1494,10 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                         <span>{qError}</span>
                       </p>
                     )}
+                    <BoardChips
+                      chips={block.usedInBoards || []}
+                      onRemove={(board, year) => removeBoardYear({ kind: 'question', index }, board, year)}
+                    />
                   </div>
 
                   {/* Solution: label + eye + rating */}
@@ -1368,7 +1522,8 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                     <LatexEditor
                       value={block.solutionText}
                       onChange={(val) => updateQuestionBlock(index, 'solutionText', val)}
-                      rows={3}
+                      rows={isFull ? 3 : 2}
+                      showToolbar={isFull}
                       showPreview={false}
                       placeholder="ধাপে ধাপে সমাধান লিখুন..."
                     />
@@ -1386,6 +1541,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                     onAdd={() => document.getElementById(solInputId)?.click()}
                     onRemove={(id) => handleRemoveSolutionImage(index, id)}
                     onReplace={(id) => startReplace({ kind: 'solution', blockIndex: index, imageId: id })}
+                    onExport={(id) => handleExportImage(id, solutionImageUrls)}
                     onOpenViewer={(i) => openViewer(block.solutionImageIds || [], solutionImageUrls, i)}
                   />
                   <input
@@ -1395,18 +1551,6 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                     accept="image/*"
                     onChange={(e) => handleUploadSolutionImages(index, e)}
                     className="hidden"
-                  />
-
-                  {/* Which board did this question come in? */}
-                  <BoardTagEditor
-                    title={`প্রশ্ন (${block.type}) কোন বোর্ডে এসেছে`}
-                    chips={block.usedInBoards || []}
-                    onChange={(next) => updateQuestionBlock(index, 'usedInBoards', next)}
-                    options={allBoardOptions}
-                    customCodes={customBoards.map((b) => b.code)}
-                    onRequestAddBoard={() => setShowAddBoard(true)}
-                    onDeleteCustomBoard={handleDeleteCustomBoard}
-                    onInvalidYear={() => showToast('সঠিক সাল লিখুন (যেমন: ২০২৫)')}
                   />
 
                   {/* Short Answer — Full Editor only */}
@@ -1514,6 +1658,26 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
               </div>
             </div>
           </div>
+        )}
+
+        {/* Year window — opens after a board is picked from the dropdown */}
+        {yearPicker && (
+          <BoardYearWindow
+            board={yearPicker.board}
+            boardLabel={allBoardOptions.find((b) => b.value === yearPicker.board)?.label || yearPicker.board}
+            addedYears={getBoardChips(yearPicker.target).find((c) => c.board === yearPicker.board)?.years || []}
+            isCustom={customBoards.some((b) => b.code === yearPicker.board)}
+            onPickYear={(year) => {
+              addBoardYear(yearPicker.target, yearPicker.board, year);
+              setYearPicker(null);
+            }}
+            onInvalidYear={() => showToast('সঠিক সাল লিখুন (যেমন: ২০২৫)')}
+            onDeleteBoard={() => {
+              handleDeleteCustomBoard(yearPicker.board);
+              setYearPicker(null);
+            }}
+            onClose={() => setYearPicker(null)}
+          />
         )}
 
         {/* Full-screen zoomable preview of a picture (Full Editor) */}

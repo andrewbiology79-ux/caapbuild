@@ -12,6 +12,12 @@ export interface LatexEditorProps {
   className?: string;
   /** show the built-in live preview card under the editor (default true) */
   showPreview?: boolean;
+  /** show the math toolbar ($ ইনলাইন, $$ ব্লক, ভগ্নাংশ …) above the text box (default true) */
+  showToolbar?: boolean;
+  /** show the "ইনলাইন: $সূত্ৰ$ | ব্লক: $$সূত্ৰ$$" hint next to the label (default true) */
+  showHint?: boolean;
+  /** extra control shown at the right end of the label row (e.g. the board picker) */
+  headerRight?: React.ReactNode;
 }
 
 interface InsertSpec {
@@ -29,6 +35,9 @@ export const LatexEditor: React.FC<LatexEditorProps> = ({
   previewTitle = 'লাইভ প্রিভিউ (KaTeX)',
   className = '',
   showPreview = true,
+  showToolbar = true,
+  showHint = true,
+  headerRight,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [showGreekMenu, setShowGreekMenu] = useState(false);
@@ -108,24 +117,36 @@ export const LatexEditor: React.FC<LatexEditorProps> = ({
     { label: 'λ', code: '\\lambda ' },
   ];
 
+  const hintNode = (
+    <span className="text-xs font-normal text-[#64748B]">
+      ইনলাইন: <code className="text-[#2A3BB0]">$সূত্ৰ$</code> | ব্লক:{' '}
+      <code className="text-[#2A3BB0]">$$সূত্ৰ$$</code>
+    </span>
+  );
+
   return (
     <div className={`space-y-3 ${className}`}>
       {label && (
-        <label className="block text-sm font-semibold text-[#1B1F2A] flex items-center justify-between">
-          <span className="flex items-center gap-1.5">
-            <Edit3 className="w-4 h-4 text-[#3B4FD8]" />
-            {label}
-          </span>
-          <span className="text-xs font-normal text-[#64748B]">
-            ইনলাইন: <code className="text-[#2A3BB0]">$সূত্ৰ$</code> | ব্লক:{' '}
-            <code className="text-[#2A3BB0]">$$সূত্ৰ$$</code>
-          </span>
-        </label>
+        <div className="space-y-1">
+          <div className="text-sm font-semibold text-[#1B1F2A] flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1.5 min-w-0">
+              <Edit3 className="w-4 h-4 text-[#3B4FD8] shrink-0" />
+              <span className="truncate">{label}</span>
+            </span>
+            {headerRight ? (
+              <div className="shrink-0">{headerRight}</div>
+            ) : (
+              showHint && hintNode
+            )}
+          </div>
+          {headerRight && showHint && <div className="text-right">{hintNode}</div>}
+        </div>
       )}
 
       {/* Editor Box */}
       <div className="bg-white rounded-xl border border-[#D5D9E2] shadow-xs overflow-hidden focus-within:ring-2 focus-within:ring-[#3B4FD8]/40 focus-within:border-[#3B4FD8]">
-        {/* Toolbar */}
+        {/* Toolbar (hidden in the Minimum editor) */}
+        {showToolbar && (
         <div className="bg-[#F2F4F8] border-b border-[#D5D9E2] px-2 py-1.5 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
           {/* Inline Math $ */}
           <button
@@ -249,6 +270,7 @@ export const LatexEditor: React.FC<LatexEditorProps> = ({
             )}
           </div>
         </div>
+        )}
 
         {/* Textarea */}
         <textarea
@@ -257,7 +279,7 @@ export const LatexEditor: React.FC<LatexEditorProps> = ({
           onChange={(e) => onChange(e.target.value)}
           rows={rows}
           placeholder={placeholder}
-          className="w-full p-3.5 text-sm text-[#1B1F2A] bg-white border-0 outline-none resize-y font-sans leading-relaxed"
+          className="w-full min-h-[3.25rem] p-3.5 text-sm text-[#1B1F2A] bg-white border-0 outline-none resize-y font-sans leading-relaxed block"
         />
       </div>
 

@@ -18,6 +18,9 @@ const StorageAccess = registerPlugin<StorageAccessPlugin>('StorageAccess');
 /** Folder (inside the phone's Download folder) where PDFs are saved */
 export const PDF_SAVE_FOLDER = 'Download/QbCollection';
 
+/** Folder (inside the phone's Download folder) where exported pictures are saved */
+export const IMAGE_SAVE_FOLDER = 'Download/QbCollection/Images';
+
 /**
  * Is the app currently allowed to write PDFs into the phone storage?
  */
@@ -166,6 +169,29 @@ export async function savePdfToPhoneStorage(
   const cleanBase = sanitizeFileName(baseName.replace(/\.pdf$/i, ''));
   const fileName = options.addStamp === false ? `${cleanBase}.pdf` : `${cleanBase}_${makeTimeStamp()}.pdf`;
   const filePath = `${folder}/${fileName}`;
+
+  await Filesystem.writeFile({
+    path: filePath,
+    data: base64Data,
+    directory: Directory.ExternalStorage,
+    recursive: true,
+  });
+
+  return filePath;
+}
+
+/**
+ * Save a picture (base64 without data-URL prefix) into Download/QbCollection/Images.
+ * Returns the saved path (relative to the phone's internal storage).
+ */
+export async function saveImageToPhoneStorage(
+  base64Data: string,
+  baseName: string,
+  extension: string
+): Promise<string> {
+  const cleanBase = sanitizeFileName(baseName.replace(/\.[a-z0-9]+$/i, ''));
+  const fileName = `${cleanBase}_${makeTimeStamp()}.${extension.replace(/^\./, '')}`;
+  const filePath = `${IMAGE_SAVE_FOLDER}/${fileName}`;
 
   await Filesystem.writeFile({
     path: filePath,
