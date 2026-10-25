@@ -954,13 +954,31 @@ async function saveQuestionGroup(payload: SaveQuestionGroupPayload): Promise<{ s
   }
 
   // 3. Save or update Questions
+  //    The order of payload.questions IS the order the person arranged in the editor.
+  //    The group keeps the same "slots" (order numbers) it already occupied in the topic,
+  //    so re-arranging ক/খ/গ/ঘ never shifts other questions around.
   const existingUnderTopic = await db.questions.where('topicId').equals(payload.topicId).toArray();
   let maxOrder = existingUnderTopic.reduce((max, item) => Math.max(max, item.order || 0), 0);
+
+  const slots: number[] = [];
+  for (const qData of payload.questions) {
+    if (qData.id) {
+      const old = await db.questions.get(qData.id);
+      if (old && typeof old.order === 'number') slots.push(old.order);
+    }
+  }
+  slots.sort((a, b) => a - b);
+  // New blocks go after everything else, then take whatever slot their position gives them
+  while (slots.length < payload.questions.length) {
+    maxOrder += 1;
+    slots.push(maxOrder);
+  }
 
   const savedQuestionIds: string[] = [];
 
   for (let i = 0; i < payload.questions.length; i++) {
     const qData = payload.questions[i];
+    const slotOrder = slots[i];
     if (qData.id) {
       // Update existing question
       await db.questions.update(qData.id, {
@@ -973,13 +991,13 @@ async function saveQuestionGroup(payload: SaveQuestionGroupPayload): Promise<{ s
         solutionImageIds: qData.solutionImageIds,
         answerText: qData.answerText,
         rating: qData.rating,
+        order: slotOrder,
         usedInBoards: qData.usedInBoards,
       });
       savedQuestionIds.push(qData.id);
     } else {
       // Add new question
       const newId = generateId();
-      maxOrder += 1;
       await db.questions.add({
         id: newId,
         topicId: payload.topicId,
@@ -991,7 +1009,7 @@ async function saveQuestionGroup(payload: SaveQuestionGroupPayload): Promise<{ s
         solutionImageIds: qData.solutionImageIds,
         answerText: qData.answerText,
         rating: qData.rating,
-        order: maxOrder,
+        order: slotOrder,
         usedInBoards: qData.usedInBoards,
       });
       savedQuestionIds.push(newId);

@@ -37,6 +37,9 @@ import {
   AlertCircle,
   ChevronDown,
   Download,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
 } from 'lucide-react';
 
 export interface QuestionFormModalProps {
@@ -1018,6 +1021,36 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
     setQuestionBlocks((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // Move a question block one step up (-1) or down (+1) — Full Editor
+  const handleMoveQuestionBlock = (index: number, dir: -1 | 1) => {
+    const target = index + dir;
+    if (target < 0 || target >= questionBlocks.length) return;
+    const movedId = questionBlocks[index].tempId;
+    setIsDirty(true);
+    setQuestionBlocks((prev) => {
+      const next = [...prev];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+    // keep the moved block in view so the person can see where it went
+    setTimeout(() => {
+      document.getElementById(`qblock-${movedId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 60);
+  };
+
+  // Auto-arrange blocks in ক → খ → গ → ঘ order (stable: same type keeps its current order)
+  const handleSortBlocksByType = () => {
+    const rank: Record<string, number> = { ক: 0, খ: 1, গ: 2, ঘ: 3 };
+    const sorted = [...questionBlocks].sort((a, b) => (rank[a.type] ?? 9) - (rank[b.type] ?? 9));
+    if (sorted.every((b, i) => b.tempId === questionBlocks[i].tempId)) {
+      showToast('প্রশ্নগুলো আগে থেকেই ক-খ-গ-ঘ ক্রমে আছে');
+      return;
+    }
+    setIsDirty(true);
+    setQuestionBlocks(sorted);
+    showToast('ক-খ-গ-ঘ ক্রমে সাজানো হয়েছে');
+  };
+
   // Update Question Block Field
   const updateQuestionBlock = <K extends keyof QuestionBlockInput>(
     index: number,
@@ -1396,7 +1429,19 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
             {isFull && (
               <div className="flex items-center justify-between text-xs font-bold text-[#1B1F2A] px-1">
                 <span>প্রশ্ন তালিকা ({toBn(questionBlocks.length)}টি প্রশ্ন)</span>
-                <span className="text-[#64748B] text-[0.6875rem] font-normal">গ ও ঘ বা অন্য প্রকার</span>
+                {questionBlocks.length > 1 ? (
+                  <button
+                    type="button"
+                    aria-label="ক খ গ ঘ ক্রমে সাজাও"
+                    onClick={handleSortBlocksByType}
+                    className="min-h-[36px] px-3 rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#EEF2FF] active:bg-[#E0E7FF] text-[#2A3BB0] text-[0.6875rem] font-bold flex items-center gap-1.5"
+                  >
+                    <ArrowUpDown className="w-3.5 h-3.5" />
+                    <span>ক-খ-গ-ঘ সাজাও</span>
+                  </button>
+                ) : (
+                  <span className="text-[#64748B] text-[0.6875rem] font-normal">গ ও ঘ বা অন্য প্রকার</span>
+                )}
               </div>
             )}
 
@@ -1408,6 +1453,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
               return (
                 <div
                   key={block.tempId}
+                  id={`qblock-${block.tempId}`}
                   className="bg-white rounded-2xl p-4 border border-[#D5D9E2] shadow-xs space-y-3"
                 >
                   {/* Block Header */}
@@ -1452,17 +1498,37 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                       </div>
                     )}
 
-                    {/* Delete Block Button — Full Editor only */}
+                    {/* Reorder + Delete — Full Editor only */}
                     {isFull && (
-                      <button
-                        type="button"
-                        aria-label="এই প্রশ্ন ব্লকটি মুছে ফেলুন"
-                        disabled={questionBlocks.length <= 1}
-                        onClick={() => handleRemoveQuestionBlock(index)}
-                        className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-red-500 hover:bg-red-50 disabled:opacity-30 disabled:pointer-events-none transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center">
+                        <button
+                          type="button"
+                          aria-label="এই প্রশ্নটি উপরে সরান"
+                          disabled={index === 0}
+                          onClick={() => handleMoveQuestionBlock(index, -1)}
+                          className="min-h-[44px] min-w-[40px] flex items-center justify-center rounded-xl text-[#2A3BB0] hover:bg-[#EEF2FF] active:bg-[#E0E7FF] disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                        >
+                          <ArrowUp className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="এই প্রশ্নটি নিচে সরান"
+                          disabled={index === questionBlocks.length - 1}
+                          onClick={() => handleMoveQuestionBlock(index, 1)}
+                          className="min-h-[44px] min-w-[40px] flex items-center justify-center rounded-xl text-[#2A3BB0] hover:bg-[#EEF2FF] active:bg-[#E0E7FF] disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                        >
+                          <ArrowDown className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="এই প্রশ্ন ব্লকটি মুছে ফেলুন"
+                          disabled={questionBlocks.length <= 1}
+                          onClick={() => handleRemoveQuestionBlock(index)}
+                          className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-red-500 hover:bg-red-50 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     )}
                   </div>
 
