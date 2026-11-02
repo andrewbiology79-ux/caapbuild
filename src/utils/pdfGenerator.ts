@@ -1,3 +1,4 @@
+import { applyEditsToGroups } from './paperEdits';
 import { getQuestionsByIds, getStimuliByIds } from '../db/crossDb';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
@@ -1039,7 +1040,7 @@ export async function exportPaperById(
 
   return await generateAndSharePdf({
     paper,
-    groupedQuestions: groups,
+    groupedQuestions: applyEditsToGroups(groups, paper.edits),
     imageUrls: urls,
     ...extra,
   });

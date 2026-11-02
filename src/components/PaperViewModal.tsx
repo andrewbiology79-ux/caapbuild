@@ -1,6 +1,6 @@
 import { getQuestionsByIds, getStimuliByIds } from '../db/crossDb';
 import React, { useRef, useState, useEffect } from 'react';
-import { X, Trash2, Edit3, FileDown, AlertTriangle, Minus, Plus, Timer } from 'lucide-react';
+import { X, Trash2, Edit3, FileDown, AlertTriangle, Minus, Plus, MoreVertical } from 'lucide-react';
 import { db, DEFAULT_PAPER_NOTE, type Paper, type Question, type Stimulus } from '../db/db';
 import { deletePaper, getImageBlobUrl } from '../db/api';
 import { RichText } from './RichText';
@@ -15,7 +15,7 @@ import {
 } from '../utils/settings';
 import { generateAndSharePdf } from '../utils/pdfGenerator';
 import { showPdfSavedDialog } from '../utils/storageAccess';
-import { ExamModal } from './ExamModal';
+import { applyEditsToGroups } from '../utils/paperEdits';
 
 export interface PaperViewModalProps {
   paperId: string | null;
@@ -41,11 +41,12 @@ export const PaperViewModal: React.FC<PaperViewModalProps> = ({
     Array<{ stimulus?: Stimulus; questions: Question[] }>
   >([]);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [showExam, setShowExam] = useState(false);
   const [pdfErrorMessage, setPdfErrorMessage] = useState<string | null>(null);
   const [pdfFontScale, setPdfFontScale] = useState<number>(DEFAULT_PDF_FONT_SCALE);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   // Load the PDF text size that was selected last time
   useEffect(() => {
@@ -71,6 +72,7 @@ export const PaperViewModal: React.FC<PaperViewModalProps> = ({
     if (!isOpen || !paperId) return;
 
     const loadPaperData = async () => {
+      setLoading(true);
       try {
         const p = await db.papers.get(paperId);
         if (!p) {
@@ -126,11 +128,13 @@ export const PaperViewModal: React.FC<PaperViewModalProps> = ({
           groups.push({ questions: [q] });
         }
 
-        setGroupedQuestions(groups);
+        // paper-only edits (changed questions) are applied here; the question bank stays untouched
+        const finalGroups = applyEditsToGroups(groups, p.edits);
+        setGroupedQuestions(finalGroups);
 
         // Fetch Images Blob URLs
         const urls: Record<string, string> = {};
-        for (const g of groups) {
+        for (const g of finalGroups) {
           if (g.stimulus?.imageIds) {
             for (const imgId of g.stimulus.imageIds) {
               const url = await getImageBlobUrl(imgId);
@@ -149,11 +153,17 @@ export const PaperViewModal: React.FC<PaperViewModalProps> = ({
         setImageUrls(urls);
       } catch (err) {
         console.error('Failed to load paper view:', err);
+      } finally {
+        setLoading(false);
       }
     };
 
     loadPaperData();
   }, [isOpen, paperId]);
+
+  useEffect(() => {
+    if (!isOpen) setMenuOpen(false);
+  }, [isOpen]);
 
   if (!isOpen || !paper) return null;
 
@@ -314,10 +324,10 @@ export const PaperViewModal: React.FC<PaperViewModalProps> = ({
       aria-labelledby="paper-view-title"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-2 sm:p-4 animate-in fade-in duration-150"
     >
-      <div className="w-full max-w-[390px] h-full sm:h-[844px] bg-app dark:bg-slate-900 text-ink flex flex-col relative overflow-hidden shadow-2xl sm:rounded-[36px] border border-line">
+      <div className="w-full max-w-[390px] h-full sm:h-[844px] bg-[#F2F4F8] dark:bg-slate-900 text-[#1B1F2A] dark:text-slate-100 flex flex-col relative overflow-hidden shadow-2xl sm:rounded-[36px] border border-[#D5D9E2] dark:border-slate-800">
         {/* Top Header with Safe Area Inset */}
         <header
-          className="bg-brand text-white px-4 h-14 flex items-center justify-between shrink-0 shadow-md"
+          className="bg-[#3B4FD8] text-white px-4 h-14 flex items-center justify-between shrink-0 shadow-md"
           style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
         >
           <div className="flex items-center gap-2">
@@ -329,7 +339,7 @@ export const PaperViewModal: React.FC<PaperViewModalProps> = ({
             >
               <X className="w-5 h-5" />
             </button>
-            <h2 id="paper-view-title" className="text-sm font-bold text-white truncate max-w-[105px]">
+            <h2 id="paper-view-title" className="text-sm font-bold text-white truncate max-w-[140px]">
               {paper.shortName}
             </h2>
           </div>
@@ -346,22 +356,71 @@ export const PaperViewModal: React.FC<PaperViewModalProps> = ({
               <FileDown className="w-4 h-4" />
               <span>{exportingPdf ? 'তৈরি হচ্ছে...' : 'PDF'}</span>
             </button>
-            <button
-              type="button"
-              aria-label="পরীক্ষা দিন"
-              onClick={() => setShowExam(true)}
-              className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-white/20 text-white"
-            >
-              <Timer className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              aria-label="প্রশ্নপত্র সম্পাদনা করুন"
-              onClick={() => onEdit(paper)}
-              className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-white/20 text-white"
-            >
-              <Edit3 className="w-4 h-4" />
-            </button>
+            <div className="relative">
+              <button
+                type="button"
+                aria-label="আরও অপশন"
+                aria-haspopup="true"
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen((v) => !v)}
+                className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-white/20 active:bg-white/30 text-white"
+              >
+                <MoreVertical className="w-5 h-5" />
+              </button>
+
+              {menuOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+                  <div
+                    role="menu"
+                    className="absolute right-0 top-full mt-1 w-64 z-50 bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-[#D5D9E2] dark:border-slate-700 py-1.5 text-[#1B1F2A] dark:text-slate-100"
+                  >
+                    {/* PDF text size (remembered for the next export) */}
+                    <div className="px-4 py-2.5 flex items-center justify-between gap-2">
+                      <span className="text-xs font-bold">PDF টেক্সট সাইজ</span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          aria-label="টেক্সট ছোট করুন"
+                          disabled={pdfFontScale <= PDF_FONT_SCALES[0]}
+                          onClick={() => changePdfFontScale(-1)}
+                          className="w-8 h-8 min-h-0 rounded-lg border border-[#D5D9E2] dark:border-slate-600 flex items-center justify-center text-[#3B4FD8] dark:text-indigo-400 disabled:opacity-40 active:bg-[#F2F4F8] dark:active:bg-slate-700"
+                        >
+                          <Minus className="w-4 h-4" />
+                        </button>
+                        <span className="min-w-[44px] text-center text-xs font-black text-[#3B4FD8] dark:text-indigo-400">
+                          {toBn(Math.round(pdfFontScale * 100))}%
+                        </span>
+                        <button
+                          type="button"
+                          aria-label="টেক্সট বড় করুন"
+                          disabled={pdfFontScale >= PDF_FONT_SCALES[PDF_FONT_SCALES.length - 1]}
+                          onClick={() => changePdfFontScale(1)}
+                          className="w-8 h-8 min-h-0 rounded-lg border border-[#D5D9E2] dark:border-slate-600 flex items-center justify-center text-[#3B4FD8] dark:text-indigo-400 disabled:opacity-40 active:bg-[#F2F4F8] dark:active:bg-slate-700"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="my-1 border-t border-[#F2F4F8] dark:border-slate-700" />
+
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        onEdit(paper);
+                      }}
+                      className="w-full min-h-[46px] px-4 py-2 text-left text-sm font-medium flex items-center gap-3 hover:bg-[#F2F4F8] dark:hover:bg-slate-700"
+                    >
+                      <Edit3 className="w-4 h-4 text-[#3B4FD8] dark:text-indigo-400" />
+                      <span>প্রশ্নপত্র সম্পাদনা</span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
             <button
               type="button"
               aria-label="প্রশ্নপত্র মুছুন"
@@ -372,34 +431,6 @@ export const PaperViewModal: React.FC<PaperViewModalProps> = ({
             </button>
           </div>
         </header>
-
-        {/* PDF text size control (remembered for next time) */}
-        <div className="shrink-0 flex items-center justify-between gap-2 px-4 py-2 bg-surface border-b border-line">
-          <span className="text-xs font-bold text-ink">PDF টেক্সট সাইজ</span>
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              aria-label="টেক্সট ছোট করুন"
-              disabled={pdfFontScale <= PDF_FONT_SCALES[0]}
-              onClick={() => changePdfFontScale(-1)}
-              className="w-9 h-9 min-h-0 rounded-lg border border-line flex items-center justify-center text-brand disabled:opacity-40 active:bg-hover dark:active:bg-slate-800"
-            >
-              <Minus className="w-4 h-4" />
-            </button>
-            <span className="min-w-[52px] text-center text-xs font-black text-brand">
-              {toBn(Math.round(pdfFontScale * 100))}%
-            </span>
-            <button
-              type="button"
-              aria-label="টেক্সট বড় করুন"
-              disabled={pdfFontScale >= PDF_FONT_SCALES[PDF_FONT_SCALES.length - 1]}
-              onClick={() => changePdfFontScale(1)}
-              className="w-9 h-9 min-h-0 rounded-lg border border-line flex items-center justify-center text-brand disabled:opacity-40 active:bg-hover dark:active:bg-slate-800"
-            >
-              <Plus className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
 
         {/* Scrollable A4 Preview Container */}
         <div className="flex-1 overflow-y-auto p-3 sm:p-4 bg-[#E5E9F0] dark:bg-slate-950/70">
@@ -425,8 +456,6 @@ export const PaperViewModal: React.FC<PaperViewModalProps> = ({
           {renderPaperContent(true)}
         </div>
 
-        <ExamModal paperId={paper.id} isOpen={showExam} onClose={() => setShowExam(false)} />
-
         {/* Delete Confirmation */}
         <ConfirmDialog
           isOpen={showDeleteConfirm}
@@ -446,19 +475,19 @@ export const PaperViewModal: React.FC<PaperViewModalProps> = ({
             aria-modal="true"
             className="fixed inset-0 z-60 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-in fade-in"
           >
-            <div className="w-full max-w-sm bg-surface rounded-2xl p-5 border border-red-200 dark:border-red-900 shadow-2xl space-y-3">
+            <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-2xl p-5 border border-red-200 dark:border-red-900 shadow-2xl space-y-3">
               <div className="flex items-center gap-2 text-red-600 font-bold text-sm">
                 <AlertTriangle className="w-5 h-5" />
                 <span>PDF তৈরিতে ত্রুটি</span>
               </div>
-              <p className="text-xs text-ink bg-danger-soft dark:bg-red-950/40 p-3 rounded-xl border border-red-100 dark:border-red-900 font-mono break-all leading-relaxed">
+              <p className="text-xs text-[#1B1F2A] dark:text-slate-200 bg-red-50 dark:bg-red-950/40 p-3 rounded-xl border border-red-100 dark:border-red-900 font-mono break-all leading-relaxed">
                 {pdfErrorMessage}
               </p>
               <div className="flex justify-end pt-2">
                 <button
                   type="button"
                   onClick={() => setPdfErrorMessage(null)}
-                  className="min-h-[44px] px-4 py-2 rounded-xl bg-brand text-white text-xs font-bold"
+                  className="min-h-[44px] px-4 py-2 rounded-xl bg-[#3B4FD8] text-white text-xs font-bold"
                 >
                   ঠিক আছে
                 </button>

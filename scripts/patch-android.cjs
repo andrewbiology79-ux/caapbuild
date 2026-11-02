@@ -8,7 +8,10 @@ const path = require('path');
 
 const root = path.resolve(__dirname, '..');
 const manifestPath = path.join(root, 'android/app/src/main/AndroidManifest.xml');
-const javaDir = path.join(root, 'android/app/src/main/java/com/qbcollection/app');
+// Package name comes from capacitor.config.json (appId) so the folder / Java package always match it
+const capConfig = JSON.parse(fs.readFileSync(path.join(root, 'capacitor.config.json'), 'utf8'));
+const appId = capConfig.appId;
+const javaDir = path.join(root, 'android/app/src/main/java', ...appId.split('.'));
 
 // ---- 1. Manifest ----
 if (!fs.existsSync(manifestPath)) {
@@ -43,6 +46,7 @@ fs.writeFileSync(manifestPath, manifest, 'utf8');
 // ---- 2. Native plugin ----
 fs.mkdirSync(javaDir, { recursive: true });
 for (const file of ['StorageAccessPlugin.java', 'MainActivity.java']) {
-  fs.copyFileSync(path.join(root, 'native-android', file), path.join(javaDir, file));
-  console.log('Installed ' + file);
+  const src = fs.readFileSync(path.join(root, 'native-android', file), 'utf8').replace(/^package\s+[\w.]+;/m, 'package ' + appId + ';');
+  fs.writeFileSync(path.join(javaDir, file), src, 'utf8');
+  console.log('Installed ' + file + ' (package ' + appId + ')');
 }

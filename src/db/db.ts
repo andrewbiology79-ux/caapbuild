@@ -66,6 +66,24 @@ export interface Category {
 export const DEFAULT_PAPER_NOTE =
   '[ দ্রষ্টব্য: ডান পাশের সংখ্যা প্রশ্নের পূর্ণমান নির্দেশক। প্রয়োজনীয় ক্ষেত্রে চিত্র অঙ্কন আবশ্যক। ]';
 
+/** Paper-only edit of one sub-question (গ / ঘ …). The question bank itself is never changed. */
+export interface PaperQuestionEdit {
+  questionText: string;
+  marks: number;
+  solutionText?: string;
+}
+
+/** Paper-only edit of a stimulus (উদ্দীপক) text */
+export interface PaperStimulusEdit {
+  text: string;
+}
+
+/** Changes made inside ONE paper (kept only in the paper, shown in its PDF) */
+export interface PaperEdits {
+  questions?: Record<string, PaperQuestionEdit>;
+  stimuli?: Record<string, PaperStimulusEdit>;
+}
+
 export interface Paper {
   id: string;
   shortName: string;
@@ -79,6 +97,8 @@ export interface Paper {
   duration?: string | number;
   totalMarks?: number;
   questionIds: string[];
+  /** paper-only changes of the questions / stimuli (the question bank is NOT changed) */
+  edits?: PaperEdits;
   /** manual position inside its category (smaller = higher). undefined = sorted by createdAt desc */
   order?: number;
 }
