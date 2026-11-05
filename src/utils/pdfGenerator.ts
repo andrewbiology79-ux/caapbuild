@@ -250,7 +250,7 @@ async function prepareCloneForCapture(cloneDoc: Document): Promise<void> {
     /* ignore */
   }
   // Manual tuning knob (in em). Negative = move formulas UP. Keep 0 unless still misaligned.
-  if (KATEX_Y_FIX_EM !== -0.25) {
+  if (KATEX_Y_FIX_EM !== 0) {
     cloneDoc.querySelectorAll<HTMLElement>('.katex').forEach((el) => {
       el.style.position = 'relative';
       el.style.top = `${KATEX_Y_FIX_EM}em`;
@@ -259,7 +259,7 @@ async function prepareCloneForCapture(cloneDoc: Document): Promise<void> {
   await new Promise<void>((r) => setTimeout(r, 50));
 }
 
-const KATEX_Y_FIX_EM = 0;
+const KATEX_Y_FIX_EM = -0.25;
 
 async function waitForFontsAndImages(container: HTMLElement): Promise<void> {
   // Force a layout first so the browser actually starts loading the fonts used here
