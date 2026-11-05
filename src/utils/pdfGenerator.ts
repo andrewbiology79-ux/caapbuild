@@ -219,6 +219,48 @@ async function resolveImageToDataUrl(blob: Blob, fileName = ''): Promise<string>
 /**
  * Wait for web fonts and all images inside container to finish loading and decoding
  */
+const KATEX_FACES = [
+  '1em KaTeX_Main', 'italic 1em KaTeX_Main', 'bold 1em KaTeX_Main',
+  'italic 1em KaTeX_Math', 'bold italic 1em KaTeX_Math',
+  '1em KaTeX_AMS', '1em KaTeX_Size1', '1em KaTeX_Size2',
+  '1em KaTeX_Size3', '1em KaTeX_Size4', '1em KaTeX_Caligraphic',
+  '1em KaTeX_Script', '1em KaTeX_Fraktur', '1em KaTeX_SansSerif',
+  '1em KaTeX_Typewriter',
+];
+
+/**
+ * html2canvas lays the page out again inside its own hidden iframe ("clone"). Fonts are loaded
+ * separately per document, so in the clone the KaTeX fonts are often still missing when the
+ * text positions are measured -> formulas get measured with a fallback font and are painted
+ * lower than the Bangla text. Loading the faces inside the clone fixes this.
+ */
+async function prepareCloneForCapture(cloneDoc: Document): Promise<void> {
+  try {
+    if (cloneDoc.fonts && cloneDoc.fonts.load) {
+      // make sure the clone really uses each face once so the browser starts loading it
+      const probe = cloneDoc.createElement('div');
+      probe.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;';
+      probe.innerHTML = KATEX_FACES.map((f) => `<span style="font:${f}">0AB</span>`).join('');
+      cloneDoc.body.appendChild(probe);
+      await Promise.all(KATEX_FACES.map((f) => cloneDoc.fonts.load(f, '0123456789AB').catch(() => [])));
+      if (cloneDoc.fonts.ready) await cloneDoc.fonts.ready;
+      probe.remove();
+    }
+  } catch {
+    /* ignore */
+  }
+  // Manual tuning knob (in em). Negative = move formulas UP. Keep 0 unless still misaligned.
+  if (KATEX_Y_FIX_EM !== 0) {
+    cloneDoc.querySelectorAll<HTMLElement>('.katex').forEach((el) => {
+      el.style.position = 'relative';
+      el.style.top = `${KATEX_Y_FIX_EM}em`;
+    });
+  }
+  await new Promise<void>((r) => setTimeout(r, 50));
+}
+
+const KATEX_Y_FIX_EM = 0;
+
 async function waitForFontsAndImages(container: HTMLElement): Promise<void> {
   // Force a layout first so the browser actually starts loading the fonts used here
   // (otherwise `fonts.ready` can resolve before KaTeX/Bangla fonts are requested).
@@ -227,14 +269,7 @@ async function waitForFontsAndImages(container: HTMLElement): Promise<void> {
     // html2canvas measures each font's baseline ONCE and caches it. If a KaTeX font is not
     // loaded yet at that moment, it measures a fallback font and every formula is then drawn
     // too low in the PDF. So load every KaTeX face explicitly before capturing.
-    const faces = [
-      '1em KaTeX_Main', 'italic 1em KaTeX_Main', 'bold 1em KaTeX_Main',
-      'italic 1em KaTeX_Math', 'bold italic 1em KaTeX_Math',
-      '1em KaTeX_AMS', '1em KaTeX_Size1', '1em KaTeX_Size2',
-      '1em KaTeX_Size3', '1em KaTeX_Size4', '1em KaTeX_Caligraphic',
-      '1em KaTeX_Script', '1em KaTeX_Fraktur', '1em KaTeX_SansSerif',
-      '1em KaTeX_Typewriter',
-    ];
+    const faces = KATEX_FACES;
     await Promise.all(faces.map((f) => document.fonts.load(f, '0123456789AB').catch(() => [])));
   }
   if (document.fonts && document.fonts.ready) {
@@ -922,6 +957,7 @@ export async function generateAndSharePdf(options: GeneratePdfOptions): Promise<
         width: PAGE_WIDTH_PX,
         height: PAGE_HEIGHT_PX,
         windowWidth: PAGE_WIDTH_PX,
+        onclone: (cloneDoc: Document) => prepareCloneForCapture(cloneDoc),
       });
 
       // Lossless PNG keeps Bangla + formula edges sharp (JPEG blurred thin strokes)
