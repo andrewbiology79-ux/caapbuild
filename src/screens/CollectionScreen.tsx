@@ -99,7 +99,7 @@ export function openCollectionAtQuestion(
 
 export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'type' as CqScope }) => {
   const db = getDb(scope);
-  const { seedInitialDataIfNeeded, getSubjects, getChapters, getTopics, getQuestionsByTopicGrouped, getHierarchyStats, getSelectedIds, toggleStimulusSelect, getSelectedStimuliCount, clearSelection, reorderSelected, copyStimulusGroup, getGroupClipboard, clearGroupClipboard, pasteStimulusGroup, deleteStimulusGroup, getQuestionPaperUsage, getImageBlobUrl, addSubject, updateSubject, deleteSubject, reorderSubjects, addChapter, updateChapter, deleteChapter, reorderChapters, addTopic, updateTopic, deleteTopic, reorderTopics } = getApi(scope);
+  const { seedInitialDataIfNeeded, getSubjects, getChapters, getTopics, getQuestionsByTopicGrouped, getHierarchyStats, getSelectedIds, toggleStimulusSelect, getSelectedStimuliCount, clearSelection, reorderSelected, copyStimulusGroup, getGroupClipboard, clearGroupClipboard, pasteStimulusGroup, deleteStimulusGroup, deleteQuestion, getQuestionPaperUsage, getImageBlobUrl, addSubject, updateSubject, deleteSubject, reorderSubjects, addChapter, updateChapter, deleteChapter, reorderChapters, addTopic, updateTopic, deleteTopic, reorderTopics } = getApi(scope);
   const { showToast } = useToast();
   const { registerBackHandler } = useNavigation();
 
@@ -635,6 +635,38 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
     showToast('ক্লিপবোর্ড খালি করা হয়েছে');
   };
 
+  // Delete all selected questions of the open type / chapter
+  const handleDeleteSelected = () => {
+    const selected = new Set(selectedIds);
+    const toDelete: string[] = [];
+    for (const g of questionGroups) {
+      g.questions.forEach((q) => {
+        if (selected.has(q.id)) toDelete.push(q.id);
+      });
+    }
+    if (toDelete.length === 0) {
+      showToast('আগে \"সব নির্বাচন করুন\" বা প্রশ্নের চেকবক্সে ট্যাপ করে নির্বাচন করুন');
+      return;
+    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'নির্বাচিত প্রশ্ন মুছবেন?',
+      message: `নির্বাচিত ${toBn(toDelete.length)}টি প্রশ্ন স্থায়ীভাবে মুছে ফেলতে চান? এটি আর ফেরানো যাবে না।`,
+      onConfirm: async () => {
+        try {
+          for (const id of toDelete) {
+            await deleteQuestion(id);
+          }
+          setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
+          showToast(`${toBn(toDelete.length)}টি প্রশ্ন মুছে ফেলা হয়েছে`);
+          loadData();
+        } catch {
+          showToast('মুছতে সমস্যা হয়েছে');
+        }
+      },
+    });
+  };
+
   // Delete Stimulus Group
   const handleDeleteGroupPrompt = (grp: StimulusWithQuestions) => {
     setConfirmDialog({
@@ -824,6 +856,13 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
             : 'পেস্ট করুন',
         icon: <ClipboardPaste className="w-4 h-4 text-emerald-600" />,
         onClick: handlePasteMultiAtEnd,
+      });
+      items.push({
+        id: 'delete-selected',
+        label: selectedInTopicCount > 0 ? `নির্বাচিত ডিলিট করুন (${toBn(selectedInTopicCount)}টি)` : 'নির্বাচিত ডিলিট করুন',
+        icon: <Trash2 className="w-4 h-4 text-red-500" />,
+        isDestructive: true,
+        onClick: handleDeleteSelected,
       });
       return items;
     }
@@ -1535,10 +1574,10 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
                     allBoards.push({ board: b.board, years: [...(b.years || [])] });
                   }
                 };
+                // top chips show ONLY the stimulus' own boards (গ / ঘ boards stay beside their own question)
                 (grp.stimulus?.usedInBoards || []).forEach(addBoardUsage);
 
                 grp.questions.forEach((q) => {
-                  (q.usedInBoards || []).forEach(addBoardUsage);
                   const usages = questionUsages[q.id] || [];
                   usages.forEach((u) => {
                     if (!allUsages.some((ex) => ex.paperId === u.paperId)) {
@@ -1643,24 +1682,6 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
 
                     {/* Chips Row: Board Tags & Paper Usages (light gray background) */}
                     <div className="bg-[#F8FAFC] border-b border-[#E2E8F0] px-3.5 py-2 flex flex-wrap items-center gap-1.5">
-                      {/* Board Tag Chips */}
-                      {allBoards.length > 0 ? (
-                        allBoards.map((b, bIdx) => (
-                          <span
-                            key={bIdx}
-                            className="px-2 py-0.5 rounded bg-white text-[#1B1F2A] text-[0.625rem] font-semibold border border-[#D5D9E2] flex items-center gap-1 shadow-2xs"
-                          >
-                            <span>
-                              {b.board}'{b.years.map((y) => toBn(String(y).slice(-2))).join(',')}
-                            </span>
-                          </span>
-                        ))
-                      ) : grp.stimulus?.boardTag ? (
-                        <span className="px-2 py-0.5 rounded bg-white text-[#1B1F2A] text-[0.625rem] font-semibold border border-[#D5D9E2] flex items-center gap-1 shadow-2xs">
-                          <span>{grp.stimulus.boardTag}</span>
-                        </span>
-                      ) : null}
-
                       {/* Paper Usages Chips */}
                       {allUsages.map((u) => (
                         <span
@@ -1673,6 +1694,28 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
                           </span>
                         </span>
                       ))}
+
+                      {/* Board Tag Chips: right side, oldest -> newest (newest sits at the far right) */}
+                      {(allBoards.length > 0 || grp.stimulus?.boardTag) && (
+                        <div className="flex flex-wrap items-center justify-end gap-1.5 min-w-0 ml-auto">
+                          {allBoards.length > 0 ? (
+                            allBoards.map((b, bIdx) => (
+                              <span
+                                key={bIdx}
+                                className="px-2 py-0.5 rounded bg-white text-[#1B1F2A] text-[0.625rem] font-semibold border border-[#D5D9E2] flex items-center gap-1 shadow-2xs"
+                              >
+                                <span>
+                                  {b.board}'{b.years.map((y) => toBn(String(y).slice(-2))).join(',')}
+                                </span>
+                              </span>
+                            ))
+                          ) : (
+                            <span className="px-2 py-0.5 rounded bg-white text-[#1B1F2A] text-[0.625rem] font-semibold border border-[#D5D9E2] flex items-center gap-1 shadow-2xs">
+                              <span>{grp.stimulus?.boardTag}</span>
+                            </span>
+                          )}
+                        </div>
+                      )}
 
                       {allBoards.length === 0 && !grp.stimulus?.boardTag && allUsages.length === 0 && (
                         <span className="text-[0.625rem] text-[#94A3B8] italic">ট্যাগ নেই</span>
@@ -1757,16 +1800,16 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
                                         [question.id]: !isSolutionOpen,
                                       }))
                                     }
-                                    className="min-h-[34px] px-2.5 py-1 rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#F2F4F8] text-[0.6875rem] font-semibold text-[#2A3BB0] flex items-center gap-1 transition-colors shrink-0"
+                                    className="min-h-[26px] px-2 py-0.5 rounded-md border border-[#D5D9E2] bg-white hover:bg-[#F2F4F8] text-[0.625rem] font-semibold text-[#2A3BB0] flex items-center gap-1 transition-colors shrink-0"
                                   >
                                     {isSolutionOpen ? (
                                       <>
-                                        <EyeOff className="w-3.5 h-3.5" />
+                                        <EyeOff className="w-3 h-3" />
                                         <span>সমাধান লুকাও</span>
                                       </>
                                     ) : (
                                       <>
-                                        <Eye className="w-3.5 h-3.5" />
+                                        <Eye className="w-3 h-3" />
                                         <span>সমাধান দেখো</span>
                                       </>
                                     )}

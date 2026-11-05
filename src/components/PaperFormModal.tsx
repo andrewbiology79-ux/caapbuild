@@ -553,16 +553,16 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => setOpenSolutions((prev) => ({ ...prev, [q.id]: !solOpen }))}
-                                  className="min-h-[34px] px-2.5 py-1 rounded-lg border border-[#D5D9E2] dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-[#F2F4F8] text-[0.6875rem] font-semibold text-[#2A3BB0] dark:text-indigo-300 flex items-center gap-1 shrink-0"
+                                  className="min-h-[26px] px-2 py-0.5 rounded-md border border-[#D5D9E2] dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-[#F2F4F8] text-[0.625rem] font-semibold text-[#2A3BB0] dark:text-indigo-300 flex items-center gap-1 shrink-0"
                                 >
                                   {solOpen ? (
                                     <>
-                                      <EyeOff className="w-3.5 h-3.5" />
+                                      <EyeOff className="w-3 h-3" />
                                       <span>সমাধান লুকাও</span>
                                     </>
                                   ) : (
                                     <>
-                                      <Eye className="w-3.5 h-3.5" />
+                                      <Eye className="w-3 h-3" />
                                       <span>সমাধান দেখো</span>
                                     </>
                                   )}

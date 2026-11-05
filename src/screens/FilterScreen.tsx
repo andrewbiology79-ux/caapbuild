@@ -199,10 +199,10 @@ const ResultCard: React.FC<ResultCardProps> = React.memo(
     }, [row.source, row.stimulus, q.solutionImageIds, solutionOpen]);
 
     const solutionUrls = (q.solutionImageIds || []).map((id) => imageUrls[id]).filter(Boolean) as string[];
-    // boards of the stimulus + of this question (same board merged, years combined)
+    // top chips: boards of the stimulus only (this question's own boards sit beside its সমাধান button)
     const boards = (() => {
       const merged: Array<{ board: string; years: number[] }> = [];
-      [...(row.stimulus?.usedInBoards || []), ...(q.usedInBoards || [])].forEach((b) => {
+      [...(row.stimulus?.usedInBoards || [])].forEach((b) => {
         const ex = merged.find((m) => m.board === b.board);
         if (ex) ex.years = Array.from(new Set([...ex.years, ...(b.years || [])])).sort((x, y) => x - y);
         else merged.push({ board: b.board, years: [...(b.years || [])] });
@@ -287,22 +287,26 @@ const ResultCard: React.FC<ResultCardProps> = React.memo(
 
         {/* Board tags & paper usages */}
         <div className="bg-[#F8FAFC] border-b border-[#E2E8F0] px-3.5 py-2 flex flex-wrap items-center gap-1.5">
-          {boards.length > 0 ? (
-            boards.map((b, i) => (
-              <span
-                key={i}
-                className="px-2 py-0.5 rounded bg-white text-[#1B1F2A] text-[0.625rem] font-semibold border border-[#D5D9E2] flex items-center gap-1 shadow-2xs"
-              >
-                <span>
-                  {b.board}'{(b.years || []).map((y) => toBn(String(y).slice(-2))).join(',')}
+          {(boards.length > 0 || row.stimulus?.boardTag) && (
+            <div className="flex flex-wrap items-center justify-end gap-1.5 min-w-0 ml-auto order-last">
+              {boards.length > 0 ? (
+                boards.map((b, i) => (
+                  <span
+                    key={i}
+                    className="px-2 py-0.5 rounded bg-white text-[#1B1F2A] text-[0.625rem] font-semibold border border-[#D5D9E2] flex items-center gap-1 shadow-2xs"
+                  >
+                    <span>
+                      {b.board}'{(b.years || []).map((y) => toBn(String(y).slice(-2))).join(',')}
+                    </span>
+                  </span>
+                ))
+              ) : (
+                <span className="px-2 py-0.5 rounded bg-white text-[#1B1F2A] text-[0.625rem] font-semibold border border-[#D5D9E2] flex items-center gap-1 shadow-2xs">
+                  <span>{row.stimulus?.boardTag}</span>
                 </span>
-              </span>
-            ))
-          ) : row.stimulus?.boardTag ? (
-            <span className="px-2 py-0.5 rounded bg-white text-[#1B1F2A] text-[0.625rem] font-semibold border border-[#D5D9E2] flex items-center gap-1 shadow-2xs">
-              <span>{row.stimulus.boardTag}</span>
-            </span>
-          ) : null}
+              )}
+            </div>
+          )}
 
           {row.usages.map((u) => (
             <span
@@ -366,16 +370,16 @@ const ResultCard: React.FC<ResultCardProps> = React.memo(
                   type="button"
                   aria-label={solutionOpen ? 'সমাধান লুকান' : 'সমাধান দেখুন'}
                   onClick={() => setSolutionOpen((o) => !o)}
-                  className="min-h-[34px] px-2.5 py-1 rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#F2F4F8] text-[0.6875rem] font-semibold text-[#2A3BB0] flex items-center gap-1 transition-colors shrink-0"
+                  className="min-h-[26px] px-2 py-0.5 rounded-md border border-[#D5D9E2] bg-white hover:bg-[#F2F4F8] text-[0.625rem] font-semibold text-[#2A3BB0] flex items-center gap-1 transition-colors shrink-0"
                 >
                   {solutionOpen ? (
                     <>
-                      <EyeOff className="w-3.5 h-3.5" />
+                      <EyeOff className="w-3 h-3" />
                       <span>সমাধান লুকাও</span>
                     </>
                   ) : (
                     <>
-                      <Eye className="w-3.5 h-3.5" />
+                      <Eye className="w-3 h-3" />
                       <span>সমাধান দেখো</span>
                     </>
                   )}

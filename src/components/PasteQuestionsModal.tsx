@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, ClipboardPaste, Copy, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, ClipboardPaste, Copy, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
 import { useToast } from './Toast';
 import { toBn } from '../utils/toBn';
 import {
@@ -67,6 +67,53 @@ const SAMPLE_JSON = JSON.stringify(
   null,
   2
 );
+
+const AI_PROMPT = String.raw`তুমি একজন JSON ফরম্যাটার। আমি এই মেসেজের সাথে সৃজনশীল প্রশ্ন (CQ) এবং তার উত্তর/সমাধানের ছবি দিয়েছি। ছবি থেকে সব প্রশ্ন ও সমাধান হুবহু পড়ে নিচের নিয়ম মেনে একটি সম্পূর্ণ JSON তৈরি করো।
+
+আউটপুট নিয়ম (খুব গুরুত্বপূর্ণ):
+1. শুধু একটি JSON কোড ব্লক দাও। JSON এর আগে-পরে কোনো ব্যাখ্যা, শিরোনাম বা মন্তব্য লিখবে না।
+2. JSON টি পুরোপুরি valid হতে হবে। শেষ আইটেমের পরে কমা (trailing comma) দেবে না। সব key ও text ডবল কোটেশনে (") থাকবে।
+3. ছবির কোনো প্রশ্ন বা উত্তর বাদ দেবে না, নিজে থেকে কিছু যোগ বা পরিবর্তন করবে না। বাংলা বানান ও সংখ্যা ছবির মতোই রাখবে।
+
+গঠন:
+{
+  "groups": [
+    {
+      "stimulus": "উদ্দীপকের পূর্ণ লেখা",
+      "stimulusRating": 3,
+      "reference": "প্রশ্নের উৎস/রেফারেন্স (না থাকলে \"\")",
+      "stimulusBoards": [ { "board": "DB", "years": [2025] } ],
+      "questions": [
+        {
+          "type": "গ",
+          "marks": 3,
+          "rating": 3,
+          "questionText": "প্রশ্নের লেখা",
+          "solutionText": "ধাপে ধাপে সমাধান",
+          "answerText": "চূড়ান্ত উত্তর (না থাকলে \"\")",
+          "usedInBoards": [ { "board": "DB", "years": [2025] } ]
+        }
+      ]
+    }
+  ]
+}
+
+ক্ষেত্রগুলোর নিয়ম:
+- একটি উদ্দীপক = একটি group। একই উদ্দীপকের ক/খ/গ/ঘ প্রশ্নগুলো ওই group এর "questions" এ থাকবে। একাধিক উদ্দীপক থাকলে একাধিক group দেবে।
+- "stimulus" তে শুধু উদ্দীপকের লেখা থাকবে, কোনো প্রশ্ন (ক/খ/গ/ঘ) এতে মেশাবে না। ছবির চিত্র থাকলে চিত্রে দেখানো সব তথ্য (মান, বিন্দুর নাম, কোণ ইত্যাদি) কথায় লিখে দেবে।
+- "type" শুধু ক, খ, গ বা ঘ। "marks": ক=1, খ=2, গ=3, ঘ=4। প্রশ্নে শুধু গ ও ঘ থাকলে শুধু ওই দুটোই দেবে।
+- "rating" 1 থেকে 5 (কঠিনতা)। ছবিতে না থাকলে 3 দাও।
+- "stimulusBoards" ও "usedInBoards" এ বোর্ড কোড ও সাল দেবে। কোড: DB (ঢাকা), RB (রাজশাহী), CB (কুমিল্লা), SB (সিলেট), JB (যশোর), BB (বরিশাল), MB (ময়মনসিংহ), DJB (দিনাজপুর)। "years" সংখ্যার তালিকা, যেমন [2023, 2025]। প্রশ্নের পাশে [ঢা.বো. ২৫] বা [DB'25] এমন লেখা থাকলে সেটা ওই প্রশ্নের usedInBoards এ যাবে; উদ্দীপকের পাশে থাকলে stimulusBoards এ। না থাকলে [] দাও।
+- "solutionText" এ সমাধান ধাপে ধাপে লিখবে। নতুন লাইনের জন্য \n ব্যবহার করবে।
+- "answerText" এ শুধু চূড়ান্ত উত্তর (মান ও একক সহ)। আলাদা উত্তর না থাকলে "" দাও।
+
+গণিত ও সূত্র (LaTeX):
+- সব গাণিতিক রাশি, সূত্র, চলক, একক ডলার চিহ্নের মধ্যে LaTeX এ লিখবে। যেমন $v = u + at$, $F = \frac{GMm}{r^2}$, $5 \times 10^{-3}\ \text{m}$।
+- JSON এর ভেতরে প্রতিটি ব্যাকস্ল্যাশ (\) অবশ্যই দ্বিগুণ (\\) করে লিখবে। যেমন \\frac, \\times, \\text, \\sqrt, \\theta, \\alpha। একক ব্যাকস্ল্যাশ লিখলে JSON নষ্ট হবে।
+- একক বা ইউনিট $...$ এর ভেতরে \\text{...} দিয়ে লিখবে, যেমন $20\\ \\text{kg}$।
+- ডলার ($) চিহ্ন শুধু গণিতের জন্য ব্যবহার করবে, টাকার চিহ্ন হিসেবে নয়।
+
+সবশেষে আরেকবার মিলিয়ে নাও: JSON valid কি না, সব প্রশ্ন ও সমাধান এসেছে কি না, উদ্দীপক ও প্রশ্ন আলাদা আছে কি না, এবং ব্যাকস্ল্যাশ দ্বিগুণ আছে কি না।`;
 
 const TYPE_BY_MARKS: Record<number, QuestionType> = { 1: 'ক', 2: 'খ', 3: 'গ', 4: 'ঘ' };
 const MARKS_BY_TYPE: Record<QuestionType, number> = { ক: 1, খ: 2, গ: 3, ঘ: 4 };
@@ -321,6 +368,16 @@ export const PasteQuestionsModal: React.FC<PasteQuestionsModalProps> = ({
     }
   };
 
+  const handleCopyAiPrompt = async () => {
+    try {
+      await navigator.clipboard.writeText(AI_PROMPT);
+      showToast('AI-এর জন্য prompt কপি হয়েছে — ছবির সাথে AI-তে পেস্ট করুন');
+    } catch {
+      setText(AI_PROMPT);
+      showToast('Prompt বক্সে বসানো হয়েছে, সেখান থেকে কপি করুন');
+    }
+  };
+
   const handleSave = async () => {
     setError(null);
     let groups: ParsedGroup[];
@@ -407,22 +464,30 @@ export const PasteQuestionsModal: React.FC<PasteQuestionsModalProps> = ({
             প্রশ্নগুলো টপিক <span className="font-bold text-[#1B1F2A] dark:text-slate-200">{topicName}</span>-এ যুক্ত হবে। বিদ্যমান কিছু পরিবর্তন হবে না।
           </p>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <button
               type="button"
               onClick={handlePasteFromClipboard}
-              className="flex-1 min-h-[44px] px-3 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] text-white text-xs font-bold flex items-center justify-center gap-1.5"
+              className="flex-1 min-w-0 min-h-[44px] px-2 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] text-white text-xs font-bold flex items-center justify-center gap-1"
             >
-              <ClipboardPaste className="w-4 h-4" />
-              <span>পেস্ট করুন</span>
+              <ClipboardPaste className="w-4 h-4 shrink-0" />
+              <span className="truncate">পেস্ট করুন</span>
             </button>
             <button
               type="button"
               onClick={handleCopySample}
-              className="min-h-[44px] px-3 rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#2A3BB0] dark:text-indigo-300 text-xs font-semibold flex items-center gap-1.5 shrink-0"
+              className="min-h-[44px] px-2.5 rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#2A3BB0] dark:text-indigo-300 text-xs font-semibold flex items-center gap-1 shrink-0"
             >
               <Copy className="w-4 h-4" />
               <span>নমুনা কপি</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleCopyAiPrompt}
+              className="min-h-[44px] px-2.5 rounded-xl border border-[#3B4FD8]/40 dark:border-indigo-400/40 bg-indigo-50 dark:bg-slate-800 text-[#2A3BB0] dark:text-indigo-300 text-xs font-bold flex items-center gap-1 shrink-0"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>For AI</span>
             </button>
           </div>
 
