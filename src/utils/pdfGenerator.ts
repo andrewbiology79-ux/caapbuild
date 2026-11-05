@@ -259,7 +259,7 @@ async function prepareCloneForCapture(cloneDoc: Document): Promise<void> {
   await new Promise<void>((r) => setTimeout(r, 50));
 }
 
-const KATEX_Y_FIX_EM: number = -0.39;
+const KATEX_Y_FIX_EM: number = -0.37;
 
 async function waitForFontsAndImages(container: HTMLElement): Promise<void> {
   // Force a layout first so the browser actually starts loading the fonts used here
