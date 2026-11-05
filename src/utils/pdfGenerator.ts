@@ -250,7 +250,7 @@ async function prepareCloneForCapture(cloneDoc: Document): Promise<void> {
     /* ignore */
   }
   // Manual tuning knob (in em). Negative = move formulas UP. Keep 0 unless still misaligned.
-  if (KATEX_Y_FIX_EM !== 0) {
+  if (KATEX_Y_FIX_EM !== -0.25) {
     cloneDoc.querySelectorAll<HTMLElement>('.katex').forEach((el) => {
       el.style.position = 'relative';
       el.style.top = `${KATEX_Y_FIX_EM}em`;
