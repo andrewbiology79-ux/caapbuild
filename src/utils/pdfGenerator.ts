@@ -451,6 +451,9 @@ function buildQuestionGroupElement(
   // with top pictures the serial number stays on the left and a column holds "pictures + text"
   let stimHost: HTMLElement = topRow;
   if (stimSplit.top.length > 0) {
+    // serial number stays at the very top of the দাগ, level with the first picture
+    topRow.style.alignItems = 'flex-start';
+    serialSpan.style.marginTop = '4px';
     stimHost = document.createElement('div');
     stimHost.style.flex = '1';
     stimHost.style.minWidth = '0';

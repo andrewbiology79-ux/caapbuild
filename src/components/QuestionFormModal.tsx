@@ -557,7 +557,7 @@ const PartImage: React.FC<{
   <div className="space-y-1.5">
     <div
       className={`relative rounded-xl overflow-hidden border border-[#D5D9E2] bg-[#F8FAFC] ${
-        fullFeatures ? 'max-w-[220px]' : 'w-[88px]'
+        fullFeatures ? 'w-[120px]' : 'w-[88px]'
       }`}
     >
       {url ? (
@@ -565,7 +565,7 @@ const PartImage: React.FC<{
           src={url}
           alt="সমাধানের ছবি"
           onClick={fullFeatures ? onOpenViewer : undefined}
-          className={`w-full h-auto object-contain ${fullFeatures ? 'max-h-40 cursor-zoom-in' : 'max-h-16'}`}
+          className={`w-full h-auto object-contain ${fullFeatures ? 'max-h-24 cursor-zoom-in' : 'max-h-16'}`}
         />
       ) : (
         <div className="w-full h-20 flex items-center justify-center text-[0.625rem] text-[#64748B]">লোড হচ্ছে...</div>
@@ -581,15 +581,15 @@ const PartImage: React.FC<{
       </button>
     </div>
     {fullFeatures && (
-      <div className="flex items-center gap-1.5 max-w-[220px]">
+      <div className="flex items-center gap-1 w-[120px]">
         <button
           type="button"
           aria-label="ছবি বদলান"
           title="বদলান"
           onClick={onReplace}
-          className="flex-1 min-h-[36px] rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#EEF2FF] active:bg-[#E0E7FF] text-[#2A3BB0] flex items-center justify-center"
+          className="flex-1 min-h-[28px] h-7 rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#EEF2FF] active:bg-[#E0E7FF] text-[#2A3BB0] flex items-center justify-center"
         >
-          <RefreshCw className="w-4 h-4" />
+          <RefreshCw className="w-3.5 h-3.5" />
         </button>
         <button
           type="button"
@@ -597,9 +597,9 @@ const PartImage: React.FC<{
           title="এক্সপোর্ট (ডাউনলোড)"
           disabled={!url}
           onClick={onExport}
-          className="flex-1 min-h-[36px] rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#EEF2FF] active:bg-[#E0E7FF] text-[#2A3BB0] flex items-center justify-center disabled:opacity-40 disabled:pointer-events-none"
+          className="flex-1 min-h-[28px] h-7 rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#EEF2FF] active:bg-[#E0E7FF] text-[#2A3BB0] flex items-center justify-center disabled:opacity-40 disabled:pointer-events-none"
         >
-          <Download className="w-4 h-4" />
+          <Download className="w-3.5 h-3.5" />
         </button>
         <button
           type="button"
@@ -607,9 +607,9 @@ const PartImage: React.FC<{
           title="বড় দেখুন"
           disabled={!url}
           onClick={onOpenViewer}
-          className="flex-1 min-h-[36px] rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#EEF2FF] active:bg-[#E0E7FF] text-[#2A3BB0] flex items-center justify-center disabled:opacity-40 disabled:pointer-events-none"
+          className="flex-1 min-h-[28px] h-7 rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#EEF2FF] active:bg-[#E0E7FF] text-[#2A3BB0] flex items-center justify-center disabled:opacity-40 disabled:pointer-events-none"
         >
-          <Maximize2 className="w-4 h-4" />
+          <Maximize2 className="w-3.5 h-3.5" />
         </button>
       </div>
     )}
