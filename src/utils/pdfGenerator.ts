@@ -223,9 +223,25 @@ async function waitForFontsAndImages(container: HTMLElement): Promise<void> {
   // Force a layout first so the browser actually starts loading the fonts used here
   // (otherwise `fonts.ready` can resolve before KaTeX/Bangla fonts are requested).
   void container.offsetHeight;
+  if (document.fonts && document.fonts.load) {
+    // html2canvas measures each font's baseline ONCE and caches it. If a KaTeX font is not
+    // loaded yet at that moment, it measures a fallback font and every formula is then drawn
+    // too low in the PDF. So load every KaTeX face explicitly before capturing.
+    const faces = [
+      '1em KaTeX_Main', 'italic 1em KaTeX_Main', 'bold 1em KaTeX_Main',
+      'italic 1em KaTeX_Math', 'bold italic 1em KaTeX_Math',
+      '1em KaTeX_AMS', '1em KaTeX_Size1', '1em KaTeX_Size2',
+      '1em KaTeX_Size3', '1em KaTeX_Size4', '1em KaTeX_Caligraphic',
+      '1em KaTeX_Script', '1em KaTeX_Fraktur', '1em KaTeX_SansSerif',
+      '1em KaTeX_Typewriter',
+    ];
+    await Promise.all(faces.map((f) => document.fonts.load(f, '0123456789AB').catch(() => [])));
+  }
   if (document.fonts && document.fonts.ready) {
     await document.fonts.ready;
   }
+  // let the browser apply the loaded fonts and finish layout before html2canvas starts
+  await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
   const images = Array.from(container.querySelectorAll('img'));
   await Promise.all(
