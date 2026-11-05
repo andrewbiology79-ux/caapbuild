@@ -1,9 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { X, Moon, Sun, Type, FileText, Check, Settings as SettingsIcon } from 'lucide-react';
-import { getAppSettings, saveAppSettings, type AppSettings, type ThemeMode, type FontSizeOption } from '../utils/settings';
+import {
+  getAppSettings,
+  saveAppSettings,
+  MIN_FONT_SIZE,
+  MAX_FONT_SIZE,
+  DEFAULT_FONT_SIZE,
+  type AppSettings,
+  type ThemeMode,
+  type FontSizeOption,
+} from '../utils/settings';
+import { toBn } from '../utils/toBn';
 import { useToast } from './Toast';
 import {
   AUTO_BACKUP_ROOT,
+  getLastAutoBackupTime,
   getLastAutoBackupDate,
   isAutoBackupEnabled,
   runAutoBackup,
@@ -19,13 +30,15 @@ export interface SettingsModalProps {
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSaved }) => {
   const { showToast } = useToast();
   const [theme, setTheme] = useState<ThemeMode>('light');
-  const [fontSize, setFontSize] = useState<FontSizeOption>('medium');
+  const [fontSize, setFontSize] = useState<FontSizeOption>(DEFAULT_FONT_SIZE);
   const [defaultPaperTitle, setDefaultPaperTitle] = useState('');
   const [defaultPaperNote, setDefaultPaperNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [autoBackupOn, setAutoBackupOn] = useState(true);
   const [lastBackup, setLastBackup] = useState<string | null>(null);
   const [backingUp, setBackingUp] = useState(false);
+  /** result of the last "এখনই ব্যাকআপ নিন" tap — shown right under the button so it is never missed */
+  const [backupMsg, setBackupMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -36,7 +49,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
       setDefaultPaperTitle(s.defaultPaperTitle || '');
       setDefaultPaperNote(s.defaultPaperNote ?? '');
       setAutoBackupOn(isAutoBackupEnabled());
-      setLastBackup(getLastAutoBackupDate());
+      setLastBackup(getLastAutoBackupTime() || getLastAutoBackupDate());
+      setBackupMsg(null);
     };
     load();
   }, [isOpen]);
@@ -50,19 +64,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   };
 
   const handleBackupNow = async () => {
+    if (backingUp) return;
     setBackingUp(true);
+    setBackupMsg(null);
     try {
       const r = await runAutoBackup(true);
       if (r.status === 'done') {
-        setLastBackup(getLastAutoBackupDate());
+        setLastBackup(getLastAutoBackupTime() || getLastAutoBackupDate());
+        setBackupMsg({ ok: true, text: `ব্যাকআপ হয়েছে: ${r.folder}` });
         showToast(`ব্যাকআপ হয়েছে: ${r.folder}`, 4500);
       } else if (r.status === 'unsupported') {
-        showToast('ব্যাকআপ ফোনের অ্যাপে কাজ করে (ব্রাউজারে নয়)');
+        setBackupMsg({ ok: false, text: 'ব্যাকআপ ফোনের অ্যাপে কাজ করে (ব্রাউজারে নয়)।' });
       } else if (r.status === 'no-access') {
-        showToast('স্টোরেজ অনুমতি দেওয়া হয়নি');
+        setBackupMsg({ ok: false, text: 'স্টোরেজ অনুমতি দেওয়া হয়নি। অনুমতি দিয়ে আবার চেষ্টা করুন।' });
+      } else if (r.status === 'busy') {
+        setBackupMsg({ ok: false, text: 'আরেকটি ব্যাকআপ চলছে, একটু অপেক্ষা করুন।' });
       } else if (r.status === 'error') {
-        showToast(`ব্যাকআপ ব্যর্থ: ${r.message}`, 5000);
+        setBackupMsg({ ok: false, text: `ব্যাকআপ ব্যর্থ: ${r.message}` });
+      } else {
+        setBackupMsg({ ok: false, text: 'ব্যাকআপ নেওয়া যায়নি, আবার চেষ্টা করুন।' });
       }
+    } catch (err: any) {
+      console.error('Manual backup failed:', err);
+      setBackupMsg({ ok: false, text: `ব্যাকআপ ব্যর্থ: ${err?.message || err}` });
     } finally {
       setBackingUp(false);
     }
@@ -160,28 +184,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
               <Type className="w-4 h-4 text-[#3B4FD8]" />
               <span>লেখার সাইজ (Font Size)</span>
             </label>
-            <div className="grid grid-cols-3 gap-2">
-              {(
-                [
-                  { id: 'small', label: 'ছোট' },
-                  { id: 'medium', label: 'মাঝারি' },
-                  { id: 'large', label: 'বড়' },
-                ] as const
-              ).map((item) => (
+            <div className="grid grid-cols-5 gap-1.5">
+              {Array.from({ length: MAX_FONT_SIZE - MIN_FONT_SIZE + 1 }, (_, i) => MIN_FONT_SIZE + i).map((n) => (
                 <button
-                  key={item.id}
+                  key={n}
                   type="button"
-                  onClick={() => setFontSize(item.id)}
-                  className={`min-h-[44px] px-2 py-2 rounded-xl border text-xs font-bold transition-all ${
-                    fontSize === item.id
+                  aria-label={`লেখার সাইজ ${n}`}
+                  aria-pressed={fontSize === n}
+                  onClick={() => setFontSize(n)}
+                  style={{ minHeight: 0, height: 36 }}
+                  className={`rounded-lg border text-xs font-bold transition-all ${
+                    fontSize === n
                       ? 'border-[#3B4FD8] bg-[#EEF2FF] dark:bg-indigo-950 text-[#3B4FD8] dark:text-indigo-300 ring-1 ring-[#3B4FD8]'
                       : 'border-[#D5D9E2] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#64748B] dark:text-slate-400'
                   }`}
                 >
-                  {item.label}
+                  {toBn(n)}
                 </button>
               ))}
             </div>
+            <p
+              className="px-3 py-2 rounded-xl bg-[#F8FAFC] dark:bg-slate-800 border border-[#E2E8F0] dark:border-slate-700 text-[#1B1F2A] dark:text-slate-100"
+              style={{ fontSize: fontSize }}
+            >
+              নমুনা লেখা — {toBn(fontSize)} সাইজ
+            </p>
+            <p className="text-[0.6875rem] text-[#64748B] dark:text-slate-400">
+              সংখ্যা বেছে নিন (ডিফল্ট {toBn(DEFAULT_FONT_SIZE)}) — সংরক্ষণ করলে পুরো অ্যাপে এই সাইজ প্রযোজ্য হবে।
+            </p>
           </div>
 
           {/* 3. Default Paper Title */}
@@ -244,11 +274,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
               </button>
             </div>
             <p className="text-[0.6875rem] leading-relaxed text-[#64748B] dark:text-slate-400">
-              প্রতিদিন তারিখ দিয়ে নতুন ফোল্ডার হবে ({AUTO_BACKUP_ROOT}/তারিখ) — ভেতরে ৩টি ফাইল: টাইপ CQ, অধ্যায় CQ ও ফুল ব্যাকআপ।
-              অ্যাপ খুললে বা চালু থাকা অবস্থায় দিনের প্রথমবার নিজে থেকে হবে।
+              প্রতিটি ব্যাকআপের জন্য তারিখ ও সময় দিয়ে আলাদা নতুন ফোল্ডার হবে ({AUTO_BACKUP_ROOT}/তারিখ_সময়) — ভেতরে ৩টি ফাইল: টাইপ CQ, অধ্যায় CQ ও ফুল ব্যাকআপ।
+              অ্যাপ খুললে বা চালু থাকা অবস্থায় দিনের প্রথমবার নিজে থেকে হবে; "এখনই ব্যাকআপ নিন" চাপলে প্রতিবার নতুন ফোল্ডার হবে।
             </p>
             <p className="text-[0.6875rem] font-semibold text-[#1B1F2A] dark:text-slate-200">
-              সর্বশেষ অটো ব্যাকআপ: {lastBackup || 'এখনো হয়নি'}
+              সর্বশেষ ব্যাকআপ: {lastBackup || 'এখনো হয়নি'}
             </p>
             <button
               type="button"
@@ -258,6 +288,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
             >
               {backingUp ? 'ব্যাকআপ হচ্ছে...' : 'এখনই ব্যাকআপ নিন'}
             </button>
+            {backupMsg && (
+              <p
+                role="status"
+                className={`text-[0.6875rem] font-semibold leading-relaxed break-all ${
+                  backupMsg.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+                }`}
+              >
+                {backupMsg.text}
+              </p>
+            )}
           </div>
         </div>
 

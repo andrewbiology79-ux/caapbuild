@@ -1,7 +1,12 @@
 import { db, DEFAULT_PAPER_NOTE } from '../db/db';
 
 export type ThemeMode = 'light' | 'dark';
-export type FontSizeOption = 'small' | 'medium' | 'large';
+/** Root font size in px (e.g. 16, 20, 21, 22 …) — chosen by number in Settings */
+export type FontSizeOption = number;
+
+export const MIN_FONT_SIZE = 12;
+export const MAX_FONT_SIZE = 28;
+export const DEFAULT_FONT_SIZE = 16;
 
 export interface AppSettings {
   theme: ThemeMode;
@@ -13,18 +18,12 @@ export interface AppSettings {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'light',
-  fontSize: 'medium',
+  fontSize: DEFAULT_FONT_SIZE,
   defaultPaperTitle: 'পদার্থবিজ্ঞান ১ম পত্র - মডেল টেস্ট',
   defaultPaperNote: DEFAULT_PAPER_NOTE,
 };
 
 const SETTINGS_KEY = 'settings';
-
-const FONT_SIZE_PX: Record<FontSizeOption, number> = {
-  small: 14,
-  medium: 16,
-  large: 19,
-};
 
 /**
  * Normalize stored values (old/invalid data such as a numeric fontSize or unknown theme)
@@ -34,11 +33,13 @@ function normalizeSettings(raw: any): AppSettings {
 
   const theme: ThemeMode = merged.theme === 'dark' ? 'dark' : 'light';
 
-  let fontSize: FontSizeOption = 'medium';
-  if (merged.fontSize === 'small' || merged.fontSize === 'medium' || merged.fontSize === 'large') {
-    fontSize = merged.fontSize;
-  } else if (typeof merged.fontSize === 'number') {
-    fontSize = merged.fontSize <= 14 ? 'small' : merged.fontSize >= 18 ? 'large' : 'medium';
+  // old versions stored 'small' | 'medium' | 'large'; new versions store the size in px
+  let fontSize: FontSizeOption = DEFAULT_FONT_SIZE;
+  if (merged.fontSize === 'small') fontSize = 14;
+  else if (merged.fontSize === 'medium') fontSize = 16;
+  else if (merged.fontSize === 'large') fontSize = 19;
+  else if (typeof merged.fontSize === 'number' && isFinite(merged.fontSize)) {
+    fontSize = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, Math.round(merged.fontSize)));
   }
 
   return {
@@ -70,7 +71,7 @@ export function applySettingsToDOM(input: AppSettings): void {
   }
 
   // 2. Root Font Size (all rem based Tailwind sizes follow this)
-  root.style.fontSize = `${FONT_SIZE_PX[settings.fontSize]}px`;
+  root.style.fontSize = `${settings.fontSize}px`;
 }
 
 /**

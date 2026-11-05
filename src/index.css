@@ -109,3 +109,14 @@ button,
 .dark { color-scheme: dark; }
 .dark body { background-color: #0f172a; color: #f1f5f9; }
 .dark ::-webkit-scrollbar-thumb { background: #475569; }
+
+/* Floating Greek-symbol list lives on <body>, outside the app frame */
+.dark .greek-pop { background-color: #1e293b; border-color: #334155; }
+.dark .greek-pop button { color: #f1f5f9; }
+.dark .greek-pop button:hover { background-color: #312e81; }
+
+/* Live preview cards: light-blue card must turn dark, otherwise white text sits on a light card */
+.dark .bg-\[\#F8FAFF\]:not([class*="dark:"]):not(.paper-a4):not(.paper-a4 *) { background-color: #162033; }
+.dark .live-preview { color: #f1f5f9; }
+.dark .live-preview .text-\[\#2A3BB0\] { color: #a5b4fc; }
+.dark .live-preview .katex { color: #f1f5f9; }

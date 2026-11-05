@@ -1,3 +1,5 @@
+import { SolutionView } from './SolutionView';
+import { splitStimulusImages } from '../utils/solutionParts';
 import { getQuestionsByIds, getStimuliByIds, getSelectedIdsAll } from '../db/crossDb';
 import React, { useState, useEffect, useRef } from 'react';
 import { X, FileText, Check, ArrowUp, ArrowDown, Pencil, Eye, EyeOff, Settings2 } from 'lucide-react';
@@ -495,11 +497,23 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
                       {/* Stimulus text & pictures */}
                       {stim && (
                         <div className="space-y-2">
-                          <RichText
+                          {splitStimulusImages(stim.imageIds, stim.imageTopCount).top.map((imgId) => {
+                            const url = imageUrls[imgId];
+                            if (!url) return null;
+                            return (
+                              <div
+                                key={imgId}
+                                className="w-full my-2 overflow-hidden rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-white text-center"
+                              >
+                                <img src={url} alt="উদ্দীপকের চিত্র" className="w-full h-auto object-contain max-h-60 mx-auto" />
+                              </div>
+                            );
+                          })}
+<RichText
                             text={stim.text}
                             className="text-xs font-medium text-[#1B1F2A] dark:text-slate-100 leading-relaxed"
                           />
-                          {stim.imageIds?.map((imgId) => {
+                          {splitStimulusImages(stim.imageIds, stim.imageTopCount).bottom.map((imgId) => {
                             const url = imageUrls[imgId];
                             if (!url) return null;
                             return (
@@ -564,18 +578,12 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
                               {solOpen && (
                                 <div className="p-3 rounded-xl bg-[#F8FAFC] dark:bg-slate-900/60 border border-[#E2E8F0] dark:border-slate-700 space-y-2">
                                   <div className="text-[0.6875rem] font-bold text-[#2A3BB0] dark:text-indigo-300">সমাধান:</div>
-                                  <RichText
+                                  <SolutionView
                                     text={q.solutionText}
-                                    className="text-xs text-[#1B1F2A] dark:text-slate-100 leading-relaxed"
+                                    imageIds={q.solutionImageIds}
+                                    imageUrls={imageUrls}
+                                    textClassName="text-xs text-[#1B1F2A] dark:text-slate-100 leading-relaxed"
                                   />
-                                  {solUrls.map((url, i) => (
-                                    <img
-                                      key={i}
-                                      src={url}
-                                      alt="সমাধান চিত্র"
-                                      className="w-full h-auto object-contain max-h-56 mx-auto rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-white"
-                                    />
-                                  ))}
                                 </div>
                               )}
                             </div>

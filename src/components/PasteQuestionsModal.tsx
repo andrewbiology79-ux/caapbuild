@@ -23,36 +23,50 @@ export interface PasteQuestionsModalProps {
 interface ParsedGroup {
   stimulus: string;
   boardTag?: string;
+  stimulusBoards: BoardUsage[];
+  stimulusRating?: number;
+  reference?: string;
   questions: QuestionBlockInput[];
 }
 
-const SAMPLE_JSON = `{
-  "groups": [
-    {
-      "stimulus": "উদ্দীপক: $M = 6 \\\\times 10^{24}\\\\ \\\\text{kg}$ ভরের একটি গ্রহ ...",
-      "boardTag": "DB'২৫",
-      "questions": [
-        {
-          "type": "গ",
-          "marks": 3,
-          "rating": 3,
-          "questionText": "বিভব $V$ এর মান হিসাব করো।",
-          "solutionText": "আমরা জানি, $V = -\\\\frac{GM}{r}$ ...",
-          "answerText": "-6.256 × 10⁷ J kg⁻¹",
-          "usedInBoards": [{ "board": "DB", "years": [2025] }]
-        },
-        {
-          "type": "ঘ",
-          "marks": 4,
-          "rating": 4,
-          "questionText": "দূরত্ব দ্বিগুণ করলে প্রাবল্যের কী পরিবর্তন হবে?",
-          "solutionText": "...",
-          "answerText": "১/৪ অংশ"
-        }
-      ]
-    }
-  ]
-}`;
+/**
+ * Sample shown by "নমুনা কপি". It is built with JSON.stringify so every backslash of the LaTeX
+ * (e.g. \\times, \\frac) is escaped correctly — the old hand-typed sample had doubled backslashes.
+ */
+const SAMPLE_JSON = JSON.stringify(
+  {
+    groups: [
+      {
+        stimulus: 'চিত্রে AB = BC = CA = 15 m। D বিন্দু BC এর মধ্যবিন্দু। $m_B = 60\\ \\text{kg}$, $m_C = 70\\ \\text{kg}$',
+        stimulusRating: 3,
+        reference: 'মেরি জি প্রশ্ন ব্যাংক',
+        stimulusBoards: [{ board: 'DB', years: [2026] }],
+        questions: [
+          {
+            type: 'গ',
+            marks: 3,
+            rating: 3,
+            questionText: 'A বিন্দুতে বিভবের মান কত? বের করো।',
+            solutionText: '$V_A = -\\frac{Gm_B}{AB} - \\frac{Gm_C}{AC} = -5.78\\times 10^{-10}\\ \\text{J kg}^{-1}$',
+            answerText: '-5.78 × 10⁻¹⁰ J kg⁻¹',
+            usedInBoards: [{ board: 'DB', years: [2025] }],
+          },
+          {
+            type: 'ঘ',
+            marks: 4,
+            rating: 4,
+            questionText: 'A ও D বিন্দুর প্রাবল্যের মানের তুলনা করো।',
+            solutionText: '$E_D = E_2 - E_1 = 1.18\\times 10^{-11}\\ \\text{N kg}^{-1}$',
+            answerText: '',
+            usedInBoards: [{ board: 'DB', years: [2025] }],
+          },
+        ],
+      },
+    ],
+  },
+  null,
+  2
+);
 
 const TYPE_BY_MARKS: Record<number, QuestionType> = { 1: 'ক', 2: 'খ', 3: 'গ', 4: 'ঘ' };
 const MARKS_BY_TYPE: Record<QuestionType, number> = { ক: 1, খ: 2, গ: 3, ঘ: 4 };
@@ -116,10 +130,111 @@ function parseQuestion(raw: any, idx: number, gIdx: number): QuestionBlockInput 
   };
 }
 
+/** LaTeX commands that begin with b / f / n / r / t — JSON would read "\\t" + "imes" as TAB + "imes" */
+const LATEX_CMDS = new Set([
+  // b
+  'beta', 'bar', 'begin', 'bf', 'binom', 'boldsymbol', 'because', 'big', 'bigl', 'bigr', 'bigg', 'biggl', 'biggr',
+  'bullet', 'bmod', 'bot', 'boxed', 'breve', 'backslash', 'bowtie',
+  // f
+  'frac', 'forall', 'flat', 'frown', 'fbox',
+  // n
+  'nu', 'neq', 'ne', 'nabla', 'not', 'notin', 'newline', 'ni', 'nearrow', 'nleq', 'ngeq', 'nmid', 'nonumber', 'normalsize',
+  // r
+  'rho', 'right', 'rightarrow', 'rm', 'rangle', 'rbrace', 'rbrack', 'rceil', 'rfloor', 'rightleftharpoons',
+  // t
+  'times', 'text', 'textbf', 'textit', 'textrm', 'tan', 'tanh', 'tau', 'to', 'theta', 'tfrac', 'tilde', 'top',
+  'triangle', 'therefore', 'tiny', 'thinspace',
+]);
+
+/**
+ * Makes pasted JSON forgiving. AI tools often return JSON where the LaTeX has single backslashes
+ * ("\\frac", "\\times", "\\(" …), real line breaks inside strings, trailing commas or ```json fences —
+ * none of which JSON.parse accepts (or worse, it silently turns \t of \times into a TAB).
+ */
+function repairJson(input: string): string {
+  let t = input.replace(/^\uFEFF/, '').trim();
+  t = t.replace(/^```[a-zA-Z]*\s*/, '').replace(/\s*```$/, '').trim();
+
+  // drop any text before the first { or [ and after the last } or ]
+  const firstObj = t.search(/[\[{]/);
+  if (firstObj > 0) t = t.slice(firstObj);
+  const lastObj = Math.max(t.lastIndexOf('}'), t.lastIndexOf(']'));
+  if (lastObj >= 0 && lastObj < t.length - 1) t = t.slice(0, lastObj + 1);
+
+  let out = '';
+  let inStr = false;
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i];
+
+    if (!inStr) {
+      if (ch === '"') {
+        inStr = true;
+        out += ch;
+      } else if (ch === ',') {
+        // trailing comma before } or ]
+        let j = i + 1;
+        while (j < t.length && /\s/.test(t[j])) j++;
+        if (t[j] === '}' || t[j] === ']') continue;
+        out += ch;
+      } else {
+        out += ch;
+      }
+      continue;
+    }
+
+    // ---- inside a string ----
+    if (ch === '"') {
+      inStr = false;
+      out += ch;
+    } else if (ch === '\\') {
+      const next = t[i + 1];
+      if (next === undefined) {
+        out += '\\\\';
+      } else if (next === '\\' || next === '"' || next === '/') {
+        out += ch + next; // already a valid escape
+        i++;
+      } else if (next === 'u' && /^[0-9a-fA-F]{4}$/.test(t.slice(i + 2, i + 6))) {
+        out += t.slice(i, i + 6);
+        i += 5;
+      } else if ('bfnrt'.includes(next)) {
+        const run = /^[A-Za-z]+/.exec(t.slice(i + 1))?.[0] ?? '';
+        if (LATEX_CMDS.has(run)) {
+          out += '\\\\'; // it is LaTeX (\times, \frac …), keep the backslash
+        } else {
+          out += ch + next; // a real \n, \t …
+          i++;
+        }
+      } else {
+        out += '\\\\'; // \sqrt, \alpha, \( … : not a JSON escape, so it is LaTeX
+      }
+    } else if (ch === '\n') {
+      out += '\\n';
+    } else if (ch === '\r') {
+      if (t[i + 1] !== '\n') out += '\\n';
+    } else if (ch === '\t') {
+      out += '\\t';
+    } else {
+      out += ch;
+    }
+  }
+  return out;
+}
+
+/** "DB'২৫" / "DB 2025" -> { board: 'DB', years: [2025] } (old-style boardTag text) */
+function boardsFromTag(tag?: string): BoardUsage[] {
+  if (!tag) return [];
+  const m = /^\s*([A-Za-z\u0980-\u09FF]+)\s*['’`]?\s*([০-৯0-9]{2,4})\s*$/.exec(tag);
+  if (!m) return [];
+  let y = normalizeNumber(m[2]);
+  if (y === undefined) return [];
+  if (y < 100) y += 2000;
+  return [{ board: m[1], years: [y] }];
+}
+
 function parseInput(text: string): ParsedGroup[] {
   let data: any;
   try {
-    data = JSON.parse(text);
+    data = JSON.parse(repairJson(text));
   } catch (e: any) {
     throw new Error(`JSON ভুল আছে: ${e.message || 'সিনট্যাক্স ত্রুটি'}`);
   }
@@ -133,7 +248,7 @@ function parseInput(text: string): ParsedGroup[] {
   } else if (data && Array.isArray(data.questions)) {
     rawGroups = [data];
   } else {
-    throw new Error('"groups" তালিকা পাওয়া যায়নি। নমুনা ফরম্যাট দেখে নিন।');
+    throw new Error('"groups" তালিকা পাওয়া যায়নি। "নমুনা কপি" চেপে সঠিক ফরম্যাট দেখে নিন।');
   }
 
   if (rawGroups.length === 0) throw new Error('কোনো প্রশ্ন পাওয়া যায়নি');
@@ -143,9 +258,18 @@ function parseInput(text: string): ParsedGroup[] {
       throw new Error(`গ্রুপ ${gIdx + 1}: questions তালিকা খালি বা নেই`);
     }
     const stimulusRaw = g.stimulus ?? g.stimulusText ?? g.text ?? '';
+    const boardTag = typeof g.boardTag === 'string' && g.boardTag.trim() ? g.boardTag.trim() : undefined;
+
+    let stimulusBoards = normalizeBoards(g.stimulusBoards ?? g.stimulusUsedInBoards ?? g.usedInBoards);
+    if (stimulusBoards.length === 0) stimulusBoards = boardsFromTag(boardTag);
+
+    const ratingNum = normalizeNumber(g.stimulusRating ?? g.rating);
     return {
       stimulus: typeof stimulusRaw === 'string' ? stimulusRaw.trim() : '',
-      boardTag: typeof g.boardTag === 'string' && g.boardTag.trim() ? g.boardTag.trim() : undefined,
+      boardTag,
+      stimulusBoards,
+      stimulusRating: ratingNum !== undefined ? Math.max(1, Math.min(5, Math.round(ratingNum))) : undefined,
+      reference: typeof g.reference === 'string' && g.reference.trim() ? g.reference.trim() : undefined,
       questions: g.questions.map((q: any, i: number) => parseQuestion(q, i, gIdx)),
     };
   });
@@ -217,6 +341,9 @@ export const PasteQuestionsModal: React.FC<PasteQuestionsModalProps> = ({
             stimulusText: g.stimulus,
             stimulusImageIds: [],
             boardTag: g.boardTag,
+            stimulusUsedInBoards: g.stimulusBoards,
+            stimulusRating: g.stimulusRating,
+            reference: g.reference,
             questions: g.questions,
           });
           qCount += g.questions.length;

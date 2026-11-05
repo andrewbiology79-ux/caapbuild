@@ -4,6 +4,7 @@ import { X, Trash2, Edit3, FileDown, AlertTriangle, Minus, Plus, MoreVertical } 
 import { db, DEFAULT_PAPER_NOTE, type Paper, type Question, type Stimulus } from '../db/db';
 import { deletePaper, getImageBlobUrl } from '../db/api';
 import { RichText } from './RichText';
+import { splitStimulusImages } from '../utils/solutionParts';
 import { useToast } from './Toast';
 import { ConfirmDialog } from './ConfirmDialog';
 import { toBn } from '../utils/toBn';
@@ -247,6 +248,21 @@ export const PaperViewModal: React.FC<PaperViewModalProps> = ({
           >
             {/* Stimulus with single question serial ("১।", "২।") */}
             <div className="space-y-1.5 text-xs">
+              {group.stimulus &&
+                splitStimulusImages(group.stimulus.imageIds, group.stimulus.imageTopCount).top.map((imgId) => {
+                  const url = imageUrls[imgId];
+                  if (!url) return null;
+                  return (
+                    <div
+                      key={imgId}
+                      className={`my-2.5 max-w-full sm:max-w-sm mx-auto overflow-hidden text-center bg-white ${
+                        isExport ? '' : 'rounded-lg border border-gray-200 p-1'
+                      }`}
+                    >
+                      <img src={url} alt="উদ্দীপক চিত্র" className="w-full h-auto max-h-[260px] object-contain mx-auto rounded" />
+                    </div>
+                  );
+                })}
               <div className="flex items-start gap-2 font-bold text-black">
                 <span className="text-xs font-black text-black shrink-0">
                   {toBn(gIdx + 1)}।
@@ -261,7 +277,7 @@ export const PaperViewModal: React.FC<PaperViewModalProps> = ({
 
               {group.stimulus && (
                 <>
-                  {group.stimulus.imageIds?.map((imgId) => {
+                  {splitStimulusImages(group.stimulus.imageIds, group.stimulus.imageTopCount).bottom.map((imgId) => {
                     const url = imageUrls[imgId];
                     if (!url) return null;
                     return (

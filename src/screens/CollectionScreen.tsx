@@ -1,3 +1,5 @@
+import { SolutionView } from '../components/SolutionView';
+import { splitStimulusImages, stripSolutionMarkers } from '../utils/solutionParts';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Header } from '../components/Header';
 import { useToast } from '../components/Toast';
@@ -11,6 +13,8 @@ import {
   clearMultiClipboard,
   pasteMultiClipboard,
   countMultiClipboard,
+  setMultiClipboard,
+  type MultiClipGroup,
 } from '../db/crossDb';
 import { PasteQuestionsModal } from '../components/PasteQuestionsModal';
 import { ImageViewerModal } from '../components/ImageViewerModal';
@@ -50,13 +54,14 @@ import {
   PlusCircle,
   FileEdit,
   Trash2,
-  Tag,
   Award,
   Layers,
   Upload,
   ClipboardPaste,
   Download,
   Square,
+  CheckSquare,
+  X,
   BookMarked,
 } from 'lucide-react';
 
@@ -94,7 +99,7 @@ export function openCollectionAtQuestion(
 
 export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'type' as CqScope }) => {
   const db = getDb(scope);
-  const { seedInitialDataIfNeeded, getSubjects, getChapters, getTopics, getQuestionsByTopicGrouped, getHierarchyStats, getSelectedIds, toggleStimulusSelect, getSelectedStimuliCount, clearSelection, copyStimulusGroup, getGroupClipboard, clearGroupClipboard, pasteStimulusGroup, deleteStimulusGroup, getQuestionPaperUsage, getImageBlobUrl, addSubject, updateSubject, deleteSubject, reorderSubjects, addChapter, updateChapter, deleteChapter, reorderChapters, addTopic, updateTopic, deleteTopic, reorderTopics } = getApi(scope);
+  const { seedInitialDataIfNeeded, getSubjects, getChapters, getTopics, getQuestionsByTopicGrouped, getHierarchyStats, getSelectedIds, toggleStimulusSelect, getSelectedStimuliCount, clearSelection, reorderSelected, copyStimulusGroup, getGroupClipboard, clearGroupClipboard, pasteStimulusGroup, deleteStimulusGroup, getQuestionPaperUsage, getImageBlobUrl, addSubject, updateSubject, deleteSubject, reorderSubjects, addChapter, updateChapter, deleteChapter, reorderChapters, addTopic, updateTopic, deleteTopic, reorderTopics } = getApi(scope);
   const { showToast } = useToast();
   const { registerBackHandler } = useNavigation();
 
@@ -153,6 +158,8 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
   const [loading, setLoading] = useState(true);
   const [isReordering, setIsReordering] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [expandedSolutions, setExpandedSolutions] = useState<Record<string, boolean>>({});
 
   // Full screen image viewer
@@ -306,6 +313,12 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
       return true;
     }
 
+    if (searchOpen) {
+      setSearchOpen(false);
+      setSearchQuery('');
+      return true;
+    }
+
     if (isReordering) {
       setIsReordering(false);
       return true;
@@ -339,7 +352,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
     }
 
     return false; // Already at Subjects level
-  }, [currentView, isReordering, imageViewerState.isOpen, scope]);
+  }, [currentView, isReordering, imageViewerState.isOpen, scope, searchOpen]);
 
   // Register with Capacitor Back Button listener
   useEffect(() => {
@@ -361,6 +374,16 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
     el.classList.add(...cls);
     window.setTimeout(() => el.classList.remove(...cls), 2200);
   }, [scope, currentView, loading, questionGroups]);
+
+  // Search lives in the header ribbon of the questions list only; leaving the list closes it
+  useEffect(() => {
+    setSearchOpen(false);
+    setSearchQuery('');
+  }, [currentView]);
+
+  useEffect(() => {
+    if (searchOpen) searchInputRef.current?.focus();
+  }, [searchOpen]);
 
   // Auto-scroll breadcrumb to the right end whenever currentView changes
   useEffect(() => {
@@ -457,21 +480,85 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
     });
   };
 
-  // Copy / Cut Stimulus Group
+  // Put groups on the shared clipboard (it works across Type CQ <-> Chapter CQ, so they can be pasted anywhere)
+  const putOnClipboard = async (groups: MultiClipGroup[], mode: 'copy' | 'cut'): Promise<number> => {
+    await setMultiClipboard(groups, mode);
+    const count = countMultiClipboard(groups);
+    setMultiClipCount(count);
+    setMultiClipMode(mode);
+    setGroupClipboard(null);
+    return count;
+  };
+
+  // Copy / Cut one Stimulus Group (card menu)
   const handleCopyOrCutGroup = async (grp: StimulusWithQuestions, mode: 'copy' | 'cut') => {
     try {
-      const sampleQId = grp.questions[0]?.id;
-      if (!sampleQId) return;
-
-      await copyStimulusGroup(grp.stimulus?.id, sampleQId, mode);
-      await clearMultiClipboard(); // only one clipboard is active at a time
-      setMultiClipCount(0);
-      const clip = await getGroupClipboard();
-      setGroupClipboard(clip);
-      showToast(mode === 'cut' ? 'কাট করা হয়েছে' : 'কপি করা হয়েছে');
+      if (grp.questions.length === 0) return;
+      // always take the whole group, even while a search is filtering its questions
+      const full =
+        questionGroups.find((g) =>
+          grp.stimulus ? g.stimulus?.id === grp.stimulus.id : g.questions[0]?.id === grp.questions[0].id
+        ) || grp;
+      await putOnClipboard([{ source: scope, stimulus: full.stimulus, questions: full.questions }], mode);
+      showToast(mode === 'cut' ? 'কাট করা হয়েছে' : 'কপি করা হয়েছে');
     } catch (err: any) {
       console.error(err);
-      showToast('কপি ব্যর্থ হয়েছে');
+      showToast('কপি ব্যর্থ হয়েছে');
+    }
+  };
+
+  // ids of every question of the open type / chapter
+  const topicQuestionIds = useMemo(
+    () => questionGroups.flatMap((g) => g.questions.map((q) => q.id)),
+    [questionGroups]
+  );
+  const selectedInTopicCount = useMemo(
+    () => topicQuestionIds.filter((id) => selectedIds.includes(id)).length,
+    [topicQuestionIds, selectedIds]
+  );
+  const allTopicSelected = topicQuestionIds.length > 0 && selectedInTopicCount === topicQuestionIds.length;
+
+  // "সব নির্বাচন করুন": select every question of the open type / chapter (again = deselect them)
+  const handleSelectAllToggle = async () => {
+    if (topicQuestionIds.length === 0) {
+      showToast('নির্বাচন করার মতো প্রশ্ন নেই');
+      return;
+    }
+    try {
+      const current = await getSelectedIds();
+      const next = allTopicSelected
+        ? current.filter((id) => !topicQuestionIds.includes(id))
+        : [...current, ...topicQuestionIds.filter((id) => !current.includes(id))];
+      await reorderSelected(next);
+      setSelectedIds(next);
+      setSelectedStimuliCount(await getSelectedStimuliCount(next));
+      setStats(await getHierarchyStats());
+      showToast(allTopicSelected ? 'নির্বাচন বাতিল করা হয়েছে' : `${toBn(topicQuestionIds.length)}টি প্রশ্ন নির্বাচিত হয়েছে`);
+    } catch {
+      showToast('নির্বাচন আপডেট করা যায়নি');
+    }
+  };
+
+  // Copy / Cut all selected questions of the open type / chapter
+  const handleCopyCutSelected = async (mode: 'copy' | 'cut') => {
+    try {
+      const selected = new Set(selectedIds);
+      const groups: MultiClipGroup[] = [];
+      for (const g of questionGroups) {
+        const qs = g.questions.filter((q) => selected.has(q.id));
+        if (qs.length > 0) groups.push({ source: scope, stimulus: g.stimulus, questions: qs });
+      }
+      if (groups.length === 0) {
+        showToast('আগে "সব নির্বাচন করুন" বা প্রশ্নের চেকবক্সে ট্যাপ করে নির্বাচন করুন');
+        return;
+      }
+      const n = await putOnClipboard(groups, mode);
+      showToast(
+        `${toBn(n)}টি প্রশ্ন ${mode === 'cut' ? 'কাট' : 'কপি'} করা হয়েছে — যেকোনো Type / Chapter-এ গিয়ে পেস্ট করুন`
+      );
+    } catch (err) {
+      console.error(err);
+      showToast('কপি ব্যর্থ হয়েছে');
     }
   };
 
@@ -527,7 +614,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
     if (currentView.level !== 'questions') return;
     try {
       if (multiClipCount === 0) {
-        showToast('ফিল্টার ট্যাব থেকে আগে প্রশ্ন কপি করুন');
+        showToast('আগে প্রশ্ন কপি বা কাট করুন');
         return;
       }
       const n = await pasteMultiClipboard(scope, currentView.topic.id, 'end');
@@ -699,23 +786,11 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
     return scope === 'chapter' ? 'Chapter CQ' : 'Type CQ';
   }, [currentView, scope]);
 
-  // Header KebabMenu Items
-  const headerMenuItems = useMemo((): MenuItem[] => {
+  // Header KebabMenu Items (rebuilt on every render so counts / clipboard are always current)
+  const headerMenuItems: MenuItem[] = (() => {
     const items: MenuItem[] = [];
 
-    // Add Action
-    let addLabel = 'নতুন বিষয় যোগ করুন';
-    if (currentView.level === 'chapters') addLabel = 'নতুন অধ্যায় যোগ করুন';
-    if (currentView.level === 'topics') addLabel = 'নতুন টপিক যোগ করুন';
-    if (currentView.level === 'questions') addLabel = 'নতুন প্রশ্ন যোগ করুন';
-
-    items.push({
-      id: 'add',
-      label: addLabel,
-      icon: <PlusCircle className="w-4 h-4 text-[#3B4FD8]" />,
-      onClick: handleOpenAddDialog,
-    });
-
+    // ---------- inside a type / chapter (the questions list) ----------
     if (currentView.level === 'questions') {
       items.push({
         id: 'paste-json',
@@ -724,27 +799,58 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
         onClick: () => setShowPasteModal(true),
       });
       items.push({
+        id: 'select-all',
+        label: allTopicSelected ? 'সব নির্বাচন বাতিল করুন' : 'সব নির্বাচন করুন',
+        icon: <CheckSquare className="w-4 h-4 text-[#3B4FD8]" />,
+        onClick: handleSelectAllToggle,
+      });
+      items.push({
+        id: 'copy-selected',
+        label: selectedInTopicCount > 0 ? `নির্বাচিত কপি করুন (${toBn(selectedInTopicCount)}টি)` : 'নির্বাচিত কপি করুন',
+        icon: <Copy className="w-4 h-4 text-[#3B4FD8]" />,
+        onClick: () => handleCopyCutSelected('copy'),
+      });
+      items.push({
+        id: 'cut-selected',
+        label: selectedInTopicCount > 0 ? `নির্বাচিত কাট করুন (${toBn(selectedInTopicCount)}টি)` : 'নির্বাচিত কাট করুন',
+        icon: <Scissors className="w-4 h-4 text-amber-600" />,
+        onClick: () => handleCopyCutSelected('cut'),
+      });
+      items.push({
         id: 'paste-copied',
         label:
           multiClipCount > 0
-            ? `${multiClipMode === 'cut' ? 'কাট' : 'কপি'} করা প্রশ্ন পেস্ট করুন (${toBn(multiClipCount)}টি)`
-            : 'কপি/কাট করা প্রশ্ন পেস্ট করুন',
+            ? `${multiClipMode === 'cut' ? 'কাট' : 'কপি'} করা ${toBn(multiClipCount)}টি প্রশ্ন পেস্ট করুন`
+            : 'পেস্ট করুন',
         icon: <ClipboardPaste className="w-4 h-4 text-emerald-600" />,
         onClick: handlePasteMultiAtEnd,
       });
+      return items;
     }
+
+    // ---------- subjects / chapters / topics lists ----------
+    let addLabel = 'নতুন বিষয় যোগ করুন';
+    if (currentView.level === 'chapters') addLabel = 'নতুন অধ্যায় যোগ করুন';
+    if (currentView.level === 'topics') addLabel = 'নতুন টপিক যোগ করুন';
+
+    items.push({
+      id: 'add',
+      label: addLabel,
+      icon: <PlusCircle className="w-4 h-4 text-[#3B4FD8]" />,
+      onClick: handleOpenAddDialog,
+    });
 
     // Rename & Delete for active screen container
     if (currentView.level === 'chapters') {
       items.push({
         id: 'rename-subj',
-        label: 'বিষয়ের নাম পরিবর্তন',
+        label: 'বিষয়ের নাম পরিবর্তন',
         icon: <FileEdit className="w-4 h-4 text-[#1B1F2A]" />,
         onClick: () => handleRenameItem('subject', currentView.subject.id, currentView.subject.name),
       });
       items.push({
         id: 'delete-subj',
-        label: 'বিষয় মুছে ফেলুন',
+        label: 'বিষয় মুছে ফেলুন',
         icon: <Trash2 className="w-4 h-4 text-red-500" />,
         isDestructive: true,
         onClick: () => handleDeleteItem('subject', currentView.subject.id, currentView.subject.name),
@@ -752,30 +858,16 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
     } else if (currentView.level === 'topics') {
       items.push({
         id: 'rename-chap',
-        label: 'অধ্যায়ের নাম পরিবর্তন',
+        label: 'অধ্যায়ের নাম পরিবর্তন',
         icon: <FileEdit className="w-4 h-4 text-[#1B1F2A]" />,
         onClick: () => handleRenameItem('chapter', currentView.chapter.id, currentView.chapter.name),
       });
       items.push({
         id: 'delete-chap',
-        label: 'অধ্যায় মুছে ফেলুন',
+        label: 'অধ্যায় মুছে ফেলুন',
         icon: <Trash2 className="w-4 h-4 text-red-500" />,
         isDestructive: true,
         onClick: () => handleDeleteItem('chapter', currentView.chapter.id, currentView.chapter.name),
-      });
-    } else if (currentView.level === 'questions') {
-      items.push({
-        id: 'rename-top',
-        label: 'টপিকের নাম পরিবর্তন',
-        icon: <FileEdit className="w-4 h-4 text-[#1B1F2A]" />,
-        onClick: () => handleRenameItem('topic', currentView.topic.id, currentView.topic.name),
-      });
-      items.push({
-        id: 'delete-top',
-        label: 'টপিক মুছে ফেলুন',
-        icon: <Trash2 className="w-4 h-4 text-red-500" />,
-        isDestructive: true,
-        onClick: () => handleDeleteItem('topic', currentView.topic.id, currentView.topic.name),
       });
     }
 
@@ -806,7 +898,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
       });
     }
 
-    // Clear Selection
+    // Clear Selection (lists only; inside a type / chapter the menu has "সব নির্বাচন করুন")
     items.push({
       id: 'clear-sel',
       label: 'সব নির্বাচন মুছুন',
@@ -816,7 +908,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
     });
 
     return items;
-  }, [currentView, showToast, scope]);
+  })();
 
   // Filter questions by search query
   const filteredQuestionGroups = useMemo(() => {
@@ -831,7 +923,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
 
         const matchedQuestions = grp.questions.filter((q) => {
           const textMatch = q.questionText.toLowerCase().includes(query);
-          const solMatch = q.solutionText && q.solutionText.toLowerCase().includes(query);
+          const solMatch = q.solutionText && stripSolutionMarkers(q.solutionText).toLowerCase().includes(query);
           const boardMatch = q.usedInBoards.some(
             (b) =>
               b.board.toLowerCase().includes(query) ||
@@ -928,6 +1020,45 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
         showBack={currentView.level !== 'subjects'}
         onBack={handleGoBack}
         menuItems={headerMenuItems}
+        actions={
+          currentView.level === 'questions' && !searchOpen ? (
+            <button
+              type="button"
+              aria-label="প্রশ্ন খুঁজুন"
+              onClick={() => setSearchOpen(true)}
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full text-white/90 hover:text-white hover:bg-white/10 active:bg-white/20 transition-colors focus:outline-none focus:ring-2 focus:ring-white/40"
+            >
+              <Search className="w-5 h-5" />
+            </button>
+          ) : undefined
+        }
+        centerOverride={
+          currentView.level === 'questions' && searchOpen ? (
+            <div className="relative">
+              <Search className="w-4 h-4 text-white/70 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="প্রশ্ন, উদ্দীপক বা বোর্ড খুঁজুন..."
+                className="w-full h-9 pl-8 pr-8 rounded-full bg-white/15 border border-white/30 text-xs text-white placeholder:text-white/60 focus:outline-none focus:bg-white/20 focus:border-white/60"
+              />
+              <button
+                type="button"
+                aria-label="অনুসন্ধান বন্ধ করুন"
+                onClick={() => {
+                  setSearchOpen(false);
+                  setSearchQuery('');
+                }}
+                style={{ minHeight: 0 }}
+                className="absolute right-1 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center text-white/90 hover:bg-white/20"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ) : undefined
+        }
       />
 
       {/* Top Control Bar (Requirement 7: Horizontal Scrollable Breadcrumb) */}
@@ -1016,30 +1147,6 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
             {currentView.level === 'questions' && `মোট প্রশ্ন: ${toBn(filteredQuestionGroups.length)}টি`}
           </div>
         </div>
-
-        {/* Search Box on Questions Screen */}
-        {currentView.level === 'questions' && (
-          <div className="relative pt-1">
-            <Search className="w-4 h-4 text-[#64748B] absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="প্রশ্ন, উদ্দীপক বা বোর্ড ট্যাগ খুঁজুন..."
-              className="w-full min-h-[44px] pl-9 pr-8 py-2 rounded-xl bg-[#F2F4F8] border border-[#D5D9E2] text-xs text-[#1B1F2A] focus:outline-none focus:ring-2 focus:ring-[#3B4FD8] focus:bg-white transition-all"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                aria-label="অনুসন্ধান মুছুন"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-[#64748B] hover:text-[#1B1F2A] p-1 font-bold"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Main Content Area */}
@@ -1543,7 +1650,6 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
                             key={bIdx}
                             className="px-2 py-0.5 rounded bg-white text-[#1B1F2A] text-[0.625rem] font-semibold border border-[#D5D9E2] flex items-center gap-1 shadow-2xs"
                           >
-                            <Tag className="w-3 h-3 text-[#64748B]" />
                             <span>
                               {b.board}'{b.years.map((y) => toBn(String(y).slice(-2))).join(',')}
                             </span>
@@ -1551,7 +1657,6 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
                         ))
                       ) : grp.stimulus?.boardTag ? (
                         <span className="px-2 py-0.5 rounded bg-white text-[#1B1F2A] text-[0.625rem] font-semibold border border-[#D5D9E2] flex items-center gap-1 shadow-2xs">
-                          <Tag className="w-3 h-3 text-[#64748B]" />
                           <span>{grp.stimulus.boardTag}</span>
                         </span>
                       ) : null}
@@ -1579,12 +1684,28 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
                       {/* Stimulus Text & Image */}
                       {grp.stimulus && (
                         <div className="space-y-2">
-                          <RichText
+                          {splitStimulusImages(grp.stimulus.imageIds, grp.stimulus.imageTopCount).top.map((imgId) => {
+                            const url = imageUrls[imgId];
+                            if (!url) return null;
+                            return (
+                              <div
+                                key={imgId}
+                                className="w-full my-2 overflow-hidden rounded-xl border border-[#D5D9E2] bg-white text-center"
+                              >
+                                <img
+                                  src={url}
+                                  alt="উদ্দীপকের চিত্র"
+                                  className="w-full h-auto object-contain max-h-60 mx-auto"
+                                />
+                              </div>
+                            );
+                          })}
+<RichText
                             text={grp.stimulus.text}
                             className="text-xs font-medium text-[#1B1F2A] leading-relaxed"
                           />
 
-                          {grp.stimulus.imageIds?.map((imgId) => {
+                          {splitStimulusImages(grp.stimulus.imageIds, grp.stimulus.imageTopCount).bottom.map((imgId) => {
                             const url = imageUrls[imgId];
                             if (!url) return null;
                             return (
@@ -1659,34 +1780,17 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
                                     <div className="text-[0.6875rem] font-bold text-[#2A3BB0] uppercase tracking-wider">
                                       সমাধান:
                                     </div>
-                                    <RichText
+                                    <SolutionView
                                       text={question.solutionText}
-                                      className="text-xs text-[#1B1F2A] leading-relaxed"
+                                      imageIds={question.solutionImageIds}
+                                      imageUrls={imageUrls}
+                                      textClassName="text-xs text-[#1B1F2A] leading-relaxed"
+                                      onOpenImages={(urls, i) => handleOpenImageViewer(urls, i)}
                                     />
-
-                                    {/* Solution images - Tapping opens full-screen zoomable viewer (Requirement 4) */}
                                     {solutionUrls.length > 0 && (
-                                      <div className="space-y-2 pt-1">
-                                        {solutionUrls.map((url, imgIdx) => (
-                                          <div
-                                            key={imgIdx}
-                                            onClick={() =>
-                                              handleOpenImageViewer(solutionUrls, imgIdx)
-                                            }
-                                            className="w-full overflow-hidden rounded-xl border border-[#D5D9E2] bg-white cursor-pointer hover:opacity-95 transition-opacity"
-                                            title="পূর্ণ স্ক্রিনে দেখতে ট্যাপ করুন"
-                                          >
-                                            <img
-                                              src={url}
-                                              alt="সমাধান চিত্র"
-                                              className="w-full h-auto object-contain max-h-56 mx-auto"
-                                            />
-                                          </div>
-                                        ))}
-                                        <p className="text-[0.625rem] text-[#64748B] text-center italic">
-                                          (ছবিতে ট্যাপ করে বড় ও জুম করে দেখুন)
-                                        </p>
-                                      </div>
+                                      <p className="text-[0.625rem] text-[#64748B] text-center italic">
+                                        (ছবিতে ট্যাপ করে বড় ও জুম করে দেখুন)
+                                      </p>
                                     )}
                                   </div>
                                 )}
@@ -1782,7 +1886,13 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
         scope={scope}
         isOpen={showPasteModal && currentView.level === 'questions'}
         topicId={currentView.level === 'questions' ? currentView.topic.id : ''}
-        topicName={currentView.level === 'questions' ? currentView.topic.name : ''}
+        topicName={
+          currentView.level === 'questions'
+            ? scope === 'chapter'
+              ? currentView.chapter.name
+              : currentView.topic.name
+            : ''
+        }
         onClose={() => setShowPasteModal(false)}
         onSuccess={() => {
           loadData();

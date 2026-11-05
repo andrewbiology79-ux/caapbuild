@@ -25,6 +25,8 @@ export interface Stimulus {
   topicId: string;
   text: string;
   imageIds: string[];
+  /** how many of the first pictures are shown ABOVE the stimulus text (the rest come below). undefined/0 = all below */
+  imageTopCount?: number;
   boardTag?: string;
   /** boards/years in which the stimulus itself appeared (প্রশ্ন ইডিটে উদ্দীপকের নিচে বাছা হয়) */
   usedInBoards?: BoardUsage[];

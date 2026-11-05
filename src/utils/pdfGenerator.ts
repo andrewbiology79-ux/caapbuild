@@ -1,3 +1,4 @@
+import { splitStimulusImages } from './solutionParts';
 import { applyEditsToGroups } from './paperEdits';
 import { getQuestionsByIds, getStimuliByIds } from '../db/crossDb';
 import { Capacitor } from '@capacitor/core';
@@ -416,6 +417,49 @@ function buildQuestionGroupElement(
   serialSpan.style.flexShrink = '0';
   topRow.appendChild(serialSpan);
 
+  // Stimulus pictures: some sit above the text (imageTopCount), the rest below it
+  const stimSplit = splitStimulusImages(group.stimulus?.imageIds, group.stimulus?.imageTopCount);
+  const makeStimImg = (imgId: string): HTMLElement | null => {
+    const url = imageUrls[imgId];
+    if (!url) return null;
+    const imgWrap = document.createElement('div');
+    imgWrap.style.textAlign = 'center';
+    imgWrap.style.margin = '4px 0';
+    imgWrap.style.width = '100%';
+    imgWrap.style.boxSizing = 'border-box';
+
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = 'উদ্দীপক চিত্র';
+    img.style.maxWidth = '78%';
+    img.style.width = 'auto';
+    img.style.height = 'auto';
+    img.style.maxHeight = '150px';
+    img.style.objectFit = 'contain';
+    img.style.display = 'block';
+    img.style.margin = '0 auto';
+    img.style.border = 'none';
+    img.style.outline = 'none';
+    img.style.borderRadius = '0';
+    img.style.padding = '0';
+    img.style.boxShadow = 'none';
+    img.style.backgroundColor = '#ffffff';
+    img.style.boxSizing = 'border-box';
+    imgWrap.appendChild(img);
+    return imgWrap;
+  };
+  // with top pictures the serial number stays on the left and a column holds "pictures + text"
+  let stimHost: HTMLElement = topRow;
+  if (stimSplit.top.length > 0) {
+    stimHost = document.createElement('div');
+    stimHost.style.flex = '1';
+    stimHost.style.minWidth = '0';
+    for (const imgId of stimSplit.top) {
+      const el = makeStimImg(imgId);
+      if (el) stimHost.appendChild(el);
+    }
+  }
+
   // Stimulus Text
   if (group.stimulus?.text) {
     const stimTextDiv = document.createElement('div');
@@ -429,45 +473,15 @@ function buildQuestionGroupElement(
     stimTextDiv.style.overflowWrap = 'anywhere';
     stimTextDiv.style.wordBreak = 'break-word';
     stimTextDiv.style.whiteSpace = 'pre-wrap';
-    topRow.appendChild(stimTextDiv);
+    stimHost.appendChild(stimTextDiv);
   }
+  if (stimHost !== topRow) topRow.appendChild(stimHost);
   block.appendChild(topRow);
 
-  // Stimulus Images (Sized to fit column nicely, large enough to read, with neat container)
-  if (group.stimulus?.imageIds && group.stimulus.imageIds.length > 0) {
-    for (const imgId of group.stimulus.imageIds) {
-      const url = imageUrls[imgId];
-      if (url) {
-        const imgWrap = document.createElement('div');
-        imgWrap.style.textAlign = 'center';
-        imgWrap.style.margin = '4px 0';
-        imgWrap.style.width = '100%';
-        imgWrap.style.boxSizing = 'border-box';
-
-        const img = document.createElement('img');
-        img.src = url;
-        img.alt = 'উদ্দীপক চিত্র';
-        // Fill width nicely, but never overflow column; allow screenshots enough height to be readable
-        img.style.maxWidth = '78%';
-        img.style.width = 'auto';
-        img.style.height = 'auto';
-        img.style.maxHeight = '150px';
-        img.style.objectFit = 'contain';
-        img.style.display = 'block';
-        img.style.margin = '0 auto';
-        // No border / rounded frame / padding around images in the exported PDF
-        img.style.border = 'none';
-        img.style.outline = 'none';
-        img.style.borderRadius = '0';
-        img.style.padding = '0';
-        img.style.boxShadow = 'none';
-        img.style.backgroundColor = '#ffffff';
-        img.style.boxSizing = 'border-box';
-
-        imgWrap.appendChild(img);
-        block.appendChild(imgWrap);
-      }
-    }
+  // Stimulus pictures that belong BELOW the text
+  for (const imgId of stimSplit.bottom) {
+    const el = makeStimImg(imgId);
+    if (el) block.appendChild(el);
   }
 
   // Sub-questions (গ, ঘ)

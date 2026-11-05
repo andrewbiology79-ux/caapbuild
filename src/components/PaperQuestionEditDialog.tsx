@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Check, RotateCcw, Info } from 'lucide-react';
 import type { PaperEdits, PaperQuestionEdit, PaperStimulusEdit, Question, Stimulus } from '../db/db';
 import { RichText } from './RichText';
+import { stripSolutionMarkers } from '../utils/solutionParts';
 
 export interface EditableGroup {
   id: string;
@@ -54,7 +55,7 @@ export const PaperQuestionEditDialog: React.FC<PaperQuestionEditDialogProps> = (
       init[q.id] = {
         text: e?.questionText ?? q.questionText,
         marks: String(e?.marks ?? q.marks),
-        solution: e?.solutionText ?? q.solutionText ?? '',
+        solution: stripSolutionMarkers(e?.solutionText ?? q.solutionText ?? ''),
       };
     }
     return init;
@@ -78,7 +79,7 @@ export const PaperQuestionEditDialog: React.FC<PaperQuestionEditDialogProps> = (
       const marks = parseInt(d.marks, 10);
       const safeMarks = Number.isFinite(marks) && marks >= 0 ? marks : q.marks;
       const changed =
-        d.text !== q.questionText || safeMarks !== q.marks || d.solution !== (q.solutionText ?? '');
+        d.text !== q.questionText || safeMarks !== q.marks || d.solution !== stripSolutionMarkers(q.solutionText ?? '');
       result.questions[q.id] = changed
         ? { questionText: d.text, marks: safeMarks, solutionText: d.solution }
         : null;

@@ -124,6 +124,8 @@ export interface SaveQuestionGroupPayload {
   topicId: string;
   stimulusText: string;
   stimulusImageIds: string[];
+  /** how many of stimulusImageIds sit above the stimulus text */
+  stimulusImageTopCount?: number;
   boardTag?: string;
   stimulusUsedInBoards?: BoardUsage[];
   stimulusRating?: number;
@@ -927,6 +929,7 @@ async function saveQuestionGroup(payload: SaveQuestionGroupPayload): Promise<{ s
       topicId: payload.topicId,
       text: payload.stimulusText,
       imageIds: payload.stimulusImageIds,
+      imageTopCount: payload.stimulusImageTopCount ?? 0,
       boardTag: payload.boardTag,
       usedInBoards: payload.stimulusUsedInBoards ?? [],
       rating: payload.stimulusRating,
@@ -939,6 +942,7 @@ async function saveQuestionGroup(payload: SaveQuestionGroupPayload): Promise<{ s
       topicId: payload.topicId,
       text: payload.stimulusText,
       imageIds: payload.stimulusImageIds,
+      imageTopCount: payload.stimulusImageTopCount ?? 0,
       boardTag: payload.boardTag,
       usedInBoards: payload.stimulusUsedInBoards ?? [],
       rating: payload.stimulusRating,

@@ -9,6 +9,10 @@ export interface HeaderProps {
   showBack?: boolean;
   menuItems?: MenuItem[];
   rightAction?: React.ReactNode;
+  /** extra buttons shown in the ribbon just before the 3-dot menu (e.g. a search icon) */
+  actions?: React.ReactNode;
+  /** replaces the title in the middle of the ribbon (e.g. the search box) */
+  centerOverride?: React.ReactNode;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -18,6 +22,8 @@ export const Header: React.FC<HeaderProps> = ({
   showBack = false,
   menuItems = [],
   rightAction,
+  actions,
+  centerOverride,
 }) => {
   return (
     <header
@@ -43,18 +49,25 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Center: Title */}
         <div className="flex-1 text-center px-2 min-w-0">
-          <h1 className="text-lg font-semibold tracking-tight text-white truncate leading-tight">
-            {title}
-          </h1>
-          {subtitle && (
-            <p className="text-[0.6875rem] text-white/80 truncate leading-tight mt-0.5">
-              {subtitle}
-            </p>
+          {centerOverride ? (
+            centerOverride
+          ) : (
+            <>
+              <h1 className="text-lg font-semibold tracking-tight text-white truncate leading-tight">
+                {title}
+              </h1>
+              {subtitle && (
+                <p className="text-[0.6875rem] text-white/80 truncate leading-tight mt-0.5">
+                  {subtitle}
+                </p>
+              )}
+            </>
           )}
         </div>
 
         {/* Right Side: KebabMenu or custom right action */}
         <div className="flex items-center justify-end min-w-[44px]">
+          {actions}
           {rightAction ? (
             rightAction
           ) : (

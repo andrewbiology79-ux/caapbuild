@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { LatexEditor } from './LatexEditor';
 import { RichText } from './RichText';
+import { SolutionView } from './SolutionView';
+import {
+  parseSolution,
+  serializeSolution,
+  splitStimulusImages,
+  type SolutionPart,
+} from '../utils/solutionParts';
 import { ImageViewerModal } from './ImageViewerModal';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useToast } from './Toast';
@@ -22,9 +29,10 @@ import type { CqScope } from '../db/db';
 import {
   X,
   Plus,
+  ImagePlus,
+  SquarePlus,
   Image as ImageIcon,
   Trash2,
-  Tag,
   Eye,
   EyeOff,
   RefreshCw,
@@ -32,13 +40,12 @@ import {
   BookMarked,
   Layers,
   HelpCircle,
-  Save,
+  Undo2,
+  Redo2,
   Check,
   AlertCircle,
   ChevronDown,
   Download,
-  ArrowUp,
-  ArrowDown,
   ArrowUpDown,
 } from 'lucide-react';
 
@@ -81,25 +88,81 @@ const RATING_OPTIONS: Array<{ value: number; label: string }> = [
 
 type EditorMode = 'minimum' | 'full';
 
-/** Small rating dropdown (1-5) placed next to the eye (live preview) button */
+/** Height shared by the small controls (board / eye / rating) so they line up on one row */
+const CTRL_H = 32;
+
+/**
+ * Compact rating dropdown (1-5). Closed: only "৩★". Opened: the full list ("৩★ মাঝারি" …).
+ */
 const RatingSelect: React.FC<{ value: number; onChange: (v: number) => void; ariaLabel: string }> = ({
   value,
   onChange,
   ariaLabel,
-}) => (
-  <select
-    aria-label={ariaLabel}
-    value={value || 3}
-    onChange={(e) => onChange(parseInt(e.target.value, 10))}
-    className="min-h-[40px] max-w-[116px] px-2 py-1 rounded-lg border border-[#FDE047] bg-[#FEF9C3] text-[#713F12] text-[0.6875rem] font-bold focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
-  >
-    {RATING_OPTIONS.map((r) => (
-      <option key={r.value} value={r.value}>
-        {toBn(r.value)}★ {r.label}
-      </option>
-    ))}
-  </select>
-);
+}) => {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const current = value || 3;
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: Event) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('touchstart', onDown);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('touchstart', onDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative shrink-0" ref={wrapRef}>
+      <button
+        type="button"
+        aria-label={ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        style={{ minHeight: 0, height: CTRL_H }}
+        className="px-1.5 rounded-md border border-[#FDE047] bg-[#FEF9C3] text-[#713F12] text-[0.6875rem] font-bold flex items-center gap-0.5 focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
+      >
+        <span>{toBn(current)}★</span>
+        <ChevronDown className="w-3 h-3 opacity-70" />
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          aria-label={ariaLabel}
+          className="absolute right-0 top-full mt-1 z-30 w-36 rounded-lg border border-[#FDE047] bg-white shadow-xl py-1"
+        >
+          {RATING_OPTIONS.map((r) => (
+            <button
+              key={r.value}
+              type="button"
+              role="option"
+              aria-selected={r.value === current}
+              onClick={() => {
+                setOpen(false);
+                onChange(r.value);
+              }}
+              style={{ minHeight: 36 }}
+              className={`w-full px-3 text-left text-xs font-semibold flex items-center justify-between ${
+                r.value === current ? 'bg-[#FEF9C3] text-[#713F12]' : 'text-[#1B1F2A] hover:bg-[#FEFCE8]'
+              }`}
+            >
+              <span>
+                {toBn(r.value)}★ {r.label}
+              </span>
+              {r.value === current && <Check className="w-3.5 h-3.5" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 /** Eye button that toggles the live KaTeX preview */
 const EyeToggle: React.FC<{ open: boolean; onClick: () => void }> = ({ open, onClick }) => (
@@ -108,7 +171,8 @@ const EyeToggle: React.FC<{ open: boolean; onClick: () => void }> = ({ open, onC
     aria-label={open ? 'লাইভ প্রিভিউ বন্ধ করুন' : 'লাইভ প্রিভিউ দেখুন'}
     aria-pressed={open}
     onClick={onClick}
-    className={`min-h-[40px] min-w-[40px] flex items-center justify-center rounded-lg border transition-colors ${
+    style={{ minHeight: 0, height: CTRL_H, width: CTRL_H }}
+    className={`shrink-0 flex items-center justify-center rounded-md border transition-colors ${
       open
         ? 'bg-[#3B4FD8] border-[#3B4FD8] text-white'
         : 'bg-[#EEF2FF] border-[#D5D9E2] text-[#3B4FD8] hover:bg-[#E0E7FF]'
@@ -118,19 +182,43 @@ const EyeToggle: React.FC<{ open: boolean; onClick: () => void }> = ({ open, onC
   </button>
 );
 
-/** Live KaTeX preview card shown when the eye button is on */
-const LivePreview: React.FC<{ text: string }> = ({ text }) => (
-  <div className="rounded-xl border border-[#D5D9E2] bg-[#F8FAFF] p-3.5 animate-in fade-in duration-150">
-    <div className="flex items-center gap-1.5 text-[0.6875rem] font-semibold text-[#2A3BB0] pb-1.5 mb-2 border-b border-[#E2E8F0]">
+/** Live KaTeX preview card shown when the eye button is on (readable in light AND dark mode) */
+const LivePreview: React.FC<{ text?: string; title?: string; children?: React.ReactNode }> = ({
+  text = '',
+  title = 'লাইভ প্রিভিউ (KaTeX)',
+  children,
+}) => (
+  <div className="live-preview rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-[#F8FAFF] dark:bg-slate-800/70 p-3.5 animate-in fade-in duration-150">
+    <div className="flex items-center gap-1.5 text-[0.6875rem] font-semibold text-[#2A3BB0] dark:text-indigo-300 pb-1.5 mb-2 border-b border-[#E2E8F0] dark:border-slate-700">
       <Eye className="w-3.5 h-3.5" />
-      <span>লাইভ প্রিভিউ (KaTeX)</span>
+      <span>{title}</span>
     </div>
-    {text.trim() ? (
-      <RichText text={text} className="text-sm" />
+    {children ? (
+      children
+    ) : text.trim() ? (
+      <RichText text={text} className="text-sm text-[#1B1F2A] dark:text-slate-100" />
     ) : (
-      <div className="text-xs text-[#64748B] italic">উপরে লিখলে এখানে প্রিভিউ দেখা যাবে।</div>
+      <div className="text-xs text-[#64748B] dark:text-slate-400 italic">উপরে লিখলে এখানে প্রিভিউ দেখা যাবে।</div>
     )}
   </div>
+);
+
+/** Small square "add picture" button — only an icon, no text */
+const AddImageButton: React.FC<{ onClick: () => void; ariaLabel: string; title?: string }> = ({
+  onClick,
+  ariaLabel,
+  title = 'ছবি যোগ করুন',
+}) => (
+  <button
+    type="button"
+    aria-label={ariaLabel}
+    title={title}
+    onClick={onClick}
+    style={{ minHeight: 0, height: CTRL_H, width: CTRL_H }}
+    className="shrink-0 flex items-center justify-center rounded-md border border-dashed border-[#3B4FD8] bg-[#EEF2FF] hover:bg-[#E0E7FF] active:bg-[#C7D2FE] text-[#3B4FD8] transition-colors"
+  >
+    <ImagePlus className="w-4 h-4" />
+  </button>
 );
 
 /** Compact board dropdown — picking a board opens the year window (see BoardYearWindow) */
@@ -152,7 +240,8 @@ const BoardSelect: React.FC<{
       }
       onPick(v);
     }}
-    className="min-h-[40px] w-[64px] px-1 py-1 rounded-lg border border-[#D5D9E2] bg-white text-[#2A3BB0] text-[0.6875rem] font-bold focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
+    style={{ height: CTRL_H }}
+    className="w-[54px] shrink-0 px-1 py-0 rounded-md border border-[#D5D9E2] bg-white text-[#2A3BB0] text-[0.625rem] font-bold focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
   >
     <option value="" disabled>
       বোর্ড
@@ -166,20 +255,19 @@ const BoardSelect: React.FC<{
   </select>
 );
 
-/** Board + year tags already added to one section (উদ্দীপক / গ / ঘ …). Nothing is shown when empty. */
+/** Board + year tags already added to one section (উদ্দীপক / গ / ঘ …) — small chips. Nothing is shown when empty. */
 const BoardChips: React.FC<{ chips: BoardUsage[]; onRemove: (board: string, year: number) => void }> = ({
   chips,
   onRemove,
 }) => {
   if (chips.length === 0) return null;
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <Tag className="w-3.5 h-3.5 text-[#3B4FD8] shrink-0" />
+    <div className="flex flex-wrap items-center justify-end gap-1">
       {chips.map((c) =>
         c.years.map((y) => (
           <span
             key={`${c.board}-${y}`}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#EEF2FF] text-[#2A3BB0] border border-[#D5D9E2] text-xs font-semibold"
+            className="inline-flex items-center gap-1 pl-1.5 pr-0.5 h-5 rounded-md bg-[#EEF2FF] text-[#2A3BB0] border border-[#D5D9E2] text-[0.625rem] font-semibold leading-none"
           >
             <span>
               {c.board}'{toBn(String(y).slice(-2))}
@@ -188,9 +276,10 @@ const BoardChips: React.FC<{ chips: BoardUsage[]; onRemove: (board: string, year
               type="button"
               aria-label={`${c.board} ${y} ট্যাগ মুছুন`}
               onClick={() => onRemove(c.board, y)}
-              className="w-4 h-4 rounded-full flex items-center justify-center text-[#64748B] hover:text-red-600 hover:bg-white transition-colors"
+              style={{ minHeight: 0 }}
+              className="w-4 h-4 rounded flex items-center justify-center text-[#64748B] hover:text-red-600 hover:bg-white transition-colors"
             >
-              <X className="w-3 h-3" />
+              <X className="w-2.5 h-2.5" />
             </button>
           </span>
         ))
@@ -336,7 +425,10 @@ const BoardYearWindow: React.FC<BoardYearWindowProps> = ({
 };
 
 interface ImageStripProps {
-  title: string;
+  /** optional heading — the stimulus picture row shows only a "+" button, no text */
+  title?: string;
+  /** hide the "+" button (used for গ / ঘ: no new pictures, only already-saved ones stay manageable) */
+  hideAdd?: boolean;
   ids: string[];
   urls: Record<string, string>;
   /** Full Editor only: replace a picture / open a big preview */
@@ -353,6 +445,7 @@ interface ImageStripProps {
 /** Picture upload row. Minimum = add / remove. Full Editor = also replace + big preview */
 const ImageStrip: React.FC<ImageStripProps> = ({
   title,
+  hideAdd = false,
   ids,
   urls,
   fullFeatures,
@@ -363,19 +456,24 @@ const ImageStrip: React.FC<ImageStripProps> = ({
   onOpenViewer,
   addAriaLabel,
 }) => (
-  <div className="pt-2.5 border-t border-[#F2F4F8] space-y-2.5">
-    <div className="flex items-center justify-between">
-      <span className="text-xs font-semibold text-[#1B1F2A]">{title}</span>
-      <button
-        type="button"
-        aria-label={addAriaLabel}
-        onClick={onAdd}
-        className="min-h-[44px] px-3.5 py-1.5 rounded-xl bg-[#EEF2FF] hover:bg-[#E0E7FF] text-[#2A3BB0] text-xs font-semibold flex items-center gap-1.5 transition-colors"
-      >
-        <ImageIcon className="w-4 h-4 text-[#3B4FD8]" />
-        <span>ছবি যোগ করো</span>
-      </button>
-    </div>
+  <div className="space-y-2">
+    {(!hideAdd || title) && (
+      <div className="flex items-center justify-end gap-2">
+        {title && <span className="mr-auto text-xs font-semibold text-[#1B1F2A]">{title}</span>}
+        {!hideAdd && (
+          <button
+            type="button"
+            aria-label={addAriaLabel}
+            title="ছবি যোগ করুন"
+            onClick={onAdd}
+            style={{ minHeight: 0, height: CTRL_H, width: CTRL_H }}
+            className="rounded-md border border-dashed border-[#3B4FD8] bg-[#EEF2FF] hover:bg-[#E0E7FF] active:bg-[#C7D2FE] text-[#3B4FD8] flex items-center justify-center transition-colors"
+          >
+            <ImagePlus className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+    )}
 
     {ids.length > 0 && (
       <div className={fullFeatures ? 'grid grid-cols-2 gap-2.5' : 'grid grid-cols-3 gap-2.5'}>
@@ -400,6 +498,7 @@ const ImageStrip: React.FC<ImageStripProps> = ({
                   type="button"
                   aria-label="ছবি মুছে ফেলুন"
                   onClick={() => onRemove(imgId)}
+                  style={{ minHeight: 0 }}
                   className="absolute top-1 right-1 w-6 h-6 rounded-full bg-red-600 text-white flex items-center justify-center shadow-md hover:bg-red-700"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -445,9 +544,91 @@ const ImageStrip: React.FC<ImageStripProps> = ({
   </div>
 );
 
+/** One picture inside a solution. Minimum = remove only. Full Editor = replace / export / big preview too */
+const PartImage: React.FC<{
+  id: string;
+  url?: string;
+  fullFeatures: boolean;
+  onRemove: () => void;
+  onReplace: () => void;
+  onExport: () => void;
+  onOpenViewer: () => void;
+}> = ({ url, fullFeatures, onRemove, onReplace, onExport, onOpenViewer }) => (
+  <div className="space-y-1.5">
+    <div className="relative rounded-xl overflow-hidden border border-[#D5D9E2] bg-[#F8FAFC] max-w-[220px]">
+      {url ? (
+        <img
+          src={url}
+          alt="সমাধানের ছবি"
+          onClick={fullFeatures ? onOpenViewer : undefined}
+          className={`w-full h-auto max-h-40 object-contain ${fullFeatures ? 'cursor-zoom-in' : ''}`}
+        />
+      ) : (
+        <div className="w-full h-20 flex items-center justify-center text-[0.625rem] text-[#64748B]">লোড হচ্ছে...</div>
+      )}
+      <button
+        type="button"
+        aria-label="ছবি মুছে ফেলুন"
+        onClick={onRemove}
+        style={{ minHeight: 0 }}
+        className="absolute top-1 right-1 w-6 h-6 rounded-full bg-red-600 text-white flex items-center justify-center shadow-md hover:bg-red-700"
+      >
+        <X className="w-3.5 h-3.5" />
+      </button>
+    </div>
+    {fullFeatures && (
+      <div className="flex items-center gap-1.5 max-w-[220px]">
+        <button
+          type="button"
+          aria-label="ছবি বদলান"
+          title="বদলান"
+          onClick={onReplace}
+          className="flex-1 min-h-[36px] rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#EEF2FF] active:bg-[#E0E7FF] text-[#2A3BB0] flex items-center justify-center"
+        >
+          <RefreshCw className="w-4 h-4" />
+        </button>
+        <button
+          type="button"
+          aria-label="ছবি এক্সপোর্ট করুন"
+          title="এক্সপোর্ট (ডাউনলোড)"
+          disabled={!url}
+          onClick={onExport}
+          className="flex-1 min-h-[36px] rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#EEF2FF] active:bg-[#E0E7FF] text-[#2A3BB0] flex items-center justify-center disabled:opacity-40 disabled:pointer-events-none"
+        >
+          <Download className="w-4 h-4" />
+        </button>
+        <button
+          type="button"
+          aria-label="বড় প্রিভিউ দেখুন"
+          title="বড় দেখুন"
+          disabled={!url}
+          onClick={onOpenViewer}
+          className="flex-1 min-h-[36px] rounded-lg border border-[#D5D9E2] bg-white hover:bg-[#EEF2FF] active:bg-[#E0E7FF] text-[#2A3BB0] flex items-center justify-center disabled:opacity-40 disabled:pointer-events-none"
+        >
+          <Maximize2 className="w-4 h-4" />
+        </button>
+      </div>
+    )}
+  </div>
+);
+
 interface QuestionFormBlock extends QuestionBlockInput {
   tempId: string; // Internal unique key for React lists
+  /** the solution as an ordered list of text boxes and pictures (see utils/solutionParts) */
+  solutionParts: SolutionPart[];
 }
+
+const emptyParts = (): SolutionPart[] => [{ kind: 'text', text: '' }];
+
+/** a solution always ends with a text box to type in */
+const withTrailingText = (parts: SolutionPart[]): SolutionPart[] =>
+  parts.length === 0 || parts[parts.length - 1].kind !== 'text' ? [...parts, { kind: 'text', text: '' }] : parts;
+
+/** put the serialised text / picture list back into the block so it can be saved */
+const applyParts = (b: QuestionFormBlock, parts: SolutionPart[]): QuestionFormBlock => {
+  const ser = serializeSolution(parts);
+  return { ...b, solutionParts: parts, solutionText: ser.text, solutionImageIds: ser.imageIds };
+};
 
 export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
   isOpen,
@@ -465,6 +646,10 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  // Full Editor: the subject / chapter / topic card can be minimised to save space
+  const [hierarchyOpen, setHierarchyOpen] = useState(false);
+  // Full Editor: which question block is waiting for the delete confirmation
+  const [deleteBlockIndex, setDeleteBlockIndex] = useState<number | null>(null);
 
   // Subjects / Chapters / Topics lists
   const [allSubjects, setAllSubjects] = useState<Subject[]>([]);
@@ -481,6 +666,8 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
   const [stimulusText, setStimulusText] = useState<string>('');
   const [stimulusImageIds, setStimulusImageIds] = useState<string[]>([]);
   const [stimulusImageUrls, setStimulusImageUrls] = useState<Record<string, string>>({});
+  // how many of the first stimulus pictures sit ABOVE the stimulus text
+  const [stimulusTopCount, setStimulusTopCount] = useState<number>(0);
 
   // Stimulus-level extras (Minimum + Full Editor)
   const [stimulusRating, setStimulusRating] = useState<number>(3);
@@ -495,12 +682,14 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
   // Live-preview (eye button) toggles
   const [stimulusPreviewOpen, setStimulusPreviewOpen] = useState(false);
   const [solutionPreviewOpen, setSolutionPreviewOpen] = useState<Record<string, boolean>>({});
+  const [questionPreviewOpen, setQuestionPreviewOpen] = useState<Record<string, boolean>>({});
+  const [answerPreviewOpen, setAnswerPreviewOpen] = useState<Record<string, boolean>>({});
 
   // Full Editor: big image preview + replace
   const [viewer, setViewer] = useState<{ images: Array<{ url: string; alt?: string }>; index: number } | null>(null);
   const replaceInputRef = useRef<HTMLInputElement>(null);
   const [replaceTarget, setReplaceTarget] = useState<
-    { kind: 'stimulus'; imageId: string } | { kind: 'solution'; blockIndex: number; imageId: string } | null
+    { kind: 'stimulus'; imageId: string } | { kind: 'solution'; tempId: string; imageId: string } | null
   >(null);
 
   // Board → year window: which section (উদ্দীপক / a question block) and which board is being tagged
@@ -591,6 +780,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
       questionText: '',
       solutionText: '',
       solutionImageIds: [],
+      solutionParts: emptyParts(),
       answerText: '',
       rating: 3,
       usedInBoards: [],
@@ -602,6 +792,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
       questionText: '',
       solutionText: '',
       solutionImageIds: [],
+      solutionParts: emptyParts(),
       answerText: '',
       rating: 4,
       usedInBoards: [],
@@ -618,6 +809,102 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
   }>({});
 
   const stimulusFileInputRef = useRef<HTMLInputElement>(null);
+
+  // ---- Undo / Redo (snapshots of everything typed or changed in the form) ----
+  interface FormSnapshot {
+    stimulusText: string;
+    stimulusImageIds: string[];
+    stimulusTopCount: number;
+    stimulusRating: number;
+    stimulusBoards: BoardUsage[];
+    reference: string;
+    questionBlocks: QuestionFormBlock[];
+    deletedQuestionIds: string[];
+  }
+  const currentSnap: FormSnapshot = {
+    stimulusText,
+    stimulusImageIds,
+    stimulusTopCount,
+    stimulusRating,
+    stimulusBoards,
+    reference,
+    questionBlocks,
+    deletedQuestionIds,
+  };
+  const currentSnapKey = JSON.stringify(currentSnap);
+  const snapRef = useRef<{ snap: FormSnapshot; key: string }>({ snap: currentSnap, key: currentSnapKey });
+  snapRef.current = { snap: currentSnap, key: currentSnapKey };
+  const historyRef = useRef<{ stack: Array<{ snap: FormSnapshot; key: string }>; index: number }>({
+    stack: [],
+    index: -1,
+  });
+  const historyReadyRef = useRef(false);
+  const [historyEpoch, setHistoryEpoch] = useState(0);
+  const [, setHistoryTick] = useState(0);
+
+  const commitHistory = () => {
+    if (!historyReadyRef.current) return;
+    const h = historyRef.current;
+    const latest = snapRef.current;
+    const top = h.stack[h.index];
+    if (top && top.key === latest.key) return;
+    h.stack = h.stack.slice(0, h.index + 1);
+    h.stack.push(latest);
+    if (h.stack.length > 100) h.stack.shift();
+    h.index = h.stack.length - 1;
+    setHistoryTick((t) => t + 1);
+  };
+
+  // Form finished loading → this is the starting point of the history
+  useEffect(() => {
+    if (!isOpen || historyEpoch === 0) return;
+    historyRef.current = { stack: [snapRef.current], index: 0 };
+    historyReadyRef.current = true;
+    setHistoryTick((t) => t + 1);
+  }, [historyEpoch, isOpen]);
+
+  // Typing is grouped: one history step per short pause
+  useEffect(() => {
+    if (!isOpen || !historyReadyRef.current) return;
+    const timer = setTimeout(commitHistory, 600);
+    return () => clearTimeout(timer);
+  }, [currentSnapKey, isOpen]);
+
+  const applySnapshot = (snap: FormSnapshot) => {
+    setStimulusText(snap.stimulusText);
+    setStimulusImageIds(snap.stimulusImageIds);
+    setStimulusTopCount(snap.stimulusTopCount ?? 0);
+    setStimulusRating(snap.stimulusRating);
+    setStimulusBoards(snap.stimulusBoards);
+    setReference(snap.reference);
+    setQuestionBlocks(snap.questionBlocks);
+    setDeletedQuestionIds(snap.deletedQuestionIds);
+    setIsDirty(true);
+    setErrors({});
+  };
+
+  const historyTop = historyRef.current.stack[historyRef.current.index];
+  const hasPendingChange = historyReadyRef.current && !!historyTop && historyTop.key !== currentSnapKey;
+  const canUndo = historyReadyRef.current && (historyRef.current.index > 0 || hasPendingChange);
+  const canRedo =
+    historyReadyRef.current && !hasPendingChange && historyRef.current.index < historyRef.current.stack.length - 1;
+
+  const handleUndo = () => {
+    commitHistory(); // keep what was typed just now as a step too
+    const h = historyRef.current;
+    if (h.index <= 0) return;
+    h.index -= 1;
+    applySnapshot(h.stack[h.index].snap);
+    setHistoryTick((t) => t + 1);
+  };
+
+  const handleRedo = () => {
+    const h = historyRef.current;
+    if (h.index >= h.stack.length - 1) return;
+    h.index += 1;
+    applySnapshot(h.stack[h.index].snap);
+    setHistoryTick((t) => t + 1);
+  };
 
   // Hardware Back Button interception
   useEffect(() => {
@@ -641,10 +928,16 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
     setEditorMode('minimum');
     setStimulusPreviewOpen(false);
     setSolutionPreviewOpen({});
+    setQuestionPreviewOpen({});
+    setAnswerPreviewOpen({});
+    setStimulusTopCount(0);
     setStimulusRating(3);
     setStimulusBoards([]);
     setReference('');
     setViewer(null);
+    setHierarchyOpen(false);
+    setDeleteBlockIndex(null);
+    historyReadyRef.current = false;
   }, [isOpen, editQuestionId]);
 
   // Load Initial Hierarchy & Edit Data
@@ -671,6 +964,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
             setReference(editData.stimulus?.reference || '');
             const stimImgIds = editData.stimulus?.imageIds || [];
             setStimulusImageIds(stimImgIds);
+            setStimulusTopCount(Math.min(stimImgIds.length, editData.stimulus?.imageTopCount || 0));
 
             // Load stimulus image preview URLs
             for (const imgId of stimImgIds) {
@@ -705,6 +999,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                 questionText: q.questionText,
                 solutionText: q.solutionText || '',
                 solutionImageIds: q.solutionImageIds || [],
+                solutionParts: withTrailingText(parseSolution(q.solutionText || '', q.solutionImageIds || [])),
                 answerText: q.answerText || '',
                 rating: q.rating || 3,
                 usedInBoards: q.usedInBoards || [],
@@ -773,7 +1068,10 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
       } catch (err) {
         console.error('Failed to init question form:', err);
       } finally {
-        if (isMounted) setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+          setHistoryEpoch((n) => n + 1);
+        }
       }
     };
 
@@ -823,23 +1121,36 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
     }
   };
 
-  // Upload Stimulus Images with WebP 800px Canvas compression
-  const handleUploadStimulusImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Upload Stimulus Images with WebP 800px Canvas compression.
+  // position 'top' = before the stimulus text, 'bottom' = after it (the old place)
+  const stimulusTopInputRef = useRef<HTMLInputElement>(null);
+  const handleUploadStimulusImages = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    position: 'top' | 'bottom' = 'bottom'
+  ) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
     setIsDirty(true);
+    const added: string[] = [];
     for (let i = 0; i < files.length; i++) {
       try {
         const { blob, fileName } = await compressImageToWebP(files[i], 800, 0.8);
         const imageId = await saveImageBlob(blob, fileName);
         const previewUrl = URL.createObjectURL(blob);
-
-        setStimulusImageIds((prev) => [...prev, imageId]);
+        added.push(imageId);
         setStimulusImageUrls((prev) => ({ ...prev, [imageId]: previewUrl }));
       } catch (err) {
         console.error('Image upload failed:', err);
-        showToast('ছবি আপলোড করতে সমস্যা হয়েছে');
+        showToast('ছবি আপলোড করতে সমস্যা হয়েছে');
+      }
+    }
+    if (added.length > 0) {
+      if (position === 'top') {
+        setStimulusImageIds((prev) => [...added, ...prev]);
+        setStimulusTopCount((n) => n + added.length);
+      } else {
+        setStimulusImageIds((prev) => [...prev, ...added]);
       }
     }
     e.target.value = '';
@@ -866,16 +1177,18 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
         setStimulusImageUrls((prev) => ({ ...prev, [newId]: previewUrl }));
       } else {
         setSolutionImageUrls((prev) => ({ ...prev, [newId]: previewUrl }));
-        setQuestionBlocks((prev) => {
-          const next = [...prev];
-          const cur = next[target.blockIndex];
-          if (!cur) return prev;
-          next[target.blockIndex] = {
-            ...cur,
-            solutionImageIds: (cur.solutionImageIds || []).map((id) => (id === target.imageId ? newId : id)),
-          };
-          return next;
-        });
+        setQuestionBlocks((prev) =>
+          prev.map((b) =>
+            b.tempId === target.tempId
+              ? applyParts(
+                  b,
+                  b.solutionParts.map<SolutionPart>((p) =>
+                    p.kind === 'image' && p.id === target.imageId ? { kind: 'image', id: newId } : p
+                  )
+                )
+              : b
+          )
+        );
       }
       showToast('ছবি বদলানো হয়েছে');
     } catch (err) {
@@ -914,54 +1227,73 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
 
   const handleRemoveStimulusImage = (imageId: string) => {
     setIsDirty(true);
+    const pos = stimulusImageIds.indexOf(imageId);
+    if (pos >= 0 && pos < stimulusTopCount) setStimulusTopCount((n) => Math.max(0, n - 1));
     setStimulusImageIds((prev) => prev.filter((id) => id !== imageId));
   };
 
-  // Upload Question Solution Images with WebP 800px Canvas compression
-  const handleUploadSolutionImages = async (blockIndex: number, e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
+  // ---- Solution = ordered list of text boxes and pictures ----
+  const changeSolutionParts = (tempId: string, fn: (parts: SolutionPart[]) => SolutionPart[]) => {
     setIsDirty(true);
-    const newImageIds: string[] = [];
+    setQuestionBlocks((prev) =>
+      prev.map((b) => (b.tempId === tempId ? applyParts(b, withTrailingText(fn(b.solutionParts))) : b))
+    );
+  };
 
-    for (let i = 0; i < files.length; i++) {
+  const solutionPickRef = useRef<{ tempId: string; position: 'start' | 'end' } | null>(null);
+  const solutionFileInputRef = useRef<HTMLInputElement>(null);
+
+  const pickSolutionImages = (tempId: string, position: 'start' | 'end') => {
+    solutionPickRef.current = { tempId, position };
+    solutionFileInputRef.current?.click();
+  };
+
+  const handleSolutionFilesChosen = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    const target = solutionPickRef.current;
+    if (!files || files.length === 0 || !target) return;
+    const picked = Array.from(files);
+    e.target.value = '';
+
+    const newParts: SolutionPart[] = [];
+    for (const file of picked) {
       try {
-        const { blob, fileName } = await compressImageToWebP(files[i], 800, 0.8);
+        const { blob, fileName } = await compressImageToWebP(file, 800, 0.8);
         const imageId = await saveImageBlob(blob, fileName);
         const previewUrl = URL.createObjectURL(blob);
-
-        newImageIds.push(imageId);
+        newParts.push({ kind: 'image', id: imageId });
         setSolutionImageUrls((prev) => ({ ...prev, [imageId]: previewUrl }));
       } catch (err) {
         console.error('Solution image upload failed:', err);
-        showToast('ছবি আপলোড করতে সমস্যা হয়েছে');
+        showToast('ছবি আপলোড করতে সমস্যা হয়েছে');
       }
     }
+    if (newParts.length === 0) return;
 
-    setQuestionBlocks((prev) => {
-      const next = [...prev];
-      next[blockIndex] = {
-        ...next[blockIndex],
-        solutionImageIds: [...(next[blockIndex].solutionImageIds || []), ...newImageIds],
-      };
-      return next;
-    });
-
-    e.target.value = '';
-  };
-
-  const handleRemoveSolutionImage = (blockIndex: number, imageId: string) => {
-    setIsDirty(true);
-    setQuestionBlocks((prev) => {
-      const next = [...prev];
-      next[blockIndex] = {
-        ...next[blockIndex],
-        solutionImageIds: (next[blockIndex].solutionImageIds || []).filter((id) => id !== imageId),
-      };
-      return next;
+    changeSolutionParts(target.tempId, (parts) => {
+      if (target.position === 'start') return [...newParts, ...parts];
+      // end: go in front of the empty last box so a fresh box stays ready below the picture
+      const last = parts[parts.length - 1];
+      if (last && last.kind === 'text' && last.text === '') {
+        return [...parts.slice(0, -1), ...newParts, last];
+      }
+      return [...parts, ...newParts, { kind: 'text', text: '' }];
     });
   };
+
+  const handleRemoveSolutionImage = (tempId: string, imageId: string) =>
+    changeSolutionParts(tempId, (parts) => parts.filter((p) => !(p.kind === 'image' && p.id === imageId)));
+
+  const handleSolutionTextChange = (tempId: string, partIndex: number, text: string) =>
+    changeSolutionParts(tempId, (parts) =>
+      parts.map<SolutionPart>((p, i) => (i === partIndex && p.kind === 'text' ? { kind: 'text', text } : p))
+    );
+
+  const handleAddSolutionBox = (tempId: string) =>
+    changeSolutionParts(tempId, (parts) => [...parts, { kind: 'text', text: '' }]);
+
+  const handleRemoveSolutionBox = (tempId: string, partIndex: number) =>
+    changeSolutionParts(tempId, (parts) => parts.filter((_, i) => i !== partIndex));
 
   // BoardTag string saved on the stimulus (union of the stimulus + every question's boards)
   const computedBoardTag = useMemo(() => {
@@ -997,6 +1329,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
       questionText: '',
       solutionText: '',
       solutionImageIds: [],
+      solutionParts: emptyParts(),
       answerText: '',
       rating: 3,
       usedInBoards: [],
@@ -1019,23 +1352,6 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
     }
 
     setQuestionBlocks((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  // Move a question block one step up (-1) or down (+1) — Full Editor
-  const handleMoveQuestionBlock = (index: number, dir: -1 | 1) => {
-    const target = index + dir;
-    if (target < 0 || target >= questionBlocks.length) return;
-    const movedId = questionBlocks[index].tempId;
-    setIsDirty(true);
-    setQuestionBlocks((prev) => {
-      const next = [...prev];
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
-    // keep the moved block in view so the person can see where it went
-    setTimeout(() => {
-      document.getElementById(`qblock-${movedId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 60);
   };
 
   // Auto-arrange blocks in ক → খ → গ → ঘ order (stable: same type keeps its current order)
@@ -1103,6 +1419,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
       newErrors.topic = 'টপিক বাছুন';
       // The hierarchy card is hidden in Minimum mode — show it so the topic can be picked
       if (!isFull) setEditorMode('full');
+      setHierarchyOpen(true);
     }
 
     if (!stimulusText.trim()) {
@@ -1129,23 +1446,27 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
     setLoading(true);
     try {
       // Synchronize usedInBoards with chips for each question
-      const questionsWithBoards: QuestionBlockInput[] = questionBlocks.map((q) => ({
+      const questionsWithBoards: QuestionBlockInput[] = questionBlocks.map((q) => {
+        const sol = serializeSolution(q.solutionParts);
+        return {
         id: q.id,
         type: q.type,
         marks: Number(q.marks) || 1,
         questionText: q.questionText.trim(),
-        solutionText: q.solutionText.trim(),
-        solutionImageIds: q.solutionImageIds || [],
+        solutionText: sol.text,
+        solutionImageIds: sol.imageIds,
         answerText: q.answerText?.trim() || '',
         rating: q.rating || 3,
         usedInBoards: q.usedInBoards || [],
-      }));
+        };
+      });
 
       await saveQuestionGroup({
         stimulusId,
         topicId: selectedTopicId,
         stimulusText: stimulusText.trim(),
         stimulusImageIds,
+        stimulusImageTopCount: Math.min(stimulusTopCount, stimulusImageIds.length),
         boardTag: computedBoardTag,
         stimulusUsedInBoards: stimulusBoards,
         stimulusRating,
@@ -1189,7 +1510,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
         
         {/* Header */}
         <header className="sticky top-0 z-30 bg-[#3B4FD8] text-white px-4 h-14 flex items-center justify-between shadow-md shrink-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <button
               type="button"
               aria-label="বন্ধ করুন"
@@ -1198,26 +1519,63 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
             >
               <X className="w-5 h-5 text-white" />
             </button>
-            <h2 id="question-modal-title" className="text-base font-bold text-white truncate">
+            <h2 id="question-modal-title" className="text-[0.9375rem] font-bold text-white truncate">
               {editQuestionId ? 'প্রশ্ন সম্পাদনা' : 'প্রশ্ন যোগ করো'}
             </h2>
           </div>
 
-          <div className="flex items-center">
+          <div className="flex items-center gap-0.5 shrink-0">
             {isDirty && (
-              <span className="text-[0.6875rem] bg-amber-400 text-amber-950 font-bold px-2 py-0.5 rounded-full shadow-2xs">
+              <span className="mr-1 text-[0.625rem] bg-amber-400 text-amber-950 font-bold px-1.5 py-0.5 rounded-full shadow-2xs">
                 অসংরক্ষিত
               </span>
             )}
+            <button
+              type="button"
+              aria-label="আনডু (পূর্বাবস্থায়)"
+              title="আনডু"
+              disabled={!canUndo || loading}
+              onClick={handleUndo}
+              style={{ minHeight: 0, height: 36, width: 36 }}
+              className="flex items-center justify-center rounded-full text-white hover:bg-white/10 active:bg-white/20 disabled:opacity-35 disabled:pointer-events-none transition-colors"
+            >
+              <Undo2 className="w-[18px] h-[18px]" />
+            </button>
+            <button
+              type="button"
+              aria-label="রিডু (আবার করুন)"
+              title="রিডু"
+              disabled={!canRedo || loading}
+              onClick={handleRedo}
+              style={{ minHeight: 0, height: 36, width: 36 }}
+              className="flex items-center justify-center rounded-full text-white hover:bg-white/10 active:bg-white/20 disabled:opacity-35 disabled:pointer-events-none transition-colors"
+            >
+              <Redo2 className="w-[18px] h-[18px]" />
+            </button>
+            <button
+              type="button"
+              aria-label="প্রশ্ন সেভ করুন"
+              title="সেভ"
+              disabled={loading}
+              onClick={handleSave}
+              style={{ minHeight: 0, height: 36, width: 36 }}
+              className="ml-0.5 flex items-center justify-center rounded-full bg-white text-[#3B4FD8] shadow-sm hover:bg-[#EEF2FF] active:bg-[#E0E7FF] disabled:opacity-50 transition-colors"
+            >
+              {loading ? (
+                <span className="w-4 h-4 rounded-full border-2 border-[#3B4FD8]/30 border-t-[#3B4FD8] animate-spin" />
+              ) : (
+                <Check className="w-5 h-5" strokeWidth={3} />
+              )}
+            </button>
           </div>
         </header>
 
         {/* Mode switch: Minimum (default) | Full Editor */}
-        <div className="shrink-0 bg-white border-b border-[#D5D9E2] px-4 py-2">
+        <div className="shrink-0 bg-white border-b border-[#D5D9E2] px-4 py-1.5">
           <div
             role="tablist"
             aria-label="এডিটর মোড"
-            className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-[#F2F4F8] border border-[#D5D9E2]"
+            className="grid grid-cols-2 gap-0.5 p-0.5 rounded-lg bg-[#F2F4F8] border border-[#D5D9E2]"
           >
             {(['minimum', 'full'] as EditorMode[]).map((m) => {
               const active = editorMode === m;
@@ -1228,7 +1586,8 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                   role="tab"
                   aria-selected={active}
                   onClick={() => setEditorMode(m)}
-                  className={`min-h-[40px] rounded-lg text-xs font-bold transition-colors ${
+                  style={{ minHeight: 0, height: 26 }}
+                  className={`rounded-md text-[0.6875rem] font-bold transition-colors ${
                     active ? 'bg-[#3B4FD8] text-white shadow-sm' : 'text-[#2A3BB0] hover:bg-white'
                   }`}
                 >
@@ -1240,18 +1599,45 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
         </div>
 
         {/* Scrollable Form Content */}
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5 pb-28">
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5 pb-6">
           {/* Hidden file input shared by "ছবি বদলান" (Full Editor) */}
           <input ref={replaceInputRef} type="file" accept="image/*" onChange={handleReplaceFile} className="hidden" />
+          {/* Hidden picker for the solution pictures (start / end of a solution) */}
+          <input
+            ref={solutionFileInputRef}
+            type="file"
+            multiple
+            accept="image/*"
+            onChange={handleSolutionFilesChosen}
+            className="hidden"
+          />
 
           {/* Section 1: Subject, Chapter, Topic Selection — Full Editor only */}
           {isFull && (
-            <section className="bg-white rounded-2xl p-4 border border-[#D5D9E2] shadow-xs space-y-3.5">
-              <div className="flex items-center gap-2 pb-2 border-b border-[#F2F4F8] text-xs font-bold text-[#2A3BB0]">
-                <Layers className="w-4 h-4 text-[#3B4FD8]" />
-                <span>বিষয়, অধ্যায় ও টপিক নির্বাচন</span>
-              </div>
+            <section
+              className={`bg-white rounded-2xl px-4 border shadow-xs ${
+                errors.topic ? 'border-red-400' : 'border-[#D5D9E2]'
+              } ${hierarchyOpen ? 'py-3 space-y-3.5' : 'py-1'}`}
+            >
+              <button
+                type="button"
+                aria-expanded={hierarchyOpen}
+                aria-label={hierarchyOpen ? 'বিষয়, অধ্যায় ও টপিক বন্ধ করুন' : 'বিষয়, অধ্যায় ও টপিক খুলুন'}
+                onClick={() => setHierarchyOpen((v) => !v)}
+                style={{ minHeight: 0, height: hierarchyOpen ? 30 : 34 }}
+                className={`w-full flex items-center gap-2 text-xs font-bold text-[#2A3BB0] ${
+                  hierarchyOpen ? 'border-b border-[#F2F4F8]' : ''
+                }`}
+              >
+                <Layers className="w-4 h-4 text-[#3B4FD8] shrink-0" />
+                <span className="shrink-0">বিষয়, অধ্যায় ও টপিক নির্বাচন</span>
+                <span className="flex-1" />
+                <ChevronDown
+                  className={`w-4 h-4 text-[#64748B] shrink-0 transition-transform ${hierarchyOpen ? 'rotate-180' : ''}`}
+                />
+              </button>
 
+              {hierarchyOpen && (<>
               {/* Subject Select */}
               <div className="space-y-1">
                 <label className="block text-xs font-semibold text-[#1B1F2A]">বিষয়</label>
@@ -1323,12 +1709,13 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                   </p>
                 )}
               </div>
+              </>)}
             </section>
           )}
 
-          {/* Section 2: Stimulus (উদ্দীপক) — text, eye preview, rating, images, board */}
-          <section className="bg-white rounded-2xl p-4 border border-[#D5D9E2] shadow-xs space-y-3">
-            <div className="flex items-center justify-between gap-2 pb-2 border-b border-[#F2F4F8]">
+          {/* Section 2: Stimulus (উদ্দীপক) — controls row, board chips, text, picture "+", reference */}
+          <section className="bg-white rounded-2xl p-4 border border-[#D5D9E2] shadow-xs space-y-2.5">
+            <div className="flex items-center justify-between gap-2">
               <span className="flex items-center gap-1.5 text-xs font-bold text-[#2A3BB0] min-w-0">
                 <HelpCircle className="w-4 h-4 text-[#3B4FD8] shrink-0" />
                 <span className="truncate">উদ্দীপক *</span>
@@ -1349,8 +1736,36 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                     setStimulusRating(v);
                   }}
                 />
+                {/* picture at the START of the stimulus (above the text) */}
+                <AddImageButton
+                  ariaLabel="উদ্দীপকের শুরুতে ছবি যোগ করুন"
+                  title="উদ্দীপকের শুরুতে ছবি"
+                  onClick={() => stimulusTopInputRef.current?.click()}
+                />
               </div>
             </div>
+
+            {/* Boards this stimulus came in — the line right under board / eye / rating */}
+            <BoardChips
+              chips={stimulusBoards}
+              onRemove={(board, year) => removeBoardYear({ kind: 'stimulus' }, board, year)}
+            />
+
+            {/* pictures that sit above the stimulus text */}
+            {splitStimulusImages(stimulusImageIds, stimulusTopCount).top.length > 0 && (
+              <ImageStrip
+                hideAdd
+                ids={splitStimulusImages(stimulusImageIds, stimulusTopCount).top}
+                urls={stimulusImageUrls}
+                fullFeatures={isFull}
+                addAriaLabel="উদ্দীপকের শুরুতে ছবি যোগ করুন"
+                onAdd={() => {}}
+                onRemove={handleRemoveStimulusImage}
+                onReplace={(id) => startReplace({ kind: 'stimulus', imageId: id })}
+                onExport={(id) => handleExportImage(id, stimulusImageUrls)}
+                onOpenViewer={(i) => openViewer(splitStimulusImages(stimulusImageIds, stimulusTopCount).top, stimulusImageUrls, i)}
+              />
+            )}
 
             <LatexEditor
               value={stimulusText}
@@ -1371,17 +1786,11 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
               </p>
             )}
 
-            <BoardChips
-              chips={stimulusBoards}
-              onRemove={(board, year) => removeBoardYear({ kind: 'stimulus' }, board, year)}
-            />
-
             {stimulusPreviewOpen && <LivePreview text={stimulusText} />}
 
-            {/* Stimulus pictures */}
+            {/* Stimulus pictures below the text: just an add-picture icon (no text) */}
             <ImageStrip
-              title="উদ্দীপকের ছবি"
-              ids={stimulusImageIds}
+              ids={splitStimulusImages(stimulusImageIds, stimulusTopCount).bottom}
               urls={stimulusImageUrls}
               fullFeatures={isFull}
               addAriaLabel="উদ্দীপকে ছবি যোগ করুন"
@@ -1389,40 +1798,39 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
               onRemove={handleRemoveStimulusImage}
               onReplace={(id) => startReplace({ kind: 'stimulus', imageId: id })}
               onExport={(id) => handleExportImage(id, stimulusImageUrls)}
-              onOpenViewer={(i) => openViewer(stimulusImageIds, stimulusImageUrls, i)}
+              onOpenViewer={(i) => openViewer(splitStimulusImages(stimulusImageIds, stimulusTopCount).bottom, stimulusImageUrls, i)}
             />
             <input
               ref={stimulusFileInputRef}
               type="file"
               multiple
               accept="image/*"
-              onChange={handleUploadStimulusImages}
+              onChange={(e) => handleUploadStimulusImages(e, 'bottom')}
               className="hidden"
             />
-          </section>
+            <input
+              ref={stimulusTopInputRef}
+              type="file"
+              multiple
+              accept="image/*"
+              onChange={(e) => handleUploadStimulusImages(e, 'top')}
+              className="hidden"
+            />
 
-          {/* Reference (Full Editor only) */}
-          {isFull && (
-            <section className="bg-white rounded-2xl p-4 border border-[#D5D9E2] shadow-xs space-y-2.5">
-              <div className="flex items-center gap-2 pb-2 border-b border-[#F2F4F8] text-xs font-bold text-[#2A3BB0]">
-                <BookMarked className="w-4 h-4 text-[#3B4FD8]" />
-                <span>রেফারেন্স (প্রশ্নটি কোথা থেকে সংগ্রহ)</span>
-              </div>
-              <input
-                type="text"
-                value={reference}
-                onChange={(e) => {
-                  setIsDirty(true);
-                  setReference(e.target.value);
-                }}
-                placeholder="যেমন: মেরি জি প্রশ্ন ব্যাংক"
-                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-[#D5D9E2] bg-white text-xs text-[#1B1F2A] focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
-              />
-              <p className="text-[0.6875rem] text-[#64748B]">
-                প্রশ্ন কার্ডের থ্রি ডট মেনুর "রেফারেন্স দেখুন" অপশনে এটি দেখা যাবে।
-              </p>
-            </section>
-          )}
+            {/* Reference: only the small box (Minimum + Full Editor) */}
+            <input
+              type="text"
+              aria-label="রেফারেন্স"
+              value={reference}
+              onChange={(e) => {
+                setIsDirty(true);
+                setReference(e.target.value);
+              }}
+              placeholder="যেমন: রেফারেন্স লিখুন"
+              style={{ height: 36 }}
+              className="w-full px-3 rounded-lg border border-[#D5D9E2] bg-white text-xs text-[#1B1F2A] focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
+            />
+          </section>
 
           {/* Section 3: Question Blocks (গ, ঘ …) */}
           <section className="space-y-4">
@@ -1446,9 +1854,38 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
             )}
 
             {questionBlocks.map((block, index) => {
-              const solInputId = `sol-file-${block.tempId}`;
               const qError = errors.questions?.[block.tempId];
               const solPreviewOpen = !!solutionPreviewOpen[block.tempId];
+              const qPreviewOpen = !!questionPreviewOpen[block.tempId];
+              const aPreviewOpen = !!answerPreviewOpen[block.tempId];
+              const solutionImageList = block.solutionParts.flatMap((p) => (p.kind === 'image' ? [p.id] : []));
+
+              // board picker + eye (solution live preview) + rating of this question (গ / ঘ …)
+              const questionControls = (
+                <div className="flex items-center gap-1 shrink-0">
+                  <BoardSelect
+                    ariaLabel={`প্রশ্ন (${block.type}) কোন বোর্ডে এসেছে`}
+                    options={allBoardOptions}
+                    onPick={(board) => setYearPicker({ target: { kind: 'question', index }, board })}
+                    onAddBoard={() => setShowAddBoard(true)}
+                  />
+                  <EyeToggle
+                    open={qPreviewOpen}
+                    onClick={() => setQuestionPreviewOpen((prev) => ({ ...prev, [block.tempId]: !qPreviewOpen }))}
+                  />
+                  <RatingSelect
+                    value={block.rating || 3}
+                    ariaLabel={`প্রশ্ন (${block.type}) এর রেটিং`}
+                    onChange={(v) => updateQuestionBlock(index, 'rating', v)}
+                  />
+                </div>
+              );
+              const blockBoardChips = (
+                <BoardChips
+                  chips={block.usedInBoards || []}
+                  onRemove={(board, year) => removeBoardYear({ kind: 'question', index }, board, year)}
+                />
+              );
 
               return (
                 <div
@@ -1459,96 +1896,80 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                   {/* Block Header */}
                   <div className="flex items-center justify-between pb-2.5 border-b border-[#F2F4F8]">
                     {isFull ? (
-                      <div className="flex items-center gap-2">
-                        {/* Type Dropdown */}
-                        <select
-                          value={block.type}
-                          onChange={(e) => updateQuestionBlock(index, 'type', e.target.value as QuestionType)}
-                          className="min-h-[44px] px-3 py-1.5 rounded-xl bg-[#3B4FD8] text-white text-xs font-bold focus:outline-none focus:ring-2 focus:ring-white"
-                        >
-                          <option value="ক">ক</option>
-                          <option value="খ">খ</option>
-                          <option value="গ">গ</option>
-                          <option value="ঘ">ঘ</option>
-                        </select>
+                      <div className="flex items-center justify-between gap-1.5 w-full">
+                        <div className="flex items-center gap-1 min-w-0">
+                          {/* Type Dropdown */}
+                          <select
+                            aria-label="প্রশ্নের ধরন"
+                            value={block.type}
+                            onChange={(e) => updateQuestionBlock(index, 'type', e.target.value as QuestionType)}
+                            style={{ height: CTRL_H, minHeight: 0 }}
+                            className="px-1.5 rounded-md bg-[#3B4FD8] text-white text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]/50"
+                          >
+                            <option value="ক">ক</option>
+                            <option value="খ">খ</option>
+                            <option value="গ">গ</option>
+                            <option value="ঘ">ঘ</option>
+                          </select>
 
-                        {/* Marks Input */}
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-semibold text-[#1B1F2A]">নম্বর:</span>
+                          {/* Marks: just the number */}
                           <input
                             type="number"
                             min={1}
                             max={20}
+                            aria-label="প্রশ্নের নম্বর"
+                            title="নম্বর"
                             value={block.marks}
                             onChange={(e) =>
                               updateQuestionBlock(index, 'marks', Math.max(1, parseInt(e.target.value, 10) || 1))
                             }
-                            className="w-14 min-h-[44px] px-2 py-1 text-center font-bold text-xs rounded-xl border border-[#D5D9E2] bg-white text-[#1B1F2A] focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
+                            style={{ height: CTRL_H, minHeight: 0 }}
+                            className="w-9 px-0.5 text-center font-bold text-xs rounded-md border border-[#D5D9E2] bg-white text-[#1B1F2A] focus:outline-none focus:ring-2 focus:ring-[#3B4FD8] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                           />
+                        </div>
+
+                        {/* board / eye / rating / delete — icons only */}
+                        <div className="flex items-center gap-1 shrink-0">
+                          {questionControls}
+                          <button
+                            type="button"
+                            aria-label="এই প্রশ্ন ব্লকটি মুছে ফেলুন"
+                            title="মুছুন"
+                            disabled={questionBlocks.length <= 1}
+                            onClick={() => setDeleteBlockIndex(index)}
+                            style={{ minHeight: 0, height: CTRL_H, width: CTRL_H }}
+                            className="shrink-0 flex items-center justify-center rounded-md border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 active:bg-red-200 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-2">
-                        <span className="min-h-[32px] min-w-[32px] px-3 rounded-lg bg-[#3B4FD8] text-white text-xs font-bold flex items-center justify-center">
-                          {block.type}
-                        </span>
-                        <span className="text-[0.6875rem] font-semibold text-[#64748B]">
-                          {toBn(block.marks)} নম্বর
-                        </span>
+                      <div className="flex items-center justify-between gap-2 w-full">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="min-h-[32px] min-w-[32px] px-3 rounded-lg bg-[#3B4FD8] text-white text-xs font-bold flex items-center justify-center">
+                            {block.type}
+                          </span>
+                          <span className="text-[0.6875rem] font-semibold text-[#64748B] whitespace-nowrap">
+                            {toBn(block.marks)} নম্বর
+                          </span>
+                        </div>
+                        {/* board / eye (question preview) / rating — on the same line as গ / ঘ */}
+                        {questionControls}
                       </div>
                     )}
 
-                    {/* Reorder + Delete — Full Editor only */}
-                    {isFull && (
-                      <div className="flex items-center">
-                        <button
-                          type="button"
-                          aria-label="এই প্রশ্নটি উপরে সরান"
-                          disabled={index === 0}
-                          onClick={() => handleMoveQuestionBlock(index, -1)}
-                          className="min-h-[44px] min-w-[40px] flex items-center justify-center rounded-xl text-[#2A3BB0] hover:bg-[#EEF2FF] active:bg-[#E0E7FF] disabled:opacity-30 disabled:pointer-events-none transition-colors"
-                        >
-                          <ArrowUp className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="এই প্রশ্নটি নিচে সরান"
-                          disabled={index === questionBlocks.length - 1}
-                          onClick={() => handleMoveQuestionBlock(index, 1)}
-                          className="min-h-[44px] min-w-[40px] flex items-center justify-center rounded-xl text-[#2A3BB0] hover:bg-[#EEF2FF] active:bg-[#E0E7FF] disabled:opacity-30 disabled:pointer-events-none transition-colors"
-                        >
-                          <ArrowDown className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="এই প্রশ্ন ব্লকটি মুছে ফেলুন"
-                          disabled={questionBlocks.length <= 1}
-                          onClick={() => handleRemoveQuestionBlock(index)}
-                          className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-red-500 hover:bg-red-50 disabled:opacity-30 disabled:pointer-events-none transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    )}
                   </div>
 
-                  {/* Question Text (no live preview here) */}
-                  <div className="space-y-1">
+                  {/* Question text — no title / hint text; board chips (newest on the right) sit right above the box */}
+                  <div className="space-y-1.5">
+                    {blockBoardChips}
                     <LatexEditor
-                      label={`প্রশ্ন (${block.type}) *`}
                       value={block.questionText}
                       onChange={(val) => updateQuestionBlock(index, 'questionText', val)}
                       rows={isFull ? 3 : 2}
                       showToolbar={isFull}
-                      showHint={isFull}
-                      headerRight={
-                        <BoardSelect
-                          ariaLabel={`প্রশ্ন (${block.type}) কোন বোর্ডে এসেছে`}
-                          options={allBoardOptions}
-                          onPick={(board) => setYearPicker({ target: { kind: 'question', index }, board })}
-                          onAddBoard={() => setShowAddBoard(true)}
-                        />
-                      }
+                      showHint={false}
                       showPreview={false}
                       placeholder="প্রশ্নের মূল বক্তব্য লিখুন..."
                     />
@@ -1558,69 +1979,117 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                         <span>{qError}</span>
                       </p>
                     )}
-                    <BoardChips
-                      chips={block.usedInBoards || []}
-                      onRemove={(board, year) => removeBoardYear({ kind: 'question', index }, board, year)}
-                    />
+                    {qPreviewOpen && <LivePreview text={block.questionText} title="প্রশ্নের প্রিভিউ" />}
                   </div>
 
-                  {/* Solution: label + eye + rating */}
-                  <div className="space-y-2.5 pt-2.5 border-t border-[#F2F4F8]">
+                  {/* Solution: header (preview eye + picture at the start), ordered text boxes / pictures, add buttons */}
+                  <div className="space-y-2 pt-2.5 border-t border-[#F2F4F8]">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-bold text-[#2A3BB0]">সমাধান</span>
-                      <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="block text-xs font-bold text-[#2A3BB0]">সমাধান</span>
+                      <div className="flex items-center gap-1 shrink-0">
                         <EyeToggle
                           open={solPreviewOpen}
-                          onClick={() =>
-                            setSolutionPreviewOpen((prev) => ({ ...prev, [block.tempId]: !solPreviewOpen }))
-                          }
+                          onClick={() => setSolutionPreviewOpen((prev) => ({ ...prev, [block.tempId]: !solPreviewOpen }))}
                         />
-                        <RatingSelect
-                          value={block.rating || 3}
-                          ariaLabel={`প্রশ্ন (${block.type}) এর রেটিং`}
-                          onChange={(v) => updateQuestionBlock(index, 'rating', v)}
+                        <AddImageButton
+                          ariaLabel={`সমাধানের শুরুতে ছবি যোগ করুন (${block.type})`}
+                          title="সমাধানের শুরুতে ছবি"
+                          onClick={() => pickSolutionImages(block.tempId, 'start')}
                         />
                       </div>
                     </div>
 
-                    <LatexEditor
-                      value={block.solutionText}
-                      onChange={(val) => updateQuestionBlock(index, 'solutionText', val)}
-                      rows={isFull ? 3 : 2}
-                      showToolbar={isFull}
-                      showPreview={false}
-                      placeholder="ধাপে ধাপে সমাধান লিখুন..."
-                    />
+                    {block.solutionParts.map((part, pIdx) => {
+                      if (part.kind === 'image') {
+                        return (
+                          <PartImage
+                            key={`img-${part.id}`}
+                            id={part.id}
+                            url={solutionImageUrls[part.id]}
+                            fullFeatures={isFull}
+                            onRemove={() => handleRemoveSolutionImage(block.tempId, part.id)}
+                            onReplace={() => startReplace({ kind: 'solution', tempId: block.tempId, imageId: part.id })}
+                            onExport={() => handleExportImage(part.id, solutionImageUrls)}
+                            onOpenViewer={() =>
+                              openViewer(solutionImageList, solutionImageUrls, Math.max(0, solutionImageList.indexOf(part.id)))
+                            }
+                          />
+                        );
+                      }
+                      const textBoxCount = block.solutionParts.filter((p) => p.kind === 'text').length;
+                      return (
+                        <div key={`txt-${pIdx}`} className="relative">
+                          <LatexEditor
+                            value={part.text}
+                            onChange={(val) => handleSolutionTextChange(block.tempId, pIdx, val)}
+                            rows={isFull ? 3 : 2}
+                            showToolbar={isFull}
+                            showPreview={false}
+                            placeholder={pIdx === 0 ? 'ধাপে ধাপে সমাধান লিখুন...' : 'সমাধানের পরের অংশ লিখুন...'}
+                          />
+                          {textBoxCount > 1 && (
+                            <button
+                              type="button"
+                              aria-label="এই সমাধান বক্সটি মুছুন"
+                              title="বক্স মুছুন"
+                              onClick={() => handleRemoveSolutionBox(block.tempId, pIdx)}
+                              style={{ minHeight: 0 }}
+                              className="absolute -top-2 -right-1 z-10 w-6 h-6 rounded-full bg-white border border-red-200 text-red-500 flex items-center justify-center shadow-sm hover:bg-red-50"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
 
-                    {solPreviewOpen && <LivePreview text={block.solutionText} />}
+                    {/* picture at the end + one more solution box */}
+                    <div className="flex items-center gap-1.5">
+                      <AddImageButton
+                        ariaLabel={`সমাধানে ছবি যোগ করুন (${block.type})`}
+                        title="সমাধানে ছবি যোগ"
+                        onClick={() => pickSolutionImages(block.tempId, 'end')}
+                      />
+                      <button
+                        type="button"
+                        aria-label={`নতুন সমাধান বক্স যোগ করুন (${block.type})`}
+                        title="নতুন সমাধান বক্স"
+                        onClick={() => handleAddSolutionBox(block.tempId)}
+                        style={{ minHeight: 0, height: CTRL_H, width: CTRL_H }}
+                        className="shrink-0 flex items-center justify-center rounded-md border border-dashed border-[#3B4FD8] bg-[#EEF2FF] hover:bg-[#E0E7FF] active:bg-[#C7D2FE] text-[#3B4FD8] transition-colors"
+                      >
+                        <SquarePlus className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {solPreviewOpen && (
+                      <LivePreview title="সমাধানের প্রিভিউ">
+                        {block.solutionText.trim() || block.solutionImageIds.length > 0 ? (
+                          <SolutionView
+                            text={block.solutionText}
+                            imageIds={block.solutionImageIds}
+                            imageUrls={solutionImageUrls}
+                            textClassName="text-sm text-[#1B1F2A] dark:text-slate-100 leading-relaxed"
+                          />
+                        ) : (
+                          <div className="text-xs text-[#64748B] dark:text-slate-400 italic">
+                            উপরে লিখলে এখানে প্রিভিউ দেখা যাবে।
+                          </div>
+                        )}
+                      </LivePreview>
+                    )}
                   </div>
-
-                  {/* Solution pictures */}
-                  <ImageStrip
-                    title="সমাধানের ছবি"
-                    ids={block.solutionImageIds || []}
-                    urls={solutionImageUrls}
-                    fullFeatures={isFull}
-                    addAriaLabel="সমাধানের ছবি যোগ করুন"
-                    onAdd={() => document.getElementById(solInputId)?.click()}
-                    onRemove={(id) => handleRemoveSolutionImage(index, id)}
-                    onReplace={(id) => startReplace({ kind: 'solution', blockIndex: index, imageId: id })}
-                    onExport={(id) => handleExportImage(id, solutionImageUrls)}
-                    onOpenViewer={(i) => openViewer(block.solutionImageIds || [], solutionImageUrls, i)}
-                  />
-                  <input
-                    id={solInputId}
-                    type="file"
-                    multiple
-                    accept="image/*"
-                    onChange={(e) => handleUploadSolutionImages(index, e)}
-                    className="hidden"
-                  />
 
                   {/* Short Answer — Full Editor only */}
                   {isFull && (
                     <div className="space-y-1 pt-2.5 border-t border-[#F2F4F8]">
-                      <label className="block text-xs font-semibold text-[#1B1F2A]">সংক্ষিপ্ত উত্তর (ঐচ্ছিক)</label>
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="block text-xs font-semibold text-[#1B1F2A]">সংক্ষিপ্ত উত্তর (ঐচ্ছিক)</label>
+                        <EyeToggle
+                          open={aPreviewOpen}
+                          onClick={() => setAnswerPreviewOpen((prev) => ({ ...prev, [block.tempId]: !aPreviewOpen }))}
+                        />
+                      </div>
                       <input
                         type="text"
                         value={block.answerText || ''}
@@ -1628,6 +2097,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                         placeholder="যেমন: -5.78 × 10⁻¹⁰ J kg⁻¹"
                         className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-[#D5D9E2] bg-[#F2F4F8]/40 text-xs text-[#1B1F2A] focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
                       />
+                      {aPreviewOpen && <LivePreview text={block.answerText || ''} title="সংক্ষিপ্ত উত্তরের প্রিভিউ" />}
                     </div>
                   )}
                 </div>
@@ -1648,36 +2118,6 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
             )}
           </section>
         </div>
-
-        {/* Fixed Bottom Action Bar (Cancel & Save) */}
-        <footer className="absolute bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-[#D5D9E2] px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
-          <div className="grid grid-cols-2 gap-3 max-w-[360px] mx-auto">
-            <button
-              type="button"
-              onClick={handleAttemptClose}
-              disabled={loading}
-              className="w-full min-h-[44px] px-4 py-2.5 rounded-xl border border-[#D5D9E2] bg-white hover:bg-[#F2F4F8] active:bg-[#E5E9F0] text-sm font-semibold text-[#1B1F2A] transition-colors"
-            >
-              Cancel
-            </button>
-
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={loading}
-              className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] active:bg-[#202E91] text-sm font-bold text-white shadow-md flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
-            >
-              {loading ? (
-                <span>সংরক্ষণ হচ্ছে...</span>
-              ) : (
-                <>
-                  <Save className="w-4 h-4" />
-                  <span>Save</span>
-                </>
-              )}
-            </button>
-          </div>
-        </footer>
 
         {/* Add a new custom board */}
         {showAddBoard && (
@@ -1750,6 +2190,21 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
           images={viewer?.images || []}
           initialIndex={viewer?.index || 0}
           onClose={() => setViewer(null)}
+        />
+
+        {/* Small confirmation before a question block is deleted */}
+        <ConfirmDialog
+          isOpen={deleteBlockIndex !== null}
+          title="প্রশ্নটি মুছবেন?"
+          message={deleteBlockIndex !== null ? `(${questionBlocks[deleteBlockIndex]?.type || ''}) প্রশ্নটি মুছে ফেলা হবে।` : ''}
+          confirmText="মুছুন"
+          cancelText="না"
+          isDestructive={true}
+          onConfirm={() => {
+            if (deleteBlockIndex !== null) handleRemoveQuestionBlock(deleteBlockIndex);
+            setDeleteBlockIndex(null);
+          }}
+          onCancel={() => setDeleteBlockIndex(null)}
         />
 
         {/* Confirm Dialog for Unsaved Changes on Exit */}

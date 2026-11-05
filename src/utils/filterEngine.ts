@@ -1,3 +1,4 @@
+import { stripSolutionMarkers } from './solutionParts';
 import {
   db,
   chapterDb,
@@ -119,7 +120,7 @@ async function loadScope(
     if (!topic || !chapter || !subject) continue; // orphan — ignore
 
     const stimulus = q.stimulusId ? stimulusMap.get(q.stimulusId) : undefined;
-    const haystack = [q.questionText, q.solutionText, q.answerText, stimulus?.text]
+    const haystack = [q.questionText, stripSolutionMarkers(q.solutionText), q.answerText, stimulus?.text]
       .filter(Boolean)
       .join(' \n ')
       .toLowerCase();

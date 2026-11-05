@@ -4,16 +4,23 @@ import { App as CapacitorApp } from '@capacitor/app';
 import { buildQuestionCollectionExport, buildAppFullBackupExport } from './collectionTransfer';
 import { hasStorageAccess, ensureStorageAccess } from './storageAccess';
 
-/** Every day gets its own dated folder in here, e.g. Download/QbCollection/AutoBackup/2026-11-02 */
+/** Every backup gets its own folder (date + time) in here, e.g. Download/QbCollection/AutoBackup/2026-11-02_14-30-25 */
 export const AUTO_BACKUP_ROOT = 'Download/QbCollection/AutoBackup';
 
 const LAST_KEY = 'qb_auto_backup_last_date';
+const LAST_TIME_KEY = 'qb_auto_backup_last_time';
 const ENABLED_KEY = 'qb_auto_backup_enabled';
 
 /** Local date like 2026-11-02 */
 export function localDateString(d: Date = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** Local date + time for folder names, like 2026-11-02_14-30-25 (safe in file names) */
+export function localStampString(d: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${localDateString(d)}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
 }
 
 export function isAutoBackupEnabled(): boolean {
@@ -35,6 +42,15 @@ export function setAutoBackupEnabled(enabled: boolean): void {
 export function getLastAutoBackupDate(): string | null {
   try {
     return localStorage.getItem(LAST_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** Date and time of the latest backup (automatic or manual), like "2026-11-02 14:30:25" */
+export function getLastAutoBackupTime(): string | null {
+  try {
+    return localStorage.getItem(LAST_TIME_KEY);
   } catch {
     return null;
   }
@@ -62,7 +78,8 @@ async function writeText(path: string, text: string): Promise<void> {
 }
 
 /**
- * Creates today's backup folder with 3 files:
+ * Creates a NEW backup folder named with today's date AND the time (so two backups taken a few
+ * minutes apart never share a folder) with 3 files:
  *  1. Type CQ file    2. Chapter CQ file    3. Full backup (everything)
  * Runs at most once per day unless `force` is true.
  */
@@ -83,19 +100,22 @@ export async function runAutoBackup(force = false): Promise<AutoBackupResult> {
     }
     if (!access) return { status: 'no-access' };
 
-    const folder = `${AUTO_BACKUP_ROOT}/${today}`;
+    const now = new Date();
+    const stamp = localStampString(now);
+    const folder = `${AUTO_BACKUP_ROOT}/${stamp}`;
 
     const typeCq = await buildQuestionCollectionExport('type', false);
-    await writeText(`${folder}/type-cq_${today}.json`, typeCq.json);
+    await writeText(`${folder}/type-cq_${stamp}.json`, typeCq.json);
 
     const chapterCq = await buildQuestionCollectionExport('chapter', false);
-    await writeText(`${folder}/chapter-cq_${today}.json`, chapterCq.json);
+    await writeText(`${folder}/chapter-cq_${stamp}.json`, chapterCq.json);
 
     const full = await buildAppFullBackupExport();
-    await writeText(`${folder}/full-backup_${today}.json`, full.json);
+    await writeText(`${folder}/full-backup_${stamp}.json`, full.json);
 
     try {
       localStorage.setItem(LAST_KEY, today);
+      localStorage.setItem(LAST_TIME_KEY, stamp.replace('_', ' ').replace(/-(\d\d)-(\d\d)$/, ':$1:$2'));
     } catch {
       /* ignore */
     }

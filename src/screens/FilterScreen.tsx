@@ -1,3 +1,5 @@
+import { SolutionView } from '../components/SolutionView';
+import { splitStimulusImages } from '../utils/solutionParts';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Search,
@@ -19,7 +21,6 @@ import {
   ChevronDown,
   Eye,
   EyeOff,
-  Tag,
   Award,
   FolderOpen,
   Scissors,
@@ -292,7 +293,6 @@ const ResultCard: React.FC<ResultCardProps> = React.memo(
                 key={i}
                 className="px-2 py-0.5 rounded bg-white text-[#1B1F2A] text-[0.625rem] font-semibold border border-[#D5D9E2] flex items-center gap-1 shadow-2xs"
               >
-                <Tag className="w-3 h-3 text-[#64748B]" />
                 <span>
                   {b.board}'{(b.years || []).map((y) => toBn(String(y).slice(-2))).join(',')}
                 </span>
@@ -300,7 +300,6 @@ const ResultCard: React.FC<ResultCardProps> = React.memo(
             ))
           ) : row.stimulus?.boardTag ? (
             <span className="px-2 py-0.5 rounded bg-white text-[#1B1F2A] text-[0.625rem] font-semibold border border-[#D5D9E2] flex items-center gap-1 shadow-2xs">
-              <Tag className="w-3 h-3 text-[#64748B]" />
               <span>{row.stimulus.boardTag}</span>
             </span>
           ) : null}
@@ -324,8 +323,20 @@ const ResultCard: React.FC<ResultCardProps> = React.memo(
         <div className="p-3.5 space-y-3.5">
           {row.stimulus && (
             <div className="space-y-2">
-              <RichText text={row.stimulus.text} className="text-xs font-medium text-[#1B1F2A] leading-relaxed" />
-              {row.stimulus.imageIds?.map((imgId) => {
+              {splitStimulusImages(row.stimulus.imageIds, row.stimulus.imageTopCount).top.map((imgId) => {
+                const url = imageUrls[imgId];
+                if (!url) return null;
+                return (
+                  <div
+                    key={imgId}
+                    className="w-full my-2 overflow-hidden rounded-xl border border-[#D5D9E2] bg-white text-center"
+                  >
+                    <img src={url} alt="উদ্দীপকের চিত্র" className="w-full h-auto object-contain max-h-60 mx-auto" />
+                  </div>
+                );
+              })}
+<RichText text={row.stimulus.text} className="text-xs font-medium text-[#1B1F2A] leading-relaxed" />
+              {splitStimulusImages(row.stimulus.imageIds, row.stimulus.imageTopCount).bottom.map((imgId) => {
                 const url = imageUrls[imgId];
                 if (!url) return null;
                 return (
@@ -375,22 +386,17 @@ const ResultCard: React.FC<ResultCardProps> = React.memo(
               {solutionOpen && (
                 <div className="mt-2.5 p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-2">
                   <div className="text-[0.6875rem] font-bold text-[#2A3BB0] uppercase tracking-wider">সমাধান:</div>
-                  <RichText text={q.solutionText} className="text-xs text-[#1B1F2A] leading-relaxed" />
+                  <SolutionView
+                    text={q.solutionText}
+                    imageIds={q.solutionImageIds}
+                    imageUrls={imageUrls}
+                    textClassName="text-xs text-[#1B1F2A] leading-relaxed"
+                    onOpenImages={(urls, i) => onOpenImages(urls, i)}
+                  />
                   {solutionUrls.length > 0 && (
-                    <div className="space-y-2 pt-1">
-                      {solutionUrls.map((url, i) => (
-                        <div
-                          key={i}
-                          onClick={() => onOpenImages(solutionUrls, i)}
-                          className="w-full overflow-hidden rounded-xl border border-[#D5D9E2] bg-white cursor-pointer hover:opacity-95 transition-opacity"
-                        >
-                          <img src={url} alt="সমাধান চিত্র" className="w-full h-auto object-contain max-h-56 mx-auto" />
-                        </div>
-                      ))}
-                      <p className="text-[0.625rem] text-[#64748B] text-center italic">
-                        (ছবিতে ট্যাপ করে বড় ও জুম করে দেখুন)
-                      </p>
-                    </div>
+                    <p className="text-[0.625rem] text-[#64748B] text-center italic">
+                      (ছবিতে ট্যাপ করে বড় ও জুম করে দেখুন)
+                    </p>
                   )}
                 </div>
               )}
