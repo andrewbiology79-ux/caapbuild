@@ -555,13 +555,17 @@ const PartImage: React.FC<{
   onOpenViewer: () => void;
 }> = ({ url, fullFeatures, onRemove, onReplace, onExport, onOpenViewer }) => (
   <div className="space-y-1.5">
-    <div className="relative rounded-xl overflow-hidden border border-[#D5D9E2] bg-[#F8FAFC] max-w-[220px]">
+    <div
+      className={`relative rounded-xl overflow-hidden border border-[#D5D9E2] bg-[#F8FAFC] ${
+        fullFeatures ? 'max-w-[220px]' : 'w-[88px]'
+      }`}
+    >
       {url ? (
         <img
           src={url}
           alt="সমাধানের ছবি"
           onClick={fullFeatures ? onOpenViewer : undefined}
-          className={`w-full h-auto max-h-40 object-contain ${fullFeatures ? 'cursor-zoom-in' : ''}`}
+          className={`w-full h-auto object-contain ${fullFeatures ? 'max-h-40 cursor-zoom-in' : 'max-h-16'}`}
         />
       ) : (
         <div className="w-full h-20 flex items-center justify-center text-[0.625rem] text-[#64748B]">লোড হচ্ছে...</div>
@@ -620,9 +624,9 @@ interface QuestionFormBlock extends QuestionBlockInput {
 
 const emptyParts = (): SolutionPart[] => [{ kind: 'text', text: '' }];
 
-/** a solution always ends with a text box to type in */
+/** a solution always keeps at least one text box; the last box may be removed freely when others exist */
 const withTrailingText = (parts: SolutionPart[]): SolutionPart[] =>
-  parts.length === 0 || parts[parts.length - 1].kind !== 'text' ? [...parts, { kind: 'text', text: '' }] : parts;
+  parts.some((p) => p.kind === 'text') ? parts : [...parts, { kind: 'text', text: '' }];
 
 /** put the serialised text / picture list back into the block so it can be saved */
 const applyParts = (b: QuestionFormBlock, parts: SolutionPart[]): QuestionFormBlock => {
@@ -2044,7 +2048,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                     })}
 
                     {/* picture at the end + one more solution box */}
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center justify-end gap-1.5">
                       <AddImageButton
                         ariaLabel={`সমাধানে ছবি যোগ করুন (${block.type})`}
                         title="সমাধানে ছবি যোগ"

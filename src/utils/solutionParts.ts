@@ -60,8 +60,8 @@ export function parseSolution(text: string | undefined | null, imageIds: string[
   const allowed = imageIds ? new Set(imageIds) : null;
   const cleaned = allowed ? parts.filter((p) => p.kind === 'text' || allowed.has(p.id)) : parts;
 
-  // there is always a text box to type in at the end
-  if (cleaned.length === 0 || cleaned[cleaned.length - 1].kind !== 'text') {
+  // there is always at least one text box to type in
+  if (!cleaned.some((p) => p.kind === 'text')) {
     cleaned.push({ kind: 'text', text: '' });
   }
   return cleaned;

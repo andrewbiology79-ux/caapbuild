@@ -248,31 +248,34 @@ export const PaperViewModal: React.FC<PaperViewModalProps> = ({
           >
             {/* Stimulus with single question serial ("১।", "২।") */}
             <div className="space-y-1.5 text-xs">
-              {group.stimulus &&
-                splitStimulusImages(group.stimulus.imageIds, group.stimulus.imageTopCount).top.map((imgId) => {
-                  const url = imageUrls[imgId];
-                  if (!url) return null;
-                  return (
-                    <div
-                      key={imgId}
-                      className={`my-2.5 max-w-full sm:max-w-sm mx-auto overflow-hidden text-center bg-white ${
-                        isExport ? '' : 'rounded-lg border border-gray-200 p-1'
-                      }`}
-                    >
-                      <img src={url} alt="উদ্দীপক চিত্র" className="w-full h-auto max-h-[260px] object-contain mx-auto rounded" />
-                    </div>
-                  );
-                })}
+              {/* Serial number on the left; the column beside it holds: top pictures -> stimulus text (one দাগ) */}
               <div className="flex items-start gap-2 font-bold text-black">
                 <span className="text-xs font-black text-black shrink-0">
                   {toBn(gIdx + 1)}।
                 </span>
-                {group.stimulus && (
-                  <RichText
-                    text={group.stimulus.text}
-                    className="text-xs font-medium text-black leading-relaxed flex-1 min-w-0"
-                  />
-                )}
+                <div className="flex-1 min-w-0">
+                  {group.stimulus &&
+                    splitStimulusImages(group.stimulus.imageIds, group.stimulus.imageTopCount).top.map((imgId) => {
+                      const url = imageUrls[imgId];
+                      if (!url) return null;
+                      return (
+                        <div
+                          key={imgId}
+                          className={`mb-2 max-w-full sm:max-w-sm mx-auto overflow-hidden text-center bg-white ${
+                            isExport ? '' : 'rounded-lg border border-gray-200 p-1'
+                          }`}
+                        >
+                          <img src={url} alt="উদ্দীপক চিত্র" className="w-full h-auto max-h-[260px] object-contain mx-auto rounded" />
+                        </div>
+                      );
+                    })}
+                  {group.stimulus && (
+                    <RichText
+                      text={group.stimulus.text}
+                      className="text-xs font-medium text-black leading-relaxed"
+                    />
+                  )}
+                </div>
               </div>
 
               {group.stimulus && (
