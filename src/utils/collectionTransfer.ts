@@ -58,6 +58,91 @@ export interface ImportOptions {
   manualFiles?: File[];
 }
 
+/** Current file format version (1.0 = old files, 1.1 = adds stimulus/question extras) */
+export const COLLECTION_FORMAT_VERSION = '1.1';
+
+const IMG_MARKER_RE = /\[\[img:([^\]\s]+)\]\]/g;
+
+/** Image ids written inside a solution text as [[img:<id>]] markers */
+function imageIdsFromMarkers(text: string | undefined | null): string[] {
+  if (!text) return [];
+  const out: string[] = [];
+  const re = new RegExp(IMG_MARKER_RE.source, 'g');
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) out.push(m[1]);
+  return out;
+}
+
+/** Every image id a stimulus / question points to (list fields + solution markers) */
+function stimulusImageIdsOf(s: Stimulus): string[] {
+  return Array.isArray(s.imageIds) ? s.imageIds : [];
+}
+function questionImageIdsOf(q: Question): string[] {
+  const ids = Array.isArray(q.solutionImageIds) ? q.solutionImageIds : [];
+  return Array.from(new Set([...ids, ...imageIdsFromMarkers(q.solutionText)]));
+}
+
+const DEFAULT_MARKS: Record<string, number> = { 'ক': 1, 'খ': 2, 'গ': 3, 'ঘ': 4 };
+
+function cleanBoardUsage(list: any): Array<{ board: string; years: number[] }> {
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((b) => b && typeof b.board === 'string' && b.board.trim() !== '')
+    .map((b) => ({
+      board: b.board,
+      years: Array.isArray(b.years) ? b.years.map((y: any) => Number(y)).filter((y: number) => Number.isFinite(y)) : [],
+    }));
+}
+
+function cleanRating(v: any, fallback: number | undefined): number | undefined {
+  const n = Number(v);
+  if (Number.isFinite(n) && n >= 1 && n <= 5) return Math.round(n);
+  return fallback;
+}
+
+/**
+ * Bring a file written by ANY older version of the app up to the current data shape,
+ * so newer screens (board tags, ratings, picture position, solution markers …) never meet a missing field.
+ * Nothing is removed — only missing / malformed fields are filled in.
+ */
+export function normalizeCollectionPayload(data: CollectionJsonSchema): CollectionJsonSchema {
+  const stimuli: Stimulus[] = (Array.isArray(data.stimuli) ? data.stimuli : []).map((s) => {
+    const imageIds = stimulusImageIdsOf(s);
+    const out: Stimulus = {
+      ...s,
+      text: typeof s.text === 'string' ? s.text : '',
+      imageIds,
+      usedInBoards: cleanBoardUsage(s.usedInBoards),
+    };
+    const top = Number((s as any).imageTopCount);
+    if (Number.isFinite(top) && top > 0) out.imageTopCount = Math.min(Math.floor(top), imageIds.length);
+    else delete (out as any).imageTopCount;
+    const r = cleanRating((s as any).rating, undefined);
+    if (r === undefined) delete (out as any).rating;
+    else out.rating = r;
+    if (typeof s.reference !== 'string' || !s.reference.trim()) delete (out as any).reference;
+    return out;
+  });
+
+  const questions: Question[] = (Array.isArray(data.questions) ? data.questions : []).map((q, i) => {
+    const type = (['ক', 'খ', 'গ', 'ঘ'] as const).includes(q.type as any) ? q.type : 'ক';
+    const marks = Number(q.marks);
+    return {
+      ...q,
+      type,
+      marks: Number.isFinite(marks) && marks > 0 ? marks : DEFAULT_MARKS[type] ?? 1,
+      questionText: typeof q.questionText === 'string' ? q.questionText : '',
+      solutionText: typeof q.solutionText === 'string' ? q.solutionText : '',
+      solutionImageIds: questionImageIdsOf(q),
+      rating: cleanRating(q.rating, 3) as number,
+      order: Number.isFinite(Number(q.order)) ? Number(q.order) : i + 1,
+      usedInBoards: cleanBoardUsage(q.usedInBoards),
+    } as Question;
+  });
+
+  return { ...data, stimuli, questions };
+}
+
 /**
  * Export Question Collection to JSON file
  */
@@ -78,14 +163,10 @@ export async function buildQuestionCollectionExport(
     // Collect all referenced image IDs
     const imageIdSet = new Set<string>();
     for (const s of stimuli) {
-      if (s.imageIds) {
-        s.imageIds.forEach((id) => imageIdSet.add(id));
-      }
+      stimulusImageIdsOf(s).forEach((id) => imageIdSet.add(id));
     }
     for (const q of questions) {
-      if (q.solutionImageIds) {
-        q.solutionImageIds.forEach((id) => imageIdSet.add(id));
-      }
+      questionImageIdsOf(q).forEach((id) => imageIdSet.add(id));
     }
 
     const exportedImages: Array<{ id: string; fileName: string; data: string }> = [];
@@ -104,7 +185,7 @@ export async function buildQuestionCollectionExport(
     }
 
     const payload: CollectionJsonSchema = {
-      version: '1.0',
+      version: COLLECTION_FORMAT_VERSION,
       type: 'qb-question-collection',
       scope,
       exportedAt: new Date().toISOString(),
@@ -192,11 +273,14 @@ export async function parseAndValidateCollectionJson(
       };
     }
 
+    // Fill in fields that older files do not have (board usage, rating, picture position …)
+    const normalized = normalizeCollectionPayload(data as CollectionJsonSchema);
+
     const existingKeys = await db.questions.toCollection().primaryKeys();
     const existingIds = new Set(existingKeys);
 
     let duplicateCount = 0;
-    const questions: Question[] = data.questions;
+    const questions: Question[] = normalized.questions;
 
     for (const q of questions) {
       if (q.id && existingIds.has(q.id)) {
@@ -231,36 +315,29 @@ export async function parseAndValidateCollectionJson(
       }
     }
 
-    // Check stimuli
-    if (Array.isArray(data.stimuli)) {
-      for (const st of data.stimuli) {
-        if (st.imageIds && Array.isArray(st.imageIds)) {
-          for (const imgId of st.imageIds) {
-            if (!embeddedImageIds.has(imgId)) {
-              // Check if images table in JSON maps this ID to a fileName
-              const match = (data.images as any[])?.find((i) => i.id === imgId);
-              if (match?.fileName) {
-                missingImageFilesSet.add(match.fileName);
-              } else {
-                missingImageFilesSet.add(`image-${imgId.slice(0, 8)}.png`);
-              }
-            }
-          }
-        }
-      }
+    // Every picture used by a stimulus OR a solution must be embedded (or picked by hand)
+    const imageMeta = new Map<string, string>();
+    if (Array.isArray(data.images)) {
+      for (const i of data.images) if (i?.id && i.fileName) imageMeta.set(i.id, i.fileName);
     }
+    const checkImageId = (imgId: string) => {
+      if (embeddedImageIds.has(imgId)) return;
+      missingImageFilesSet.add(imageMeta.get(imgId) || `image-${String(imgId).slice(0, 8)}.png`);
+    };
+    for (const st of normalized.stimuli) stimulusImageIdsOf(st).forEach(checkImageId);
+    for (const q of normalized.questions) questionImageIdsOf(q).forEach(checkImageId);
 
     return {
       valid: true,
       subjectsCount: data.subjects.length,
       chaptersCount: data.chapters.length,
       topicsCount: data.topics.length,
-      stimuliCount: Array.isArray(data.stimuli) ? data.stimuli.length : 0,
+      stimuliCount: normalized.stimuli.length,
       totalQuestions,
       newQuestionsCount,
       duplicateQuestionsCount: duplicateCount,
       missingImageFiles: Array.from(missingImageFilesSet),
-      rawPayload: data as CollectionJsonSchema,
+      rawPayload: normalized,
     };
   } catch (err: any) {
     return {
@@ -288,8 +365,15 @@ export async function executeCollectionImport(
 ): Promise<{ subjects: number; questions: number; images: number }> {
   const db = getDb(scope);
   const { mode, manualFiles = [] } = options;
+  // older files / hand-made files: make sure every record has the fields the app now expects
+  payload = normalizeCollectionPayload(payload);
 
   let imageSavedCount = 0;
+
+  // "Replace" wipes the old collection — its pictures go too (otherwise they stay behind as unused files)
+  if (mode === 'replace') {
+    await db.images.clear();
+  }
 
   // 1. Process Embedded Images (base64)
   if (payload.images && Array.isArray(payload.images)) {
@@ -380,7 +464,7 @@ export async function executeCollectionImport(
  */
 export function getSampleCollectionJson(scope: CqScope = 'type'): string {
   const sampleData: CollectionJsonSchema = {
-    version: '1.0',
+    version: COLLECTION_FORMAT_VERSION,
     type: 'qb-question-collection',
     scope,
     exportedAt: new Date().toISOString(),
@@ -414,6 +498,10 @@ export function getSampleCollectionJson(scope: CqScope = 'type'): string {
         text: 'চিত্রে $M = 6 \\times 10^{24}\\ \\text{kg}$ ভরের একটি গ্রহ থেকে $r = 6.4 \\times 10^6\\ \\text{m}$ দূরত্বে একটি কৃত্রিম উপগ্রহ আবর্তন করছে। মহাকর্ষীয় ধ্রুবক $G = 6.673 \\times 10^{-11}\\ \\text{N m}^2\\ \\text{kg}^{-2}$।',
         boardTag: "DB'২৫",
         imageIds: [],
+        imageTopCount: 0,
+        usedInBoards: [{ board: 'DB', years: [2025] }],
+        rating: 3,
+        reference: 'নমুনা প্রশ্ন ব্যাংক',
       },
     ],
     questions: [
