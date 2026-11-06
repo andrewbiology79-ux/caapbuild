@@ -18,6 +18,20 @@ const StorageAccess = registerPlugin<StorageAccessPlugin>('StorageAccess');
 /** Folder (inside the phone's Download folder) where PDFs are saved */
 export const PDF_SAVE_FOLDER = 'Download/QbCollection';
 
+/** Every exported backup / transfer file goes into a sub-folder of this folder */
+export const BACKUP_ROOT = 'Download/QbCollection/Backup';
+
+/** Sub-folder (inside BACKUP_ROOT) for each kind of export */
+export const BACKUP_FOLDERS = {
+  type: 'Type CQ',
+  chapter: 'Chapter CQ',
+  full: 'Full Backup',
+  category: 'Category',
+  paper: 'Paper',
+  papers: 'Papers',
+  auto: 'AutoBackup',
+} as const;
+
 /** Folder (inside the phone's Download folder) where exported pictures are saved */
 export const IMAGE_SAVE_FOLDER = 'Download/QbCollection/Images';
 

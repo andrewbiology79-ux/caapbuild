@@ -9,6 +9,7 @@ import {
 } from '../db/db';
 import { generateId, saveCategory } from '../db/api';
 import { blobToBase64, base64ToBlob, exportJsonFile } from './fileExport';
+import { BACKUP_FOLDERS } from './storageAccess';
 
 /**
  * Shareable file of a Category (or of a single paper) — contains the papers and every
@@ -92,7 +93,9 @@ export async function exportCategoryShare(categoryId: string): Promise<boolean> 
   const papers = await db.papers.where('categoryId').equals(categoryId).toArray();
   const payload = await buildPayload(category.name, papers);
   const dateStr = new Date().toISOString().split('T')[0];
-  return await exportJsonFile(`qb-category-${dateStr}.json`, JSON.stringify(payload));
+  return await exportJsonFile(`qb-category-${dateStr}.json`, JSON.stringify(payload), {
+    folder: BACKUP_FOLDERS.category,
+  });
 }
 
 /**
@@ -104,7 +107,9 @@ export async function exportPaperShare(paperId: string): Promise<boolean> {
   const categoryName = paper.category?.trim() || 'সাধারণ';
   const payload = await buildPayload(categoryName, [paper]);
   const dateStr = new Date().toISOString().split('T')[0];
-  return await exportJsonFile(`qb-paper-${dateStr}.json`, JSON.stringify(payload));
+  return await exportJsonFile(`qb-paper-${dateStr}.json`, JSON.stringify(payload), {
+    folder: BACKUP_FOLDERS.paper,
+  });
 }
 
 /**
@@ -120,7 +125,9 @@ export async function exportPapersShare(paperIds: string[], categoryName?: strin
   const name = categoryName?.trim() || papers[0].category?.trim() || 'সাধারণ';
   const payload = await buildPayload(name, papers);
   const dateStr = new Date().toISOString().split('T')[0];
-  return await exportJsonFile(`qb-papers-${dateStr}.json`, JSON.stringify(payload));
+  return await exportJsonFile(`qb-papers-${dateStr}.json`, JSON.stringify(payload), {
+    folder: BACKUP_FOLDERS.papers,
+  });
 }
 
 /**
@@ -139,7 +146,7 @@ export async function exportCategoriesBackup(categoryIds: string[]): Promise<boo
   const dateStr = new Date().toISOString().split('T')[0];
   const fileName =
     groups.length === 1 ? `qb-category-${dateStr}.json` : `qb-categories-backup-${dateStr}.json`;
-  return await exportJsonFile(fileName, JSON.stringify(payload));
+  return await exportJsonFile(fileName, JSON.stringify(payload), { folder: BACKUP_FOLDERS.category });
 }
 
 export function parseCategoryShare(jsonText: string): CategorySharePayload {

@@ -1,5 +1,6 @@
 import { getDb, type CqScope, type Category, type Subject, type Chapter, type Topic, type Stimulus, type Question, type Paper, type DbImage } from '../db/db';
 import { blobToBase64, base64ToBlob, exportJsonFile } from './fileExport';
+import { BACKUP_FOLDERS } from './storageAccess';
 import { compressImageToWebP } from './imageCompressor';
 import { loadCustomBoards, saveCustomBoards, type CustomBoard } from './boards';
 
@@ -209,7 +210,9 @@ export async function buildQuestionCollectionExport(
 
 export async function exportQuestionCollection(scope: CqScope = 'type'): Promise<boolean> {
   const { fileName, json } = await buildQuestionCollectionExport(scope, true);
-  return await exportJsonFile(fileName, json);
+  return await exportJsonFile(fileName, json, {
+    folder: scope === 'chapter' ? BACKUP_FOLDERS.chapter : BACKUP_FOLDERS.type,
+  });
 }
 
 /**
@@ -589,7 +592,9 @@ export async function exportFullBackup(scope: CqScope = 'type'): Promise<boolean
 
     const dateStr = new Date().toISOString().split('T')[0];
     const fileName = `qb-${scope === 'chapter' ? 'chapter' : 'type'}-backup-${dateStr}.json`;
-    return await exportJsonFile(fileName, JSON.stringify(fullPayload, null, 2));
+    return await exportJsonFile(fileName, JSON.stringify(fullPayload, null, 2), {
+      folder: BACKUP_FOLDERS.full,
+    });
   } catch (err) {
     console.error('Full backup export failed:', err);
     throw err;
@@ -768,7 +773,7 @@ export async function buildAppFullBackupExport(): Promise<{ fileName: string; js
 /** Export EVERYTHING in the app (both question collections, categories, papers, images, settings) */
 export async function exportAppFullBackup(): Promise<boolean> {
   const { fileName, json } = await buildAppFullBackupExport();
-  return await exportJsonFile(fileName, json);
+  return await exportJsonFile(fileName, json, { folder: BACKUP_FOLDERS.full });
 }
 
 export interface BackupFileInfo {

@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
+import { FILE_SAVED_EVENT } from '../utils/fileExport';
 
 interface ToastContextType {
   showToast: (message: string, duration?: number) => void;
@@ -36,6 +37,16 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
       window.setTimeout(() => setMessage(null), 250);
     }, duration);
   }, []);
+
+  // an exported file was saved into the phone storage -> tell the user where
+  useEffect(() => {
+    const onSaved = (e: Event) => {
+      const path = (e as CustomEvent<{ path?: string }>).detail?.path;
+      if (path) showToast(`ফাইল সেভ হয়েছে: ${path}`, 4500);
+    };
+    window.addEventListener(FILE_SAVED_EVENT, onSaved);
+    return () => window.removeEventListener(FILE_SAVED_EVENT, onSaved);
+  }, [showToast]);
 
   return (
     <ToastContext.Provider value={{ showToast }}>
