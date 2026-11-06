@@ -26,6 +26,7 @@ import { KebabMenu, type MenuItem } from '../components/KebabMenu';
 import { toBn, toBnPad2 } from '../utils/toBn';
 import { useNavigation } from '../utils/navigation';
 import { getDb, type CqScope } from '../db/db';
+
 import {
   getApi,
   getRatingStarsText,
@@ -64,6 +65,11 @@ import {
   X,
   BookMarked,
 } from 'lucide-react';
+
+/** 3-dot button on the white subject / chapter / topic cards — grey in light mode, light grey in dark mode
+ *  (the default KebabMenu button is white because it is meant for the blue header ribbon). */
+const CARD_KEBAB_BUTTON_CLASS =
+  'text-[#64748B] dark:text-slate-300 hover:bg-[#F2F4F8] dark:hover:bg-slate-700 active:bg-[#E2E8F0] dark:active:bg-slate-600 focus:ring-2 focus:ring-[#3B4FD8]/30';
 
 type DrillView =
   | { level: 'subjects' }
@@ -1267,6 +1273,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
                       ) : (
                         <>
                           <KebabMenu
+                            buttonClassName={CARD_KEBAB_BUTTON_CLASS}
                             items={[
                               {
                                 id: 'rename',
@@ -1362,6 +1369,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
                       ) : (
                         <>
                           <KebabMenu
+                            buttonClassName={CARD_KEBAB_BUTTON_CLASS}
                             items={[
                               {
                                 id: 'rename',
@@ -1462,6 +1470,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
                       ) : (
                         <>
                           <KebabMenu
+                            buttonClassName={CARD_KEBAB_BUTTON_CLASS}
                             items={[
                               {
                                 id: 'rename',
