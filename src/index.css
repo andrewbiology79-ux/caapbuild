@@ -120,3 +120,7 @@ button,
 .dark .live-preview { color: #f1f5f9; }
 .dark .live-preview .text-\[\#2A3BB0\] { color: #a5b4fc; }
 .dark .live-preview .katex { color: #f1f5f9; }
+
+/* hides the (WebView) scrollbar on horizontal chip rows while keeping them scrollable */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; width: 0; height: 0; }

@@ -92,6 +92,32 @@ export interface FilterDataset {
   loadedAt: number;
 }
 
+/** One filter result card: a stimulus (উদ্দীপক) with the sub-questions (ক/খ/গ/ঘ) that matched the filter */
+export interface FilterGroup {
+  key: string;
+  source: CqScope;
+  stimulus?: Stimulus;
+  /** only the questions that matched the current filter, in ক → ঘ order */
+  rows: FilterRow[];
+}
+
+/**
+ * Boards (with years) a question counts as "came in": the boards of its own উদ্দীপক plus its own boards.
+ * Same board is merged, years combined.
+ */
+export function rowBoards(row: FilterRow): Array<{ board: string; years: number[] }> {
+  const merged: Array<{ board: string; years: number[] }> = [];
+  const add = (b?: { board: string; years?: number[] }) => {
+    if (!b || !b.board) return;
+    const ex = merged.find((m) => m.board === b.board);
+    if (ex) ex.years = Array.from(new Set([...ex.years, ...(b.years || [])])).sort((x, y) => x - y);
+    else merged.push({ board: b.board, years: [...(b.years || [])] });
+  };
+  (row.stimulus?.usedInBoards || []).forEach(add);
+  (row.question.usedInBoards || []).forEach(add);
+  return merged;
+}
+
 const TYPE_ORDER: Record<string, number> = { ক: 0, খ: 1, গ: 2, ঘ: 3 };
 
 async function loadScope(
@@ -201,7 +227,7 @@ export async function loadFilterDataset(): Promise<FilterDataset> {
     if (!chapters.has(ck)) chapters.set(ck, { key: ck, subject: r.subjectName, name: r.chapterName });
     if (r.topicName) topics.add(r.topicName);
     if (typeof r.question.marks === 'number') marks.add(r.question.marks);
-    for (const u of r.question.usedInBoards || []) {
+    for (const u of rowBoards(r)) {
       boards.add(u.board);
       (u.years || []).forEach((y) => years.add(y));
     }
@@ -240,7 +266,7 @@ export function matchesCriteria(row: FilterRow, c: FilterCriteria, textTerms: st
   if (c.ratings.length > 0 && !c.ratings.includes(Math.round(q.rating || 3))) return false;
   if (c.marks.length > 0 && !c.marks.includes(q.marks)) return false;
 
-  const usedList = q.usedInBoards || [];
+  const usedList = rowBoards(row);
   if (c.usage === 'used' && usedList.length === 0) return false;
   if (c.usage === 'unused' && usedList.length > 0) return false;
 
@@ -310,4 +336,62 @@ export function countActiveFilters(c: FilterCriteria): number {
   if (c.stimulus !== 'any') n += 1;
   if (c.solution !== 'any') n += 1;
   return n;
+}
+
+const typeRank = (t: string): number => TYPE_ORDER[t] ?? 9;
+
+/**
+ * Put the matching sub-questions of one উদ্দীপক into ONE card.
+ * A card sits where its first matching question sits; inside a card the questions run ক → ঘ.
+ * Questions without an উদ্দীপক stay as single cards.
+ */
+export function groupRows(rows: FilterRow[]): FilterGroup[] {
+  const groups: FilterGroup[] = [];
+  const byStimulus = new Map<string, FilterGroup>();
+  for (const row of rows) {
+    if (row.stimulus) {
+      const k = `${row.source}:${row.stimulus.id}`;
+      let g = byStimulus.get(k);
+      if (!g) {
+        g = { key: k, source: row.source, stimulus: row.stimulus, rows: [] };
+        byStimulus.set(k, g);
+        groups.push(g);
+      }
+      g.rows.push(row);
+    } else {
+      groups.push({ key: row.key, source: row.source, rows: [row] });
+    }
+  }
+  groups.forEach((g) => {
+    if (g.rows.length > 1) {
+      g.rows.sort((a, b) => typeRank(a.question.type) - typeRank(b.question.type) || a.seq - b.seq);
+    }
+  });
+  return groups;
+}
+
+export interface ScopedFacets {
+  chapters: Array<{ key: string; subject: string; name: string }>;
+  topics: string[];
+  multiSubject: boolean;
+}
+
+/** Facet lists (chapter / topic choices) narrowed by the chosen source, subject and chapter */
+export function computeScopedFacets(
+  rows: FilterRow[],
+  c: Pick<FilterCriteria, 'sources' | 'subjects' | 'chapters'>
+): ScopedFacets {
+  const bySource = rows.filter((r) => c.sources.length === 0 || c.sources.includes(r.source));
+  const chapters = new Map<string, { key: string; subject: string; name: string }>();
+  const topics = new Set<string>();
+  const subjects = new Set<string>();
+  for (const r of bySource) {
+    subjects.add(r.subjectName);
+    if (c.subjects.length > 0 && !c.subjects.includes(r.subjectName)) continue;
+    const k = `${r.subjectName}||${r.chapterName}`;
+    if (!chapters.has(k)) chapters.set(k, { key: k, subject: r.subjectName, name: r.chapterName });
+    // topics (Type CQ "টাইপ") follow the chosen chapter(s)
+    if (r.topicName && (c.chapters.length === 0 || c.chapters.includes(k))) topics.add(r.topicName);
+  }
+  return { chapters: [...chapters.values()], topics: [...topics], multiSubject: subjects.size > 1 };
 }

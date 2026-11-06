@@ -25,6 +25,7 @@ import {
   FolderOpen,
   Scissors,
   BookMarked,
+  Minus,
 } from 'lucide-react';
 import { Header } from '../components/Header';
 import { KebabMenu, type MenuItem } from '../components/KebabMenu';
@@ -48,11 +49,16 @@ import { useNavigation } from '../utils/navigation';
 import {
   EMPTY_CRITERIA,
   applyFilters,
+  computeScopedFacets,
   countActiveFilters,
+  groupRows,
   loadFilterDataset,
   type FilterCriteria,
   type FilterDataset,
+  type FilterGroup,
+  type FilterPaperUsage,
   type FilterRow,
+  type ScopedFacets,
   type SortMode,
 } from '../utils/filterEngine';
 import { filterTabState, persistDropdownOrder, type DropdownKey } from '../utils/filterStore';
@@ -146,7 +152,8 @@ const Segmented: React.FC<{
 );
 
 /* ------------------------------------------------------------------ */
-/* Result card (same look as the Type CQ / Chapter CQ question cards)  */
+/* Result card: ONE উদ্দীপক with the sub-questions (ক/খ/গ/ঘ) that     */
+/* matched the filter — same look as the Type CQ / Chapter CQ cards    */
 /* ------------------------------------------------------------------ */
 
 const imageUrlCache = new Map<string, string>();
@@ -164,31 +171,40 @@ async function loadImageUrl(source: CqScope, imageId: string): Promise<string | 
   }
 }
 
-interface ResultCardProps {
-  row: FilterRow;
+interface GroupCardProps {
+  group: FilterGroup;
   index: number;
-  selected: boolean;
-  onToggle: (row: FilterRow) => void;
+  /** one '1' / '0' per shown question (a string, so React.memo can skip cards whose selection did not change) */
+  selMask: string;
+  onToggleRows: (rows: FilterRow[], on: boolean) => void;
   onLocate: (row: FilterRow) => void;
   onOpenImages: (urls: string[], index: number) => void;
 }
 
-const ResultCard: React.FC<ResultCardProps> = React.memo(
-  ({ row, index, selected, onToggle, onLocate, onOpenImages }) => {
-    const q = row.question;
-    const isChapter = row.source === 'chapter';
-    const [solutionOpen, setSolutionOpen] = useState(false);
+const GroupCard: React.FC<GroupCardProps> = React.memo(
+  ({ group, index, selMask, onToggleRows, onLocate, onOpenImages }) => {
+    const { rows, stimulus, source } = group;
+    const isChapter = source === 'chapter';
+    const multi = rows.length > 1;
+    const [openSolutions, setOpenSolutions] = useState<Record<string, boolean>>({});
     const [referenceOpen, setReferenceOpen] = useState(false);
     const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
 
-    // Load the images this card needs (stimulus always, solution when it is opened)
+    const picked = rows.map((_, i) => selMask[i] === '1');
+    const allSelected = picked.length > 0 && picked.every(Boolean);
+    const someSelected = picked.some(Boolean);
+
+    // Load the images this card needs (stimulus always, a solution's pictures when it is opened)
     useEffect(() => {
       let cancelled = false;
-      const ids = [...(row.stimulus?.imageIds ?? []), ...(solutionOpen ? q.solutionImageIds ?? [] : [])];
+      const ids = [
+        ...(stimulus?.imageIds ?? []),
+        ...rows.flatMap((r) => (openSolutions[r.question.id] ? r.question.solutionImageIds ?? [] : [])),
+      ];
       (async () => {
         const found: Record<string, string> = {};
         for (const id of ids) {
-          const url = await loadImageUrl(row.source, id);
+          const url = await loadImageUrl(source, id);
           if (url) found[id] = url;
         }
         if (!cancelled) setImageUrls((prev) => ({ ...prev, ...found }));
@@ -196,47 +212,77 @@ const ResultCard: React.FC<ResultCardProps> = React.memo(
       return () => {
         cancelled = true;
       };
-    }, [row.source, row.stimulus, q.solutionImageIds, solutionOpen]);
+    }, [source, stimulus, rows, openSolutions]);
 
-    const solutionUrls = (q.solutionImageIds || []).map((id) => imageUrls[id]).filter(Boolean) as string[];
-    // top chips: boards of the stimulus only (this question's own boards sit beside its সমাধান button)
+    // average rating of the shown questions (same rule as the Type CQ / Chapter CQ cards)
+    const avgRating = Math.round(rows.reduce((sum, r) => sum + (r.question.rating || 3), 0) / rows.length);
+
+    // top chips: boards of the stimulus only (each question's own boards sit beside its সমাধান button)
     const boards = (() => {
       const merged: Array<{ board: string; years: number[] }> = [];
-      [...(row.stimulus?.usedInBoards || [])].forEach((b) => {
+      [...(stimulus?.usedInBoards || [])].forEach((b) => {
         const ex = merged.find((m) => m.board === b.board);
         if (ex) ex.years = Array.from(new Set([...ex.years, ...(b.years || [])])).sort((x, y) => x - y);
         else merged.push({ board: b.board, years: [...(b.years || [])] });
       });
       return merged;
     })();
-    const hasTags = boards.length > 0 || !!row.stimulus?.boardTag || row.usages.length > 0;
+    const usages = (() => {
+      const list: FilterPaperUsage[] = [];
+      rows.forEach((r) =>
+        r.usages.forEach((u) => {
+          if (!list.some((x) => x.paperId === u.paperId)) list.push(u);
+        })
+      );
+      return list;
+    })();
+    const hasTags = boards.length > 0 || !!stimulus?.boardTag || usages.length > 0;
+
+    const first = rows[0];
+    const marksLabel = multi
+      ? `${rows.map((r) => `${r.question.type ? `${r.question.type} ` : ''}${toBn(r.question.marks)}`).join(' + ')} নম্বর`
+      : `${toBn(first.question.marks)} নম্বর`;
+
+    const stimulusImage = (imgId: string) => {
+      const url = imageUrls[imgId];
+      if (!url) return null;
+      return (
+        <div key={imgId} className="w-full my-2 overflow-hidden rounded-xl border border-[#D5D9E2] bg-white text-center">
+          <img src={url} alt="উদ্দীপকের চিত্র" className="w-full h-auto object-contain max-h-60 mx-auto" />
+        </div>
+      );
+    };
 
     return (
       <article
         className={`bg-white rounded-2xl border-[1.5px] shadow-xs overflow-hidden ${
-          selected ? 'border-[#3B4FD8] ring-2 ring-[#3B4FD8]/40' : 'border-[#3B4FD8]'
+          allSelected ? 'border-[#3B4FD8] ring-2 ring-[#3B4FD8]/40' : 'border-[#3B4FD8]'
         }`}
       >
-        {/* Ribbon: serial, checkbox, rating, menu */}
+        {/* Ribbon: serial, checkbox (all shown questions), rating, menu */}
         <div className="bg-[#3B4FD8] text-white px-3.5 py-2.5 flex items-center justify-between gap-2 rounded-t-2xl">
           <div className="flex items-center gap-2.5">
             <span className="font-bold text-xs text-white tracking-tight shrink-0">প্রশ্ন {toBn(index + 1)}</span>
             <button
               type="button"
-              aria-label={selected ? 'নির্বাচন বাতিল করুন' : 'নির্বাচন করুন'}
-              onClick={() => onToggle(row)}
+              aria-label={allSelected ? 'নির্বাচন বাতিল করুন' : 'নির্বাচন করুন'}
+              onClick={() => onToggleRows(rows, !allSelected)}
               className="min-h-[44px] min-w-[44px] -my-2 flex items-center justify-center rounded-lg text-white hover:bg-white/10 active:bg-white/20 transition-colors"
             >
               <div
                 className={`w-5 h-5 rounded border-2 border-white flex items-center justify-center transition-colors ${
-                  selected ? 'bg-white text-[#3B4FD8]' : 'bg-transparent text-transparent'
+                  allSelected ? 'bg-white text-[#3B4FD8]' : 'bg-transparent text-white'
                 }`}
               >
-                <Check className="w-3.5 h-3.5 stroke-[3]" />
+                {allSelected ? (
+                  <Check className="w-3.5 h-3.5 stroke-[3]" />
+                ) : someSelected ? (
+                  <Minus className="w-3.5 h-3.5 stroke-[3]" />
+                ) : null}
               </div>
             </button>
             <span className="px-2 py-0.5 rounded-md bg-[#FEF9C3] text-[#713F12] text-[0.625rem] font-bold border border-[#FDE047] whitespace-nowrap shadow-2xs">
-              {getRatingStarsText(q.rating)}
+              {getRatingStarsText(avgRating)}
             </span>
           </div>
           <KebabMenu
@@ -253,7 +299,7 @@ const ResultCard: React.FC<ResultCardProps> = React.memo(
                 id: 'locate',
                 label: isChapter ? 'Chapter CQ-তে খুলুন' : 'Type CQ-তে খুলুন',
                 icon: <FolderOpen className="w-4 h-4 text-[#3B4FD8]" />,
-                onClick: () => onLocate(row),
+                onClick: () => onLocate(first),
               },
             ]}
           />
@@ -270,24 +316,24 @@ const ResultCard: React.FC<ResultCardProps> = React.memo(
               {isChapter ? <BookOpen className="w-3 h-3" /> : <Layers className="w-3 h-3" />}
               {isChapter ? 'Chapter CQ' : 'Type CQ'}
             </span>
-            {!isChapter && row.topicName && (
+            {!isChapter && first.topicName && (
               <span className="px-2 py-0.5 rounded-full bg-white text-[#1B1F2A] text-[0.6875rem] font-bold border border-[#D5D9E2]">
-                টাইপ: {row.topicName}
+                টাইপ: {first.topicName}
               </span>
             )}
             <span className="px-2 py-0.5 rounded-full bg-white text-[#1B1F2A] text-[0.6875rem] font-bold border border-[#D5D9E2]">
-              অধ্যায়: {row.chapterName}
+              অধ্যায়: {first.chapterName}
             </span>
             <span className="px-2 py-0.5 rounded-full bg-white text-[#1B1F2A] text-[0.6875rem] font-bold border border-[#D5D9E2]">
-              {toBn(q.marks)} নম্বর
+              {marksLabel}
             </span>
           </div>
-          <p className="text-[0.625rem] text-[#64748B] leading-snug">{row.subjectName}</p>
+          <p className="text-[0.625rem] text-[#64748B] leading-snug">{first.subjectName}</p>
         </div>
 
         {/* Board tags & paper usages */}
         <div className="bg-[#F8FAFC] border-b border-[#E2E8F0] px-3.5 py-2 flex flex-wrap items-center gap-1.5">
-          {(boards.length > 0 || row.stimulus?.boardTag) && (
+          {(boards.length > 0 || stimulus?.boardTag) && (
             <div className="flex flex-wrap items-center justify-end gap-1.5 min-w-0 ml-auto order-last">
               {boards.length > 0 ? (
                 boards.map((b, i) => (
@@ -302,13 +348,13 @@ const ResultCard: React.FC<ResultCardProps> = React.memo(
                 ))
               ) : (
                 <span className="px-2 py-0.5 rounded bg-white text-[#1B1F2A] text-[0.625rem] font-semibold border border-[#D5D9E2] flex items-center gap-1 shadow-2xs">
-                  <span>{row.stimulus?.boardTag}</span>
+                  <span>{stimulus?.boardTag}</span>
                 </span>
               )}
             </div>
           )}
 
-          {row.usages.map((u) => (
+          {usages.map((u) => (
             <span
               key={u.paperId}
               className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 text-[0.625rem] font-bold border border-emerald-200 flex items-center gap-1"
@@ -323,100 +369,103 @@ const ResultCard: React.FC<ResultCardProps> = React.memo(
           {!hasTags && <span className="text-[0.625rem] text-[#94A3B8] italic">ট্যাগ নেই</span>}
         </div>
 
-        {/* Content */}
+        {/* Content: উদ্দীপক once, then the shown sub-questions */}
         <div className="p-3.5 space-y-3.5">
-          {row.stimulus && (
+          {stimulus && (
             <div className="space-y-2">
-              {splitStimulusImages(row.stimulus.imageIds, row.stimulus.imageTopCount).top.map((imgId) => {
-                const url = imageUrls[imgId];
-                if (!url) return null;
-                return (
-                  <div
-                    key={imgId}
-                    className="w-full my-2 overflow-hidden rounded-xl border border-[#D5D9E2] bg-white text-center"
-                  >
-                    <img src={url} alt="উদ্দীপকের চিত্র" className="w-full h-auto object-contain max-h-60 mx-auto" />
-                  </div>
-                );
-              })}
-<RichText text={row.stimulus.text} className="text-xs font-medium text-[#1B1F2A] leading-relaxed" />
-              {splitStimulusImages(row.stimulus.imageIds, row.stimulus.imageTopCount).bottom.map((imgId) => {
-                const url = imageUrls[imgId];
-                if (!url) return null;
-                return (
-                  <div
-                    key={imgId}
-                    className="w-full my-2 overflow-hidden rounded-xl border border-[#D5D9E2] bg-white text-center"
-                  >
-                    <img src={url} alt="উদ্দীপকের চিত্র" className="w-full h-auto object-contain max-h-60 mx-auto" />
-                  </div>
-                );
-              })}
+              {splitStimulusImages(stimulus.imageIds, stimulus.imageTopCount).top.map(stimulusImage)}
+              <RichText text={stimulus.text} className="text-xs font-medium text-[#1B1F2A] leading-relaxed" />
+              {splitStimulusImages(stimulus.imageIds, stimulus.imageTopCount).bottom.map(stimulusImage)}
             </div>
           )}
 
-          <div className="space-y-2 pt-1 border-t border-[#F2F4F8]">
-            <div className="flex items-start gap-1.5 text-xs text-[#1B1F2A]">
-              <span className="font-bold shrink-0 text-[#1B1F2A]">{q.type ? `${q.type}.` : ''}</span>
-              <RichText
-                text={q.questionText}
-                className="text-xs text-[#1B1F2A] leading-relaxed flex-1 font-medium"
-              />
-            </div>
+          <div className="space-y-3 pt-1 border-t border-[#F2F4F8]">
+            {rows.map((row, i) => {
+              const q = row.question;
+              const open = !!openSolutions[q.id];
+              const solutionUrls = (q.solutionImageIds || []).map((id) => imageUrls[id]).filter(Boolean) as string[];
+              return (
+                <div key={q.id} className="space-y-2">
+                  <div className="flex items-start gap-1.5 text-xs text-[#1B1F2A]">
+                    {multi && (
+                      <button
+                        type="button"
+                        aria-label={picked[i] ? `${q.type} নির্বাচন বাতিল করুন` : `${q.type} নির্বাচন করুন`}
+                        onClick={() => onToggleRows([row], !picked[i])}
+                        className="shrink-0 p-1.5 -m-1.5 mr-0 flex items-center justify-center"
+                      >
+                        <span
+                          className={`w-4 h-4 rounded border-[1.5px] flex items-center justify-center transition-colors ${
+                            picked[i] ? 'bg-[#3B4FD8] border-[#3B4FD8] text-white' : 'bg-white border-[#94A3B8] text-transparent'
+                          }`}
+                        >
+                          <Check className="w-3 h-3 stroke-[3]" />
+                        </span>
+                      </button>
+                    )}
+                    <span className="font-bold shrink-0 text-[#1B1F2A]">{q.type ? `${q.type}.` : ''}</span>
+                    <RichText
+                      text={q.questionText}
+                      className="text-xs text-[#1B1F2A] leading-relaxed flex-1 font-medium"
+                    />
+                  </div>
 
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <button
-                  type="button"
-                  aria-label={solutionOpen ? 'সমাধান লুকান' : 'সমাধান দেখুন'}
-                  onClick={() => setSolutionOpen((o) => !o)}
-                  className="min-h-[26px] px-2 py-0.5 rounded-md border border-[#D5D9E2] bg-white hover:bg-[#F2F4F8] text-[0.625rem] font-semibold text-[#2A3BB0] flex items-center gap-1 transition-colors shrink-0"
-                >
-                  {solutionOpen ? (
-                    <>
-                      <EyeOff className="w-3 h-3" />
-                      <span>সমাধান লুকাও</span>
-                    </>
-                  ) : (
-                    <>
-                      <Eye className="w-3 h-3" />
-                      <span>সমাধান দেখো</span>
-                    </>
-                  )}
-                </button>
-                <QuestionBoardTags boards={q.usedInBoards} />
-              </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        aria-label={open ? 'সমাধান লুকান' : 'সমাধান দেখুন'}
+                        onClick={() => setOpenSolutions((prev) => ({ ...prev, [q.id]: !open }))}
+                        className="min-h-[26px] px-2 py-0.5 rounded-md border border-[#D5D9E2] bg-white hover:bg-[#F2F4F8] text-[0.625rem] font-semibold text-[#2A3BB0] flex items-center gap-1 transition-colors shrink-0"
+                      >
+                        {open ? (
+                          <>
+                            <EyeOff className="w-3 h-3" />
+                            <span>সমাধান লুকাও</span>
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="w-3 h-3" />
+                            <span>সমাধান দেখো</span>
+                          </>
+                        )}
+                      </button>
+                      <QuestionBoardTags boards={q.usedInBoards} />
+                    </div>
 
-              {solutionOpen && (
-                <div className="mt-2.5 p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-2">
-                  <div className="text-[0.6875rem] font-bold text-[#2A3BB0] uppercase tracking-wider">সমাধান:</div>
-                  <SolutionView
-                    text={q.solutionText}
-                    imageIds={q.solutionImageIds}
-                    imageUrls={imageUrls}
-                    textClassName="text-xs text-[#1B1F2A] leading-relaxed"
-                    onOpenImages={(urls, i) => onOpenImages(urls, i)}
-                  />
-                  {solutionUrls.length > 0 && (
-                    <p className="text-[0.625rem] text-[#64748B] text-center italic">
-                      (ছবিতে ট্যাপ করে বড় ও জুম করে দেখুন)
-                    </p>
-                  )}
+                    {open && (
+                      <div className="mt-2.5 p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-2">
+                        <div className="text-[0.6875rem] font-bold text-[#2A3BB0] uppercase tracking-wider">সমাধান:</div>
+                        <SolutionView
+                          text={q.solutionText}
+                          imageIds={q.solutionImageIds}
+                          imageUrls={imageUrls}
+                          textClassName="text-xs text-[#1B1F2A] leading-relaxed"
+                          onOpenImages={(urls, k) => onOpenImages(urls, k)}
+                        />
+                        {solutionUrls.length > 0 && (
+                          <p className="text-[0.625rem] text-[#64748B] text-center italic">
+                            (ছবিতে ট্যাপ করে বড় ও জুম করে দেখুন)
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              )}
-            </div>
+              );
+            })}
           </div>
         </div>
         <ReferenceDialog
           isOpen={referenceOpen}
-          reference={row.stimulus?.reference}
+          reference={stimulus?.reference}
           onClose={() => setReferenceOpen(false)}
         />
       </article>
     );
   }
 );
-ResultCard.displayName = 'ResultCard';
+GroupCard.displayName = 'GroupCard';
 
 /* ------------------------------------------------------------------ */
 /* Filter sheet (bottom window)                                        */
@@ -425,6 +474,8 @@ ResultCard.displayName = 'ResultCard';
 interface SheetProps {
   isOpen: boolean;
   dataset: FilterDataset;
+  /** chapter / topic choices narrowed by the chosen source, subject and chapter */
+  scoped: ScopedFacets;
   criteria: FilterCriteria;
   sort: SortMode;
   resultCount: number;
@@ -436,6 +487,7 @@ interface SheetProps {
 const FilterSheet: React.FC<SheetProps> = ({
   isOpen,
   dataset,
+  scoped,
   criteria,
   sort,
   resultCount,
@@ -458,9 +510,9 @@ const FilterSheet: React.FC<SheetProps> = ({
   const f = dataset.facets;
   const set = (patch: Partial<FilterCriteria>) => onChange({ ...criteria, ...patch });
 
-  const chapters = f.chapters.filter((c) => criteria.subjects.length === 0 || criteria.subjects.includes(c.subject));
+  const chapters = scoped.chapters;
   const active = countActiveFilters(criteria);
-  const plainChapterNames = f.subjects.length === 1 || criteria.subjects.length === 1;
+  const plainChapterNames = !scoped.multiSubject || criteria.subjects.length === 1;
   const chapterOnly = criteria.sources.length === 1 && criteria.sources[0] === 'chapter';
 
   return (
@@ -554,9 +606,9 @@ const FilterSheet: React.FC<SheetProps> = ({
             </Section>
           )}
 
-          {!chapterOnly && f.topics.length > 0 && (
+          {!chapterOnly && scoped.topics.length > 0 && (
             <Section title="টাইপ / টপিক (Type CQ)">
-              {f.topics.map((t) => (
+              {scoped.topics.map((t) => (
                 <Chip key={t} active={criteria.topics.includes(t)} onClick={() => set({ topics: toggleIn(criteria.topics, t) })}>
                   {t}
                 </Chip>
@@ -664,7 +716,7 @@ const FilterSheet: React.FC<SheetProps> = ({
             onClick={onClose}
             className="w-full min-h-[48px] rounded-xl bg-[#3B4FD8] text-white text-sm font-bold active:scale-[0.98] transition-transform"
           >
-            {toBn(resultCount)}টি প্রশ্ন দেখুন
+            {toBn(resultCount)}টি ফলাফল দেখুন
           </button>
         </div>
       </div>
@@ -876,9 +928,13 @@ export const FilterScreen: React.FC = () => {
     [dataset, criteria, sort]
   );
 
+  // one card per উদ্দীপক: the matching গ / ঘ (…) of the same উদ্দীপক share a card
+  const groups = useMemo(() => groupRows(results), [results]);
+  const totalGroups = useMemo(() => (dataset ? groupRows(dataset.rows).length : 0), [dataset]);
+
   useEffect(() => {
     setVisible(PAGE_SIZE);
-  }, [results]);
+  }, [groups]);
 
   useEffect(() => {
     const el = sentinelRef.current;
@@ -891,7 +947,7 @@ export const FilterScreen: React.FC = () => {
     );
     obs.observe(el);
     return () => obs.disconnect();
-  }, [results.length, visible, loading]);
+  }, [groups.length, visible, loading]);
 
   const activeCount = countActiveFilters(criteria);
   const hasAnyFilter = activeCount > 0 || criteria.text.trim().length > 0 || sort !== 'default';
@@ -910,24 +966,25 @@ export const FilterScreen: React.FC = () => {
 
   const chapterOnly = criteria.sources.length === 1 && criteria.sources[0] === 'chapter';
 
-  // facets narrowed by the chosen source (Type CQ / Chapter CQ) and subject
-  const scoped = useMemo(() => {
-    const rows = (dataset?.rows ?? []).filter(
-      (r) => criteria.sources.length === 0 || criteria.sources.includes(r.source)
-    );
-    const chapters = new Map<string, { key: string; subject: string; name: string }>();
-    const topics = new Set<string>();
-    const subjects = new Set<string>();
-    for (const r of rows) {
-      subjects.add(r.subjectName);
-      if (criteria.subjects.length === 0 || criteria.subjects.includes(r.subjectName)) {
-        const k = `${r.subjectName}||${r.chapterName}`;
-        if (!chapters.has(k)) chapters.set(k, { key: k, subject: r.subjectName, name: r.chapterName });
-      }
-      if (r.topicName) topics.add(r.topicName);
-    }
-    return { chapters: [...chapters.values()], topics: [...topics], multiSubject: subjects.size > 1 };
-  }, [dataset, criteria.sources, criteria.subjects]);
+  // chapter / topic choices narrowed by the chosen source (Type CQ / Chapter CQ), subject and chapter
+  const scoped = useMemo(
+    () => computeScopedFacets(dataset?.rows ?? [], criteria),
+    [dataset, criteria.sources, criteria.subjects, criteria.chapters]
+  );
+
+  // A chapter / topic that is no longer on offer (source, subject or chapter changed) must not keep
+  // silently filtering the list — drop it so the result never looks empty for an invisible reason.
+  useEffect(() => {
+    if (!dataset) return;
+    setCriteria((c) => {
+      const chapterKeys = new Set(scoped.chapters.map((x) => x.key));
+      const topicSet = new Set(scoped.topics);
+      const chapters = c.chapters.filter((k) => chapterKeys.has(k));
+      const topics = chapterOnly ? [] : c.topics.filter((t) => topicSet.has(t));
+      if (chapters.length === c.chapters.length && topics.length === c.topics.length) return c;
+      return { ...c, chapters, topics };
+    });
+  }, [dataset, scoped, chapterOnly]);
 
   const dropdowns = useMemo((): Record<DropdownKey, DropdownDef> => {
     const f = (dataset ?? EMPTY_DATASET).facets;
@@ -935,7 +992,7 @@ export const FilterScreen: React.FC = () => {
     return {
       source: {
         key: 'source',
-        label: 'Type CQ / Chapter CQ',
+        label: 'উৎস',
         options: [
           { value: 'type', label: 'Type CQ' },
           { value: 'chapter', label: 'Chapter CQ' },
@@ -1031,18 +1088,25 @@ export const FilterScreen: React.FC = () => {
 
   /* ---------- selection ---------- */
 
-  const toggleRow = useCallback(
-    async (row: FilterRow) => {
-      const id = row.question.id;
+  // always-current copy of the selection, so the memoised cards never act on a stale one
+  const selectedIdsRef = useRef(selectedIds);
+  selectedIdsRef.current = selectedIds;
+
+  /** Switch the given questions on / off (the card checkbox covers every question shown in that card) */
+  const setRowsSelected = useCallback(
+    async (rows: FilterRow[], on: boolean) => {
+      const current = selectedIdsRef.current;
+      const changing = rows.filter((r) => current.has(r.question.id) !== on);
+      if (changing.length === 0) return;
       // optimistic UI
       setSelectedIds((prev) => {
         const next = new Set(prev);
-        if (next.has(id)) next.delete(id);
-        else next.add(id);
+        changing.forEach((r) => (on ? next.add(r.question.id) : next.delete(r.question.id)));
         return next;
       });
       try {
-        await getApi(row.source).toggleSelected(id);
+        // one after another, so the selection keeps the ক → ঘ order
+        for (const r of changing) await getApi(r.source).toggleSelected(r.question.id);
       } catch (err) {
         console.error('Toggle selection failed:', err);
         await refreshSelection();
@@ -1316,12 +1380,14 @@ export const FilterScreen: React.FC = () => {
         )}
 
         {/* Dropdown filters — long-press and drag to reorder */}
-        <div ref={chipRowRef} className="flex gap-1.5 overflow-x-auto pb-0.5" style={NO_SCROLLBAR}>
+        <div ref={chipRowRef} className="no-scrollbar flex gap-1.5 overflow-x-auto pb-0.5" style={NO_SCROLLBAR}>
           {order.map((key) => {
             const def = dropdowns[key];
             const count = def.selected.length;
             const isOpen = openDropdown === key;
             const isDragging = draggingKey === key;
+            // the "উৎস" (Type CQ / Chapter CQ) button is kept smaller than the others
+            const compact = key === 'source';
             return (
               <button
                 key={key}
@@ -1334,7 +1400,11 @@ export const FilterScreen: React.FC = () => {
                   setOpenDropdown((cur) => (cur === key ? null : key));
                 }}
                 aria-expanded={isOpen}
-                className={`shrink-0 min-h-[36px] pl-3 pr-2 rounded-full border text-xs font-semibold flex items-center gap-1 select-none transition-all ${
+                className={`shrink-0 rounded-full border font-semibold flex items-center select-none transition-all ${
+                  compact
+                    ? 'min-h-[30px] self-center pl-2.5 pr-1.5 gap-0.5 text-[0.6875rem]'
+                    : 'min-h-[36px] pl-3 pr-2 gap-1 text-xs'
+                } ${
                   isDragging
                     ? 'scale-110 shadow-lg ring-2 ring-[#3B4FD8] z-10'
                     : 'active:scale-95'
@@ -1349,7 +1419,7 @@ export const FilterScreen: React.FC = () => {
               >
                 {def.label}
                 {count > 0 && key !== 'sort' && <span className="opacity-90">· {toBn(count)}</span>}
-                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`${compact ? 'w-3 h-3' : 'w-3.5 h-3.5'} transition-transform ${isOpen ? 'rotate-180' : ''}`} />
               </button>
             );
           })}
@@ -1409,9 +1479,9 @@ export const FilterScreen: React.FC = () => {
         {/* Result count + selection */}
         <div className="flex items-center justify-between">
           <p className="text-xs font-bold text-[#1B1F2A]">
-            {toBn(results.length)}টি ফলাফল
+            {toBn(groups.length)}টি ফলাফল
             {hasAnyFilter && dataset && (
-              <span className="font-medium text-[#64748B]"> / {toBn(dataset.rows.length)}</span>
+              <span className="font-medium text-[#64748B]"> / {toBn(totalGroups)}</span>
             )}
           </p>
           <div className="flex items-center gap-1">
@@ -1467,18 +1537,18 @@ export const FilterScreen: React.FC = () => {
           </div>
         ) : (
           <>
-            {results.slice(0, visible).map((row, i) => (
-              <ResultCard
-                key={row.key}
-                row={row}
+            {groups.slice(0, visible).map((group, i) => (
+              <GroupCard
+                key={group.key}
+                group={group}
                 index={i}
-                selected={selectedIds.has(row.question.id)}
-                onToggle={toggleRow}
+                selMask={group.rows.map((r) => (selectedIds.has(r.question.id) ? '1' : '0')).join('')}
+                onToggleRows={setRowsSelected}
                 onLocate={handleLocate}
                 onOpenImages={openImageViewer}
               />
             ))}
-            {visible < results.length && (
+            {visible < groups.length && (
               <div ref={sentinelRef} className="py-4 text-center text-xs text-[#64748B]">
                 আরও লোড হচ্ছে...
               </div>
@@ -1497,9 +1567,10 @@ export const FilterScreen: React.FC = () => {
       <FilterSheet
         isOpen={sheetOpen}
         dataset={dataset ?? EMPTY_DATASET}
+        scoped={scoped}
         criteria={criteria}
         sort={sort}
-        resultCount={results.length}
+        resultCount={groups.length}
         onChange={applyCriteria}
         onSortChange={setSort}
         onClose={() => setSheetOpen(false)}
