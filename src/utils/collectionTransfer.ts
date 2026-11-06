@@ -1,6 +1,7 @@
 import { getDb, type CqScope, type Category, type Subject, type Chapter, type Topic, type Stimulus, type Question, type Paper, type DbImage } from '../db/db';
 import { blobToBase64, base64ToBlob, exportJsonFile } from './fileExport';
 import { compressImageToWebP } from './imageCompressor';
+import { loadCustomBoards, saveCustomBoards, type CustomBoard } from './boards';
 
 export interface CollectionJsonSchema {
   version: string;
@@ -667,11 +668,65 @@ interface DbDump {
   images: Array<{ id: string; fileName: string; data: string }>;
 }
 
+/** Things the app keeps in the phone's localStorage (not in the database) — they belong in a full backup too */
+export interface AppLocalData {
+  /** boards the user added himself (the question form's board list) */
+  customBoards?: CustomBoard[];
+  /** order of the Filter tab dropdown chips */
+  filterDropdownOrder?: string[];
+}
+
 export interface AppFullBackupSchema {
   version: string;
   type: 'qb-app-full-backup';
   exportedAt: string;
   databases: { type: DbDump; chapter: DbDump };
+  localData?: AppLocalData;
+}
+
+/** same key as utils/filterStore.ts (kept here to avoid an import cycle) */
+const FILTER_ORDER_KEY = 'qb_filter_dropdown_order_v1';
+
+function readLocalData(): AppLocalData {
+  const out: AppLocalData = { customBoards: loadCustomBoards() };
+  try {
+    const raw = localStorage.getItem(FILTER_ORDER_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) out.filterDropdownOrder = parsed.filter((k) => typeof k === 'string');
+    }
+  } catch {
+    /* ignore */
+  }
+  return out;
+}
+
+function applyLocalData(local: AppLocalData | undefined, mode: RestoreMode): void {
+  if (!local || typeof local !== 'object') return;
+
+  // custom boards: replace = same list as the backup, merge = add the ones that are missing
+  if (Array.isArray(local.customBoards)) {
+    const incoming = local.customBoards.filter(
+      (b) => b && typeof b.code === 'string' && b.code.trim() && typeof b.name === 'string'
+    );
+    if (mode === 'replace') {
+      saveCustomBoards(incoming);
+    } else {
+      const current = loadCustomBoards();
+      const have = new Set(current.map((b) => b.code.trim().toLowerCase()));
+      const added = incoming.filter((b) => !have.has(b.code.trim().toLowerCase()));
+      if (added.length) saveCustomBoards([...current, ...added]);
+    }
+  }
+
+  // chip order is a personal layout: only a full replace brings it back
+  if (mode === 'replace' && Array.isArray(local.filterDropdownOrder) && local.filterDropdownOrder.length) {
+    try {
+      localStorage.setItem(FILTER_ORDER_KEY, JSON.stringify(local.filterDropdownOrder));
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 async function dumpDb(scope: CqScope): Promise<DbDump> {
@@ -700,10 +755,11 @@ async function dumpDb(scope: CqScope): Promise<DbDump> {
 export async function buildAppFullBackupExport(): Promise<{ fileName: string; json: string }> {
   const [typeDump, chapterDump] = await Promise.all([dumpDb('type'), dumpDb('chapter')]);
   const payload: AppFullBackupSchema = {
-    version: '2.0',
+    version: '2.1',
     type: 'qb-app-full-backup',
     exportedAt: new Date().toISOString(),
     databases: { type: typeDump, chapter: chapterDump },
+    localData: readLocalData(),
   };
   const dateStr = new Date().toISOString().split('T')[0];
   return { fileName: `qb-full-backup-${dateStr}.json`, json: JSON.stringify(payload) };
@@ -747,6 +803,11 @@ export function inspectBackupFile(jsonText: string): BackupFileInfo {
       papers: Array.isArray(data.papers) ? data.papers.length : 0,
     };
   }
+  if (data?.type === 'qb-question-collection') {
+    throw new Error(
+      'এটি ' + (data.scope === 'chapter' ? 'Chapter CQ' : 'Type CQ') + ' এর কালেকশন ফাইল, ফুল ব্যাকআপ নয়। এটি ইমপোর্ট করতে ওই CQ-এর ইমপোর্ট অপশন ব্যবহার করুন।'
+    );
+  }
   throw new Error('এটি সম্পূর্ণ ব্যাকআপ ফাইল নয়। অ্যাপ থেকে এক্সপোর্ট করা ফুল ব্যাকআপ ফাইল দিন।');
 }
 
@@ -772,20 +833,33 @@ async function writeDump(scope: CqScope, dump: Partial<DbDump>, mode: RestoreMod
     }
   }
 
+  // older backups miss newer fields (board usage, rating, picture position …) — fill them in
+  const fixed = normalizeCollectionPayload({
+    stimuli: dump.stimuli || [],
+    questions: dump.questions || [],
+  } as unknown as CollectionJsonSchema);
+  const stimuli = fixed.stimuli;
+  const questions = fixed.questions;
+  const papersIn: Paper[] = (dump.papers || []).map((p) => ({
+    ...p,
+    questionIds: Array.isArray(p.questionIds) ? p.questionIds : [],
+  }));
+
   const tables = [db.subjects, db.chapters, db.topics, db.stimuli, db.questions, db.papers, db.categories, db.meta, db.images];
 
   await db.transaction('rw', tables, async () => {
     if (mode === 'replace') {
       await Promise.all(tables.map((t: any) => t.clear()));
-      if (dump.subjects?.length) await db.subjects.bulkAdd(dump.subjects);
-      if (dump.chapters?.length) await db.chapters.bulkAdd(dump.chapters);
-      if (dump.topics?.length) await db.topics.bulkAdd(dump.topics);
-      if (dump.stimuli?.length) await db.stimuli.bulkAdd(dump.stimuli);
-      if (dump.questions?.length) await db.questions.bulkAdd(dump.questions);
-      if (dump.categories?.length) await db.categories.bulkAdd(dump.categories);
-      if (dump.papers?.length) await db.papers.bulkAdd(dump.papers);
-      if (dump.meta?.length) await db.meta.bulkAdd(dump.meta);
-      if (imageRows.length) await db.images.bulkAdd(imageRows);
+      // bulkPut: one repeated id inside the file must not cancel the whole restore
+      if (dump.subjects?.length) await db.subjects.bulkPut(dump.subjects);
+      if (dump.chapters?.length) await db.chapters.bulkPut(dump.chapters);
+      if (dump.topics?.length) await db.topics.bulkPut(dump.topics);
+      if (stimuli.length) await db.stimuli.bulkPut(stimuli);
+      if (questions.length) await db.questions.bulkPut(questions);
+      if (dump.categories?.length) await db.categories.bulkPut(dump.categories);
+      if (papersIn.length) await db.papers.bulkPut(papersIn);
+      if (dump.meta?.length) await db.meta.bulkPut(dump.meta);
+      if (imageRows.length) await db.images.bulkPut(imageRows);
       return;
     }
 
@@ -793,8 +867,8 @@ async function writeDump(scope: CqScope, dump: Partial<DbDump>, mode: RestoreMod
     await addMissingRows(db.subjects, dump.subjects);
     await addMissingRows(db.chapters, dump.chapters);
     await addMissingRows(db.topics, dump.topics);
-    await addMissingRows(db.stimuli, dump.stimuli);
-    await addMissingRows(db.questions, dump.questions);
+    await addMissingRows(db.stimuli, stimuli);
+    await addMissingRows(db.questions, questions);
     await addMissingRows(db.images, imageRows as any);
 
     // categories: a category with the same name is reused (papers are re-pointed to it)
@@ -819,7 +893,7 @@ async function writeDump(scope: CqScope, dump: Partial<DbDump>, mode: RestoreMod
       }
     }
 
-    const papers = (dump.papers || []).map((p) => {
+    const papers = papersIn.map((p) => {
       const target = p.categoryId ? catIdMap.get(p.categoryId) : undefined;
       return target ? { ...p, categoryId: target.id, category: target.name } : p;
     });
@@ -839,6 +913,7 @@ export async function restoreAppBackup(jsonText: string, mode: RestoreMode): Pro
   if (info.kind === 'app') {
     if (data.databases.type) await writeDump('type', data.databases.type, mode);
     if (data.databases.chapter) await writeDump('chapter', data.databases.chapter, mode);
+    applyLocalData(data.localData, mode);
   } else {
     await writeDump(info.scope || 'type', data, mode);
   }
