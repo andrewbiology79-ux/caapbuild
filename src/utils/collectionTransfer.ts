@@ -2,6 +2,8 @@ import { getDb, type CqScope, type Category, type Subject, type Chapter, type To
 import { blobToBase64, base64ToBlob, exportJsonFile } from './fileExport';
 import { BACKUP_FOLDERS } from './storageAccess';
 import { compressImageToWebP } from './imageCompressor';
+import { hydrateImages } from '../storage/imageStore';
+import { pauseSync, resumeSync, rebuildFolders, flushAfterBulkChange } from '../storage/syncEngine';
 import { loadCustomBoards, saveCustomBoards, type CustomBoard } from './boards';
 
 export interface CollectionJsonSchema {
@@ -173,7 +175,7 @@ export async function buildQuestionCollectionExport(
 
     const exportedImages: Array<{ id: string; fileName: string; data: string }> = [];
     if (imageIdSet.size > 0) {
-      const dbImages = await db.images.where('id').anyOf(Array.from(imageIdSet)).toArray();
+      const dbImages = await hydrateImages(db, await db.images.where('id').anyOf(Array.from(imageIdSet)).toArray());
       for (const img of dbImages) {
         if (img.blob) {
           const b64 = await blobToBase64(img.blob);
@@ -366,6 +368,23 @@ export async function executeCollectionImport(
   payload: CollectionJsonSchema,
   options: ImportOptions,
   scope: CqScope = 'type'
+): Promise<{ subjects: number; questions: number; images: number }> {
+  // folder sync: no scanning while the database is being rewritten, then the folders follow the new data
+  pauseSync();
+  try {
+    const result = await executeCollectionImportInner(payload, options, scope);
+    if (options.mode === 'replace') await rebuildFolders([scope]);
+    else await flushAfterBulkChange();
+    return result;
+  } finally {
+    resumeSync();
+  }
+}
+
+async function executeCollectionImportInner(
+  payload: CollectionJsonSchema,
+  options: ImportOptions,
+  scope: CqScope
 ): Promise<{ subjects: number; questions: number; images: number }> {
   const db = getDb(scope);
   const { mode, manualFiles = [] } = options;
@@ -564,7 +583,7 @@ export async function exportFullBackup(scope: CqScope = 'type'): Promise<boolean
     ]);
 
     const exportedImages: Array<{ id: string; fileName: string; data: string }> = [];
-    for (const img of images) {
+    for (const img of await hydrateImages(db, images)) {
       if (img.blob) {
         const b64 = await blobToBase64(img.blob);
         exportedImages.push({
@@ -608,6 +627,16 @@ export async function exportFullBackup(scope: CqScope = 'type'): Promise<boolean
 export async function restoreFullBackup(jsonText: string, scope?: CqScope): Promise<void> {
   const data = JSON.parse(jsonText);
   const target: CqScope = scope ?? (data && data.scope === 'chapter' ? 'chapter' : 'type');
+  pauseSync();
+  try {
+    await restoreFullBackupInner(data, target);
+    await rebuildFolders([target]);
+  } finally {
+    resumeSync();
+  }
+}
+
+async function restoreFullBackupInner(data: any, target: CqScope): Promise<void> {
   const db = getDb(target);
 
   if (!data || typeof data !== 'object' || !Array.isArray(data.subjects) || !Array.isArray(data.questions)) {
@@ -748,7 +777,7 @@ async function dumpDb(scope: CqScope): Promise<DbDump> {
     db.images.toArray(),
   ]);
   const exportedImages: DbDump['images'] = [];
-  for (const img of images) {
+  for (const img of await hydrateImages(db, images)) {
     if (img.blob) {
       exportedImages.push({ id: img.id, fileName: img.fileName, data: await blobToBase64(img.blob) });
     }
@@ -915,12 +944,28 @@ async function writeDump(scope: CqScope, dump: Partial<DbDump>, mode: RestoreMod
 export async function restoreAppBackup(jsonText: string, mode: RestoreMode): Promise<BackupFileInfo> {
   const info = inspectBackupFile(jsonText);
   const data = JSON.parse(jsonText);
-  if (info.kind === 'app') {
-    if (data.databases.type) await writeDump('type', data.databases.type, mode);
-    if (data.databases.chapter) await writeDump('chapter', data.databases.chapter, mode);
-    applyLocalData(data.localData, mode);
-  } else {
-    await writeDump(info.scope || 'type', data, mode);
+  const touched: CqScope[] = [];
+  pauseSync();
+  try {
+    if (info.kind === 'app') {
+      if (data.databases.type) {
+        await writeDump('type', data.databases.type, mode);
+        touched.push('type');
+      }
+      if (data.databases.chapter) {
+        await writeDump('chapter', data.databases.chapter, mode);
+        touched.push('chapter');
+      }
+      applyLocalData(data.localData, mode);
+    } else {
+      const sc: CqScope = info.scope || 'type';
+      await writeDump(sc, data, mode);
+      touched.push(sc);
+    }
+    if (mode === 'replace') await rebuildFolders(touched);
+    else await flushAfterBulkChange();
+  } finally {
+    resumeSync();
   }
   return info;
 }

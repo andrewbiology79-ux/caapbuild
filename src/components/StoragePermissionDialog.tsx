@@ -53,14 +53,14 @@ export const StoragePermissionDialog: React.FC = () => {
         </div>
 
         <p className="text-xs text-[#1B1F2A] dark:text-slate-200 leading-relaxed">
-          PDF সরাসরি ফোনে সেভ করতে অ্যাপটিকে <b>“সব ফাইল ম্যানেজ করার অনুমতি” (Allow access to manage all files)</b> দিতে
+          প্রশ্নব্যাংক ফোল্ডারে সংরক্ষণ ও সিঙ্ক এবং PDF সরাসরি ফোনে সেভ করতে অ্যাপটিকে <b>“সব ফাইল ম্যানেজ করার অনুমতি” (Allow access to manage all files)</b> দিতে
           হবে। নিচের বাটনে চাপ দিলে সেটিংস উইন্ডো খুলবে — সেখানে এই অ্যাপের পাশের সুইচটি চালু করে ফিরে আসুন।
         </p>
 
         <div className="flex items-start gap-2 text-[11px] text-[#64748B] dark:text-slate-400 bg-[#F2F4F8] dark:bg-slate-800 rounded-xl p-2.5">
           <FolderOpen className="w-4 h-4 shrink-0 mt-0.5" />
           <span>
-            PDF সেভ হবে: <span className="font-semibold">{PDF_SAVE_FOLDER}</span>
+            সব ফাইল থাকবে: <span className="font-semibold">{PDF_SAVE_FOLDER}</span>
           </span>
         </div>
 

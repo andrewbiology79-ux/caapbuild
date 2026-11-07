@@ -108,7 +108,30 @@ export interface Paper {
 export interface DbImage {
   id: string;
   fileName: string;
-  blob: Blob;
+  /**
+   * Picture data. With folder sync ON the picture lives as a file in the topic's media/ folder and this
+   * is only set for a picture that was just added and not yet written into a folder.
+   */
+  blob?: Blob;
+  /** topic whose media/ folder holds the picture file (folder sync) */
+  topicId?: string;
+  /** picture size in pixels (so the layout does not jump while the picture loads) */
+  w?: number;
+  h?: number;
+}
+
+/**
+ * Remembers what was last written to / read from the storage folders (folder sync):
+ *  - folder rows  : id = entity id, kind = subject | chapter | topic, dirName = real folder name on disk
+ *  - data.json row: id = `data:<topicId>`, kind = 'data', mtime + size of the file when we last synced it
+ */
+export interface SyncRow {
+  id: string;
+  kind: 'subject' | 'chapter' | 'topic' | 'data';
+  parentId?: string;
+  dirName?: string;
+  mtime?: number;
+  size?: number;
 }
 
 export interface MetaRecord {
@@ -126,6 +149,7 @@ export class QbDatabase extends Dexie {
   categories!: Table<Category, string>;
   images!: Table<DbImage, string>;
   meta!: Table<MetaRecord, string>;
+  syncState!: Table<SyncRow, string>;
 
   constructor(name: string = 'QbExamDatabase') {
     super(name);
@@ -199,6 +223,20 @@ export class QbDatabase extends Dexie {
           }
         }
       });
+
+    // v3: folder sync - sync bookkeeping table (pictures keep the same index, only their fields changed)
+    this.version(3).stores({
+      subjects: 'id, name, order',
+      chapters: 'id, subjectId, name, order',
+      topics: 'id, chapterId, name, order',
+      stimuli: 'id, topicId',
+      questions: 'id, stimulusId, topicId, type, rating, order',
+      papers: 'id, shortName, category, categoryId, createdAt',
+      categories: 'id, name, order, createdAt',
+      images: 'id, fileName, topicId',
+      meta: 'key',
+      syncState: 'id, kind, parentId',
+    });
   }
 }
 

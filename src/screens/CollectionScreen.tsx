@@ -26,6 +26,7 @@ import { KebabMenu, type MenuItem } from '../components/KebabMenu';
 import { toBn, toBnPad2 } from '../utils/toBn';
 import { useNavigation } from '../utils/navigation';
 import { getDb, type CqScope } from '../db/db';
+import { SYNC_CHANGED_EVENT, syncNow, isFolderSyncEnabled } from '../storage/syncEngine';
 
 import {
   getApi,
@@ -217,6 +218,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
     editQuestionId: null,
   });
 
+  const imageLoadToken = useRef(0);
   const [showImportModal, setShowImportModal] = useState<boolean>(false);
   const [showPasteModal, setShowPasteModal] = useState<boolean>(false);
 
@@ -255,29 +257,40 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
         const grpList = await getQuestionsByTopicGrouped(currentView.topic.id);
         setQuestionGroups(grpList);
 
-        // Fetch usages and image blobs for questions & stimuli
+        // 1) text first: usages are quick database reads
         const usages: Record<string, QuestionPaperUsage[]> = {};
-        const urls: Record<string, string> = {};
-
         for (const grp of grpList) {
-          if (grp.stimulus?.imageIds) {
-            for (const imgId of grp.stimulus.imageIds) {
-              const url = await getImageBlobUrl(imgId);
-              if (url) urls[imgId] = url;
-            }
-          }
-          for (const q of grp.questions) {
-            usages[q.id] = await getQuestionPaperUsage(q.id);
-            if (q.solutionImageIds) {
-              for (const imgId of q.solutionImageIds) {
-                const url = await getImageBlobUrl(imgId);
-                if (url) urls[imgId] = url;
-              }
-            }
-          }
+          for (const q of grp.questions) usages[q.id] = await getQuestionPaperUsage(q.id);
         }
         setQuestionUsages(usages);
-        setImageUrls(urls);
+
+        // 2) pictures afterwards, in the background (they come from files in the media/ folder);
+        //    the screen is already usable while they fill in
+        const token = ++imageLoadToken.current;
+        const wanted: string[] = [];
+        for (const grp of grpList) {
+          (grp.stimulus?.imageIds || []).forEach((id) => wanted.push(id));
+          for (const q of grp.questions) (q.solutionImageIds || []).forEach((id) => wanted.push(id));
+        }
+        setImageUrls({});
+        (async () => {
+          let batch: Record<string, string> = {};
+          let lastFlush = Date.now();
+          for (const imgId of wanted) {
+            if (token !== imageLoadToken.current) return; // another list was opened meanwhile
+            const url = await getImageBlobUrl(imgId);
+            if (url) batch[imgId] = url;
+            if (Object.keys(batch).length >= 3 || Date.now() - lastFlush > 250) {
+              const part = batch;
+              batch = {};
+              lastFlush = Date.now();
+              if (Object.keys(part).length) setImageUrls((prev) => ({ ...prev, ...part }));
+            }
+          }
+          if (token === imageLoadToken.current && Object.keys(batch).length) {
+            setImageUrls((prev) => ({ ...prev, ...batch }));
+          }
+        })();
       }
     } catch (err: any) {
       console.error('Error loading collection data:', err);
@@ -291,6 +304,46 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
     loadData();
     setIsReordering(false);
   }, [loadData]);
+
+  // Folder sync: a change made in the storage folders (file manager) arrived -> refresh this screen.
+  // If the folder we are looking at was deleted there, go back up to the nearest level that still exists.
+  const loadDataRef = useRef(loadData);
+  loadDataRef.current = loadData;
+  const viewRef = useRef(currentView);
+  viewRef.current = currentView;
+  useEffect(() => {
+    const onSynced = async () => {
+      try {
+        const v = viewRef.current;
+        const sdb = getDb(scope);
+        if (v.level !== 'subjects') {
+          if (!(await sdb.subjects.get(v.subject.id))) {
+            setCurrentView({ level: 'subjects' });
+            return;
+          }
+          if (v.level !== 'chapters') {
+            if (!(await sdb.chapters.get(v.chapter.id))) {
+              setCurrentView({ level: 'chapters', subject: v.subject });
+              return;
+            }
+            if (v.level === 'questions' && !(await sdb.topics.get(v.topic.id))) {
+              setCurrentView(
+                scope === 'chapter'
+                  ? { level: 'chapters', subject: v.subject }
+                  : { level: 'topics', subject: v.subject, chapter: v.chapter }
+              );
+              return;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('View check after sync failed:', err);
+      }
+      loadDataRef.current();
+    };
+    window.addEventListener(SYNC_CHANGED_EVENT, onSynced);
+    return () => window.removeEventListener(SYNC_CHANGED_EVENT, onSynced);
+  }, [scope]);
 
   // Chapter CQ has no topic level: every chapter owns one hidden default topic that holds its questions
   const openChapter = useCallback(
@@ -913,6 +966,21 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
         icon: <Trash2 className="w-4 h-4 text-red-500" />,
         isDestructive: true,
         onClick: () => handleDeleteItem('chapter', currentView.chapter.id, currentView.chapter.name),
+      });
+    }
+
+    // Folder sync: read the storage folders right now
+    if (isFolderSyncEnabled()) {
+      items.push({
+        id: 'sync-now',
+        label: 'ফোল্ডার থেকে সিঙ্ক করুন',
+        icon: <RefreshCw className="w-4 h-4 text-[#3B4FD8]" />,
+        onClick: async () => {
+          const r = await syncNow();
+          if (r.error) showToast(`সিঙ্ক: ${r.error}`, 4000);
+          else showToast(r.changed ? 'সিঙ্ক সম্পন্ন হয়েছে' : 'সব ঠিকই আছে, নতুন কিছু নেই', 2500);
+          if (!r.changed) loadData();
+        },
       });
     }
 

@@ -1,5 +1,6 @@
 import { db, chapterDb, getDb, type CqScope, type Question, type Stimulus } from './db';
 import { typeApi, chapterApi, generateId } from './api';
+import { getImageBlob } from '../storage/imageStore';
 
 /**
  * Papers can contain questions from BOTH collections (Type CQ + Chapter CQ).
@@ -145,7 +146,10 @@ export async function pasteMultiClipboard(
     for (const id of ids) {
       if (await tdb.images.get(id)) continue;
       const img = await sdb.images.get(id);
-      if (img) await tdb.images.put(img);
+      if (!img) continue;
+      // the picture is a file in the source folder: copy its data; the target topic's media/ folder gets its own file when it is written
+      const blob = await getImageBlob(id, sdb);
+      if (blob) await tdb.images.put({ id: img.id, fileName: img.fileName, blob, w: img.w, h: img.h });
     }
   }
 

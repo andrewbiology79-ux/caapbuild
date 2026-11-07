@@ -1,5 +1,6 @@
 import {
   db,
+  chapterDb,
   type Subject,
   type Chapter,
   type Topic,
@@ -10,6 +11,7 @@ import {
 import { generateId, saveCategory } from '../db/api';
 import { blobToBase64, base64ToBlob, exportJsonFile } from './fileExport';
 import { BACKUP_FOLDERS } from './storageAccess';
+import { hydrateImages } from '../storage/imageStore';
 
 /**
  * Shareable file of a Category (or of a single paper) — contains the papers and every
@@ -60,8 +62,15 @@ async function buildPayload(
 
   const images: CategorySharePayload['images'] = [];
   if (imageIdSet.size > 0) {
-    const dbImages = await db.images.where('id').anyOf(Array.from(imageIdSet)).toArray();
-    for (const img of dbImages) {
+    const wanted = Array.from(imageIdSet);
+    const fromType = await hydrateImages(db, await db.images.where('id').anyOf(wanted).toArray());
+    const have = new Set(fromType.map((i) => i.id));
+    // pictures of Chapter CQ questions live in the other database
+    const fromChapter = await hydrateImages(
+      chapterDb,
+      await chapterDb.images.where('id').anyOf(wanted.filter((id) => !have.has(id))).toArray()
+    );
+    for (const img of [...fromType, ...fromChapter]) {
       if (img.blob) {
         images.push({ id: img.id, fileName: img.fileName, data: await blobToBase64(img.blob) });
       }

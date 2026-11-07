@@ -17,6 +17,7 @@ import {
 } from './db';
 
 import { toBn, toEn } from '../utils/toBn';
+import { getImageObjectUrl } from '../storage/imageStore';
 
 
 export type {
@@ -868,15 +869,9 @@ async function deleteStimulusGroup(
 
 
 async function getImageBlobUrl(imageId: string): Promise<string | null> {
-  try {
-    // a paper can mix Type CQ + Chapter CQ questions, so also look in the other database
-    const sibling = db === chapterDb ? typeDatabase : chapterDb;
-    const img = (await db.images.get(imageId)) ?? (await sibling.images.get(imageId));
-    if (!img || !img.blob) return null;
-    return URL.createObjectURL(img.blob);
-  } catch {
-    return null;
-  }
+  // With folder sync the picture is a file in the topic's media/ folder (read + cached + throttled in imageStore).
+  // A paper can mix Type CQ + Chapter CQ questions, so the other database is searched too.
+  return getImageObjectUrl(imageId, db);
 }
 
 

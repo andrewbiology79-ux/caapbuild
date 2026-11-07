@@ -6,20 +6,48 @@ import { App as CapacitorApp } from '@capacitor/app';
  * Native helper (see native-android/StorageAccessPlugin.java) for the
  * "All files access" (MANAGE_EXTERNAL_STORAGE) permission of Android 11+.
  */
-interface StorageAccessPlugin {
+export interface ScanEntry {
+  /** path relative to the scanned root, e.g. "পদার্থ/অধ্যায় ১/data.json" */
+  p: string;
+  /** is a folder */
+  d: boolean;
+  /** size in bytes (files) */
+  s: number;
+  /** last modified (ms) */
+  m: number;
+  /** text of a ".folder.json" file (read natively so no extra round trips are needed) */
+  t?: string;
+}
+
+export interface ScanResult {
+  exists: boolean;
+  entries: ScanEntry[];
+}
+
+export interface StorageAccessPlugin {
   check(): Promise<{ granted: boolean; sdk: number }>;
   openSettings(): Promise<void>;
   openFolder(options: { path: string }): Promise<void>;
   openFile(options: { path: string; mimeType?: string }): Promise<void>;
+  /** folder sync: lists a whole folder tree in ONE call (see StorageAccessPlugin.java) */
+  scanTree(options: { root: string }): Promise<ScanResult>;
+  /** folder sync: starts watching a folder tree; changes arrive as 'storageChanged' events */
+  watch(options: { root: string }): Promise<void>;
+  unwatch(): Promise<void>;
+  addListener(eventName: 'storageChanged', listener: () => void): Promise<{ remove: () => Promise<void> }>;
 }
 
-const StorageAccess = registerPlugin<StorageAccessPlugin>('StorageAccess');
+export const StorageAccess = registerPlugin<StorageAccessPlugin>('StorageAccess');
+
+/** Everything the app saves in the phone's Download folder lives inside this folder */
+export const QB_ROOT = 'Download/QB Collection';
 
 /** Folder (inside the phone's Download folder) where PDFs are saved */
-export const PDF_SAVE_FOLDER = 'Download/QbCollection';
+export const PDF_SAVE_FOLDER = QB_ROOT;
 
-/** Every exported backup / transfer file goes into a sub-folder of this folder */
-export const BACKUP_ROOT = 'Download/QbCollection/Backup';
+/** Every exported backup / transfer file goes into a sub-folder of this folder
+ *  (NOT inside Question_Bank - that folder is read back by the folder sync) */
+export const BACKUP_ROOT = `${QB_ROOT}/Backup`;
 
 /** Sub-folder (inside BACKUP_ROOT) for each kind of export */
 export const BACKUP_FOLDERS = {
@@ -33,7 +61,7 @@ export const BACKUP_FOLDERS = {
 } as const;
 
 /** Folder (inside the phone's Download folder) where exported pictures are saved */
-export const IMAGE_SAVE_FOLDER = 'Download/QbCollection/Images';
+export const IMAGE_SAVE_FOLDER = `${QB_ROOT}/Images`;
 
 /**
  * Is the app currently allowed to write PDFs into the phone storage?

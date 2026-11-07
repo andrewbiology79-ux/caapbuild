@@ -10,6 +10,7 @@ import katex from 'katex';
 import { toBn } from './toBn';
 import { db, chapterDb, DEFAULT_PAPER_NOTE, type Paper, type Question, type Stimulus } from '../db/db';
 import { getImageBlobUrl } from '../db/api';
+import { getImageBlob } from '../storage/imageStore';
 import {
   ensureStorageAccess,
   savePdfToPhoneStorage,
@@ -667,9 +668,10 @@ export async function generateAndSharePdf(options: GeneratePdfOptions): Promise<
     for (const imgId of allImageIds) {
       // Images live in the database of the collection they belong to (Type CQ / Chapter CQ)
       const imgRecord = (await db.images.get(imgId)) ?? (await chapterDb.images.get(imgId));
-      if (imgRecord?.blob) {
+      const imgBlob = imgRecord ? await getImageBlob(imgId) : null;
+      if (imgRecord && imgBlob) {
         try {
-          resolvedImageUrls[imgId] = await resolveImageToDataUrl(imgRecord.blob, imgRecord.fileName);
+          resolvedImageUrls[imgId] = await resolveImageToDataUrl(imgBlob, imgRecord.fileName);
         } catch (e) {
           console.warn('Could not resolve image to DataURL:', e);
         }

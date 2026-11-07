@@ -10,6 +10,7 @@ import { getAppSettings, applySettingsToDOM } from './utils/settings';
 import { StoragePermissionDialog } from './components/StoragePermissionDialog';
 import { PdfSavedDialog } from './components/PdfSavedDialog';
 import { AutoBackupRunner } from './components/AutoBackupRunner';
+import { SyncRunner } from './components/SyncRunner';
 
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
@@ -64,6 +65,7 @@ export default function App() {
         <MainLayout />
         <StoragePermissionDialog />
         <PdfSavedDialog />
+        <SyncRunner />
         <AutoBackupRunner />
       </NavigationProvider>
     </ToastProvider>
