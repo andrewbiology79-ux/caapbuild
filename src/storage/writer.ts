@@ -484,7 +484,15 @@ export async function flushTopic(sdb: QbDatabase, scope: CqScope, topic: any): P
   await writeTextSafe(file, text);
   lastData.set(topic.id, text);
   const st = await statPath(file);
-  await sdb.syncState.put({ id: `data:${topic.id}`, kind: 'data', mtime: st?.mtime ?? 0, size: st?.size ?? 0 });
+  // ধাপ ২.২: যা লেখা হলো তার SHA-256 রাখা (পরে ফাইল বদলে গেছে কি না মেলানোর ভিত্তি)
+  let sha256: string | undefined;
+  try {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    sha256 = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    sha256 = undefined;
+  }
+  await sdb.syncState.put({ id: `data:${topic.id}`, kind: 'data', mtime: st?.mtime ?? 0, size: st?.size ?? 0, sha256 } as any);
 }
 
 /** Forget what we last wrote for a topic (after the folder side changed) */

@@ -9,6 +9,7 @@ import android.os.Environment;
 import android.os.FileObserver;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.StatFs;
 import android.provider.Settings;
 
 import androidx.core.content.FileProvider;
@@ -144,6 +145,20 @@ public class StorageAccessPlugin extends Plugin {
      * Lists every file / folder below `root` (paths relative to root). The text of each
      * ".folder.json" file is included so JS needs no extra round trips.
      */
+    /** খালি জায়গা (বাইট) - ফোনের অভ্যন্তরীণ স্টোরেজের আসল ড্রাইভ (ব্যাকআপের আগে জায়গা দেখতে) */
+    @PluginMethod
+    public void getFreeSpace(PluginCall call) {
+        try {
+            StatFs st = new StatFs(Environment.getExternalStorageDirectory().getPath());
+            JSObject ret = new JSObject();
+            ret.put("free", st.getAvailableBytes());
+            ret.put("total", st.getTotalBytes());
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Free space unavailable: " + e.getMessage());
+        }
+    }
+
     @PluginMethod
     public void scanTree(PluginCall call) {
         String root = call.getString("root");

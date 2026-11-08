@@ -34,6 +34,8 @@ export interface StorageAccessPlugin {
   /** folder sync: starts watching a folder tree; changes arrive as 'storageChanged' events */
   watch(options: { root: string }): Promise<void>;
   unwatch(): Promise<void>;
+  /** খালি/মোট জায়গা (বাইট) */
+  getFreeSpace(): Promise<{ free: number; total: number }>;
   addListener(eventName: 'storageChanged', listener: () => void): Promise<{ remove: () => Promise<void> }>;
 }
 

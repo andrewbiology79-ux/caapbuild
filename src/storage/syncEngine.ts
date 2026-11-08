@@ -135,6 +135,15 @@ export function startFolderSync(onReport: (r: SyncReport) => void, onWriteError:
     running = true;
     try {
       if (!(await hasStorageAccess())) return;
+      try {
+        if (await recoverInterruptedRebuild()) {
+          onReport({ ...emptyReport(), warnings: ['আগের ফোল্ডার পুনর্গঠন মাঝপথে থেমেছিল - অ্যাপের ডেটা থেকে ফোল্ডার আবার লেখা হয়েছে'] });
+        }
+      } catch (err: any) {
+        console.warn('Interrupted rebuild recovery failed:', err);
+        onReport({ ...emptyReport(), error: `ফোল্ডার পুনর্গঠন সম্পূর্ণ করা যায়নি: ${err?.message || err}` });
+        return; // স্ক্যান নয় - আধা-লেখা ফোল্ডার থেকে ডেটা মোছার ঝুঁকি
+      }
       const r = await syncNow();
       if (r.changed || r.error || r.warnings.length) onReport(r);
     } catch (err) {
@@ -279,9 +288,44 @@ export function disableFolderSync(): void {
  * Call after a job that cleared / replaced a whole database. The folders of that scope are rebuilt
  * from the app database (pictures that were just imported are still blobs there and are written out).
  */
+const JOURNAL_KEY = 'qb_rebuild_journal';
+
+function readJournal(): CqScope[] | null {
+  try {
+    const raw = localStorage.getItem(JOURNAL_KEY);
+    const arr = raw ? JSON.parse(raw) : null;
+    return Array.isArray(arr) && arr.length ? (arr as CqScope[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeJournal(scopes: CqScope[] | null): void {
+  try {
+    if (scopes) localStorage.setItem(JOURNAL_KEY, JSON.stringify(scopes));
+    else localStorage.removeItem(JOURNAL_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * ধাপ ২.৪: ফোল্ডার পুনর্গঠনের মাঝে অ্যাপ বন্ধ হলে "চলমান কাজ" চিহ্নটা থেকে যায়। পরের চালুতে
+ * ফোল্ডার স্ক্যান না করে (আধা-লেখা ফোল্ডারকে \"মুছে গেছে\" ভেবে ডেটা মুছে ফেলার ঝুঁকি এড়াতে)
+ * আগে ডাটাবেস থেকে আবার পুরো লেখা হয়। ডাটাবেসই সত্য, কারণ ইমপোর্ট ডাটাবেসে আগেই শেষ।
+ * @returns true হলে উদ্ধার চলেছে
+ */
+export async function recoverInterruptedRebuild(): Promise<boolean> {
+  const scopes = readJournal();
+  if (!scopes || !isFolderSyncEnabled()) return false;
+  await rebuildFolders(scopes);
+  return true;
+}
+
 export async function rebuildFolders(scopes: CqScope[]): Promise<void> {
   if (!isFolderSyncEnabled()) return;
   await flushAllWrites(); // let queued small writes finish first
+  writeJournal(scopes);
   await withSyncLock(async () => {
     for (const scope of scopes) {
       const sdb = getDb(scope);
@@ -301,6 +345,7 @@ export async function rebuildFolders(scopes: CqScope[]): Promise<void> {
   });
   for (const scope of scopes) await markEverythingDirty(scope);
   await flushAllWrites(true);
+  writeJournal(null); // সব লেখা শেষ - চিহ্ন মোছা
 }
 
 /** Call after a job that only added / updated rows (hooks already queued them) - just write now */
