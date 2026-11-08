@@ -31,3 +31,7 @@ Note: run `npm install` once locally and commit the new `package-lock.json` (the
 ## Tests
 
 `npm test` (vitest) runs the logic tests in `tests/` (filter engine, solution parts, paper edits, folder names, duplicate text matching). GitHub Actions runs them before building the APK; a failing test stops the build.
+
+## PDF test page
+
+`test-data/pdf-test-collection.json` + `test-data/PDF_TEST_CHECKLIST.md`: a sample subject (formulas, pictures, very long solution, missing answers) to import and render after every PDF code change. Not part of the app.

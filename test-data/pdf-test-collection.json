@@ -1,0 +1,237 @@
+{
+ "version": "1.1",
+ "type": "qb-question-collection",
+ "scope": "type",
+ "exportedAt": "2026-11-08T00:00:00.000Z",
+ "subjects": [
+  {
+   "id": "pdft-sub-1",
+   "name": "[PDF পরীক্ষা] নমুনা",
+   "order": 9999
+  }
+ ],
+ "chapters": [
+  {
+   "id": "pdft-chap-1",
+   "subjectId": "pdft-sub-1",
+   "name": "PDF পরীক্ষা অধ্যায়",
+   "order": 1
+  }
+ ],
+ "topics": [
+  {
+   "id": "pdft-top-1",
+   "chapterId": "pdft-chap-1",
+   "name": "PDF পরীক্ষা টাইপ",
+   "order": 1
+  }
+ ],
+ "stimuli": [
+  {
+   "id": "pdft-stim-1",
+   "topicId": "pdft-top-1",
+   "text": "একটি বস্তুর ভর $m = 2\\ \\text{kg}$ এবং তার ওপর $F = 10\\ \\text{N}$ বল কাজ করছে। বস্তুটি স্থির অবস্থা থেকে যাত্রা শুরু করে। এখানে $a = \\frac{F}{m}$ এবং বেগ $v = \\sqrt{2as}$ সূত্রে পাওয়া যায়।",
+   "imageIds": [],
+   "imageTopCount": 0,
+   "usedInBoards": [],
+   "rating": 3,
+   "reference": "PDF পরীক্ষা পাতা"
+  },
+  {
+   "id": "pdft-stim-2",
+   "topicId": "pdft-top-1",
+   "text": "চিত্রে একটি বর্তনী দেখানো হলো। Newton's second law অনুযায়ী $F = ma$; কিন্তু বর্তনীতে Ohm's law অনুসারে $V = IR$ খাটে। নিচের তথ্য দেখো: $R_1 = 4\\ \\Omega$, $R_2 = 6\\ \\Omega$, $V = 12\\ \\text{V}$।",
+   "imageIds": [
+    "pdft-img-wide",
+    "pdft-img-small"
+   ],
+   "imageTopCount": 1,
+   "usedInBoards": [],
+   "rating": 3,
+   "reference": "PDF পরীক্ষা পাতা"
+  },
+  {
+   "id": "pdft-stim-3",
+   "topicId": "pdft-top-1",
+   "text": "এটি একটি অনেক লম্বা উদ্দীপক, পাতা ভাঙা পরীক্ষার জন্য। বাক্য 1: একটি তরঙ্গের কম্পাঙ্ক $f = 10\\ \\text{Hz}$ এবং তরঙ্গদৈর্ঘ্য $\\lambda = \\frac{v}{f}$ সূত্রে নির্ণয় করা হয়, যেখানে $v = 340\\ \\text{m/s}$ হলে $\\lambda = \\frac{340}{10}\\ \\text{m}$। বাক্য 2: একটি তরঙ্গের কম্পাঙ্ক $f = 20\\ \\text{Hz}$ এবং তরঙ্গদৈর্ঘ্য $\\lambda = \\frac{v}{f}$ সূত্রে নির্ণয় করা হয়, যেখানে $v = 340\\ \\text{m/s}$ হলে $\\lambda = \\frac{340}{20}\\ \\text{m}$। বাক্য 3: একটি তরঙ্গের কম্পাঙ্ক $f = 30\\ \\text{Hz}$ এবং তরঙ্গদৈর্ঘ্য $\\lambda = \\frac{v}{f}$ সূত্রে নির্ণয় করা হয়, যেখানে $v = 340\\ \\text{m/s}$ হলে $\\lambda = \\frac{340}{30}\\ \\text{m}$। বাক্য 4: একটি তরঙ্গের কম্পাঙ্ক $f = 40\\ \\text{Hz}$ এবং তরঙ্গদৈর্ঘ্য $\\lambda = \\frac{v}{f}$ সূত্রে নির্ণয় করা হয়, যেখানে $v = 340\\ \\text{m/s}$ হলে $\\lambda = \\frac{340}{40}\\ \\text{m}$। বাক্য 5: একটি তরঙ্গের কম্পাঙ্ক $f = 50\\ \\text{Hz}$ এবং তরঙ্গদৈর্ঘ্য $\\lambda = \\frac{v}{f}$ সূত্রে নির্ণয় করা হয়, যেখানে $v = 340\\ \\text{m/s}$ হলে $\\lambda = \\frac{340}{50}\\ \\text{m}$। বাক্য 6: একটি তরঙ্গের কম্পাঙ্ক $f = 60\\ \\text{Hz}$ এবং তরঙ্গদৈর্ঘ্য $\\lambda = \\frac{v}{f}$ সূত্রে নির্ণয় করা হয়, যেখানে $v = 340\\ \\text{m/s}$ হলে $\\lambda = \\frac{340}{60}\\ \\text{m}$। বাক্য 7: একটি তরঙ্গের কম্পাঙ্ক $f = 70\\ \\text{Hz}$ এবং তরঙ্গদৈর্ঘ্য $\\lambda = \\frac{v}{f}$ সূত্রে নির্ণয় করা হয়, যেখানে $v = 340\\ \\text{m/s}$ হলে $\\lambda = \\frac{340}{70}\\ \\text{m}$। বাক্য 8: একটি তরঙ্গের কম্পাঙ্ক $f = 80\\ \\text{Hz}$ এবং তরঙ্গদৈর্ঘ্য $\\lambda = \\frac{v}{f}$ সূত্রে নির্ণয় করা হয়, যেখানে $v = 340\\ \\text{m/s}$ হলে $\\lambda = \\frac{340}{80}\\ \\text{m}$। বাক্য 9: একটি তরঙ্গের কম্পাঙ্ক $f = 90\\ \\text{Hz}$ এবং তরঙ্গদৈর্ঘ্য $\\lambda = \\frac{v}{f}$ সূত্রে নির্ণয় করা হয়, যেখানে $v = 340\\ \\text{m/s}$ হলে $\\lambda = \\frac{340}{90}\\ \\text{m}$। বাক্য 10: একটি তরঙ্গের কম্পাঙ্ক $f = 100\\ \\text{Hz}$ এবং তরঙ্গদৈর্ঘ্য $\\lambda = \\frac{v}{f}$ সূত্রে নির্ণয় করা হয়, যেখানে $v = 340\\ \\text{m/s}$ হলে $\\lambda = \\frac{340}{100}\\ \\text{m}$। বাক্য 11: একটি তরঙ্গের কম্পাঙ্ক $f = 110\\ \\text{Hz}$ এবং তরঙ্গদৈর্ঘ্য $\\lambda = \\frac{v}{f}$ সূত্রে নির্ণয় করা হয়, যেখানে $v = 340\\ \\text{m/s}$ হলে $\\lambda = \\frac{340}{110}\\ \\text{m}$। বাক্য 12: একটি তরঙ্গের কম্পাঙ্ক $f = 120\\ \\text{Hz}$ এবং তরঙ্গদৈর্ঘ্য $\\lambda = \\frac{v}{f}$ সূত্রে নির্ণয় করা হয়, যেখানে $v = 340\\ \\text{m/s}$ হলে $\\lambda = \\frac{340}{120}\\ \\text{m}$। বাক্য 13: একটি তরঙ্গের কম্পাঙ্ক $f = 130\\ \\text{Hz}$ এবং তরঙ্গদৈর্ঘ্য $\\lambda = \\frac{v}{f}$ সূত্রে নির্ণয় করা হয়, যেখানে $v = 340\\ \\text{m/s}$ হলে $\\lambda = \\frac{340}{130}\\ \\text{m}$। বাক্য 14: একটি তরঙ্গের কম্পাঙ্ক $f = 140\\ \\text{Hz}$ এবং তরঙ্গদৈর্ঘ্য $\\lambda = \\frac{v}{f}$ সূত্রে নির্ণয় করা হয়, যেখানে $v = 340\\ \\text{m/s}$ হলে $\\lambda = \\frac{340}{140}\\ \\text{m}$। বাক্য 15: একটি তরঙ্গের কম্পাঙ্ক $f = 150\\ \\text{Hz}$ এবং তরঙ্গদৈর্ঘ্য $\\lambda = \\frac{v}{f}$ সূত্রে নির্ণয় করা হয়, যেখানে $v = 340\\ \\text{m/s}$ হলে $\\lambda = \\frac{340}{150}\\ \\text{m}$। বাক্য 16: একটি তরঙ্গের কম্পাঙ্ক $f = 160\\ \\text{Hz}$ এবং তরঙ্গদৈর্ঘ্য $\\lambda = \\frac{v}{f}$ সূত্রে নির্ণয় করা হয়, যেখানে $v = 340\\ \\text{m/s}$ হলে $\\lambda = \\frac{340}{160}\\ \\text{m}$। বাক্য 17: একটি তরঙ্গের কম্পাঙ্ক $f = 170\\ \\text{Hz}$ এবং তরঙ্গদৈর্ঘ্য $\\lambda = \\frac{v}{f}$ সূত্রে নির্ণয় করা হয়, যেখানে $v = 340\\ \\text{m/s}$ হলে $\\lambda = \\frac{340}{170}\\ \\text{m}$। বাক্য 18: একটি তরঙ্গের কম্পাঙ্ক $f = 180\\ \\text{Hz}$ এবং তরঙ্গদৈর্ঘ্য $\\lambda = \\frac{v}{f}$ সূত্রে নির্ণয় করা হয়, যেখানে $v = 340\\ \\text{m/s}$ হলে $\\lambda = \\frac{340}{180}\\ \\text{m}$। বাক্য 19: একটি তরঙ্গের কম্পাঙ্ক $f = 190\\ \\text{Hz}$ এবং তরঙ্গদৈর্ঘ্য $\\lambda = \\frac{v}{f}$ সূত্রে নির্ণয় করা হয়, যেখানে $v = 340\\ \\text{m/s}$ হলে $\\lambda = \\frac{340}{190}\\ \\text{m}$। বাক্য 20: একটি তরঙ্গের কম্পাঙ্ক $f = 200\\ \\text{Hz}$ এবং তরঙ্গদৈর্ঘ্য $\\lambda = \\frac{v}{f}$ সূত্রে নির্ণয় করা হয়, যেখানে $v = 340\\ \\text{m/s}$ হলে $\\lambda = \\frac{340}{200}\\ \\text{m}$। বাক্য 21: একটি তরঙ্গের কম্পাঙ্ক $f = 210\\ \\text{Hz}$ এবং তরঙ্গদৈর্ঘ্য $\\lambda = \\frac{v}{f}$ সূত্রে নির্ণয় করা হয়, যেখানে $v = 340\\ \\text{m/s}$ হলে $\\lambda = \\frac{340}{210}\\ \\text{m}$। বাক্য 22: একটি তরঙ্গের কম্পাঙ্ক $f = 220\\ \\text{Hz}$ এবং তরঙ্গদৈর্ঘ্য $\\lambda = \\frac{v}{f}$ সূত্রে নির্ণয় করা হয়, যেখানে $v = 340\\ \\text{m/s}$ হলে $\\lambda = \\frac{340}{220}\\ \\text{m}$। বাক্য 23: একটি তরঙ্গের কম্পাঙ্ক $f = 230\\ \\text{Hz}$ এবং তরঙ্গদৈর্ঘ্য $\\lambda = \\frac{v}{f}$ সূত্রে নির্ণয় করা হয়, যেখানে $v = 340\\ \\text{m/s}$ হলে $\\lambda = \\frac{340}{230}\\ \\text{m}$। বাক্য 24: একটি তরঙ্গের কম্পাঙ্ক $f = 240\\ \\text{Hz}$ এবং তরঙ্গদৈর্ঘ্য $\\lambda = \\frac{v}{f}$ সূত্রে নির্ণয় করা হয়, যেখানে $v = 340\\ \\text{m/s}$ হলে $\\lambda = \\frac{340}{240}\\ \\text{m}$। বাক্য 25: একটি তরঙ্গের কম্পাঙ্ক $f = 250\\ \\text{Hz}$ এবং তরঙ্গদৈর্ঘ্য $\\lambda = \\frac{v}{f}$ সূত্রে নির্ণয় করা হয়, যেখানে $v = 340\\ \\text{m/s}$ হলে $\\lambda = \\frac{340}{250}\\ \\text{m}$।",
+   "imageIds": [
+    "pdft-img-small"
+   ],
+   "imageTopCount": 0,
+   "usedInBoards": [],
+   "rating": 3,
+   "reference": "PDF পরীক্ষা পাতা"
+  }
+ ],
+ "questions": [
+  {
+   "id": "pdft-q-1",
+   "topicId": "pdft-top-1",
+   "type": "ক",
+   "marks": 1,
+   "rating": 3,
+   "order": 1,
+   "questionText": "বল কাকে বলে?",
+   "solutionText": "বল হলো সেই বাহ্যিক কারণ যা কোনো বস্তুর অবস্থা বা গতির পরিবর্তন ঘটায় বা ঘটাতে চায়।",
+   "solutionImageIds": [],
+   "usedInBoards": [],
+   "stimulusId": "pdft-stim-1",
+   "answerText": "বল = বাহ্যিক কারণ"
+  },
+  {
+   "id": "pdft-q-2",
+   "topicId": "pdft-top-1",
+   "type": "খ",
+   "marks": 2,
+   "rating": 3,
+   "order": 2,
+   "questionText": "$F = ma$ সমীকরণটি বাক্যের মাঝখানে ইনলাইনে বসালে লাইন ঠিক থাকে কি না? $E = mc^2$ এবং $x_1 + x_2 = \\frac{-b}{a}$ দিয়ে দেখাও।",
+   "solutionText": "ইনলাইন সূত্র $F = ma$ লেখার সাথে একই লাইনে বসা উচিত, যেমন $E = mc^2$।",
+   "solutionImageIds": [],
+   "usedInBoards": [],
+   "stimulusId": "pdft-stim-1",
+   "answerText": "একই লাইনে"
+  },
+  {
+   "id": "pdft-q-3",
+   "topicId": "pdft-top-1",
+   "type": "গ",
+   "marks": 3,
+   "rating": 3,
+   "order": 3,
+   "questionText": "বস্তুটির ত্বরণ নির্ণয় করো। ভগ্নাংশ ও বর্গমূলসহ: $a = \\frac{F}{m} = \\frac{10}{2}$ এবং $v = \\sqrt{2 \\times 5 \\times 4} = \\sqrt{40}$।",
+   "solutionText": "$a = \\frac{F}{m} = \\frac{10}{2} = 5\\ \\text{m/s}^2$\n$v = \\sqrt{2as} = \\sqrt{2 \\times 5 \\times 4} = \\sqrt{40} \\approx 6.32\\ \\text{m/s}$",
+   "solutionImageIds": [],
+   "usedInBoards": [],
+   "stimulusId": "pdft-stim-1",
+   "answerText": "$5\\ \\text{m/s}^2$"
+  },
+  {
+   "id": "pdft-q-4",
+   "topicId": "pdft-top-1",
+   "type": "ঘ",
+   "marks": 4,
+   "rating": 3,
+   "order": 4,
+   "questionText": "৪ সেকেন্ড পরে বস্তুটির সরণ কত? বিশ্লেষণ করো যে $s = ut + \\frac{1}{2}at^2$ সূত্রে $u = 0$ হলে ফল কেমন হয়।",
+   "solutionText": "$s = ut + \\frac{1}{2}at^2 = 0 + \\frac{1}{2} \\times 5 \\times 4^2 = 40\\ \\text{m}$",
+   "solutionImageIds": [],
+   "usedInBoards": [],
+   "stimulusId": "pdft-stim-1"
+  },
+  {
+   "id": "pdft-q-5",
+   "topicId": "pdft-top-1",
+   "type": "গ",
+   "marks": 3,
+   "rating": 3,
+   "order": 5,
+   "questionText": "বর্তনীর তুল্য রোধ নির্ণয় করো। (ছবি উদ্দীপকের উপরে ও নিচে বসেছে কি না দেখো)",
+   "solutionText": "শ্রেণি সমবায়ে $R = R_1 + R_2 = 4 + 6 = 10\\ \\Omega$\n[[img:pdft-img-sol]]\nসুতরাং তড়িৎ প্রবাহ $I = \\frac{V}{R} = \\frac{12}{10} = 1.2\\ \\text{A}$",
+   "solutionImageIds": [],
+   "usedInBoards": [],
+   "stimulusId": "pdft-stim-2",
+   "answerText": "$10\\ \\Omega$"
+  },
+  {
+   "id": "pdft-q-6",
+   "topicId": "pdft-top-1",
+   "type": "ঘ",
+   "marks": 4,
+   "rating": 3,
+   "order": 6,
+   "questionText": "প্রবাহমাত্রা কীভাবে বদলাবে? Mixed English: if $R_2$ is doubled তাহলে current কত হবে?",
+   "solutionText": "$R_2$ দ্বিগুণ হলে $R = 4 + 12 = 16\\ \\Omega$, তাই $I = \\frac{12}{16} = 0.75\\ \\text{A}$।\n[[box]]\nSecond box: ছবির আগের লেখা আর পরের লেখা আলাদা বক্সে আছে কি না দেখো।\n[[img:pdft-img-tall]]\nছবির পরে শেষ লেখা: প্রবাহ কমেছে।",
+   "solutionImageIds": [],
+   "usedInBoards": [],
+   "stimulusId": "pdft-stim-2",
+   "answerText": "০.৭৫ A"
+  },
+  {
+   "id": "pdft-q-7",
+   "topicId": "pdft-top-1",
+   "type": "গ",
+   "marks": 3,
+   "rating": 3,
+   "order": 7,
+   "questionText": "লম্বা উদ্দীপকের নিচে এই প্রশ্ন পরের পাতায় যায় কি না দেখো। $\\lambda = \\frac{v}{f}$ নির্ণয় করো।",
+   "solutionText": "ধাপ 1: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{1}{2}\\ \\text{m/s}^2$ ধরলে, $t = 1\\ \\text{s}$ সময়ে বেগ হয় $v = 1 \\times \\frac{1}{2} = \\frac{1}{2}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 2: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{2}{3}\\ \\text{m/s}^2$ ধরলে, $t = 2\\ \\text{s}$ সময়ে বেগ হয় $v = 2 \\times \\frac{2}{3} = \\frac{4}{3}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 3: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{3}{4}\\ \\text{m/s}^2$ ধরলে, $t = 3\\ \\text{s}$ সময়ে বেগ হয় $v = 3 \\times \\frac{3}{4} = \\frac{9}{4}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 4: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{4}{5}\\ \\text{m/s}^2$ ধরলে, $t = 4\\ \\text{s}$ সময়ে বেগ হয় $v = 4 \\times \\frac{4}{5} = \\frac{16}{5}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 5: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{5}{6}\\ \\text{m/s}^2$ ধরলে, $t = 5\\ \\text{s}$ সময়ে বেগ হয় $v = 5 \\times \\frac{5}{6} = \\frac{25}{6}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 6: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{6}{7}\\ \\text{m/s}^2$ ধরলে, $t = 6\\ \\text{s}$ সময়ে বেগ হয় $v = 6 \\times \\frac{6}{7} = \\frac{36}{7}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 7: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{7}{8}\\ \\text{m/s}^2$ ধরলে, $t = 7\\ \\text{s}$ সময়ে বেগ হয় $v = 7 \\times \\frac{7}{8} = \\frac{49}{8}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 8: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{8}{9}\\ \\text{m/s}^2$ ধরলে, $t = 8\\ \\text{s}$ সময়ে বেগ হয় $v = 8 \\times \\frac{8}{9} = \\frac{64}{9}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 9: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{9}{10}\\ \\text{m/s}^2$ ধরলে, $t = 9\\ \\text{s}$ সময়ে বেগ হয় $v = 9 \\times \\frac{9}{10} = \\frac{81}{10}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 10: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{10}{11}\\ \\text{m/s}^2$ ধরলে, $t = 10\\ \\text{s}$ সময়ে বেগ হয় $v = 10 \\times \\frac{10}{11} = \\frac{100}{11}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 11: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{11}{12}\\ \\text{m/s}^2$ ধরলে, $t = 11\\ \\text{s}$ সময়ে বেগ হয় $v = 11 \\times \\frac{11}{12} = \\frac{121}{12}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 12: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{12}{13}\\ \\text{m/s}^2$ ধরলে, $t = 12\\ \\text{s}$ সময়ে বেগ হয় $v = 12 \\times \\frac{12}{13} = \\frac{144}{13}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 13: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{13}{14}\\ \\text{m/s}^2$ ধরলে, $t = 13\\ \\text{s}$ সময়ে বেগ হয় $v = 13 \\times \\frac{13}{14} = \\frac{169}{14}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 14: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{14}{15}\\ \\text{m/s}^2$ ধরলে, $t = 14\\ \\text{s}$ সময়ে বেগ হয় $v = 14 \\times \\frac{14}{15} = \\frac{196}{15}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 15: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{15}{16}\\ \\text{m/s}^2$ ধরলে, $t = 15\\ \\text{s}$ সময়ে বেগ হয় $v = 15 \\times \\frac{15}{16} = \\frac{225}{16}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 16: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{16}{17}\\ \\text{m/s}^2$ ধরলে, $t = 16\\ \\text{s}$ সময়ে বেগ হয় $v = 16 \\times \\frac{16}{17} = \\frac{256}{17}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 17: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{17}{18}\\ \\text{m/s}^2$ ধরলে, $t = 17\\ \\text{s}$ সময়ে বেগ হয় $v = 17 \\times \\frac{17}{18} = \\frac{289}{18}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 18: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{18}{19}\\ \\text{m/s}^2$ ধরলে, $t = 18\\ \\text{s}$ সময়ে বেগ হয় $v = 18 \\times \\frac{18}{19} = \\frac{324}{19}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।",
+   "solutionImageIds": [],
+   "usedInBoards": [],
+   "stimulusId": "pdft-stim-3"
+  },
+  {
+   "id": "pdft-q-8",
+   "topicId": "pdft-top-1",
+   "type": "ঘ",
+   "marks": 4,
+   "rating": 3,
+   "order": 8,
+   "questionText": "অনেক লম্বা সমাধান: পাতার শেষে কিছু কাটছে কি না?",
+   "solutionText": "ধাপ 1: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{1}{2}\\ \\text{m/s}^2$ ধরলে, $t = 1\\ \\text{s}$ সময়ে বেগ হয় $v = 1 \\times \\frac{1}{2} = \\frac{1}{2}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 2: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{2}{3}\\ \\text{m/s}^2$ ধরলে, $t = 2\\ \\text{s}$ সময়ে বেগ হয় $v = 2 \\times \\frac{2}{3} = \\frac{4}{3}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 3: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{3}{4}\\ \\text{m/s}^2$ ধরলে, $t = 3\\ \\text{s}$ সময়ে বেগ হয় $v = 3 \\times \\frac{3}{4} = \\frac{9}{4}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 4: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{4}{5}\\ \\text{m/s}^2$ ধরলে, $t = 4\\ \\text{s}$ সময়ে বেগ হয় $v = 4 \\times \\frac{4}{5} = \\frac{16}{5}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 5: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{5}{6}\\ \\text{m/s}^2$ ধরলে, $t = 5\\ \\text{s}$ সময়ে বেগ হয় $v = 5 \\times \\frac{5}{6} = \\frac{25}{6}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 6: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{6}{7}\\ \\text{m/s}^2$ ধরলে, $t = 6\\ \\text{s}$ সময়ে বেগ হয় $v = 6 \\times \\frac{6}{7} = \\frac{36}{7}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 7: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{7}{8}\\ \\text{m/s}^2$ ধরলে, $t = 7\\ \\text{s}$ সময়ে বেগ হয় $v = 7 \\times \\frac{7}{8} = \\frac{49}{8}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 8: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{8}{9}\\ \\text{m/s}^2$ ধরলে, $t = 8\\ \\text{s}$ সময়ে বেগ হয় $v = 8 \\times \\frac{8}{9} = \\frac{64}{9}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 9: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{9}{10}\\ \\text{m/s}^2$ ধরলে, $t = 9\\ \\text{s}$ সময়ে বেগ হয় $v = 9 \\times \\frac{9}{10} = \\frac{81}{10}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 10: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{10}{11}\\ \\text{m/s}^2$ ধরলে, $t = 10\\ \\text{s}$ সময়ে বেগ হয় $v = 10 \\times \\frac{10}{11} = \\frac{100}{11}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 11: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{11}{12}\\ \\text{m/s}^2$ ধরলে, $t = 11\\ \\text{s}$ সময়ে বেগ হয় $v = 11 \\times \\frac{11}{12} = \\frac{121}{12}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 12: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{12}{13}\\ \\text{m/s}^2$ ধরলে, $t = 12\\ \\text{s}$ সময়ে বেগ হয় $v = 12 \\times \\frac{12}{13} = \\frac{144}{13}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 13: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{13}{14}\\ \\text{m/s}^2$ ধরলে, $t = 13\\ \\text{s}$ সময়ে বেগ হয় $v = 13 \\times \\frac{13}{14} = \\frac{169}{14}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 14: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{14}{15}\\ \\text{m/s}^2$ ধরলে, $t = 14\\ \\text{s}$ সময়ে বেগ হয় $v = 14 \\times \\frac{14}{15} = \\frac{196}{15}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 15: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{15}{16}\\ \\text{m/s}^2$ ধরলে, $t = 15\\ \\text{s}$ সময়ে বেগ হয় $v = 15 \\times \\frac{15}{16} = \\frac{225}{16}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 16: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{16}{17}\\ \\text{m/s}^2$ ধরলে, $t = 16\\ \\text{s}$ সময়ে বেগ হয় $v = 16 \\times \\frac{16}{17} = \\frac{256}{17}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 17: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{17}{18}\\ \\text{m/s}^2$ ধরলে, $t = 17\\ \\text{s}$ সময়ে বেগ হয় $v = 17 \\times \\frac{17}{18} = \\frac{289}{18}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।\nধাপ 18: আমরা জানি, $F = ma$ এবং $v = u + at$। এখানে $a = \\frac{18}{19}\\ \\text{m/s}^2$ ধরলে, $t = 18\\ \\text{s}$ সময়ে বেগ হয় $v = 18 \\times \\frac{18}{19} = \\frac{324}{19}$। Therefore the velocity increases with time আর দূরত্ব $s = \\frac{1}{2}at^2$ সূত্র থেকে পাওয়া যায়।",
+   "solutionImageIds": [],
+   "usedInBoards": [],
+   "stimulusId": "pdft-stim-3",
+   "answerText": "দেখো: লম্বা সমাধান"
+  },
+  {
+   "id": "pdft-q-9",
+   "topicId": "pdft-top-1",
+   "type": "খ",
+   "marks": 2,
+   "rating": 3,
+   "order": 9,
+   "questionText": "উদ্দীপক ছাড়া প্রশ্ন; সমাধান ও উত্তর দুটোই নেই (উত্তরমালা PDF-এ \"দেওয়া নেই\" লেখা আসবে)।",
+   "solutionText": "",
+   "solutionImageIds": [],
+   "usedInBoards": []
+  },
+  {
+   "id": "pdft-q-10",
+   "topicId": "pdft-top-1",
+   "type": "গ",
+   "marks": 3,
+   "rating": 3,
+   "order": 10,
+   "questionText": "শুধু উত্তর আছে, সমাধান নেই: $\\sqrt{\\frac{a^2 + b^2}{2}}$ এর মান কত যখন $a = 3, b = 4$?",
+   "solutionText": "",
+   "solutionImageIds": [],
+   "usedInBoards": [],
+   "answerText": "$\\sqrt{\\frac{25}{2}}$"
+  },
+  {
+   "id": "pdft-q-11",
+   "topicId": "pdft-top-1",
+   "type": "ঘ",
+   "marks": 4,
+   "rating": 3,
+   "order": 11,
+   "questionText": "শুধু সমাধান আছে, সংক্ষিপ্ত উত্তর নেই। বাংলা-ইংরেজি মিশ্র: Light-এর বেগ $c = 3 \\times 10^8\\ \\text{m/s}$, তাই কোনো মাধ্যমে প্রতিসরাঙ্ক $n = \\frac{c}{v}$।",
+   "solutionText": "প্রতিসরাঙ্ক $n = \\frac{c}{v}$; Glass-এ $v = 2 \\times 10^8$ হলে $n = 1.5$।",
+   "solutionImageIds": [],
+   "usedInBoards": []
+  }
+ ],
+ "images": [
+  {
+   "id": "pdft-img-wide",
+   "fileName": "pdft-wide.png",
+   "data": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAADwCAIAAABT1I0hAAAPqUlEQVR42u3dW2xUhYPH8TNtgYqQkgBWNmZZyJrwTytgQrSt9PZgIuhqeRCTIiA03ohRwQY0XtYHDRgiybImiJuS0qqpcvEFMSUaWy9c6ss/SpcNKGqQIHGNlDYqLfTsw1lnu52h98uUfj75P9RhemZaaL//35npNNaQn1N8+HgAAONSrCE/J3pLDgEYVxoLcoMgiIVhGP8PABg/ogWY5hMBwHgmhAAIIQCMVxmJFyV91kz8QUTPqQEgxfXQrMTnxGT08aDRsRoLcqNDyCEAYyuB/ViEvebQQARgrPcvboCPERYfPt5tI445H374YUdHxxi6wx0dHR999JF/7gDdEhg/VTmwbdZLCB966KE9e/ZEby9YsGD9+vXR208//fTevXuLDx+/7z9/Kj58vLEgNzM9fWHWlNLS0jvuuKO6ujq62uTJk0v+sm3btujCzs7OJ598Mj8/v6io6PTp00EQtLS0lJWVLV68uKysrKWlJekliXbt2lVYWLhw4cJDhw51vfzgwYPXXXddzwc5f/78u+++O2HChG7H3LJlSxAEzc3NO3bsGNhfybRp0wbwXtHt9mzChAlvv/32+fPn/bsHiPrXWJAb9W8wpyd7CWFBQcFXX30VBEFra2tGRsaxY8eiy48dO1ZYWNh1IGZOnfpvOf/08qVfXrryW21tbZTPiRMnNvxlw4YN0ZXffPPNqVOnHjlyZP369ZWVlUEQvPrqq0VFRV988UVhYeHmzZuTXtLNL7/8snv37sbGxrq6uqeeeip+eWtr6yuvvBIVroeDVFVV3X333VcLUk5OzuOPPz6Sf6N9CWEQBEuXLt21a5cvAEACBzMBuwvDMAzDhvyc+P/CLr755pvS0tIwDA8dOvTCCy8sWLDgzz//bG9vnz9/fnSFrKysbm+EYfjW/Lm5Uyc35Od0vTCuoKDg1KlTYRheunTptddeC8MwJyfn7NmzYRj+9NNPubm5SS9ZtmzZBx98EIbhww8/XFNTc+LEiffffz8Mw7a2tpkzZ8YPvm7duvfeey+63cSDxBUWFp4+fToMw+3bty9cuPDWW2+tr69/6aWX0tPT77zzzm4f15o1a+bOnbtjx44VK1bMmTNn27ZtiR9y4uch8U+73lbXOxO/3XPnzi1ZsqSwsHDJkiXnzp2L3rGysnLx4sXRHf7222+LiopCgPEnaaQGc5z4oXoJYWdn5+zZszs7O19++eX6+vq1a9ceOXKkqampoqKih+/77e3t2dnZDfk516enJ97pGTNmvP7668XFxWVlZd9//310yZUrV8IwvHLlSlS1xEvOnDmzcOHCpqamu+66q+vRqqur165dG739+eefl5WVxe9M4kHisrOzL1++HIbhzJkzL168eOLEiZUrVyb9cCZNmnT06NEff/wxFosdO3bshx9+mDVr1sBC2O22uoquUF5eXlNTE4ZhTU3NihUrwjDMzMysq6sLw7C2trasrKyjo+PGG2/09QBI4BCGsJdnjcZisXnz5p08ebKpqWnDhg1nzpw5evRoRkZGUVFRD+91+fLlCRMmFB8+3jl58r9OnHEha0oQBI/84w3rvjkdBEF7e/vs2bMbGhr27dtXUVHxySef9GW53nTTTStXrrzvvvu+/PLL+IXffffd1q1bP/300yAILl26VFlZuX///r4craOjIz09PTrZuGrVqnXr1tXU1CQ/d5yWtmjRovT09IkTJy5atCgtLe33339PvFpnZ2cPNxf9aa+31dDQEJ35XL58+bPPPht9/pctWxYEwf33319ZWZmRkdHe3u7ECDBOToHGH30b1hvq/VmjBQUFTU1Nf/zxx9SpUwsKCo4ePdrtAcJETU1Nt9xyS/wxwr+3tP29pS1n6uToxG52dnZZWVkQBGVlZV9//XUQBNnZ2T///HMQBOfOncvOzk56SRAEbW1tGRkZbW1t8f984IEHqqqqZs6cGQTBvn37Wltby8vLS0pK2traVq1alfQgkenTp7e2tgZBUF1dvX79+h07dqxZsybpxzJx4sQomZmZmWlpaUnjd+HChcQ+Jf5pr7cVvQB6twxHtx4EwaRJky5evDh9+nRfHoBHAUc6hLt3787NzQ2CYN68eadOnTp79uycOXOudv3ffvtt06ZNGzdu7HZ5/Ik9f7v43/8+/58bC3I/++yzBQsWRFOprq4uCIK6urqlS5cmveTkyZMff/zxgQMHnnjiiWjMrl69+plnnrn99tuj45eXlzc3N0dPzJkyZUpNTU3iQeLy8vKOHz/e0tJSXFycn59fW1t78ODBqF49b7uusrKympubgyB45513YrFYz3/a7bZOnjzZrZqdnZ2lpaV79+4NgmDv3r0lJSXRto7u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"
+  },
+  {
+   "id": "pdft-img-small",
+   "fileName": "pdft-small.png",
+   "data": "data:image/png;base64,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"
+  },
+  {
+   "id": "pdft-img-tall",
+   "fileName": "pdft-tall.png",
+   "data": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAaQAAAKACAIAAABc+5vfAAAZEklEQVR42u3dW4hVZf8H8DWrMamMAk0LSiGIAiGrixrJw+RF1NjBpDzlATOiQCzRi8I3QlM0vDPKhBTPeGGZpaYSpINR0E1EQyAU9QqmhJA5BTnk/C/W/z/M3z2zZ8/s09rP8/lczTvv7DV7r/U83/377r2dmrq7u8eta/t11ZEEIFDj1rU1jV37ePY/5B0QatIlSdKUTXZOBxC21CkAYgk7BRYI26+rjpjsgPCTLkmS5v7+D4DGVfhWRFrKDwE0OjUWiDjswh7uDh8+3NXVVcvf2NXV9fnnn1ttUK8OW2yyy376wIEDra2tra2tzc3N2Rf79+9PkuTDDz8cPnz4+fPnsx+++eabr7p54Xd6O3LkyHXXXZd9vW3btsmTJ993333Hjx9PkuTixYszZsyYNGnSjBkzLl68WHjbK1euLFu2bOLEiVOmTPn555/7PGyRg5w/f37v3r3Dhg0rfrKK3/8NGzYkSdLR0bF58+ZSTv2wYcN2797dc7qAGidd32HX+w2KZ5555sSJEydOnBgxYkT2xbPPPpskyWeffbZs2bIjR4byVsalS5fWrl2bxc3vv/++Y8eOkydP7tu379VXX02SZN26dVOmTDl16tTkyZPXr19fePMPPvjgxhtv/Prrr5cvX75y5co+D1vkIFu3bp0+fXqZZzMLu/Hjx7/yyisl3qStrW3btm0WIuSrxhYPyL///vuvv/568cUXDx06NIRf+frrr7/22mtpmiZJcuHChaVLl6Zpescdd1y4cCGbzubMmZMkyZw5cw4fPpwkycyZMz/55JMkSV566aVdu3bt2bNn8eLFSZJMnz69paWlz8MWHqTH0aNHJ06cmCTJu+++e//99z/wwAPHjx8/d+5cW1vblClT2trazp0719+Il3391ltvdXZ2Pvrooz3fKbz5zTffvGrVqqlTp06YMOHAgQNJkrS0tBw9etSCg7qMdf2GXc9w1+ctjx079thjj919992//PLL5cuXB3VXTp06dfbs2VmzZmX/85577nnuueeSJNm/f/+TTz6Z1cxbb701SZLbbrst632bNm1avXr1t99+e+bMmQULFpw+ffrTTz9tbW2dPXt2z3GuOmzhQXqcPn167NixSZK8/fbb7e3te/fu3b1794oVK+bOndve3j537tze02KfVq9ePWLEiKx0Zwpvfvny5VGjRp08efLAgQPZxDpu3LjTp09bi1CDpOvz83P9TnZFPm138ODB3bt3t7S0nD179uTJk6XflX/++WflypXvvffeVd//6aefNm7cmHXDQrfffvuCBQuefvrp999/P8uRcePGnThxYv78+UuWLCly2D51dXVdc801Wa9cuHDhmTNndu7ceeLEiSwoZ82a9eWXX/Z32ytXrvT5/cKbX7lyJRs/77zzzuxFw+bm5sE+MQBD0F92DfzRk6uGu3///ff06dPffffdN998s3379kE12Y8++ujSpUvz5s1rbW3t7OxcuHBhkiSdnZ2zZ8/eunXrLbfckiTJmDFjsib422+/jRkzJrthZ2dnc3NzZ2dn9gMzZsxIkmTGjBnff/99n4ft8yCZkSNHXrp0KUmS7du3L1++fPPmzYsXL+7u7h4w4P7444/+0qrw5tdee21P/21qakqS5M8//xw5cqSFCLUvsAOHXZ8B+dVXX02YMCH7evLkyb3b3IDmzZvX0dHR847Hzp07u7u7Fy1atGLFioceeij7mba2tn379iVJsm/fvra2tqx4fvHFF4cOHVq6dGl3d/e0adPa29uTJGlvb8/uSeFhCw/So6Wl5Ycffrh48eLUqVMnTpy4a9euI0eOPPLII9m7zPv3729tbe398zfddFNHR0eSJHv27MliK0vA3lNe4c2zlw576+jo6P0KI1DLsS7p85+LXXXLcevaekfmwYMHp02bln19/fXXjx49+scff7x8+fKkSZOybz788MPvvPNO4Xf6PP727duPHTt24cKFLVu2jBgx4tChQ6tWrVq0aNHHH388atSoHTt2JEny8ssvb9iw4d577x0/fvzWrVvXrFmzZMmSNWvWNDc3b9mypc/DFh6kd+AeO3Zs4sSJTzzxREtLy5UrV958882ZM2cuWbJky5YtN9xwQ/ae6V133bV+/fo33nhj06ZNs2bNGj169IMPPjh8+PCelH/qqad6ptqNGzdedfNCR48eff75561FqN5YV/yfujZlFax3nF11g+Kv+TWc7u7u+fPnb9++fcCP2lVQV1fXCy+8sGvXLosSqldge2dUYaYN/JpdYH8XoKmpac+ePbVMuiRJhg0bJumgXgU2M4h/G+sPBAC5HesGVFLYFf/YHUB+Cmy5k50/cgc0aIEddI01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"
+  },
+  {
+   "id": "pdft-img-sol",
+   "fileName": "pdft-sol.png",
+   "data": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAfQAAADcCAIAAAAJPMQyAAAP2UlEQVR42u3dW2xUdR7A8f8ws0IbCIRIsFXJRqIQoaDFYtpOcVqlMY1k4AVfIBSztcSIEQ2XjVDSYkBA0RgJUFcKPBHT2MZ0jbZq8YJZeSAbEixp9akYwEugpqKZFv/7cNyTcc6Z+8y5/P/fT3iYnnZOS+ecb3/9z6WBXeGjHV+0CgCAQgK7wkeNSyQeABTQVndMCBGQUppvAAAU0PFF6xS+CwCgWNmFEMQdABRE3AFAQaFkI70pfjmeO10BwEXJgmy93zSUdl/m9dvqjhnXJ/EA4FbWMyxwKPNdG3sk8QDg5axnHXcSDwDez7oh/R2q58+fb2xsrK+vX7ly5ejoqBCiq6vr3zc7ByZP/Ou/e6MLmo3Qz5o1K+GK8VuMyz09PZFIJBKJhEIh40J3d7f5YV1dXcuWLauurl62bNnJkyeNjSUlJfX19bb7FEKUlpZG/u/QoUPxH9DZ2bl8+fKampqmpqbLly8n+5LMnTzyyCOVlZWfffaZ7W6FEAMDA/fcc4+xcefOnUKIsbGx1atXh8Ph1atXj42N2W6xOn78eF1d3QMPPNDf32+7JZOdAFC76fEDdI4ztJRSSrkrfNT8J/9q6dKlo6OjUsru7u61a9d++OGHtbW1169fl1Jev369trZ2YGBgV/jo1FBJwnVnzpxpe9n2Xba7Nd4bDocHBwfT7id+S39//+OPPx6LxaSUr7zySmNjY4ovybxw4cKFiooK291KKU+dOnXkyJH4LVu3bn3ttdeklK+++ur27dtttyT44YcfVqxYcevWraGhoYULF9puSbsTAKpK1uHMr2heN33cy8rKRkZGpJSxWOzzzz9/9NFHv/rqK/O9Z8+efeyxx4wgJuwhq7in2O0nn3yyYsWKrOLe2Nh47tw5Y8svv/wSjUYnJyfTxv2PP/6YPXt2srjv37+/t7c3fsuiRYu+//57KeXly5cXL15su2XNmjU9PT1SypaWllOnTg0NDb377rtSyvHx8Tlz5kgprVusOwFA1rONe/o1971799bV1TU1Na1bt66+vn5oaOjBBx8031tZWfnNN9/YLsf//mss818gUuy2oaGhvb19cHAwfn0mtYsXLy5ZssS4PGPGjN7e3kyu1d/f39DQkOy9V65c+fbbbw8ePDh79uzXX399/vz5165du+OOO4QQZWVl165dE0JYt7z55purVq268847R0dH169fL4RYuHChEKK7u3vVqlXGmwlbrDsBoPyqesHvwkwf9+bm5mg02tvb+/zzz69Zs8a6qhMIBKz3uAohDvxtS853uibstr29va2tzRr3WCwWiUSMy8eOHVuwYIFxeXJy0rhw6NCh999//+rVq5cuXUr2uYydTExMXLp06eLFiwm73bdvX3V1tRAiEAgsXbq0s7Pzvffea2lp+fTTTzP5j9x1113r16+PRqNnz541N3733XcHDx4cHBxMsQUAd5YWMe4//vjjyMhITU3Nxo0bn3jiiYqKioqKivPnz9fU1Jh3ty5atMj2uqUzpu0+84/2yL92ho/Efp1M/Ynuv//+FLuNRCLBYNDa09tuu+3MmTPWvd17770XLlyoqqp64YUXnnrqqbKysj/vPp4y5datW8FgcHJyMhQKJezkwIEDJ06c2LFjh+1un3vuubvvvlsIEY1GW1tbhRBz5869evVqeXn5lStX5s6da7tFCDE+Ph4KhcbHx803n3zyyXfeeWfOnDm2W2x3AoCsZyXNo2UCgcDatWuNB8n8/PPP8+bN27p167Zt24xHcdy4cWP79u3btm2zvW5VVdXAwEDHF63V/5xXPuPv5nKNrbS7bW9v3717d4b/q6effrqtrW1iYkIIcfjw4WAwGP8lCSE++uijqqqqhGutXLny3Llzyfa5Y8eOvr4+IcTXX39dUVEhhGhqajp9+rQQ4vTp001NTbZbhoeHP/74476+vmeffdZYCNuwYcOLL7748MMPm7+jJGyx7gSAMlnP9zEwGbN5yd+ET/nBBx90dHSUlJQEg8E33nhj8eLFx48ff+utt6ZOnRqLxTZv3tzc3CyEKC0traysNK5SW1u7f//+4eHhlpYWY8vbb7993333mZ/lwH+2/D5x07g8a9asGzduCCFsd2u+Vwhh3On622+/mV9b/Hvjt0gpX3rppZ6envLy8nXr1m3ZssX4MOuXFL+TmzdvLlmyZHh4ePr06cuXLzc+rLq6et++fUKIkZGRjRs3hkKhadOmHT58eP78+WNjYxs2bPjpp59uv/32kydPzpw507qloaHh5ZdfrqmpeeaZZyorK4PB4ObNmx966CEhxPTp0/v6+rq6uhK2WHfCKQGoMaoXb1q3for0cffvbyUAoMMKjG3DQ678h3maKwCyXlQhF//zJB4AWVcw7raJp/IAfN10j0Qs5JHvCy8sDIBRXcG4JxvkSTwAsq5C3G0TT+UBeLDpXk5TyMvfQdZqADCqKxj3ZIM8iQdA1lWIO4kHQNaVjbtt4qk8gKI23aeRCfn0+85yPABGdQXjnmyQJ/EANM+6InEn8QDIurJxt008lQeQYdPVy0VIvVuL5XgAGo7q6sc92SBP4gEIbf6eREj5G5K1GgBC6RUYTeOecFsyyAOM6joI6XYzs1YDkHXiTuIBkHXi7vPEU3lAmaZzOoc4GliOBxjVibtGgzyHCEDWiTuJB0DWibvfEs/RA3iw6ZyYxD2vxDPIA4zqxF2LQZ4DCyDrxF3ZxHOcAY41ndONuDuUeAZ5gFGduGsxyHMIAmSduJN4AGSduPst8RydQA5N58Qh7p5OPIM8wKhO3LUY5DlwAbJO3Ek8QNZB3P2WeI5paN50TgHirmDiGeTBqA7irsUgz+EOsg7irmziOfqhZNM5sIm71olnkAejOoi7FoM8JwbIOog7iQfIOoi73xLPOQOPN51DlLgj68QzyINRHcRdi0Ge0wlkHcSdxANknbjDb4nnTINjTedgI+5wKPEM8mBUB3HXYpDnJARZB3FXNvGck8iz6RxCxB2eSzyDPBjVQdy1GOQ5XUHWiTtIPMg6iDv8lnjOZLCwTtyhWuIZ5Mk6TSfu0GKQ5yQn6yDuIPEg6yDu8FviOf+VbDo3K3GH1olnkGdUB3GHFoM8aSDrIO5QNvGUwkdN58YCcUdGiVdjkA8EAqk/QErJqA7iDq0Heb9EJG3Qk32wX0JP1kHcoVfis8p6sqt7OfFkHcQdxU28p/qSoulpS229rrnFO5VnYR3EHU4k3lODvLXOWUU5/oMTdhUIBFzvO6M6iDvcHORdSU+eWU8W+vjdurhQQ9ZB3KFj4hPKXsD+2ibeyb6TdRB3eDHxDlTJgYe4JCTegb6zsA7iDu8m3oFB3skHL0opHeg7ozqIO/w3yBc2WM4/LL2ofSfrIO7wd+IL0i+3HqQYv0RTkL6zAgPiDhUSX5BB3vWHn5sjfD59Z1QHcYfKg3y2acvzqacFl0PfyTqIO0h80rK7+6yi3NbfyTqIO3RMfObV88LrAcT3PcOmk3UQd2iX+LSDvAdf6SXt4jujOog7kGqtxmtL7bY/e+L7TtZB3IFMEy+89zK81sUZsg7iDmSaeF8g6yDuQBaJN0fjXeGjHvwid4WP7vlykxBiz5eb/Pu3+kDcAfenY4+Mxj76rQLEHfAW64NkXP8jUNaHNnaI1gK+JgFA3KEjF/8IFKvqIO6AQ5V3JvFkHcQdUCrxZB3EHSiwzJ+VWvAXFs72NQMK8lKRAHEHkiY+z0GeUR3EHfB05bNNPFkHcQeUSjxZB3EH/J148dfVm4QPA4g74L/EC8vr1dB0KG8K3wIAYHIH/MR2Wnf9lQwA4g7km3Vrvl18JQOAuAOFz7pt5Uk8iDugSNZJPIg74LRsn9NfkIfB5PZKBh78+90AcYemo3raxDPIg7gDimQ99SBP4kHcAX9nncSDuAPFYl12d/H5pcmW41lwB3EH/DGqp028sLySAUDcgVyG9z1fbvLUaMzYDuIO5DWq84sFQNyhVNaNUO4JbDLe9NofsTPHdsGdriDuQLbzr7ky41nmjxwSD+IOpM+6te/eGd5TrLaTeBB30PSsH9rohb5n8ptEbq9kABB3qDyqpxjeXe97fNnTfhm8kgGIO8h6Fn33gqx+wLBWA+IOsp6+724N73k+sJ3Eg7hDwaYXJGfxfRcOPnsoq9WYrBJP5UHcod2onrrvjo3wBSy79eccgzyIO3TPuit9L0bZUwzyJB7EHd5tugORSuh7McqbcP9tUX+EsFYD4g4dR/W0fS9s4q0Py3FmcZ+1GhB3aJ31hOYWMPFuZT31IE/iQdyhS9ZTjPAiy4XyFA+fd/fZsCQexB0uNN1TuTErbC11Dk998uBrx7McD+IO9Uf1tF3O+bmsnv2zGyzHg7hD06wna3Ta0Pvr7yixVgPiDh2z7vd2k3gQdzjRdMLho8RzY4G4Q+VRXc/EM8iDuIOsazHIczuCuNN0QdZVTTw3K3EHozpUSzyDPHEHWYcWgzy3OHEHWQeJB3GHT5rOiU3iWY4n7mBUh7KJZ5An7iDr0GKQ5zgh7iDrIPEg7nC86ZyiyDPxHELEHYzqUC3xDPLEHWQdWgzyHF3EHU43nRMPjiWeg424g1EdqiWeQZ64g6xDi0Ge45C4g6yDxIO4w9J0TiF4PPEcosQdjOpQLfEM8sQdZB1aDPIcvcQdZB0kHsRd6aZzMkDJxHNgE3dGdUC1xDPIE3eyDmgxyHPME3eVm84hDs0TzylA3BnVAdUSzyBP3Mk6oMUgz9lB3Mk6QOJB3F1tOgcrkEPiOXGIO6M6oFriGeSJO1kHtBjkOaeIO1kHSDyIe4GazmEHOJZ4TjfizqgOqJZ4BnniTtYBLQZ5zkTiXpimczABHkw8JyZxZ1QHVEs8gzxxJ+uAFoM85yxxJ+sAiSfu2jSdwwJQJvGczlrHnYMAUDLxDPL6xp2sA1oN8hqe6drFnawDJJ64K9h0sg5onnhNIqB+3BnVAQj9luNVjjtZB5B2kFe1DwrGnRUYANkmXr1cKBV3RnUAOSReyUFekbiTdQAFHOQVKInv407WAZB4deLOwjoAZxLv08j4L+6M6gAcS7x/B3k/xZ2sA3B9kPdLf/wRd7IOgMSrE3cW1gF4OfFeTpNH486oDsDjiff4IO+5uJN1AD4d5D1VLa/EnRUYAGok3iMRcz/ujOoAlEm8dwZ5N+NO1gEoP8i71Td34k7WAZB4deLOwjoAnRPvZPocijujOgDNE+/wIF/0uJN1ALAd5ItaxSLGnawDgFuJL3zcWVgHgGwTX/BgFjLujOoAkEPiizHIFybuZB0ACjjI59/SvOLOCgwAFC/x+aQ1x7gzqgNAUROf5yCfddzJOgC4MshnVd2AlFL8dYEFAOD3HwlT+EYAgHqIOwAQdwCAH/y55m7i/lIA8BfbbtvcoUrWAcC/iTcy/j+GV240S55sygAAAABJRU5ErkJggg=="
+  }
+ ]
+}
