@@ -1,5 +1,6 @@
 import React from 'react';
 import type { MenuItem } from './KebabMenu';
+import { useBackClose } from '../utils/useBackClose';
 
 export interface ActionSheetProps {
   isOpen: boolean;
@@ -13,6 +14,7 @@ export interface ActionSheetProps {
  * Bottom sheet with a list of actions (used for category / paper options)
  */
 export const ActionSheet: React.FC<ActionSheetProps> = ({ isOpen, title, subtitle, items, onClose }) => {
+  useBackClose(isOpen, onClose);
   if (!isOpen) return null;
 
   return (

@@ -40,6 +40,13 @@ const MainLayout: React.FC = () => {
   // On the phone / tablet app the screen uses the full width. The 390px phone-shaped frame is
   // only for a desktop browser preview.
   const isNative = Capacitor.isNativePlatform();
+
+  // ক৪: অ্যাপে (native) পপআপ/মোডাল/ActionSheet-ও পুরো চওড়া নেয়; ৩৯০px ফ্রেম শুধু ডেস্কটপ ব্রাউজারে।
+  // নিয়মটা src/index.css-এ html[data-native] দিয়ে।
+  useEffect(() => {
+    if (isNative) document.documentElement.dataset.native = 'true';
+    else delete document.documentElement.dataset.native;
+  }, [isNative]);
   const outerClass = isNative
     ? 'h-dvh bg-[#F2F4F8] dark:bg-slate-900 transition-colors'
     : 'min-h-screen bg-[#E5E9F0] dark:bg-slate-950 flex justify-center items-start sm:py-6 transition-colors';

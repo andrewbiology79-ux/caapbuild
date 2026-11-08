@@ -35,3 +35,7 @@ Note: run `npm install` once locally and commit the new `package-lock.json` (the
 ## PDF test page
 
 `test-data/pdf-test-collection.json` + `test-data/PDF_TEST_CHECKLIST.md`: a sample subject (formulas, pictures, very long solution, missing answers) to import and render after every PDF code change. Not part of the app.
+
+## Image editor
+
+After picking pictures (stimulus, solution, replace) a small editor offers rotate, crop and scan mode (grey / black-and-white). "এডিট ছাড়া রাখো" keeps the picture as before. It can be switched off in Settings. Logic: `src/utils/imageEdit.ts`, dialog: `src/components/ImageEditQueue.tsx`.

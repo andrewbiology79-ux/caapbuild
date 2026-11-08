@@ -11,6 +11,7 @@ import {
   type FontSizeOption,
 } from '../utils/settings';
 import { toBn } from '../utils/toBn';
+import { isImageEditorEnabled, setImageEditorEnabled } from '../utils/imageEdit';
 import { useToast } from './Toast';
 import {
   AUTO_BACKUP_ROOT,
@@ -20,6 +21,7 @@ import {
   runAutoBackup,
   setAutoBackupEnabled,
 } from '../utils/autoBackup';
+import { useBackClose } from '../utils/useBackClose';
 
 export interface SettingsModalProps {
   isOpen: boolean;
@@ -35,6 +37,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   const [defaultPaperNote, setDefaultPaperNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [autoBackupOn, setAutoBackupOn] = useState(true);
+  const [imageEditorOn, setImageEditorOn] = useState(true);
   const [lastBackup, setLastBackup] = useState<string | null>(null);
   const [backingUp, setBackingUp] = useState(false);
   /** result of the last "এখনই ব্যাকআপ নিন" tap — shown right under the button so it is never missed */
@@ -49,18 +52,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
       setDefaultPaperTitle(s.defaultPaperTitle || '');
       setDefaultPaperNote(s.defaultPaperNote ?? '');
       setAutoBackupOn(isAutoBackupEnabled());
+      setImageEditorOn(isImageEditorEnabled());
       setLastBackup(getLastAutoBackupTime() || getLastAutoBackupDate());
       setBackupMsg(null);
     };
     load();
   }, [isOpen]);
 
+  useBackClose(isOpen, onClose);
   if (!isOpen) return null;
 
   const toggleAutoBackup = () => {
     const next = !autoBackupOn;
     setAutoBackupOn(next);
     setAutoBackupEnabled(next);
+  };
+
+  const toggleImageEditor = () => {
+    const next = !imageEditorOn;
+    setImageEditorOn(next);
+    setImageEditorEnabled(next);
   };
 
   const handleBackupNow = async () => {
@@ -250,7 +261,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
             </p>
           </div>
 
-          {/* 5. Daily automatic backup */}
+          {/* 5. Image editor (crop / rotate / scan) */}
+          <div className="space-y-2 pt-2 border-t border-[#F2F4F8] dark:border-slate-800">
+            <div className="flex items-center justify-between gap-3">
+              <label className="text-xs font-bold text-[#1B1F2A] dark:text-slate-200 flex items-center gap-1.5">
+                <FileText className="w-4 h-4 text-[#3B4FD8]" />
+                <span>ছবি যোগের সময় এডিটর</span>
+              </label>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={imageEditorOn}
+                onClick={toggleImageEditor}
+                className={`relative w-11 h-6 min-h-0 rounded-full transition-colors ${
+                  imageEditorOn ? 'bg-[#3B4FD8]' : 'bg-[#CBD5E1] dark:bg-slate-600'
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                    imageEditorOn ? 'translate-x-5' : ''
+                  }`}
+                />
+              </button>
+            </div>
+            <p className="text-[0.6875rem] leading-relaxed text-[#64748B] dark:text-slate-400">
+              চালু থাকলে ছবি বাছার পর ঘোরানো, ক্রপ ও স্ক্যান মোড (গ্রে / সাদা-কালো) দেখানো হয়। প্রতিবার "এডিট ছাড়া রাখো" চাপলেই ছবি আগের মতো যোগ হয়। বন্ধ করলে ছবি সরাসরি যোগ হবে।
+            </p>
+          </div>
+
+          {/* 6. Daily automatic backup */}
           <div className="space-y-2 pt-2 border-t border-[#F2F4F8] dark:border-slate-800">
             <div className="flex items-center justify-between gap-3">
               <label className="text-xs font-bold text-[#1B1F2A] dark:text-slate-200 flex items-center gap-1.5">

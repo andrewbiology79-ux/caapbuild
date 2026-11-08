@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { MoreVertical } from 'lucide-react';
 import type { MenuItem } from './KebabMenu';
+import { useBackClose } from '../utils/useBackClose';
 
 export interface PopupMenuProps {
   items: MenuItem[];
@@ -28,6 +29,7 @@ export const PopupMenu: React.FC<PopupMenuProps> = ({
   const menuRef = useRef<HTMLDivElement>(null);
 
   const close = () => setIsOpen(false);
+  useBackClose(isOpen, close);
 
   // position the popup under the button (flip above when there is no room), keep it on screen
   useLayoutEffect(() => {

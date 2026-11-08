@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { AlertCircle } from 'lucide-react';
+import { useBackClose } from '../utils/useBackClose';
 
 export interface ConfirmDialogProps {
   isOpen: boolean;
@@ -36,6 +37,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     };
   }, [isOpen, onCancel]);
 
+  useBackClose(isOpen, onCancel);
   if (!isOpen) return null;
 
   return (

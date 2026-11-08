@@ -9,6 +9,7 @@ import {
   type QuestionBlockInput,
 } from '../db/api';
 import type { CqScope } from '../db/db';
+import { useBackClose } from '../utils/useBackClose';
 
 export interface PasteQuestionsModalProps {
   /** which collection (database) to work on — default Type CQ */
@@ -336,6 +337,7 @@ export const PasteQuestionsModal: React.FC<PasteQuestionsModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  useBackClose(isOpen, () => { if (!saving) onClose(); });
   if (!isOpen) return null;
 
   const handleClose = () => {

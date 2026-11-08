@@ -15,6 +15,8 @@ import {
 import { getAppSettings } from '../utils/settings';
 import { useToast } from './Toast';
 import { PromptDialog } from './PromptDialog';
+import { ConfirmDialog } from './ConfirmDialog';
+import { useBackClose } from '../utils/useBackClose';
 import { RichText } from './RichText';
 import { toBn } from '../utils/toBn';
 import { PopupMenu } from './PopupMenu';
@@ -98,11 +100,57 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
   const paperTotalMarks = Number(totalMarks) || 0;
   const marksMismatch = includedGroups.length > 0 && questionMarksSum !== paperTotalMarks;
 
+  // অসংরক্ষিত পরিবর্তনের সতর্কতা (গ৭): খোলার পর লোড শেষ হলে অবস্থার ছাপ রাখা হয়,
+  // বর্তমান ছাপ তার থেকে আলাদা হলে "পরিবর্তন আছে"
+  const [initVersion, setInitVersion] = useState(0);
+  const baselineRef = useRef<string | null>(null);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const snapshot = JSON.stringify({
+    title,
+    subjectLine,
+    selectedCategoryId,
+    duration,
+    totalMarks,
+    note,
+    groups: includedGroups.map((g) => `${g.id}:${g.questions.map((q) => q.id).join(',')}`),
+    edits: edits ?? null,
+  });
+  const snapshotRef = useRef(snapshot);
+  snapshotRef.current = snapshot;
+  useEffect(() => {
+    if (initVersion === 0) return;
+    baselineRef.current = snapshotRef.current;
+  }, [initVersion]);
+  const isDirty = baselineRef.current !== null && baselineRef.current !== snapshot;
+
+  const attemptClose = () => {
+    if (saving) return;
+    if (isDirty) {
+      setShowExitConfirm(true);
+    } else {
+      onClose();
+    }
+  };
+
+  // Android Back: ভেতরের পর্দা/ডায়ালগ আগে বন্ধ, তারপর পরিবর্তন থাকলে জিজ্ঞাসা, না থাকলে বন্ধ
+  useBackClose(isOpen, () => {
+    if (saving) return true;
+    if (showNewCatPrompt || editingGroupId || showExitConfirm) return true; // এগুলোর নিজস্ব হ্যান্ডলার আছে
+    if (showInfoPanel) {
+      setShowInfoPanel(false);
+      return true;
+    }
+    attemptClose();
+    return true;
+  });
+
   // Load Categories & Questions
   useEffect(() => {
     if (!isOpen) return;
 
     const init = async () => {
+      baselineRef.current = null;
+      setShowExitConfirm(false);
       setValidationError(null);
       setIsReordering(false);
       setShowInfoPanel(false);
@@ -210,6 +258,7 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
         setImageUrls({});
         setIncludedGroups([]);
       }
+      setInitVersion((v) => v + 1);
     };
 
     init();
@@ -422,7 +471,7 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
             <button
               type="button"
               aria-label="বন্ধ করুন"
-              onClick={onClose}
+              onClick={attemptClose}
               className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-white/10 active:bg-white/20 text-white transition-colors"
             >
               <X className="w-5 h-5" />
@@ -662,7 +711,7 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
         >
           <button
             type="button"
-            onClick={onClose}
+            onClick={attemptClose}
             className="min-h-[44px] px-4 py-2 rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-[#1B1F2A] dark:text-slate-200 hover:bg-[#F2F4F8]"
           >
             বাতিল
@@ -823,6 +872,21 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
             onClose={() => setEditingGroupId(null)}
           />
         )}
+
+        {/* Unsaved changes on exit */}
+        <ConfirmDialog
+          isOpen={showExitConfirm}
+          title="পরিবর্তন সংরক্ষিত হয়নি"
+          message="আপনার করা পরিবর্তনগুলো সংরক্ষিত হয়নি। বন্ধ করলে সেগুলো হারিয়ে যাবে।"
+          confirmText="হ্যাঁ, বের হব"
+          cancelText="না, থাকুন"
+          isDestructive={true}
+          onConfirm={() => {
+            setShowExitConfirm(false);
+            onClose();
+          }}
+          onCancel={() => setShowExitConfirm(false)}
+        />
 
         {/* Prompt dialog for new category creation */}
         <PromptDialog

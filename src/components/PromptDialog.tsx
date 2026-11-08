@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useBackClose } from '../utils/useBackClose';
 
 export interface PromptDialogProps {
   isOpen: boolean;
@@ -34,6 +35,7 @@ export const PromptDialog: React.FC<PromptDialogProps> = ({
     }
   }, [isOpen, initialValue]);
 
+  useBackClose(isOpen, onCancel);
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {

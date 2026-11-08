@@ -1,5 +1,6 @@
 import React from 'react';
 import { Upload, Download, X } from 'lucide-react';
+import { useBackClose } from '../utils/useBackClose';
 
 export interface TransferChoiceDialogProps {
   isOpen: boolean;
@@ -23,6 +24,7 @@ export const TransferChoiceDialog: React.FC<TransferChoiceDialogProps> = ({
   onExport,
   onClose,
 }) => {
+  useBackClose(isOpen, onClose);
   if (!isOpen) return null;
   return (
     <div

@@ -17,6 +17,7 @@ import {
 import { generateAndSharePdf, PDF_ANSWER_MODE_LABELS, type PdfAnswerMode } from '../utils/pdfGenerator';
 import { showPdfSavedDialog } from '../utils/storageAccess';
 import { applyEditsToGroups } from '../utils/paperEdits';
+import { useBackClose } from '../utils/useBackClose';
 
 export interface PaperViewModalProps {
   paperId: string | null;
@@ -168,6 +169,7 @@ export const PaperViewModal: React.FC<PaperViewModalProps> = ({
     if (!isOpen) setMenuOpen(false);
   }, [isOpen]);
 
+  useBackClose(isOpen, onClose);
   if (!isOpen || !paper) return null;
 
   // Export to PDF with dedicated hidden container and error dialogue

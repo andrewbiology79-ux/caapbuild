@@ -2,6 +2,7 @@ import React from 'react';
 import { FolderKanban, X } from 'lucide-react';
 import type { Category } from '../db/api';
 import { toBn } from '../utils/toBn';
+import { useBackClose } from '../utils/useBackClose';
 
 export interface CategoryPickerDialogProps {
   isOpen: boolean;
@@ -25,6 +26,7 @@ export const CategoryPickerDialog: React.FC<CategoryPickerDialogProps> = ({
   onPick,
   onCancel,
 }) => {
+  useBackClose(isOpen, onCancel);
   if (!isOpen) return null;
   const list = categories.filter((c) => c.id !== excludeId);
 

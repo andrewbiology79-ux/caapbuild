@@ -3,6 +3,7 @@ import { FileText, RefreshCw } from 'lucide-react';
 import { DEFAULT_PAPER_NOTE } from '../db/db';
 import { PDF_FONT_SCALES, getPdfFontScale, savePdfFontScale } from '../utils/settings';
 import { toBn } from '../utils/toBn';
+import { useBackClose } from '../utils/useBackClose';
 
 export interface FilterPdfValues {
   title: string;
@@ -50,6 +51,7 @@ export const FilterPdfDialog: React.FC<Props> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
+  useBackClose(isOpen, () => { if (!busy) onCancel(); });
   if (!isOpen) return null;
 
   const submit = () => {

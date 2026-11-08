@@ -1,6 +1,7 @@
 import React from 'react';
 import { Replace, GitMerge, X, AlertTriangle } from 'lucide-react';
 import { toBn } from '../utils/toBn';
+import { useBackClose } from '../utils/useBackClose';
 
 export interface RestoreModeDialogProps {
   isOpen: boolean;
@@ -24,6 +25,7 @@ export const RestoreModeDialog: React.FC<RestoreModeDialogProps> = ({
   onMerge,
   onCancel,
 }) => {
+  useBackClose(isOpen, onCancel);
   if (!isOpen) return null;
   return (
     <div

@@ -124,3 +124,16 @@ button,
 /* hides the (WebView) scrollbar on horizontal chip rows while keeping them scrollable */
 .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+/* ক৪: অ্যাপে (Capacitor native) পপআপ ও মোডাল পুরো চওড়া নেয়।
+   ডেস্কটপ ব্রাউজারে (data-native নেই) ৩৯০px ফোন-ফ্রেম আগের মতোই থাকে।
+   এটা Tailwind layer-এর বাইরে, তাই utility class-কে হারায়। */
+html[data-native='true'] .max-w-\[390px\] {
+  max-width: 100%;
+}
+html[data-native='true'] .sm\:h-\[844px\] {
+  height: 100%;
+}
+html[data-native='true'] .sm\:rounded-\[36px\] {
+  border-radius: 0;
+}

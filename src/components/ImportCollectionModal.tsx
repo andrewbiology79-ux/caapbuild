@@ -22,6 +22,7 @@ import { useToast } from './Toast';
 import { ConfirmDialog } from './ConfirmDialog';
 import { toBn } from '../utils/toBn';
 import type { CqScope } from '../db/db';
+import { useBackClose } from '../utils/useBackClose';
 
 export interface ImportCollectionModalProps {
   isOpen: boolean;
@@ -55,6 +56,7 @@ export const ImportCollectionModal: React.FC<ImportCollectionModalProps> = ({
   const [showReplaceConfirm, setShowReplaceConfirm] = useState(false);
   const [importing, setImporting] = useState(false);
 
+  useBackClose(isOpen, () => { if (!importing && !analyzing) onClose(); });
   if (!isOpen) return null;
 
   // Handle JSON file selection

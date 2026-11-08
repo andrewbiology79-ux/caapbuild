@@ -3,6 +3,7 @@ import { X, BarChart3 } from 'lucide-react';
 import { loadFilterDataset, rowBoards, type FilterRow } from '../utils/filterEngine';
 import { toBn } from '../utils/toBn';
 import type { CqScope } from '../db/db';
+import { useBackClose } from '../utils/useBackClose';
 
 export interface StatsModalProps {
   isOpen: boolean;
@@ -123,6 +124,7 @@ export const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose }) => {
     return { chapters: list, totals: t, boardTotals: boards };
   }, [rows, source]);
 
+  useBackClose(isOpen, onClose);
   if (!isOpen) return null;
 
   const maxChapter = Math.max(1, ...chapters.map((c) => c.total));

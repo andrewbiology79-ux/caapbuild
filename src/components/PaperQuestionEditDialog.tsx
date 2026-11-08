@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, Check, RotateCcw, Info } from 'lucide-react';
+import { useBackClose } from '../utils/useBackClose';
 import type { PaperEdits, PaperQuestionEdit, PaperStimulusEdit, Question, Stimulus } from '../db/db';
 import { RichText } from './RichText';
 import { stripSolutionMarkers } from '../utils/solutionParts';
@@ -44,6 +45,7 @@ export const PaperQuestionEditDialog: React.FC<PaperQuestionEditDialogProps> = (
   onResetGroup,
   onClose,
 }) => {
+  useBackClose(true, onClose);
   const stim = group.stimulus;
   const [stimText, setStimText] = useState<string>(
     stim ? edits?.stimuli?.[stim.id]?.text ?? stim.text : ''

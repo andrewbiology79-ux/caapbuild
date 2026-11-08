@@ -15,6 +15,8 @@ import { useToast } from './Toast';
 import { toBn, toEn } from '../utils/toBn';
 import { useNavigation } from '../utils/navigation';
 import { compressImageToWebP } from '../utils/imageCompressor';
+import { ImageEditQueue } from './ImageEditQueue';
+import { isImageEditorEnabled } from '../utils/imageEdit';
 import { exportImageFromUrl } from '../utils/imageExport';
 import { loadCustomBoards, saveCustomBoards, customBoardToOption, type CustomBoard } from '../utils/boards';
 import {
@@ -1128,6 +1130,13 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
     }
   };
 
+  // গ২: ছবি বাছার পরে ক্রপ/ঘোরানো/স্ক্যান এডিটর (সেটিংস থেকে বন্ধ করা যায়)
+  const [imageEditJob, setImageEditJob] = useState<{ files: File[]; resolve: (r: File[]) => void } | null>(null);
+  const editPickedFiles = (files: File[]): Promise<File[]> => {
+    if (files.length === 0 || !isImageEditorEnabled()) return Promise.resolve(files);
+    return new Promise<File[]>((resolve) => setImageEditJob({ files, resolve }));
+  };
+
   // Upload Stimulus Images with WebP 800px Canvas compression.
   // position 'top' = before the stimulus text, 'bottom' = after it (the old place)
   const stimulusTopInputRef = useRef<HTMLInputElement>(null);
@@ -1135,8 +1144,11 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
     e: React.ChangeEvent<HTMLInputElement>,
     position: 'top' | 'bottom' = 'bottom'
   ) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+    const picked = e.target.files ? Array.from(e.target.files) : [];
+    e.target.value = '';
+    if (picked.length === 0) return;
+    const files = await editPickedFiles(picked);
+    if (files.length === 0) return;
 
     setIsDirty(true);
     const added: string[] = [];
@@ -1160,7 +1172,6 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
         setStimulusImageIds((prev) => [...prev, ...added]);
       }
     }
-    e.target.value = '';
   };
 
   // Full Editor: replace one picture with another file from the phone
@@ -1170,11 +1181,16 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
   };
 
   const handleReplaceFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const picked = e.target.files?.[0];
     const target = replaceTarget;
     e.target.value = '';
-    if (!file || !target) return;
+    if (!picked || !target) return;
     try {
+      const [file] = await editPickedFiles([picked]);
+      if (!file) {
+        setReplaceTarget(null);
+        return;
+      }
       const { blob, fileName } = await compressImageToWebP(file, 800, 0.8);
       const newId = await saveImageBlob(blob, fileName);
       const previewUrl = URL.createObjectURL(blob);
@@ -1259,8 +1275,9 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
     const files = e.target.files;
     const target = solutionPickRef.current;
     if (!files || files.length === 0 || !target) return;
-    const picked = Array.from(files);
+    const pickedRaw = Array.from(files);
     e.target.value = '';
+    const picked = await editPickedFiles(pickedRaw);
 
     const newParts: SolutionPart[] = [];
     for (const file of picked) {
@@ -2217,6 +2234,17 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
           initialIndex={viewer?.index || 0}
           onClose={() => setViewer(null)}
         />
+
+        {/* গ২: ছবি বাছার পরে ক্রপ / ঘোরানো / স্ক্যান */}
+        {imageEditJob && (
+          <ImageEditQueue
+            files={imageEditJob.files}
+            onFinish={(result) => {
+              imageEditJob.resolve(result);
+              setImageEditJob(null);
+            }}
+          />
+        )}
 
         {/* Small confirmation before a question block is deleted */}
         <ConfirmDialog
