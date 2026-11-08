@@ -14,7 +14,7 @@ import {
   getPdfFontScale,
   savePdfFontScale,
 } from '../utils/settings';
-import { generateAndSharePdf } from '../utils/pdfGenerator';
+import { generateAndSharePdf, PDF_ANSWER_MODE_LABELS, type PdfAnswerMode } from '../utils/pdfGenerator';
 import { showPdfSavedDialog } from '../utils/storageAccess';
 import { applyEditsToGroups } from '../utils/paperEdits';
 
@@ -47,6 +47,8 @@ export const PaperViewModal: React.FC<PaperViewModalProps> = ({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [pdfErrorMessage, setPdfErrorMessage] = useState<string | null>(null);
   const [pdfFontScale, setPdfFontScale] = useState<number>(DEFAULT_PDF_FONT_SCALE);
+  // Student copy (questions only) is the default; teacher copies print answers / solutions too
+  const [pdfAnswerMode, setPdfAnswerMode] = useState<PdfAnswerMode>('none');
   const [menuOpen, setMenuOpen] = useState(false);
 
   // Load the PDF text size that was selected last time
@@ -182,6 +184,7 @@ export const PaperViewModal: React.FC<PaperViewModalProps> = ({
         groupedQuestions,
         imageUrls,
         fontScale: pdfFontScale,
+        answerMode: pdfAnswerMode,
       });
       if (!(savedPath && showPdfSavedDialog(savedPath))) {
         showToast(savedPath ? `PDF সেভ হয়েছে: ${savedPath}` : 'PDF তৈরি সম্পন্ন হয়েছে', savedPath ? 4500 : 2000);
@@ -421,6 +424,30 @@ export const PaperViewModal: React.FC<PaperViewModalProps> = ({
                         </button>
                       </div>
                     </div>
+
+                    <div className="my-1 border-t border-[#F2F4F8] dark:border-slate-700" />
+
+                    {/* PDF type: student copy or teacher copy with answers / full solutions */}
+                    <div className="px-4 pt-2 pb-1 text-xs font-bold">PDF-এর ধরন</div>
+                    {(['none', 'short', 'full'] as PdfAnswerMode[]).map((mode) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={pdfAnswerMode === mode}
+                        onClick={() => setPdfAnswerMode(mode)}
+                        className="w-full min-h-[40px] px-4 py-1.5 text-left text-sm font-medium flex items-center gap-3 hover:bg-[#F2F4F8] dark:hover:bg-slate-700"
+                      >
+                        <span
+                          className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                            pdfAnswerMode === mode ? 'border-[#3B4FD8]' : 'border-[#94A3B8]'
+                          }`}
+                        >
+                          {pdfAnswerMode === mode && <span className="w-2 h-2 rounded-full bg-[#3B4FD8]" />}
+                        </span>
+                        <span>{PDF_ANSWER_MODE_LABELS[mode]}</span>
+                      </button>
+                    ))}
 
                     <div className="my-1 border-t border-[#F2F4F8] dark:border-slate-700" />
 

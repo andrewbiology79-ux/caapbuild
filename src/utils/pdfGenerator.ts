@@ -1,4 +1,4 @@
-import { splitStimulusImages } from './solutionParts';
+import { splitStimulusImages, parseSolution } from './solutionParts';
 import { applyEditsToGroups } from './paperEdits';
 import { getQuestionsByIds, getStimuliByIds } from '../db/crossDb';
 import { Capacitor } from '@capacitor/core';
@@ -20,8 +20,26 @@ import {
 } from './storageAccess';
 import { getPdfFontScale, normalizePdfFontScale } from './settings';
 
+/** none = questions only; short = + short answer (answerText); full = + full solution (text + pictures) */
+export type PdfAnswerMode = 'none' | 'short' | 'full';
+
+export const PDF_ANSWER_MODE_LABELS: Record<PdfAnswerMode, string> = {
+  none: 'শুধু প্রশ্ন',
+  short: 'প্রশ্ন + সংক্ষিপ্ত উত্তর',
+  full: 'প্রশ্ন + পূর্ণ সমাধান',
+};
+
+/** Suffix added to the file name (and to the printed title) of a teacher copy */
+const PDF_ANSWER_MODE_SUFFIX: Record<PdfAnswerMode, string> = {
+  none: '',
+  short: 'উত্তরমালা',
+  full: 'সমাধান',
+};
+
 export interface GeneratePdfOptions {
   paper: Paper;
+  /** Teacher copy options. Default 'none' = the normal student copy. */
+  answerMode?: PdfAnswerMode;
   groupedQuestions: Array<{ stimulus?: Stimulus; questions: Question[] }>;
   imageUrls?: Record<string, string>;
   /** PDF text size multiplier (1 = 100%). If omitted, the last saved size is used. */
@@ -434,12 +452,85 @@ function buildMiniHeaderElement(paper: Paper, k = 1): HTMLElement {
 /**
  * Build Question Group Block DOM Element designed specifically for a 350px column
  */
+/** Answer / solution box printed under a sub-question in the teacher copy */
+function buildAnswerElement(
+  q: Question,
+  mode: PdfAnswerMode,
+  imageUrls: Record<string, string>,
+  px: (n: number) => string
+): HTMLElement {
+  const box = document.createElement('div');
+  box.style.margin = `${px(1)} 0 ${px(3)} ${px(14)}`;
+  box.style.padding = `${px(3)} ${px(6)}`;
+  box.style.borderLeft = '2px solid #6B7280';
+  box.style.background = '#F3F4F6';
+  box.style.fontSize = px(10.5);
+  box.style.lineHeight = '1.45';
+  box.style.color = '#111827';
+  box.style.boxSizing = 'border-box';
+  box.style.overflowWrap = 'anywhere';
+  box.style.wordBreak = 'break-word';
+
+  const addText = (label: string, text: string) => {
+    const row = document.createElement('div');
+    row.style.whiteSpace = 'pre-wrap';
+    row.innerHTML = (label ? `<b>${label}</b> ` : '') + renderRichTextToHtml(text);
+    box.appendChild(row);
+  };
+  const addEmpty = (msg: string) => {
+    const row = document.createElement('div');
+    row.textContent = msg;
+    row.style.color = '#6B7280';
+    box.appendChild(row);
+  };
+
+  const answer = (q.answerText || '').trim();
+
+  if (mode === 'short') {
+    if (answer) addText('উত্তর:', answer);
+    else addEmpty('উত্তর দেওয়া নেই');
+    return box;
+  }
+
+  // full solution
+  if (answer) addText('উত্তর:', answer);
+  const parts = parseSolution(q.solutionText, q.solutionImageIds);
+  let printed = Boolean(answer);
+  for (const part of parts) {
+    if (part.kind === 'text') {
+      if (part.text.trim()) {
+        addText('', part.text.trim());
+        printed = true;
+      }
+    } else {
+      const url = imageUrls[part.id];
+      if (!url) continue;
+      const img = document.createElement('img');
+      img.src = url;
+      img.alt = 'সমাধানের চিত্র';
+      img.style.maxWidth = '100%';
+      img.style.width = 'auto';
+      img.style.height = 'auto';
+      img.style.maxHeight = '220px';
+      img.style.objectFit = 'contain';
+      img.style.display = 'block';
+      img.style.margin = `${px(3)} 0`;
+      img.style.backgroundColor = '#ffffff';
+      box.appendChild(img);
+      printed = true;
+    }
+  }
+  if (!printed) addEmpty('সমাধান দেওয়া নেই');
+  return box;
+}
+
 function buildQuestionGroupElement(
   group: { stimulus?: Stimulus; questions: Question[] },
   gIdx: number,
   imageUrls: Record<string, string>,
   colWidthPx = 350,
-  k = 1
+  k = 1,
+  answerMode: PdfAnswerMode = 'none'
 ): HTMLElement {
   const px = (n: number) => `${+(n * k).toFixed(2)}px`;
   const block = document.createElement('div');
@@ -602,6 +693,10 @@ function buildQuestionGroupElement(
     qRow.appendChild(marksSpan);
 
     subWrap.appendChild(qRow);
+
+    if (answerMode !== 'none') {
+      subWrap.appendChild(buildAnswerElement(q, answerMode, imageUrls, px));
+    }
   });
 
   block.appendChild(subWrap);
@@ -630,11 +725,17 @@ interface PageSlot {
  * - jsPDF A4 portrait with html2canvas-pro.
  */
 export async function generateAndSharePdf(options: GeneratePdfOptions): Promise<string | undefined> {
-  const { paper, groupedQuestions, imageUrls = {} } = options;
+  const { groupedQuestions, imageUrls = {} } = options;
+  const answerMode: PdfAnswerMode = options.answerMode ?? 'none';
+  const modeSuffix = PDF_ANSWER_MODE_SUFFIX[answerMode];
+  // Teacher copies carry their type in the printed title, so they are never mixed up with the student copy
+  const paper: Paper = modeSuffix
+    ? { ...options.paper, title: `${options.paper.title} (${modeSuffix})` }
+    : options.paper;
   // Use the size passed in, otherwise the last size the user picked (remembered in settings)
   const fontScale =
     options.fontScale !== undefined ? normalizePdfFontScale(options.fontScale) : await getPdfFontScale();
-  const fileName = `${options.fileBaseName || paper.shortName || 'question-paper'}.pdf`;
+  const fileName = `${options.fileBaseName || options.paper.shortName || 'question-paper'}${modeSuffix ? `_${modeSuffix}` : ''}.pdf`;
 
   // Hidden container for staging and measurement
   const hiddenRoot = document.createElement('div');
@@ -731,7 +832,14 @@ export async function generateAndSharePdf(options: GeneratePdfOptions): Promise<
     // Measure each question group
     const measuredGroups: Array<{ element: HTMLElement; height: number }> = [];
     for (let i = 0; i < groupedQuestions.length; i++) {
-      const blockEl = buildQuestionGroupElement(groupedQuestions[i], i, resolvedImageUrls, COL_WIDTH_PX, fontScale);
+      const blockEl = buildQuestionGroupElement(
+        groupedQuestions[i],
+        i,
+        resolvedImageUrls,
+        COL_WIDTH_PX,
+        fontScale,
+        answerMode
+      );
       measureContainer.appendChild(blockEl);
       await waitForFontsAndImages(measureContainer);
       const h = blockEl.getBoundingClientRect().height || blockEl.offsetHeight;
@@ -980,7 +1088,7 @@ export async function generateAndSharePdf(options: GeneratePdfOptions): Promise<
       if (options.saveFolder) {
         return await savePdfToPhoneStorage(
           base64Only,
-          options.fileBaseName || paper.shortName || 'question-paper',
+          `${options.fileBaseName || paper.shortName || 'question-paper'}${modeSuffix ? `_${modeSuffix}` : ''}`,
           { folder: options.saveFolder, addStamp: false }
         );
       }
@@ -989,7 +1097,10 @@ export async function generateAndSharePdf(options: GeneratePdfOptions): Promise<
       try {
         const allowed = await ensureStorageAccess();
         if (allowed) {
-          return await savePdfToPhoneStorage(base64Only, paper.shortName || 'question-paper');
+          return await savePdfToPhoneStorage(
+            base64Only,
+            `${paper.shortName || 'question-paper'}${modeSuffix ? `_${modeSuffix}` : ''}`
+          );
         }
       } catch (saveErr) {
         console.warn('Direct PDF save failed, falling back to share sheet:', saveErr);

@@ -21,3 +21,9 @@ Download/QB Collection/
   and when more than half of the folders look gone the app asks first.
 - First launch after the update: safety backup, then the database is written into the folders and verified (`enableFolderSync`).
 - Lists show the text first; pictures are loaded afterwards from the media files (cached, 3 at a time).
+
+## Version / build
+
+`package.json` version + GitHub run number + build date are shown in Profile > অ্যাপ পরিচিতি. APK name: `QbCollectionExam-v<version>-build<run>.apk`.
+
+Note: run `npm install` once locally and commit the new `package-lock.json` (the old one was out of sync); after that the workflow can use `npm ci`.

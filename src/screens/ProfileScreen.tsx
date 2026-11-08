@@ -6,6 +6,7 @@ import { useToast } from '../components/Toast';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { PromptDialog } from '../components/PromptDialog';
 import { SettingsModal } from '../components/SettingsModal';
+import { StatsModal } from '../components/StatsModal';
 import { ImportCollectionModal } from '../components/ImportCollectionModal';
 import { PaperViewModal } from '../components/PaperViewModal';
 import { RichText } from '../components/RichText';
@@ -14,6 +15,7 @@ import { TransferChoiceDialog } from '../components/TransferChoiceDialog';
 import { RestoreModeDialog } from '../components/RestoreModeDialog';
 import { CategoryPickerDialog } from '../components/CategoryPickerDialog';
 import { toBn } from '../utils/toBn';
+import { versionLabel } from '../utils/appVersion';
 import { useNavigation } from '../utils/navigation';
 import {
   getPaperCount,
@@ -58,6 +60,7 @@ import {
   Upload,
   Download,
   Settings,
+  BarChart3,
   ChevronRight,
   ChevronDown,
   Share2,
@@ -167,6 +170,7 @@ export const ProfileScreen: React.FC = () => {
 
   // Modals state
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
+  const [showStatsModal, setShowStatsModal] = useState<boolean>(false);
   const [showImportModal, setShowImportModal] = useState<boolean>(false);
   const [showImportChapterModal, setShowImportChapterModal] = useState<boolean>(false);
   const [viewPaperId, setViewPaperId] = useState<string | null>(null);
@@ -1098,7 +1102,7 @@ export const ProfileScreen: React.FC = () => {
       label: 'অ্যাপ পরিচিতি',
       icon: <Info className="w-4 h-4 text-[#64748B]" />,
       onClick: () =>
-        showToast(`Qb Collection & Exam • অফলাইন মোড • ভার্সন ${toBn('1.0')}`, 3000),
+        showToast(`Qb Collection & Exam • অফলাইন মোড • ভার্সন ${versionLabel()}`, 4000),
     },
   ];
 
@@ -1130,6 +1134,13 @@ export const ProfileScreen: React.FC = () => {
       description: 'সম্পূর্ণ অ্যাপের সব ডাটা (প্রশ্ন, ক্যাটেগরি, প্রশ্নপত্র, ছবি) ব্যাকআপ ও পুনরুদ্ধার',
       icon: <HardDriveDownload className="w-5 h-5 text-amber-600" />,
       action: () => setTransferChoice('full'),
+    },
+    {
+      id: 'stats',
+      title: 'পরিসংখ্যান',
+      description: 'অধ্যায়ভিত্তিক প্রশ্ন, ধরন, রেটিং, বোর্ডে আসা ও ব্যবহৃত/অব্যবহৃত',
+      icon: <BarChart3 className="w-5 h-5 text-emerald-600" />,
+      action: () => setShowStatsModal(true),
     },
     {
       id: 'settings',
@@ -2295,6 +2306,8 @@ export const ProfileScreen: React.FC = () => {
           </div>
         </div>
       )}
+
+      <StatsModal isOpen={showStatsModal} onClose={() => setShowStatsModal(false)} />
 
       {/* Settings Modal */}
       <SettingsModal

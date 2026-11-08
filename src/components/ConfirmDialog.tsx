@@ -62,7 +62,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             <h3 id="confirm-dialog-title" className="text-base font-semibold text-[#1B1F2A]">
               {title}
             </h3>
-            {message && <p className="text-sm text-[#64748B] leading-relaxed">{message}</p>}
+            {message && <p className="text-sm text-[#64748B] leading-relaxed whitespace-pre-line">{message}</p>}
           </div>
         </div>
 

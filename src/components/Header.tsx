@@ -30,7 +30,7 @@ export const Header: React.FC<HeaderProps> = ({
       className="sticky top-0 z-40 bg-[#3B4FD8] text-white shadow-md select-none transition-colors"
       style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
     >
-      <div className="flex items-center justify-between px-3 h-14 max-w-[390px] mx-auto">
+      <div className="flex items-center justify-between px-3 h-14 w-full">
         {/* Left Side: Back button or placeholder */}
         <div className="flex items-center min-w-[44px]">
           {showBack && onBack ? (

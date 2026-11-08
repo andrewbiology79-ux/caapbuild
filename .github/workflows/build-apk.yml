@@ -18,6 +18,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
       - name: Set up Java 21 (Temurin)
         uses: actions/setup-java@v4
@@ -25,11 +26,18 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
+      # NOTE: `npm ci` is not used because package-lock.json is out of sync with package.json.
+      # After running `npm install` once locally and committing the new lock file, this can become `npm ci`.
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
+      - name: Type check (lint)
+        run: npm run lint
+
       - name: Build Web Application
         run: npm run build
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
 
       - name: Initialize Android platform if not present
         run: |
@@ -63,6 +71,16 @@ jobs:
               console.log("styles.xml not found, skipping.");
             }
           '
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('package-lock.json', 'package.json', 'capacitor.config.json') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
 
       - name: Accept Android SDK Licenses
         run: |
@@ -104,11 +122,19 @@ jobs:
           echo "Found APK at: $APK_PATH"
           echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
 
+      - name: Name APK with version and build number
+        id: name_apk
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          NAME="QbCollectionExam-v${VERSION}-build${{ github.run_number }}.apk"
+          cp "${{ steps.find_apk.outputs.apk_path }}" "$NAME"
+          echo "apk_named=$NAME" >> "$GITHUB_OUTPUT"
+
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: qb-collection-exam-debug-${{ github.run_number }}
-          path: ${{ steps.find_apk.outputs.apk_path }}
+          path: ${{ steps.name_apk.outputs.apk_named }}
           retention-days: 14
 
       - name: Create GitHub Release with APK
@@ -119,7 +145,7 @@ jobs:
           body: |
             Automated build for Qb Collection & Exam (Run #${{ github.run_number }}).
             Download the attached debug APK to install on Android devices.
-          files: ${{ steps.find_apk.outputs.apk_path }}
+          files: ${{ steps.name_apk.outputs.apk_named }}
           draft: false
           prerelease: false
         env:

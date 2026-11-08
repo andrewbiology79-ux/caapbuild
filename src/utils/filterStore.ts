@@ -70,3 +70,48 @@ export const filterTabState: FilterTabState = {
   sort: 'default',
   order: loadOrder(),
 };
+
+/* ---------- saved filters (named, one tap to apply) ---------- */
+
+export interface SavedFilter {
+  id: string;
+  name: string;
+  criteria: FilterCriteria;
+  sort: SortMode;
+  createdAt: number;
+}
+
+const SAVED_KEY = 'qb_saved_filters_v1';
+
+/** Older saved filters may miss fields that were added later: fill them from EMPTY_CRITERIA */
+function withDefaults(c: Partial<FilterCriteria> | undefined): FilterCriteria {
+  return { ...EMPTY_CRITERIA, ...(c || {}) };
+}
+
+export function loadSavedFilters(): SavedFilter[] {
+  try {
+    const raw = localStorage.getItem(SAVED_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((x) => x && typeof x.id === 'string' && typeof x.name === 'string')
+      .map((x) => ({
+        id: x.id,
+        name: x.name,
+        criteria: withDefaults(x.criteria),
+        sort: (x.sort as SortMode) || 'default',
+        createdAt: Number(x.createdAt) || 0,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+export function persistSavedFilters(list: SavedFilter[]): void {
+  try {
+    localStorage.setItem(SAVED_KEY, JSON.stringify(list));
+  } catch {
+    /* ignore */
+  }
+}

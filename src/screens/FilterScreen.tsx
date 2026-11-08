@@ -61,7 +61,15 @@ import {
   type ScopedFacets,
   type SortMode,
 } from '../utils/filterEngine';
-import { filterTabState, persistDropdownOrder, type DropdownKey } from '../utils/filterStore';
+import {
+  filterTabState,
+  persistDropdownOrder,
+  loadSavedFilters,
+  persistSavedFilters,
+  type DropdownKey,
+  type SavedFilter,
+} from '../utils/filterStore';
+import { PromptDialog } from '../components/PromptDialog';
 
 const PAGE_SIZE = 30;
 
@@ -850,6 +858,11 @@ export const FilterScreen: React.FC = () => {
   const [searchOpen, setSearchOpen] = useState(filterTabState.searchOpen);
   const [sort, setSort] = useState<SortMode>(filterTabState.sort);
   const [order, setOrder] = useState<DropdownKey[]>(filterTabState.order);
+  // Saved filters: a name for the current filter + sort, applied again with one tap
+  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>(() => loadSavedFilters());
+  const [savedSheetOpen, setSavedSheetOpen] = useState(false);
+  const [deleteSavedSheetOpen, setDeleteSavedSheetOpen] = useState(false);
+  const [saveNameOpen, setSaveNameOpen] = useState(false);
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [openDropdown, setOpenDropdown] = useState<DropdownKey | null>(null);
@@ -960,6 +973,39 @@ export const FilterScreen: React.FC = () => {
   const clearAllFilters = () => {
     applyCriteria(EMPTY_CRITERIA);
     setSort('default');
+  };
+
+  const handleSaveCurrentFilter = (rawName: string) => {
+    const name = rawName.trim();
+    setSaveNameOpen(false);
+    if (!name) return;
+    const entry: SavedFilter = {
+      id: `sf_${Date.now().toString(36)}`,
+      name,
+      criteria: { ...criteria, text: criteria.text },
+      sort,
+      createdAt: Date.now(),
+    };
+    // same name = replace the old one
+    const next = [...savedFilters.filter((f) => f.name !== name), entry];
+    setSavedFilters(next);
+    persistSavedFilters(next);
+    showToast(`ফিল্টার সংরক্ষিত: ${name}`);
+  };
+
+  const handleApplySavedFilter = (f: SavedFilter) => {
+    setSavedSheetOpen(false);
+    applyCriteria({ ...f.criteria });
+    setSort(f.sort);
+    showToast(`ফিল্টার চালু: ${f.name}`);
+  };
+
+  const handleDeleteSavedFilter = (f: SavedFilter) => {
+    setDeleteSavedSheetOpen(false);
+    const next = savedFilters.filter((x) => x.id !== f.id);
+    setSavedFilters(next);
+    persistSavedFilters(next);
+    showToast(`মুছে ফেলা হয়েছে: ${f.name}`);
   };
 
   /* ---------- dropdown definitions ---------- */
@@ -1258,6 +1304,33 @@ export const FilterScreen: React.FC = () => {
         icon: <Search className="w-4 h-4 text-[#3B4FD8]" />,
         onClick: () => (searchOpen ? closeSearch() : setSearchOpen(true)),
       },
+      ...(hasAnyFilter
+        ? [
+            {
+              id: 'save-filter',
+              label: 'এই ফিল্টার সংরক্ষণ করুন',
+              icon: <BookMarked className="w-4 h-4 text-[#3B4FD8]" />,
+              onClick: () => setSaveNameOpen(true),
+            },
+          ]
+        : []),
+      ...(savedFilters.length > 0
+        ? [
+            {
+              id: 'saved-filters',
+              label: `সংরক্ষিত ফিল্টার (${toBn(savedFilters.length)})`,
+              icon: <BookMarked className="w-4 h-4 text-[#3B4FD8]" />,
+              onClick: () => setSavedSheetOpen(true),
+            },
+            {
+              id: 'delete-saved-filter',
+              label: 'সংরক্ষিত ফিল্টার মুছুন',
+              icon: <Trash2 className="w-4 h-4" />,
+              isDestructive: true,
+              onClick: () => setDeleteSavedSheetOpen(true),
+            },
+          ]
+        : []),
       {
         id: 'select-all',
         label: `সব সিলেক্ট করুন (${toBn(results.length)})`,
@@ -1314,7 +1387,7 @@ export const FilterScreen: React.FC = () => {
     }
     return items;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchOpen, selectedIds, results, selectedRows]);
+  }, [searchOpen, selectedIds, results, selectedRows, savedFilters, hasAnyFilter]);
 
   const resultIdSet = useMemo(() => new Set(results.map((r) => r.question.id)), [results]);
   const hiddenSelected = useMemo(
@@ -1595,6 +1668,40 @@ export const FilterScreen: React.FC = () => {
           id: `rate-${r}`,
           label: `${'★'.repeat(r)}${'☆'.repeat(5 - r)}  ${getRatingStarsText(r).split(' ').slice(1).join(' ')}`,
           onClick: () => handleBulkRating(r),
+        }))}
+      />
+
+      <PromptDialog
+        isOpen={saveNameOpen}
+        title="ফিল্টারের নাম দিন"
+        placeholder="যেমন: অব্যবহৃত কঠিন গ+ঘ"
+        onConfirm={handleSaveCurrentFilter}
+        onCancel={() => setSaveNameOpen(false)}
+      />
+
+      <ActionSheet
+        isOpen={savedSheetOpen}
+        title="সংরক্ষিত ফিল্টার"
+        subtitle="চাপ দিলে ফিল্টার চালু হবে"
+        onClose={() => setSavedSheetOpen(false)}
+        items={savedFilters.map((f) => ({
+          id: f.id,
+          label: f.name,
+          icon: <BookMarked className="w-4 h-4 text-[#3B4FD8]" />,
+          onClick: () => handleApplySavedFilter(f),
+        }))}
+      />
+
+      <ActionSheet
+        isOpen={deleteSavedSheetOpen}
+        title="কোন ফিল্টার মুছবে?"
+        onClose={() => setDeleteSavedSheetOpen(false)}
+        items={savedFilters.map((f) => ({
+          id: `del-${f.id}`,
+          label: f.name,
+          icon: <Trash2 className="w-4 h-4" />,
+          isDestructive: true,
+          onClick: () => handleDeleteSavedFilter(f),
         }))}
       />
 

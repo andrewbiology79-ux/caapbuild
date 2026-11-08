@@ -10,6 +10,7 @@ import {
   saveCategory,
   getImageBlobUrl,
   getNextPaperLabel,
+  getPapers,
 } from '../db/api';
 import { getAppSettings } from '../utils/settings';
 import { useToast } from './Toast';
@@ -19,7 +20,7 @@ import { toBn } from '../utils/toBn';
 import { PopupMenu } from './PopupMenu';
 import { QuestionBoardTags } from './QuestionBoardTags';
 import { PaperQuestionEditDialog, type GroupEditResult } from './PaperQuestionEditDialog';
-import { applyQuestionEdit, applyStimulusEdit, isQuestionEdited, isStimulusEdited, pruneEdits } from '../utils/paperEdits';
+import { applyQuestionEdit, applyStimulusEdit, isQuestionEdited, isStimulusEdited, pruneEdits, sumGroupMarks } from '../utils/paperEdits';
 
 export interface PaperFormModalProps {
   isOpen: boolean;
@@ -68,6 +69,34 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
 
   // Paper info (title, category, subject line, note, time, marks) lives only in the 3-dot menu
   const [showInfoPanel, setShowInfoPanel] = useState(false);
+
+  // question id -> short names of the OTHER papers that already contain it (repeat warning)
+  const [usedInPapers, setUsedInPapers] = useState<Record<string, string[]>>({});
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    getPapers()
+      .then((papers) => {
+        if (cancelled) return;
+        const map: Record<string, string[]> = {};
+        for (const p of papers) {
+          if (editPaper && p.id === editPaper.id) continue;
+          for (const qid of p.questionIds || []) {
+            (map[qid] ||= []).push(p.shortName || p.title);
+          }
+        }
+        setUsedInPapers(map);
+      })
+      .catch((e) => console.warn('repeat warning: failed to load papers', e));
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, editPaper]);
+
+  // Warn (never block) when the question marks do not add up to the paper's total marks
+  const questionMarksSum = sumGroupMarks(includedGroups, edits);
+  const paperTotalMarks = Number(totalMarks) || 0;
+  const marksMismatch = includedGroups.length > 0 && questionMarksSum !== paperTotalMarks;
 
   // Load Categories & Questions
   useEffect(() => {
@@ -423,6 +452,13 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
             )}
           </div>
 
+          {marksMismatch && (
+            <div className="px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 text-xs font-bold text-amber-700 dark:text-amber-300">
+              প্রশ্নগুলোর নম্বরের যোগফল {toBn(questionMarksSum)}, কিন্তু প্রশ্নপত্রের পূর্ণমান {toBn(paperTotalMarks)}। পূর্ণমান
+              বদলাতে ৩-ডট মেনু থেকে "প্রশ্নপত্রের তথ্য" খুলো।
+            </div>
+          )}
+
           {includedGroups.length === 0 ? (
             <div className="p-4 rounded-xl border border-dashed border-[#D5D9E2] dark:border-slate-700 text-center text-xs text-[#64748B] dark:text-slate-400">
               কোনো প্রশ্ন নির্বাচন করা হয়নি। কালেকশন ট্যাব থেকে প্রশ্ন নির্বাচন করুন।
@@ -449,6 +485,20 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
                           <span>প্রশ্ন পরিবর্তিত</span>
                         </span>
                       )}
+                      {(() => {
+                        const names = new Set<string>();
+                        group.questions.forEach((q) => (usedInPapers[q.id] || []).forEach((n) => names.add(n)));
+                        if (names.size === 0) return null;
+                        return (
+                          <span
+                            title={Array.from(names).join(', ')}
+                            className="px-2 py-0.5 rounded-full bg-white/20 text-white text-[0.625rem] font-black truncate max-w-[55%]"
+                          >
+                            আগে আছে: {Array.from(names).slice(0, 2).join(', ')}
+                            {names.size > 2 ? ` +${toBn(names.size - 2)}` : ''}
+                          </span>
+                        );
+                      })()}
                       <div className="flex-1" />
                       {isReordering ? (
                         <div className="flex items-center gap-1">

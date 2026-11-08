@@ -60,3 +60,15 @@ export function pruneEdits(
   if (Object.keys(ss).length) out.stimuli = ss;
   return hasAnyEdit(out) ? out : undefined;
 }
+
+/** Sum of the question marks inside a paper (paper-only mark edits included). Non-numbers count as 0. */
+export function sumGroupMarks(groups: Group[], edits?: PaperEdits): number {
+  let total = 0;
+  for (const g of groups) {
+    for (const q of g.questions) {
+      const m = Number(applyQuestionEdit(q, edits).marks);
+      if (Number.isFinite(m)) total += m;
+    }
+  }
+  return total;
+}

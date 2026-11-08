@@ -10,6 +10,7 @@ import {
 } from '../utils/solutionParts';
 import { ImageViewerModal } from './ImageViewerModal';
 import { ConfirmDialog } from './ConfirmDialog';
+import { findDuplicateQuestions, type DuplicateHit } from '../utils/duplicateCheck';
 import { useToast } from './Toast';
 import { toBn, toEn } from '../utils/toBn';
 import { useNavigation } from '../utils/navigation';
@@ -650,6 +651,8 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  // Same text already in the question bank: ask before saving (never silently blocked)
+  const [duplicateHits, setDuplicateHits] = useState<DuplicateHit[] | null>(null);
   // Full Editor: the subject / chapter / topic card can be minimised to save space
   const [hierarchyOpen, setHierarchyOpen] = useState(false);
   // Full Editor: which question block is waiting for the delete confirmation
@@ -1447,6 +1450,25 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
       return;
     }
 
+    // Duplicate warning: same (or almost the same) text is already in Type CQ / Chapter CQ
+    try {
+      const hits = await findDuplicateQuestions({
+        stimulusId,
+        stimulusText,
+        questions: questionBlocks.map((q) => ({ id: q.id, questionText: q.questionText })),
+      });
+      if (hits.length > 0) {
+        setDuplicateHits(hits);
+        return;
+      }
+    } catch (dupErr) {
+      console.warn('Duplicate check failed, saving without it:', dupErr);
+    }
+
+    await performSave();
+  };
+
+  const performSave = async () => {
     setLoading(true);
     try {
       // Synchronize usedInBoards with chips for each question
@@ -2209,6 +2231,29 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
             setDeleteBlockIndex(null);
           }}
           onCancel={() => setDeleteBlockIndex(null)}
+        />
+
+        {/* Duplicate warning before saving */}
+        <ConfirmDialog
+          isOpen={duplicateHits !== null}
+          title="এই প্রশ্ন আগে থেকেই আছে"
+          message={
+            duplicateHits
+              ? duplicateHits
+                  .slice(0, 3)
+                  .map((h) => `• ${h.kind} (${h.where}): ${h.snippet}`)
+                  .join('\n') +
+                (duplicateHits.length > 3 ? `\n… আরও ${toBn(duplicateHits.length - 3)}টি` : '') +
+                '\n\nতবু সংরক্ষণ করবেন?'
+              : ''
+          }
+          confirmText="তবু সংরক্ষণ করো"
+          cancelText="ফিরে যাও"
+          onConfirm={() => {
+            setDuplicateHits(null);
+            void performSave();
+          }}
+          onCancel={() => setDuplicateHits(null)}
         />
 
         {/* Confirm Dialog for Unsaved Changes on Exit */}
