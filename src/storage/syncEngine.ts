@@ -1,9 +1,9 @@
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { getDb, type CqScope } from '../db/db';
-import { StorageAccess, ensureStorageAccess, hasStorageAccess } from '../utils/storageAccess';
+import { StorageAccess, ensureStorageAccess, hasStorageAccess, QB_ROOT } from '../utils/storageAccess';
 import { QUESTION_BANK_ROOT, scopeRoot, DATA_FILE, entityPath } from './folderLayout';
-import { makeDir, readText, removeDir } from './nativeStore';
+import { makeDir, readText, pathExists, renamePath } from './nativeStore';
 import {
   installWriteHooks,
   flushAllWrites,
@@ -285,7 +285,15 @@ export async function rebuildFolders(scopes: CqScope[]): Promise<void> {
   await withSyncLock(async () => {
     for (const scope of scopes) {
       const sdb = getDb(scope);
-      await removeDir(scopeRoot(scope));
+      // ধাপ ২.৩: পুরনো ফোল্ডার মোছা হয় না - পাশে সরিয়ে রাখা হয়
+      // (Download/QB Collection/Replaced_Folders/<সময়>_<নাম>)। সরানো ব্যর্থ হলে পুরো কাজ থামে,
+      // ডেটা অক্ষত থাকে। জায়গা দরকার হলে ওই ফোল্ডার তুমি নিজে মুছবে।
+      if (await pathExists(scopeRoot(scope))) {
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const holder = `${QB_ROOT}/Replaced_Folders`;
+        await makeDir(holder);
+        await renamePath(scopeRoot(scope), `${holder}/${stamp}_${scope === 'chapter' ? 'Chapter_CQ' : 'Type_CQ'}`);
+      }
       await sdb.syncState.clear();
       await makeDir(scopeRoot(scope));
     }

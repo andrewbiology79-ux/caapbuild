@@ -45,6 +45,52 @@ export async function writeText(path: string, text: string): Promise<void> {
   await Filesystem.writeFile({ path, data: text, directory: DIR, encoding: Encoding.UTF8, recursive: true });
 }
 
+/**
+ * ধাপ ২.১ - নিরাপদ লেখা: আগের ফাইল কখনো আধা-লেখা অবস্থায় থাকে না।
+ *   ১) পাশে <ফাইল>.tmp-তে লেখা, ২) আবার পড়ে হুবহু মিলছে কি না দেখা (না মিললে .tmp মুছে ব্যর্থ),
+ *   ৩) আগের ফাইল থাকলে <ফাইল>.bak-এ কপি (আগের .bak বদলে যায়), ৪) .tmp -> আসল নামে বসানো।
+ * বসানো ব্যর্থ হলে আগের ফাইল .bak থেকে ফেরানো হয়। যেকোনো ব্যর্থতায় exception ছোঁড়ে,
+ * যাতে ডাকার কোড "সেভ হয়েছে" না ধরে।
+ * Android-এ rename আগের ফাইলের ওপর কী করে তা ফোনে পরীক্ষা বাকি, তাই দুই রাস্তাই আছে।
+ */
+export async function writeTextSafe(path: string, text: string): Promise<void> {
+  const tmp = `${path}.tmp`;
+  const bak = `${path}.bak`;
+  await writeText(tmp, text);
+  const back = await readText(tmp);
+  if (back !== text) {
+    await removeFile(tmp);
+    throw new Error(`লেখা যাচাইয়ে মেলেনি: ${path}`);
+  }
+  const hadOld = await pathExists(path);
+  if (hadOld) {
+    await removeFile(bak);
+    try {
+      await copyFile(path, bak);
+    } catch (err) {
+      await removeFile(tmp);
+      throw err; // আগের ফাইলের কপি না রেখে বদলানো হবে না
+    }
+  }
+  try {
+    await renamePath(tmp, path);
+  } catch {
+    try {
+      if (hadOld) await removeFile(path);
+      await renamePath(tmp, path);
+    } catch (err2) {
+      if (hadOld && !(await pathExists(path))) {
+        try {
+          await copyFile(bak, path); // আগের ফাইল ফেরানো
+        } catch {
+          /* .bak তো থেকেই গেল */
+        }
+      }
+      throw err2;
+    }
+  }
+}
+
 /** base64 WITHOUT the data-URL prefix */
 export async function writeBase64(path: string, base64: string): Promise<void> {
   await Filesystem.writeFile({ path, data: base64, directory: DIR, recursive: true });

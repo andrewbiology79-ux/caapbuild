@@ -13,7 +13,7 @@ import {
   type FolderKind,
   type FolderMeta,
 } from './folderLayout';
-import { pathExists, statPath, makeDir, writeText, writeBase64, removeDir, removeFile, renamePath, copyFile } from './nativeStore';
+import { pathExists, statPath, makeDir, writeText, writeTextSafe, writeBase64, removeDir, removeFile, renamePath, copyFile } from './nativeStore';
 import { imageFilePath, blobDimensions } from './imageStore';
 import { blobToBase64 } from '../utils/fileExport';
 import { withSyncLock } from './syncLock';
@@ -481,7 +481,7 @@ export async function flushTopic(sdb: QbDatabase, scope: CqScope, topic: any): P
   const file = `${dirPath}/${DATA_FILE}`;
 
   if (lastData.get(topic.id) === text && (await pathExists(file))) return;
-  await writeText(file, text);
+  await writeTextSafe(file, text);
   lastData.set(topic.id, text);
   const st = await statPath(file);
   await sdb.syncState.put({ id: `data:${topic.id}`, kind: 'data', mtime: st?.mtime ?? 0, size: st?.size ?? 0 });
