@@ -27,3 +27,7 @@ Download/QB Collection/
 `package.json` version + GitHub run number + build date are shown in Profile > অ্যাপ পরিচিতি. APK name: `QbCollectionExam-v<version>-build<run>.apk`.
 
 Note: run `npm install` once locally and commit the new `package-lock.json` (the old one was out of sync); after that the workflow can use `npm ci`.
+
+## Tests
+
+`npm test` (vitest) runs the logic tests in `tests/` (filter engine, solution parts, paper edits, folder names, duplicate text matching). GitHub Actions runs them before building the APK; a failing test stops the build.

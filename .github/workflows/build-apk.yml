@@ -34,6 +34,9 @@ jobs:
       - name: Type check (lint)
         run: npm run lint
 
+      - name: Run automated tests
+        run: npm test
+
       - name: Build Web Application
         run: npm run build
         env:
