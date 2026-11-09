@@ -56,7 +56,7 @@ export const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
       {/* Top Bar with Safe Area Inset */}
       <div
         className="w-full flex items-center justify-between px-4 py-2 z-10 bg-gradient-to-b from-black/80 to-transparent"
-        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)' }}
+        style={{ paddingTop: 'calc(var(--safe-top, env(safe-area-inset-top, 0px)) + 8px)' }}
       >
         {/* Index counter */}
         <div className="text-white text-xs font-semibold px-2 py-1 bg-white/20 rounded-full">
@@ -128,7 +128,7 @@ export const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
       {/* Bottom hint / indicator with Safe Area Inset */}
       <div
         className="w-full text-center pb-4 text-[0.6875rem] text-white/60 bg-gradient-to-t from-black/80 to-transparent pointer-events-none"
-        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
+        style={{ paddingBottom: 'calc(var(--safe-bottom, env(safe-area-inset-bottom, 0px)) + 12px)' }}
       >
         <span>জুম করতে পিঞ্চ বা ডাবল ট্যাপ করুন</span>
       </div>

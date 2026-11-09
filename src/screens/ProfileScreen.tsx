@@ -1920,7 +1920,7 @@ export const ProfileScreen: React.FC = () => {
           {selectMode && (
             <div
               className="fixed left-0 right-0 bottom-16 z-40 px-3.5 pb-2 pt-2 bg-[#F2F4F8]/95 dark:bg-slate-900/95 border-t border-[#D5D9E2] dark:border-slate-700"
-              style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px) * 0)' }}
+              style={{ paddingBottom: 'calc(0.5rem + var(--safe-bottom, env(safe-area-inset-bottom, 0px)) * 0)' }}
             >
               <div className="max-w-[390px] mx-auto flex gap-2">
                 {(selectPurpose === null || selectPurpose === 'backup') && (

@@ -143,7 +143,7 @@ export const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose }) => {
       <div className="w-full max-w-[640px] h-full bg-[#F2F4F8] dark:bg-slate-900 text-[#1B1F2A] dark:text-slate-100 flex flex-col overflow-hidden">
         <header
           className="bg-[#3B4FD8] text-white pl-4 pr-2 h-14 flex items-center justify-between shrink-0 shadow-md"
-          style={{ boxSizing: 'content-box', paddingTop: 'env(safe-area-inset-top, 0px)' }}
+          style={{ boxSizing: 'content-box', paddingTop: 'var(--safe-top, env(safe-area-inset-top, 0px))' }}
         >
           <div className="flex items-center gap-2">
             <BarChart3 className="w-5 h-5" />
@@ -163,7 +163,7 @@ export const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose }) => {
 
         <div
           className="flex-1 overflow-y-auto p-3.5 space-y-4"
-          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
+          style={{ paddingBottom: 'calc(var(--safe-bottom, env(safe-area-inset-bottom, 0px)) + 16px)' }}
         >
           <div className="flex gap-1.5">
             {SOURCE_FILTERS.map((f) => (

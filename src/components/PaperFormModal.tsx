@@ -447,7 +447,7 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
         {/* Header with Safe Area Inset */}
         <header
           className="bg-[#3B4FD8] text-white pl-4 pr-2 h-14 flex items-center justify-between shrink-0 shadow-md"
-          style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+          style={{ paddingTop: 'var(--safe-top, env(safe-area-inset-top, 0px))' }}
         >
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-white" />
@@ -707,7 +707,7 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
         {/* Fixed Footer with Safe Area */}
         <div
           className="p-3 bg-[#F8FAFC] dark:bg-slate-800/80 border-t border-[#D5D9E2] dark:border-slate-800 flex items-center justify-end gap-2.5 shrink-0"
-          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
+          style={{ paddingBottom: 'calc(var(--safe-bottom, env(safe-area-inset-bottom, 0px)) + 12px)' }}
         >
           <button
             type="button"
@@ -737,7 +737,7 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
           >
             <header
               className="bg-[#3B4FD8] text-white px-4 h-14 flex items-center justify-between shrink-0 shadow-md"
-              style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+              style={{ paddingTop: 'var(--safe-top, env(safe-area-inset-top, 0px))' }}
             >
               <h3 className="text-sm font-bold">প্রশ্নপত্রের তথ্য</h3>
               <button
@@ -847,7 +847,7 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
 
             <div
               className="p-3 bg-[#F8FAFC] dark:bg-slate-800/80 border-t border-[#D5D9E2] dark:border-slate-800 flex items-center justify-end shrink-0"
-              style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
+              style={{ paddingBottom: 'calc(var(--safe-bottom, env(safe-area-inset-bottom, 0px)) + 12px)' }}
             >
               <button
                 type="button"

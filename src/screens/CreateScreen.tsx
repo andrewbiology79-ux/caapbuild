@@ -575,7 +575,7 @@ export const CreateScreen: React.FC = () => {
         type="button"
         aria-label="নতুন প্রশ্নপত্র তৈরি করুন"
         onClick={handleOpenCreateNew}
-        style={{ bottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}
+        style={{ bottom: 'calc(5rem + var(--safe-bottom, env(safe-area-inset-bottom, 0px)))' }}
         className="fixed right-4 z-40 min-h-[48px] px-4 py-2.5 rounded-full bg-[#3B4FD8] hover:bg-[#2A3BB0] active:bg-[#202E91] text-white font-bold text-xs shadow-xl flex items-center gap-2 transition-transform hover:scale-105 active:scale-95"
       >
         <Plus className="w-5 h-5 stroke-[2.5]" />
@@ -587,7 +587,7 @@ export const CreateScreen: React.FC = () => {
       {selectMode && (
         <div
           className="fixed left-0 right-0 z-40"
-          style={{ bottom: 'calc(4rem + env(safe-area-inset-bottom, 0px))' }}
+          style={{ bottom: 'calc(4rem + var(--safe-bottom, env(safe-area-inset-bottom, 0px)))' }}
         >
           <div className="max-w-[390px] mx-auto bg-white dark:bg-slate-900 border-t border-[#D5D9E2] dark:border-slate-700 shadow-[0_-4px_14px_rgba(0,0,0,0.08)] px-2 py-1.5 grid grid-cols-5 gap-1">
             {[

@@ -1940,7 +1940,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
               editQuestionId: null,
             })
           }
-          style={{ bottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}
+          style={{ bottom: 'calc(5rem + var(--safe-bottom, env(safe-area-inset-bottom, 0px)))' }}
           className="fixed right-4 z-40 min-h-[48px] px-4 py-2.5 rounded-full bg-[#3B4FD8] hover:bg-[#2A3BB0] active:bg-[#202E91] text-white font-bold text-xs shadow-xl flex items-center gap-2 transition-transform hover:scale-105 active:scale-95"
         >
           <Plus className="w-5 h-5 stroke-[2.5]" />
