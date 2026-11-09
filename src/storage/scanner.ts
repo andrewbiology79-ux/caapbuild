@@ -10,10 +10,7 @@ import {
   type FolderMeta,
 } from './folderLayout';
 import { scanTree, readText, writeText, makeDir } from './nativeStore';
-import { sha256Hex, sameContent } from './hash';
-import { markSyncTx, markTopicDirty, markEntityDirty, forgetWritten, isTopicPending } from './writer';
-import { askDeleteConfirm, type DeleteRequest } from './deleteConfirm';
-import { isUnderUnreadable, rowPathOf, pickTopLevel, missingIds } from './scanSafety';
+import { markSyncTx, markTopicDirty, markEntityDirty, forgetWritten } from './writer';
 
 /**
  * Folders -> app.
@@ -40,16 +37,11 @@ export interface ScanSummary {
   changed: boolean;
   /** the scan could not run (folder not readable ...) - nothing was changed */
   error?: string;
-  /** ধাপ ১.৫: ফোল্ডারের কিছু অংশ পড়া যায়নি - ওই অংশে কিছু মোছা/বদলানো হয়নি */
-  incomplete?: boolean;
 }
 
 export interface ScanOptions {
-  /**
-   * অ্যাপ থেকে কিছু মুছতে যাওয়ার আগে জিজ্ঞাসা (ফোল্ডার না পেলে / data.json থেকে প্রশ্ন বাদ পড়লে)।
-   * true = মুছো, false = রেখে দাও। না দিলে deleteConfirm.ts-এর ডায়ালগ (SyncRunner) ব্যবহার হয়।
-   */
-  confirmDelete?: (req: DeleteRequest) => Promise<boolean>;
+  /** called when more than half of the items look deleted - return true to really delete them */
+  confirmMassDelete?: (count: number, total: number) => boolean;
 }
 
 interface Node {
@@ -74,6 +66,8 @@ function newId(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
   return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 9);
 }
+
+let declinedSignature = '';
 
 function normStimulus(s: any, topicId: string, id: string): Stimulus {
   const imageIds: string[] = Array.isArray(s?.imageIds) ? s.imageIds.filter((x: any) => typeof x === 'string') : [];
@@ -182,13 +176,7 @@ interface TopicPlan {
   remap: boolean;
   mtime: number;
   size: number;
-  /** SHA-256 of the data.json text that was read (ধাপ ২.২) */
-  sha256?: string;
   warning?: string;
-  /** নিশ্চিতকরণে "রেখে দাও": ফাইলে নেই এমন প্রশ্ন/উদ্দীপক অ্যাপে থাকবে, ফাইল আবার লেখা হবে */
-  keepDropped?: boolean;
-  /** এই টাইপের অ্যাপ-বদল এখনো ফোল্ডারে লেখা হয়নি - ফাইলের কপি এবার অ্যাপে বসানো নয় */
-  skip?: boolean;
 }
 
 export async function scanScope(scope: CqScope, opts: ScanOptions = {}): Promise<ScanSummary> {
@@ -212,18 +200,6 @@ export async function scanScope(scope: CqScope, opts: ScanOptions = {}): Promise
     }
     await makeDir(root);
     return summary;
-  }
-
-  // ধাপ ১.৫: নেটিভ স্ক্যান কিছু ফোল্ডার পড়তে না পারলে (listFiles() ব্যর্থ) তালিকা অসম্পূর্ণ - ওই অংশের
-  // ফোল্ডার/ফাইল "নেই" নয়, "দেখা যায়নি"। তাই ওই অংশে কিছু মোছা বা data.json নতুন করে লেখা হয় না।
-  const unreadable: string[] = Array.isArray(listing.unreadable) ? listing.unreadable : [];
-  const incomplete = listing.complete === false || unreadable.length > 0;
-  if (incomplete) {
-    summary.incomplete = true;
-    const sample = unreadable.filter((u) => u).slice(0, 2).join(', ');
-    summary.warnings.push(
-      `ফোল্ডারের কিছু অংশ পড়া যায়নি${sample ? ` (${sample})` : ''} - ওই অংশে কিছু মোছা বা বদলানো হয়নি; পরের সিঙ্কে আবার চেষ্টা হবে`
-    );
   }
 
   const nodes = buildNodes(scope, listing.entries);
@@ -283,36 +259,22 @@ export async function scanScope(scope: CqScope, opts: ScanOptions = {}): Promise
   const diskIds = new Set(nodes.map((n) => n.id as string));
 
   // ---- deleted folders ----
-  // ফোল্ডার না পেলে আগে জিজ্ঞাসা (আইটেম সংখ্যাসহ); "রেখে দাও" দিলে অ্যাপে থাকে ও ফোল্ডার আবার তৈরি হয়।
-  const confirmDelete = opts.confirmDelete ?? askDeleteConfirm;
   const folderRows = rows.filter((r) => r.kind !== 'data' && r.dirName);
   let deletedRows = folderRows.filter((r) => !diskIds.has(r.id));
-  if (incomplete && deletedRows.length > 0) {
-    // যে অংশ পড়া যায়নি তার ভেতরের কিছুই "মুছে গেছে" ধরা নয়
-    const skippedRows = deletedRows.filter((r) => isUnderUnreadable(rowPathOf(r, rowById), unreadable));
-    if (skippedRows.length > 0) {
-      const skipIds = new Set(skippedRows.map((r) => r.id));
-      deletedRows = deletedRows.filter((r) => !skipIds.has(r.id));
-    }
-  }
-  const declinedRowIds = new Set<string>();
   if (deletedRows.length > 0) {
-    const deletedIds = new Set(deletedRows.map((r) => r.id));
-    const topLevel = pickTopLevel(deletedRows);
-    const affectedTopicIds = topics.filter((t) => deletedIds.has(t.id) || deletedIds.has(t.chapterId)).map((t) => t.id);
-    const questionCount = affectedTopicIds.length ? await sdb.questions.where('topicId').anyOf(affectedTopicIds).count() : 0;
-    const req: DeleteRequest = {
-      kind: 'folders',
-      scope,
-      total: deletedRows.length,
-      items: topLevel.map((r) => ({ name: r.dirName || r.id, kind: r.kind as FolderKind })),
-      questionCount,
-    };
-    const ok = await confirmDelete(req);
-    if (!ok) {
-      deletedRows.forEach((r) => declinedRowIds.add(r.id));
-      deletedRows = [];
-      summary.warnings.push(`${declinedRowIds.size}টি ফোল্ডার পাওয়া যাচ্ছে না - অ্যাপে রেখে দেওয়া হয়েছে, ফোল্ডার আবার তৈরি হবে`);
+    const sig = deletedRows.map((r) => r.id).sort().join(',');
+    const massive = deletedRows.length >= 3 && deletedRows.length / Math.max(1, folderRows.length) > 0.5;
+    if (massive) {
+      if (sig === declinedSignature) {
+        deletedRows = [];
+      } else {
+        const ok = opts.confirmMassDelete ? opts.confirmMassDelete(deletedRows.length, folderRows.length) : false;
+        if (!ok) {
+          declinedSignature = sig;
+          summary.warnings.push('অনেকগুলো ফোল্ডার পাওয়া যাচ্ছে না - কিছু মোছা হয়নি');
+          deletedRows = [];
+        }
+      }
     }
   }
 
@@ -353,8 +315,6 @@ export async function scanScope(scope: CqScope, opts: ScanOptions = {}): Promise
     const needRead = n.hasData && (isDup || n.isNew || !dataRow || dataRow.mtime !== n.dataMtime || dataRow.size !== n.dataSize);
 
     if (!n.hasData) {
-      // ধাপ ১.৫: ফোল্ডারই পড়া যায়নি - data.json "নেই" নয়, "দেখা যায়নি" (ওভাররাইট নয়)
-      if (incomplete && isUnderUnreadable(n.path, unreadable)) continue;
       // no data.json yet (new folder) or it was deleted -> it is written again from the app's copy
       if (topicId) plans.push({ node: n, topicId, chapterId, isNewTopic, remap: false, mtime: 0, size: 0 });
       continue;
@@ -363,13 +323,6 @@ export async function scanScope(scope: CqScope, opts: ScanOptions = {}): Promise
 
     const plan: TopicPlan = { node: n, topicId, chapterId, isNewTopic, remap: isDup, mtime: n.dataMtime, size: n.dataSize };
     const text = await readText(`${root}/${n.path}/${DATA_FILE}`);
-    if (text !== null) plan.sha256 = await sha256Hex(text);
-    // ধাপ ২.২: mtime/size বদলেছে কিন্তু লেখা হুবহু আগের মতো (ক্লাউড সিঙ্ক / ফাইল ম্যানেজার ফাইল ছুঁয়েছে) ->
-    // অ্যাপে কিছু প্রয়োগ নয়; শুধু নতুন mtime/size মনে রাখা, যাতে আবার পড়তে না হয়।
-    if (dataRow && !isDup && !n.isNew && sameContent(dataRow.sha256, plan.sha256)) {
-      await sdb.syncState.put({ ...dataRow, mtime: n.dataMtime, size: n.dataSize });
-      continue;
-    }
     let parsed: any = null;
     if (text !== null) {
       try {
@@ -397,31 +350,6 @@ export async function scanScope(scope: CqScope, opts: ScanOptions = {}): Promise
     plans.push(plan);
   }
 
-  // ---- data.json থেকে প্রশ্ন/উদ্দীপক বাদ পড়লে (অ্যাপ থেকেও মুছে যেত) আগে জিজ্ঞাসা ----
-  for (const plan of plans) {
-    if (!plan.payload || !plan.topicId) continue;
-    // অ্যাপের বদল এখনো ফোল্ডারে যায়নি (লেখা ব্যর্থ ছিল) - ফাইলের কপি বসালে সেই বদল হারাবে; এবার বাদ
-    if (isTopicPending(scope, plan.topicId)) {
-      plan.skip = true;
-      summary.warnings.push(`"${plan.node.name}": অ্যাপের বদল ফোল্ডারে লেখা বাকি - ফাইলের কপি এবার অ্যাপে বসানো হয়নি`);
-      continue;
-    }
-    if (plan.isNewTopic || plan.remap) continue; // নতুন টাইপে মোছার কিছু নেই
-    const oldQ = (await sdb.questions.where('topicId').equals(plan.topicId).primaryKeys()) as string[];
-    const oldS = (await sdb.stimuli.where('topicId').equals(plan.topicId).primaryKeys()) as string[];
-    const newQ = new Set<string>(plan.payload.questions.filter((q: any) => q && typeof q.id === 'string').map((q: any) => q.id));
-    const newS = new Set<string>(plan.payload.stimuli.filter((x: any) => x && typeof x.id === 'string').map((x: any) => x.id));
-    const dropQ = missingIds(oldQ, newQ).length;
-    const dropS = missingIds(oldS, newS).length;
-    if (dropQ + dropS === 0) continue;
-    const label = scope === 'type' ? (topicById.get(plan.topicId)?.name ?? plan.node.name) : plan.node.name;
-    const ok = await confirmDelete({ kind: 'questions', scope, name: label, questionCount: dropQ, stimulusCount: dropS });
-    if (!ok) {
-      plan.keepDropped = true;
-      summary.warnings.push(`"${label}": ফাইলে নেই এমন ${dropQ}টি প্রশ্ন অ্যাপে রেখে দেওয়া হয়েছে, ফাইল আবার লেখা হবে`);
-    }
-  }
-
   // ---- apply everything to the app database (no file IO inside this transaction) ----
   const missingData: string[] = [];
   const entityOrphans: Array<{ kind: FolderKind; id: string }> = [];
@@ -432,12 +360,6 @@ export async function scanScope(scope: CqScope, opts: ScanOptions = {}): Promise
     [sdb.subjects, sdb.chapters, sdb.topics, sdb.stimuli, sdb.questions, sdb.images, sdb.syncState],
     async (tx) => {
       markSyncTx(tx);
-
-      // 0) "রেখে দাও" দেওয়া ফোল্ডার: সিঙ্ক-রেকর্ড মুছে দিলে নিচের (4) ধাপ এগুলোকে "ফোল্ডারহীন" ধরে আবার তৈরি করে
-      for (const id of declinedRowIds) {
-        await sdb.syncState.delete(id);
-        await sdb.syncState.delete(`data:${id}`);
-      }
 
       // 1) deletions
       for (const r of deletedRows) {
@@ -522,7 +444,6 @@ export async function scanScope(scope: CqScope, opts: ScanOptions = {}): Promise
         const { node, chapterId } = plan;
         const topicId = plan.topicId;
         if (!topicId) continue;
-        if (plan.skip) continue;
 
         if (plan.isNewTopic && !(await sdb.topics.get(topicId))) {
           const siblings = await sdb.topics.where('chapterId').equals(chapterId).toArray();
@@ -537,7 +458,7 @@ export async function scanScope(scope: CqScope, opts: ScanOptions = {}): Promise
 
         if (plan.warning) {
           summary.warnings.push(plan.warning);
-          await sdb.syncState.put({ id: `data:${topicId}`, kind: 'data', mtime: plan.mtime, size: plan.size, sha256: plan.sha256 });
+          await sdb.syncState.put({ id: `data:${topicId}`, kind: 'data', mtime: plan.mtime, size: plan.size });
           continue;
         }
         if (!plan.payload) {
@@ -568,11 +489,9 @@ export async function scanScope(scope: CqScope, opts: ScanOptions = {}): Promise
         const newSIds = new Set(stimuli.map((s) => s.id));
         const dropQ = (oldQ as string[]).filter((id) => !newQIds.has(id));
         const dropS = (oldS as string[]).filter((id) => !newSIds.has(id));
-        if (!plan.keepDropped) {
-          if (dropQ.length) await sdb.questions.bulkDelete(dropQ);
-          if (dropS.length) await sdb.stimuli.bulkDelete(dropS);
-          deletedQuestionCount.n += dropQ.length;
-        }
+        if (dropQ.length) await sdb.questions.bulkDelete(dropQ);
+        if (dropS.length) await sdb.stimuli.bulkDelete(dropS);
+        deletedQuestionCount.n += dropQ.length;
         if (stimuli.length) await sdb.stimuli.bulkPut(stimuli);
         if (questions.length) await sdb.questions.bulkPut(questions);
 
@@ -600,7 +519,7 @@ export async function scanScope(scope: CqScope, opts: ScanOptions = {}): Promise
         }
         if (puts.length) await sdb.images.bulkPut(puts);
 
-        await sdb.syncState.put({ id: `data:${topicId}`, kind: 'data', mtime: plan.mtime, size: plan.size, sha256: plan.sha256 });
+        await sdb.syncState.put({ id: `data:${topicId}`, kind: 'data', mtime: plan.mtime, size: plan.size });
         summary.topicsUpdated++;
       }
 
@@ -619,9 +538,7 @@ export async function scanScope(scope: CqScope, opts: ScanOptions = {}): Promise
     markTopicDirty(scope, topicId); // data.json is (re)written from the app's copy
   }
   for (const plan of plans) {
-    if (plan.skip) continue;
     if (plan.topicId && plan.payload) forgetWritten(plan.topicId);
-    if (plan.topicId && plan.keepDropped) markTopicDirty(scope, plan.topicId); // রাখা প্রশ্নসহ data.json আবার লেখা
     if (plan.topicId && plan.isNewTopic && scope === 'type') markTopicDirty(scope, plan.topicId);
   }
   for (const o of entityOrphans) markEntityDirty(scope, o.kind, o.id);

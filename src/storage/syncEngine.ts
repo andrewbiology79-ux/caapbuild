@@ -13,12 +13,9 @@ import {
   getLastWriteAt,
   hasPendingWrites,
   resetWriterCaches,
-  restorePendingWrites,
-  takeConflictNotes,
-  setConflictHandler,
 } from './writer';
 import { scanScope, type ScanSummary } from './scanner';
-import { withSyncLock, type SyncLockToken } from './syncLock';
+import { withSyncLock } from './syncLock';
 
 /**
  * Folder sync - the one place that decides WHEN things are written / read.
@@ -70,6 +67,11 @@ export function resumeSync(): void {
   pauseCount = Math.max(0, pauseCount - 1);
 }
 
+let confirmMassDelete: ((count: number, total: number) => boolean) | null = null;
+export function setMassDeleteConfirm(fn: ((count: number, total: number) => boolean) | null): void {
+  confirmMassDelete = fn;
+}
+
 function announce(report: SyncReport): void {
   try {
     window.dispatchEvent(new CustomEvent(SYNC_CHANGED_EVENT, { detail: report }));
@@ -78,8 +80,21 @@ function announce(report: SyncReport): void {
   }
 }
 
-/** Write pending app changes into the folders, then read the folders back into the app */
-export async function syncNow(): Promise<SyncReport> {
+let syncInFlight: Promise<SyncReport> | null = null;
+
+/**
+ * Write pending app changes into the folders, then read the folders back into the app.
+ * ধাপ ১: দুই জায়গা (অটো রান + মেনুর বাটন) একসাথে ডাকলে একটাই কাজ চলে, দ্বিতীয় ডাক সেই ফলাফলই পায়।
+ */
+export function syncNow(): Promise<SyncReport> {
+  if (syncInFlight) return syncInFlight;
+  syncInFlight = runSyncNow().finally(() => {
+    syncInFlight = null;
+  });
+  return syncInFlight;
+}
+
+async function runSyncNow(): Promise<SyncReport> {
   const report = emptyReport();
   if (!isFolderSyncEnabled() || pauseCount > 0) return report;
 
@@ -89,7 +104,7 @@ export async function syncNow(): Promise<SyncReport> {
     const out: ScanSummary[] = [];
     for (const scope of SCOPES) {
       try {
-        out.push(await scanScope(scope)); // মোছার নিশ্চিতকরণ: deleteConfirm.ts (ডায়ালগ বসায় SyncRunner)
+        out.push(await scanScope(scope, { confirmMassDelete: confirmMassDelete ?? undefined }));
       } catch (err: any) {
         console.warn(`Folder scan (${scope}) failed:`, err);
         out.push({ scope, added: 0, renamed: 0, deleted: 0, topicsUpdated: 0, warnings: [], changed: false, error: err?.message || String(err) });
@@ -111,9 +126,6 @@ export async function syncNow(): Promise<SyncReport> {
   // the scan may have queued follow-up writes (missing data.json, new folders ...)
   if (hasPendingWrites()) await flushAllWrites();
 
-  // ধাপ ১.২: লেখার সময় যেসব data.json-কনফ্লিক্টে অ্যাপের কপি Conflicts/-এ রাখা হলো, তার বার্তা
-  report.warnings.push(...takeConflictNotes());
-
   if (report.changed) announce(report);
   return report;
 }
@@ -131,30 +143,12 @@ export function startFolderSync(onReport: (r: SyncReport) => void, onWriteError:
 
   let stopped = false;
   let running = false;
-  let conflictTimer: ReturnType<typeof setTimeout> | null = null;
   const run = async () => {
     if (stopped || running) return;
     running = true;
     try {
       if (!(await hasStorageAccess())) return;
-      try {
-        if (await recoverInterruptedRebuild()) {
-          onReport({ ...emptyReport(), warnings: ['আগের ফোল্ডার পুনর্গঠন মাঝপথে থেমেছিল - অ্যাপের ডেটা থেকে ফোল্ডার আবার লেখা হয়েছে'] });
-        }
-      } catch (err: any) {
-        console.warn('Interrupted rebuild recovery failed:', err);
-        onReport({ ...emptyReport(), error: `ফোল্ডার পুনর্গঠন সম্পূর্ণ করা যায়নি: ${err?.message || err}` });
-        return; // স্ক্যান নয় - আধা-লেখা ফোল্ডার থেকে ডেটা মোছার ঝুঁকি
-      }
-      // ধাপ ২.৬: আগের বার লেখা শেষ হওয়ার আগে অ্যাপ বন্ধ হয়ে থাকলে সেই বাকি লেখা আগে ফেরত আনা (স্ক্যানের আগে)
-      let pendingWarnings: string[] = [];
-      try {
-        pendingWarnings = await restorePendingWrites();
-      } catch (err) {
-        console.warn('Restoring pending writes failed:', err);
-      }
       const r = await syncNow();
-      if (pendingWarnings.length) r.warnings.push(...pendingWarnings);
       if (r.changed || r.error || r.warnings.length) onReport(r);
     } catch (err) {
       console.warn('Folder sync failed:', err);
@@ -164,13 +158,6 @@ export function startFolderSync(onReport: (r: SyncReport) => void, onWriteError:
   };
 
   const first = setTimeout(run, 1200);
-
-  // ধাপ ১.২: লেখার সময় data.json-এর কনফ্লিক্ট ধরা পড়লে ফোল্ডারের কপি অ্যাপে আনতে (এবং বার্তা দেখাতে) একটা স্ক্যান চালানো
-  setConflictHandler(() => {
-    if (stopped) return;
-    if (conflictTimer) clearTimeout(conflictTimer);
-    conflictTimer = setTimeout(run, 700);
-  });
 
   let resumeHandle: { remove: () => Promise<void> } | null = null;
   CapacitorApp.addListener('appStateChange', ({ isActive }) => {
@@ -208,8 +195,6 @@ export function startFolderSync(onReport: (r: SyncReport) => void, onWriteError:
   return () => {
     stopped = true;
     clearTimeout(first);
-    if (conflictTimer) clearTimeout(conflictTimer);
-    setConflictHandler(null);
     if (watchTimer) clearTimeout(watchTimer);
     resumeHandle?.remove().catch(() => {});
     watchHandle?.remove().catch(() => {});
@@ -297,11 +282,6 @@ export async function enableFolderSync(onProgress?: (text: string) => void): Pro
 export function disableFolderSync(): void {
   setEnabledFlag(false);
   setWritesEnabled(false);
-  try {
-    localStorage.removeItem('qb_pending_writes_v1'); // ধাপ ২.৬: সিঙ্ক বন্ধ - "লেখা বাকি" তালিকা অচল
-  } catch {
-    /* ignore */
-  }
 }
 
 /* ------------------------------------------------------------------
@@ -312,48 +292,9 @@ export function disableFolderSync(): void {
  * Call after a job that cleared / replaced a whole database. The folders of that scope are rebuilt
  * from the app database (pictures that were just imported are still blobs there and are written out).
  */
-const JOURNAL_KEY = 'qb_rebuild_journal';
-
-function readJournal(): CqScope[] | null {
-  try {
-    const raw = localStorage.getItem(JOURNAL_KEY);
-    const arr = raw ? JSON.parse(raw) : null;
-    return Array.isArray(arr) && arr.length ? (arr as CqScope[]) : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeJournal(scopes: CqScope[] | null): void {
-  try {
-    if (scopes) localStorage.setItem(JOURNAL_KEY, JSON.stringify(scopes));
-    else localStorage.removeItem(JOURNAL_KEY);
-  } catch {
-    /* ignore */
-  }
-}
-
-/**
- * ধাপ ২.৪: ফোল্ডার পুনর্গঠনের মাঝে অ্যাপ বন্ধ হলে "চলমান কাজ" চিহ্নটা থেকে যায়। পরের চালুতে
- * ফোল্ডার স্ক্যান না করে (আধা-লেখা ফোল্ডারকে \"মুছে গেছে\" ভেবে ডেটা মুছে ফেলার ঝুঁকি এড়াতে)
- * আগে ডাটাবেস থেকে আবার পুরো লেখা হয়। ডাটাবেসই সত্য, কারণ ইমপোর্ট ডাটাবেসে আগেই শেষ।
- * @returns true হলে উদ্ধার চলেছে
- */
-export async function recoverInterruptedRebuild(): Promise<boolean> {
-  const scopes = readJournal();
-  if (!scopes || !isFolderSyncEnabled()) return false;
-  await rebuildFolders(scopes);
-  return true;
-}
-
-/**
- * @param held ধাপ ২.৫: কলার যদি আগে থেকেই সিঙ্ক-লক ধরে থাকে (ইমপোর্ট/রিস্টোর - ডাটাবেস লেখা ও পুনর্গঠন একই লকে),
- *             তার টোকেন এখানে দিলে ভেতরের কাজ নতুন করে লক নেয় না (নইলে নিজের লকের জন্য নিজেই অপেক্ষা করে আটকাত)।
- */
-export async function rebuildFolders(scopes: CqScope[], held?: SyncLockToken): Promise<void> {
+export async function rebuildFolders(scopes: CqScope[]): Promise<void> {
   if (!isFolderSyncEnabled()) return;
-  await flushAllWrites(false, held); // let queued small writes finish first
-  writeJournal(scopes);
+  await flushAllWrites(); // let queued small writes finish first
   await withSyncLock(async () => {
     for (const scope of scopes) {
       const sdb = getDb(scope);
@@ -370,14 +311,13 @@ export async function rebuildFolders(scopes: CqScope[], held?: SyncLockToken): P
       await makeDir(scopeRoot(scope));
     }
     resetWriterCaches();
-  }, held);
+  });
   for (const scope of scopes) await markEverythingDirty(scope);
-  await flushAllWrites(true, held);
-  writeJournal(null); // সব লেখা শেষ - চিহ্ন মোছা
+  await flushAllWrites(true);
 }
 
 /** Call after a job that only added / updated rows (hooks already queued them) - just write now */
-export async function flushAfterBulkChange(held?: SyncLockToken): Promise<void> {
+export async function flushAfterBulkChange(): Promise<void> {
   if (!isFolderSyncEnabled()) return;
-  await flushAllWrites(false, held);
+  await flushAllWrites();
 }

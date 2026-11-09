@@ -466,19 +466,19 @@ export const PasteQuestionsModal: React.FC<PasteQuestionsModalProps> = ({
             প্রশ্নগুলো টপিক <span className="font-bold text-[#1B1F2A] dark:text-slate-200">{topicName}</span>-এ যুক্ত হবে। বিদ্যমান কিছু পরিবর্তন হবে না।
           </p>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             <button
               type="button"
               onClick={handlePasteFromClipboard}
-              className="flex-1 min-w-0 min-h-[44px] px-2 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] text-white text-xs font-bold flex items-center justify-center gap-1"
+              className="shrink-0 min-h-[44px] px-3 rounded-xl bg-[#3B4FD8] hover:bg-[#2A3BB0] text-white text-xs font-bold flex items-center justify-center gap-1 whitespace-nowrap"
             >
               <ClipboardPaste className="w-4 h-4 shrink-0" />
-              <span className="truncate">পেস্ট করুন</span>
+              <span>পেস্ট করুন</span>
             </button>
             <button
               type="button"
               onClick={handleCopySample}
-              className="min-h-[44px] px-2.5 rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#2A3BB0] dark:text-indigo-300 text-xs font-semibold flex items-center gap-1 shrink-0"
+              className="min-h-[44px] px-2.5 rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#2A3BB0] dark:text-indigo-300 text-xs font-semibold flex items-center gap-1 shrink-0 whitespace-nowrap"
             >
               <Copy className="w-4 h-4" />
               <span>নমুনা কপি</span>
@@ -486,7 +486,7 @@ export const PasteQuestionsModal: React.FC<PasteQuestionsModalProps> = ({
             <button
               type="button"
               onClick={handleCopyAiPrompt}
-              className="min-h-[44px] px-2.5 rounded-xl border border-[#3B4FD8]/40 dark:border-indigo-400/40 bg-indigo-50 dark:bg-slate-800 text-[#2A3BB0] dark:text-indigo-300 text-xs font-bold flex items-center gap-1 shrink-0"
+              className="min-h-[44px] px-2.5 rounded-xl border border-[#3B4FD8]/40 dark:border-indigo-400/40 bg-indigo-50 dark:bg-slate-800 text-[#2A3BB0] dark:text-indigo-300 text-xs font-bold flex items-center gap-1 shrink-0 whitespace-nowrap"
             >
               <Sparkles className="w-4 h-4" />
               <span>For AI</span>

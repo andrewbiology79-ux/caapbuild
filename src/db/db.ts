@@ -132,8 +132,6 @@ export interface SyncRow {
   dirName?: string;
   mtime?: number;
   size?: number;
-  /** SHA-256 of the data.json text when we last wrote / read it (ধাপ ২.২) */
-  sha256?: string;
 }
 
 export interface MetaRecord {

@@ -1,19 +1,13 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useToast } from './Toast';
-import ConfirmDialog from './ConfirmDialog';
-import { setDeleteConfirmHandler, describeDeleteRequest, type DeleteRequest } from '../storage/deleteConfirm';
 import { isNativeApp } from '../storage/nativeStore';
 import {
   isFolderSyncEnabled,
   enableFolderSync,
   startFolderSync,
+  setMassDeleteConfirm,
   type SyncReport,
 } from '../storage/syncEngine';
-
-interface PendingAsk {
-  req: DeleteRequest;
-  resolve: (ok: boolean) => void;
-}
 
 /** Text for a sync result ("2টি নতুন, 1টি নাম বদল, ...") */
 export function describeSyncReport(r: SyncReport): string {
@@ -35,40 +29,12 @@ export const SyncRunner: React.FC = () => {
   const stopRef = useRef<(() => void) | null>(null);
   const triedRef = useRef(false);
 
-  // নিজস্ব নিশ্চিতকরণ ডায়ালগ: স্ক্যান অ্যাপ থেকে কিছু মুছতে চাইলে এখানে জিজ্ঞাসা (একটা একটা করে, সারিতে)।
-  // ডিফল্ট "রেখে দাও" - Back / বাইরে চাপ / Esc সবই রেখে দেওয়া।
-  const queueRef = useRef<PendingAsk[]>([]);
-  const [current, setCurrent] = useState<PendingAsk | null>(null);
-  const currentRef = useRef<PendingAsk | null>(null); // state-এর সাথে হাতে মিলিয়ে রাখা (render-এ নয়)
-
-  const pump = useCallback(() => {
-    if (currentRef.current) return;
-    const next = queueRef.current.shift() ?? null;
-    currentRef.current = next;
-    setCurrent(next);
-  }, []);
-
-  const answer = useCallback(
-    (ok: boolean) => {
-      const c = currentRef.current;
-      if (!c) return;
-      currentRef.current = null;
-      setCurrent(null);
-      c.resolve(ok);
-      setTimeout(pump, 0);
-    },
-    [pump]
-  );
-
   useEffect(() => {
     if (!isNativeApp()) return;
 
-    setDeleteConfirmHandler(
-      (req) =>
-        new Promise<boolean>((resolve) => {
-          queueRef.current.push({ req, resolve });
-          pump();
-        })
+    setMassDeleteConfirm(
+      (count, total) =>
+        window.confirm(`স্টোরেজ ফোল্ডারে ${total}টির মধ্যে ${count}টি ফোল্ডার পাওয়া যাচ্ছে না।\n\nএগুলো অ্যাপ থেকেও মুছে ফেলবেন?`)
     );
 
     const begin = () => {
@@ -76,11 +42,7 @@ export const SyncRunner: React.FC = () => {
       stopRef.current = startFolderSync(
         (r) => {
           if (r.error) showToast(`সিঙ্ক: ${r.error}`, 4500);
-          else if (r.warnings.length) {
-            r.warnings.forEach((w) => console.warn('Folder sync warning:', w));
-            const more = r.warnings.length > 1 ? ` (আরও ${r.warnings.length - 1}টি সতর্কবার্তা)` : '';
-            showToast(r.warnings[0] + more, 6500);
-          }
+          else if (r.warnings.length) showToast(r.warnings[0], 5000);
           const text = describeSyncReport(r);
           if (text) showToast(text, 3500);
         },
@@ -110,28 +72,11 @@ export const SyncRunner: React.FC = () => {
       if (timer) clearTimeout(timer);
       stopRef.current?.();
       stopRef.current = null;
-      setDeleteConfirmHandler(null);
-      // খোলা/সারির প্রশ্ন "রেখে দাও" ধরে ছেড়ে দেওয়া (স্ক্যান যাতে আটকে না থাকে)
-      const open = currentRef.current;
-      currentRef.current = null;
-      open?.resolve(false);
-      queueRef.current.splice(0).forEach((p) => p.resolve(false));
+      setMassDeleteConfirm(null);
     };
-  }, [showToast, pump]);
+  }, [showToast]);
 
-  const texts = current ? describeDeleteRequest(current.req) : null;
-  return (
-    <ConfirmDialog
-      isOpen={!!current}
-      title={texts?.title}
-      message={texts?.message}
-      confirmText={texts?.confirmText}
-      cancelText={texts?.cancelText}
-      isDestructive
-      onConfirm={() => answer(true)}
-      onCancel={() => answer(false)}
-    />
-  );
+  return null;
 };
 
 export default SyncRunner;

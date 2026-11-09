@@ -13,21 +13,10 @@ import {
   type FolderKind,
   type FolderMeta,
 } from './folderLayout';
-import { pathExists, statPath, makeDir, readText, writeText, writeTextSafe, writeBase64, removeDir, removeFile, renamePath, copyFile } from './nativeStore';
+import { pathExists, statPath, makeDir, writeText, writeTextSafe, writeBase64, removeDir, removeFile, renamePath, copyFile } from './nativeStore';
 import { imageFilePath, blobDimensions } from './imageStore';
 import { blobToBase64 } from '../utils/fileExport';
-import { withSyncLock, type SyncLockToken } from './syncLock';
-import { sha256Hex } from './hash';
-import {
-  PENDING_JOURNAL_KEY,
-  emptyJournalScope,
-  serializeJournal,
-  parseJournal,
-  type PendingJournal,
-  type JournalScope,
-} from './pendingJournal';
-import { QB_ROOT } from '../utils/storageAccess';
-import { CONFLICTS_DIR, fileLooksChanged, decideDataWrite, conflictStamp, conflictFileName } from './conflict';
+import { withSyncLock } from './syncLock';
 
 /**
  * App -> folders ("write-through").
@@ -85,61 +74,7 @@ export function hasPendingWrites(): boolean {
   });
 }
 
-/** এই টাইপের অ্যাপ-বদল এখনো ফোল্ডারে লেখা হয়নি? (হলে স্ক্যান ওই টাইপে ফাইলের কপি অ্যাপে বসায় না - scanner.ts) */
-export function isTopicPending(scope: CqScope, topicId: string): boolean {
-  return pending[scope].topics.has(topicId);
-}
-
-/* ---- ধাপ ১.২: data.json-এর কনফ্লিক্ট ---- */
-const conflictNotes: string[] = [];
-let onConflict: (() => void) | null = null;
-
-/** জমে থাকা কনফ্লিক্টের বার্তা নিয়ে তালিকা খালি করে (syncEngine রিপোর্টে বসায়) */
-export function takeConflictNotes(): string[] {
-  return conflictNotes.splice(0);
-}
-
-/** কনফ্লিক্টে অ্যাপের কপি সরানোর পর ডাকা হয় - syncEngine তখন ফোল্ডারের কপি অ্যাপে আনতে স্ক্যান চালায় */
-export function setConflictHandler(fn: (() => void) | null): void {
-  onConflict = fn;
-}
-
-/* ---- ধাপ ২.৬: "লেখা বাকি" তালিকা ফোনেও রাখা (অ্যাপ হঠাৎ বন্ধ হলে হারাবে না) ---- */
-let persistTimer: ReturnType<typeof setTimeout> | null = null;
-let flushing = 0;
-
-function snapshotScope(p: Pending): JournalScope {
-  const out = emptyJournalScope();
-  out.entities = Array.from(p.entities.entries());
-  out.deletes = Array.from(p.deletes);
-  out.topics = Array.from(p.topics);
-  out.imageDeletes = p.imageDeletes.map((d) => ({ id: d.id, topicId: d.topicId }));
-  return out;
-}
-
-function persistPendingNow(): void {
-  if (!writesEnabled) return;
-  try {
-    const j: PendingJournal = { v: 1, type: snapshotScope(pending.type), chapter: snapshotScope(pending.chapter) };
-    const text = serializeJournal(j);
-    if (text) localStorage.setItem(PENDING_JOURNAL_KEY, text);
-    else localStorage.removeItem(PENDING_JOURNAL_KEY);
-  } catch {
-    /* localStorage not available / full - the journal is only an extra safety net */
-  }
-}
-
-function persistSoon(): void {
-  if (persistTimer) return;
-  persistTimer = setTimeout(() => {
-    persistTimer = null;
-    // a write round in progress has taken the queue - it saves the list itself when it ends
-    if (flushing === 0) persistPendingNow();
-  }, 250);
-}
-
 function schedule(): void {
-  persistSoon();
   if (timer) clearTimeout(timer);
   timer = setTimeout(() => {
     timer = null;
@@ -231,85 +166,31 @@ export async function markEverythingDirty(scope: CqScope): Promise<void> {
 /** Mark one subject / chapter / type as changed (creates its folder if it has none yet) */
 export function markEntityDirty(scope: CqScope, kind: FolderKind, id: string): void {
   pending[scope].entities.set(id, kind);
-  persistSoon();
 }
 
 /** Mark one topic as changed (e.g. its data.json was damaged outside the app) */
 export function markTopicDirty(scope: CqScope, topicId: string): void {
   pending[scope].topics.add(topicId);
-  persistSoon();
 }
 
 /** Write everything that is queued. `strict` = throw on the first error (used by the migration) */
-export function flushAllWrites(strict = false, held?: SyncLockToken): Promise<void> {
+export function flushAllWrites(strict = false): Promise<void> {
   if (timer) {
     clearTimeout(timer);
     timer = null;
   }
   return withSyncLock(async () => {
-    flushing++;
-    try {
-      for (const scope of SCOPES) {
-        try {
-          await flushScope(scope);
-        } catch (err: any) {
-          console.warn(`Folder sync (${scope}) failed:`, err);
-          if (strict) throw err;
-          onWriteError?.(err?.message || String(err));
-        }
+    for (const scope of SCOPES) {
+      try {
+        await flushScope(scope);
+      } catch (err: any) {
+        console.warn(`Folder sync (${scope}) failed:`, err);
+        if (strict) throw err;
+        onWriteError?.(err?.message || String(err));
       }
-      lastWriteAt = Date.now();
-    } finally {
-      flushing--;
-      // work that failed is back in the queue (still saved); finished work leaves the saved list
-      if (flushing === 0) persistPendingNow();
     }
-  }, held);
-}
-
-/**
- * ধাপ ২.৬: অ্যাপ চালুর সময় আগের "লেখা বাকি" তালিকা ফেরত আনা (আগের বার লেখা শেষ হওয়ার আগে অ্যাপ বন্ধ হলে)।
- *  - যে বিষয়/অধ্যায়/টাইপ ডাটাবেসে আর নেই, তার ফোল্ডার মোছা আবার করা হয় না (শুধু ডাটাবেসে না থাকলেই মোছা বাকি রাখা হয়)।
- *  - যে data.json ফোল্ডারে অন্যভাবেও বদলেছে, সেটা ওভাররাইট হয় না (ধাপ ১.২): লেখার সময় flushTopic ধরে - ফাইলের কপি জেতে,
- *    অ্যাপের কপি Conflicts/-এ যায়, বার্তা takeConflictNotes() দিয়ে আসে।
- * @returns সতর্কবার্তার তালিকা (এখন সাধারণত খালি; কনফ্লিক্টের বার্তা আসে takeConflictNotes() থেকে)
- */
-export async function restorePendingWrites(): Promise<string[]> {
-  const warnings: string[] = [];
-  let journal: PendingJournal | null = null;
-  try {
-    journal = parseJournal(localStorage.getItem(PENDING_JOURNAL_KEY));
-  } catch {
-    journal = null;
-  }
-  if (!journal) return warnings;
-
-  for (const scope of SCOPES) {
-    const sdb = getDb(scope);
-    const p = pending[scope];
-    const j = journal[scope];
-
-    for (const [id, kind] of j.entities) p.entities.set(id, kind);
-
-    for (const id of j.deletes) {
-      const stillThere = (await sdb.subjects.get(id)) || (await sdb.chapters.get(id)) || (await sdb.topics.get(id));
-      if (!stillThere) p.deletes.add(id);
-    }
-
-    for (const d of j.imageDeletes) {
-      if (!(await sdb.images.get(d.id))) p.imageDeletes.push({ id: d.id, topicId: d.topicId });
-    }
-
-    // ধাপ ১.২: ফোল্ডারের data.json অন্যভাবেও বদলে থাকলে এখন আর শুধু সতর্কবার্তা নয় - লেখার সময় flushTopic নিজে
-    // ধরে অ্যাপের কপি Conflicts/-এ রাখে, ফোল্ডারের কপি জেতে (বার্তাও সেখান থেকে আসে)। তাই এখানে সব বাকি টাইপই আবার সারিতে।
-    for (const topicId of j.topics) {
-      const topic = await sdb.topics.get(topicId);
-      if (topic) p.topics.add(topicId);
-    }
-  }
-
-  persistPendingNow();
-  return warnings;
+    lastWriteAt = Date.now();
+  });
 }
 
 /** Forget cached "what was written" info and queued work (after folders were rebuilt from scratch) */
@@ -600,44 +481,10 @@ export async function flushTopic(sdb: QbDatabase, scope: CqScope, topic: any): P
   const file = `${dirPath}/${DATA_FILE}`;
 
   if (lastData.get(topic.id) === text && (await pathExists(file))) return;
-
-  // ধাপ ১.২: ফোল্ডারের ফাইল শেষ লেখা/পড়ার পর অন্যভাবে বদলে থাকলে ওভাররাইট নয় - অ্যাপের কপি Conflicts/-এ রাখা
-  const dataRow = await sdb.syncState.get(`data:${topic.id}`);
-  const stBefore = await statPath(file);
-  if (fileLooksChanged(dataRow, stBefore)) {
-    const fileText = await readText(file);
-    const fileSha = fileText === null ? undefined : await sha256Hex(fileText);
-    const newSha = await sha256Hex(text);
-    if (decideDataWrite(dataRow, stBefore, fileSha, newSha) === 'conflict') {
-      await saveConflictCopy(scope, dirPath, text);
-      lastData.delete(topic.id); // ফোল্ডারের কপি অ্যাপে আসবে (স্ক্যান) - পরে আবার লেখা হবে যদি দরকার হয়
-      return;
-    }
-  }
-
   await writeTextSafe(file, text);
   lastData.set(topic.id, text);
   const st = await statPath(file);
-  // ধাপ ২.২: যা লেখা হলো তার SHA-256 রাখা (পরে ফাইল বদলে গেছে কি না মেলানোর ভিত্তি - scanner.ts)
-  const sha256 = await sha256Hex(text);
-  await sdb.syncState.put({ id: `data:${topic.id}`, kind: 'data', mtime: st?.mtime ?? 0, size: st?.size ?? 0, sha256 });
-}
-
-/** ধাপ ১.২: অ্যাপের কপি Download/QB Collection/Conflicts/<Type_CQ|Chapter_CQ>/<সময়>_<নাম>.json-এ রাখা */
-async function saveConflictCopy(scope: CqScope, dirPath: string, text: string): Promise<void> {
-  const label = dirPath.split('/').pop() || 'data';
-  const dir = `${QB_ROOT}/${CONFLICTS_DIR}/${scope === 'chapter' ? 'Chapter_CQ' : 'Type_CQ'}`;
-  const name = conflictFileName(conflictStamp(), label);
-  await makeDir(dir);
-  await writeTextSafe(`${dir}/${name}`, text); // না লেখা গেলে exception: ফাইল ওভাররাইট হয় না, কাজ সারিতে ফেরে (ডেটা অক্ষত)
-  conflictNotes.push(
-    `"${label}": ফোল্ডারের data.json আলাদাভাবে বদলেছিল, অ্যাপেও বদল ছিল - ফোল্ডারের কপি রাখা হলো; অ্যাপের কপি ${CONFLICTS_DIR}/${scope === 'chapter' ? 'Chapter_CQ' : 'Type_CQ'}/${name}-এ`
-  );
-  try {
-    onConflict?.();
-  } catch {
-    /* ignore */
-  }
+  await sdb.syncState.put({ id: `data:${topic.id}`, kind: 'data', mtime: st?.mtime ?? 0, size: st?.size ?? 0 });
 }
 
 /** Forget what we last wrote for a topic (after the folder side changed) */

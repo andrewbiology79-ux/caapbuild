@@ -48,7 +48,7 @@ const MainLayout: React.FC = () => {
     else delete document.documentElement.dataset.native;
   }, [isNative]);
   const outerClass = isNative
-    ? 'h-dvh bg-[#F2F4F8] dark:bg-slate-900 transition-colors'
+    ? 'fixed inset-0 bg-[#F2F4F8] dark:bg-slate-900 transition-colors'
     : 'min-h-screen bg-[#E5E9F0] dark:bg-slate-950 flex justify-center items-start sm:py-6 transition-colors';
   const frameClass = isNative
     ? 'w-full h-full bg-[#F2F4F8] dark:bg-slate-900 text-[#1B1F2A] dark:text-slate-100 flex flex-col relative overflow-hidden'

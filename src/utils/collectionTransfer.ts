@@ -4,7 +4,6 @@ import { BACKUP_FOLDERS } from './storageAccess';
 import { compressImageToWebP } from './imageCompressor';
 import { hydrateImages } from '../storage/imageStore';
 import { pauseSync, resumeSync, rebuildFolders, flushAfterBulkChange } from '../storage/syncEngine';
-import { withSyncLock } from '../storage/syncLock';
 import { loadCustomBoards, saveCustomBoards, type CustomBoard } from './boards';
 
 export interface CollectionJsonSchema {
@@ -154,7 +153,7 @@ export function normalizeCollectionPayload(data: CollectionJsonSchema): Collecti
 export async function buildQuestionCollectionExport(
   scope: CqScope = 'type',
   pretty = true
-): Promise<{ fileName: string; json: string; questionCount: number; imageCount: number; missingImages: number }> {
+): Promise<{ fileName: string; json: string }> {
   const db = getDb(scope);
   try {
     const [subjects, chapters, topics, stimuli, questions] = await Promise.all([
@@ -204,14 +203,7 @@ export async function buildQuestionCollectionExport(
 
     const dateStr = new Date().toISOString().split('T')[0];
     const fileName = `qb-${scope === 'chapter' ? 'chapter' : 'type'}-cq-${dateStr}.json`;
-    return {
-      fileName,
-      json: pretty ? JSON.stringify(payload, null, 2) : JSON.stringify(payload),
-      questionCount: questions.length,
-      imageCount: exportedImages.length,
-      // প্রশ্ন/উদ্দীপক যে ছবির id ধরে আছে অথচ ছবির ফাইল পাওয়া যায়নি (আগে চুপচাপ বাদ পড়ত)
-      missingImages: imageIdSet.size - exportedImages.length,
-    };
+    return { fileName, json: pretty ? JSON.stringify(payload, null, 2) : JSON.stringify(payload) };
   } catch (err) {
     console.error('Failed to export question collection:', err);
     throw err;
@@ -378,15 +370,12 @@ export async function executeCollectionImport(
   scope: CqScope = 'type'
 ): Promise<{ subjects: number; questions: number; images: number }> {
   // folder sync: no scanning while the database is being rewritten, then the folders follow the new data
-  // ধাপ ২.৫: ডাটাবেস লেখা + ফোল্ডার পুনর্গঠন একই সিঙ্ক-লকের ভেতরে - মাঝখানে ব্যাকগ্রাউন্ড লেখা/স্ক্যান ঢুকতে পারে না
   pauseSync();
   try {
-    return await withSyncLock(async (held) => {
-      const result = await executeCollectionImportInner(payload, options, scope);
-      if (options.mode === 'replace') await rebuildFolders([scope], held);
-      else await flushAfterBulkChange(held);
-      return result;
-    });
+    const result = await executeCollectionImportInner(payload, options, scope);
+    if (options.mode === 'replace') await rebuildFolders([scope]);
+    else await flushAfterBulkChange();
+    return result;
   } finally {
     resumeSync();
   }
@@ -404,11 +393,10 @@ async function executeCollectionImportInner(
 
   let imageSavedCount = 0;
 
-  // ধাপ ১.৩: "Replace"-এ পুরনো ছবি আগে মোছা হয় না (মাঝপথে ব্যর্থ হলে ছবি হারাত)।
-  // শুধু পুরনো ছবির id মনে রাখা হয়; ইমপোর্ট পুরোপুরি সফল হওয়ার পর যেগুলো আর কোনো প্রশ্ন/উদ্দীপক
-  // ধরে নেই সেগুলোই মোছা হয় (নইলে অব্যবহৃত ফাইল হয়ে পড়ে থাকত)।
-  const oldImageIds: string[] =
-    mode === 'replace' ? ((await db.images.toCollection().primaryKeys()) as string[]) : [];
+  // "Replace" wipes the old collection — its pictures go too (otherwise they stay behind as unused files)
+  if (mode === 'replace') {
+    await db.images.clear();
+  }
 
   // 1. Process Embedded Images (base64)
   if (payload.images && Array.isArray(payload.images)) {
@@ -486,20 +474,6 @@ async function executeCollectionImportInner(
       await db.questions.bulkPut(payload.questions);
     }
   });
-
-  // সফল হওয়ার পরে: পুরনো ছবির মধ্যে যেগুলো এখন কেউ ধরে নেই সেগুলো মোছা
-  if (mode === 'replace' && oldImageIds.length) {
-    try {
-      const [stimNow, qNow] = await Promise.all([db.stimuli.toArray(), db.questions.toArray()]);
-      const used = new Set<string>();
-      stimNow.forEach((st) => stimulusImageIdsOf(st).forEach((id) => used.add(id)));
-      qNow.forEach((q) => questionImageIdsOf(q).forEach((id) => used.add(id)));
-      const orphans = oldImageIds.filter((id) => !used.has(id));
-      if (orphans.length) await db.images.bulkDelete(orphans);
-    } catch (e) {
-      console.warn('পুরনো অব্যবহৃত ছবি মোছা যায়নি (ডেটা অক্ষত):', e);
-    }
-  }
 
   return {
     subjects: payload.subjects?.length || 0,
@@ -655,10 +629,8 @@ export async function restoreFullBackup(jsonText: string, scope?: CqScope): Prom
   const target: CqScope = scope ?? (data && data.scope === 'chapter' ? 'chapter' : 'type');
   pauseSync();
   try {
-    await withSyncLock(async (held) => {
-      await restoreFullBackupInner(data, target);
-      await rebuildFolders([target], held);
-    });
+    await restoreFullBackupInner(data, target);
+    await rebuildFolders([target]);
   } finally {
     resumeSync();
   }
@@ -791,7 +763,7 @@ function applyLocalData(local: AppLocalData | undefined, mode: RestoreMode): voi
   }
 }
 
-async function dumpDb(scope: CqScope): Promise<{ dump: DbDump; missing: number }> {
+async function dumpDb(scope: CqScope): Promise<DbDump> {
   const db = getDb(scope);
   const [subjects, chapters, topics, stimuli, questions, papers, categories, meta, images] = await Promise.all([
     db.subjects.toArray(),
@@ -810,23 +782,12 @@ async function dumpDb(scope: CqScope): Promise<{ dump: DbDump; missing: number }
       exportedImages.push({ id: img.id, fileName: img.fileName, data: await blobToBase64(img.blob) });
     }
   }
-  return {
-    dump: { subjects, chapters, topics, stimuli, questions, papers, categories, meta, images: exportedImages },
-    missing: images.length - exportedImages.length,
-  };
+  return { subjects, chapters, topics, stimuli, questions, papers, categories, meta, images: exportedImages };
 }
 
 /** Build the whole-app backup (file name + JSON text) without saving it anywhere */
-export async function buildAppFullBackupExport(): Promise<{
-  fileName: string;
-  json: string;
-  questionCount: number;
-  imageCount: number;
-  missingImages: number;
-}> {
-  const [typeRes, chapterRes] = await Promise.all([dumpDb('type'), dumpDb('chapter')]);
-  const typeDump = typeRes.dump;
-  const chapterDump = chapterRes.dump;
+export async function buildAppFullBackupExport(): Promise<{ fileName: string; json: string }> {
+  const [typeDump, chapterDump] = await Promise.all([dumpDb('type'), dumpDb('chapter')]);
   const payload: AppFullBackupSchema = {
     version: '2.1',
     type: 'qb-app-full-backup',
@@ -835,13 +796,7 @@ export async function buildAppFullBackupExport(): Promise<{
     localData: readLocalData(),
   };
   const dateStr = new Date().toISOString().split('T')[0];
-  return {
-    fileName: `qb-full-backup-${dateStr}.json`,
-    json: JSON.stringify(payload),
-    questionCount: typeDump.questions.length + chapterDump.questions.length,
-    imageCount: typeDump.images.length + chapterDump.images.length,
-    missingImages: typeRes.missing + chapterRes.missing,
-  };
+  return { fileName: `qb-full-backup-${dateStr}.json`, json: JSON.stringify(payload) };
 }
 
 /** Export EVERYTHING in the app (both question collections, categories, papers, images, settings) */
@@ -992,25 +947,23 @@ export async function restoreAppBackup(jsonText: string, mode: RestoreMode): Pro
   const touched: CqScope[] = [];
   pauseSync();
   try {
-    await withSyncLock(async (held) => {
-      if (info.kind === 'app') {
-        if (data.databases.type) {
-          await writeDump('type', data.databases.type, mode);
-          touched.push('type');
-        }
-        if (data.databases.chapter) {
-          await writeDump('chapter', data.databases.chapter, mode);
-          touched.push('chapter');
-        }
-        applyLocalData(data.localData, mode);
-      } else {
-        const sc: CqScope = info.scope || 'type';
-        await writeDump(sc, data, mode);
-        touched.push(sc);
+    if (info.kind === 'app') {
+      if (data.databases.type) {
+        await writeDump('type', data.databases.type, mode);
+        touched.push('type');
       }
-      if (mode === 'replace') await rebuildFolders(touched, held);
-      else await flushAfterBulkChange(held);
-    });
+      if (data.databases.chapter) {
+        await writeDump('chapter', data.databases.chapter, mode);
+        touched.push('chapter');
+      }
+      applyLocalData(data.localData, mode);
+    } else {
+      const sc: CqScope = info.scope || 'type';
+      await writeDump(sc, data, mode);
+      touched.push(sc);
+    }
+    if (mode === 'replace') await rebuildFolders(touched);
+    else await flushAfterBulkChange();
   } finally {
     resumeSync();
   }

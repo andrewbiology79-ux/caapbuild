@@ -13,11 +13,10 @@ import {
 } from 'lucide-react';
 import {
   parseAndValidateCollectionJson,
+  executeCollectionImport,
   getSampleCollectionJson,
   type CollectionPreviewResult,
 } from '../utils/collectionTransfer';
-import { executeCollectionImportSafely } from '../utils/safeRestore';
-import { isSafetyBackupError } from '../utils/safetyBackup';
 import { exportJsonFile } from '../utils/fileExport';
 import { useToast } from './Toast';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -134,13 +133,10 @@ export const ImportCollectionModal: React.FC<ImportCollectionModalProps> = ({
 
     setImporting(true);
     try {
-      // ধাপ ১.৪: Replace-এর আগে বর্তমান ডেটার ব্যাকআপ; না হলে ইমপোর্ট শুরুই হয় না
-      const stats = await executeCollectionImportSafely(
-        preview.rawPayload,
-        { mode: importMode, manualFiles: manualImages },
-        scope,
-        (m) => showToast(m, 4000)
-      );
+      const stats = await executeCollectionImport(preview.rawPayload, {
+        mode: importMode,
+        manualFiles: manualImages,
+      }, scope);
 
       showToast(
         `সফলভাবে ${toBn(stats.subjects)}টি বিষয় ও ${toBn(stats.questions)}টি প্রশ্ন ইমপোর্ট হয়েছে`
@@ -149,12 +145,7 @@ export const ImportCollectionModal: React.FC<ImportCollectionModalProps> = ({
       handleClose();
     } catch (err: any) {
       console.error('Import execution failed:', err);
-      if (isSafetyBackupError(err)) {
-        // ব্যাকআপ না হওয়ায় কিছুই বদলায়নি; ফাইল ও ডায়ালগ থেকে যায়, আবার চেষ্টা করা যাবে
-        showToast(err.message, 8000);
-      } else {
-        showToast(`ইমপোর্টে সমস্যা হয়েছে: ${err.message || 'ত্রুটি'}`);
-      }
+      showToast(`ইমপোর্টে সমস্যা হয়েছে: ${err.message || 'ত্রুটি'}`);
     } finally {
       setImporting(false);
     }
@@ -430,7 +421,7 @@ export const ImportCollectionModal: React.FC<ImportCollectionModalProps> = ({
         <ConfirmDialog
           isOpen={showReplaceConfirm}
           title="সব বদলে দেওয়া হবে!"
-          message="আপনি কি নিশ্চিত যে বর্তমান সকল বিষয়, অধ্যায়, টপিক ও প্রশ্ন মুছে ফেলে এই ফাইলের তথ্য প্রতিস্থাপন করতে চান? প্রতিস্থাপনের আগে বর্তমান ডেটার একটি ব্যাকআপ নিজে থেকে নেওয়া হবে; ব্যাকআপ না নিতে পারলে কাজটি শুরুই হবে না।"
+          message="আপনি কি নিশ্চিত যে বর্তমান সকল বিষয়, অধ্যায়, টপিক ও প্রশ্ন মুছে ফেলে এই ফাইলের তথ্য প্রতিস্থাপন করতে চান? এটি আর ফিরিয়ে আনা যাবে না।"
           confirmText="হ্যাঁ, সব প্রতিস্থাপন করো"
           cancelText="না, বাতিল করো"
           isDestructive={true}

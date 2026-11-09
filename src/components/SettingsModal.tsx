@@ -17,8 +17,6 @@ import {
   AUTO_BACKUP_ROOT,
   getLastAutoBackupTime,
   getLastAutoBackupDate,
-  getLastBackupAgeDays,
-  getLastBackupFailure,
   isAutoBackupEnabled,
   runAutoBackup,
   setAutoBackupEnabled,
@@ -42,8 +40,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   const [imageEditorOn, setImageEditorOn] = useState(true);
   const [lastBackup, setLastBackup] = useState<string | null>(null);
   const [backingUp, setBackingUp] = useState(false);
-  const [ageDays, setAgeDays] = useState<number | null>(null);
-  const [lastFailure, setLastFailure] = useState<{ at: string; message: string } | null>(null);
   /** result of the last "এখনই ব্যাকআপ নিন" tap — shown right under the button so it is never missed */
   const [backupMsg, setBackupMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -58,8 +54,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
       setAutoBackupOn(isAutoBackupEnabled());
       setImageEditorOn(isImageEditorEnabled());
       setLastBackup(getLastAutoBackupTime() || getLastAutoBackupDate());
-      setAgeDays(getLastBackupAgeDays());
-      setLastFailure(getLastBackupFailure());
       setBackupMsg(null);
     };
     load();
@@ -86,8 +80,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
     setBackupMsg(null);
     try {
       const r = await runAutoBackup(true);
-      setAgeDays(getLastBackupAgeDays());
-      setLastFailure(getLastBackupFailure());
       if (r.status === 'done') {
         setLastBackup(getLastAutoBackupTime() || getLastAutoBackupDate());
         setBackupMsg({ ok: true, text: `ব্যাকআপ হয়েছে: ${r.folder}` });
@@ -99,7 +91,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
       } else if (r.status === 'busy') {
         setBackupMsg({ ok: false, text: 'আরেকটি ব্যাকআপ চলছে, একটু অপেক্ষা করুন।' });
       } else if (r.status === 'error') {
-        setBackupMsg({ ok: false, text: r.message });
+        setBackupMsg({ ok: false, text: `ব্যাকআপ ব্যর্থ: ${r.message}` });
       } else {
         setBackupMsg({ ok: false, text: 'ব্যাকআপ নেওয়া যায়নি, আবার চেষ্টা করুন।' });
       }
@@ -325,14 +317,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
               অ্যাপ খুললে বা চালু থাকা অবস্থায় দিনের প্রথমবার নিজে থেকে হবে; "এখনই ব্যাকআপ নিন" চাপলে প্রতিবার নতুন ফোল্ডার হবে।
             </p>
             <p className="text-[0.6875rem] font-semibold text-[#1B1F2A] dark:text-slate-200">
-              শেষ সফল ও যাচাইকৃত ব্যাকআপ: {lastBackup || 'এখনো হয়নি'}
-              {ageDays !== null && (ageDays === 0 ? ' (আজ)' : ` (${ageDays} দিন আগে)`)}
+              সর্বশেষ ব্যাকআপ: {lastBackup || 'এখনো হয়নি'}
             </p>
-            {lastFailure && (
-              <p className="text-[0.6875rem] leading-relaxed text-red-600 dark:text-red-400">
-                সর্বশেষ চেষ্টা ব্যর্থ ({lastFailure.at}): {lastFailure.message}
-              </p>
-            )}
             <button
               type="button"
               onClick={handleBackupNow}

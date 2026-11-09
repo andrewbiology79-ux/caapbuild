@@ -9,7 +9,6 @@ import android.os.Environment;
 import android.os.FileObserver;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.StatFs;
 import android.provider.Settings;
 
 import androidx.core.content.FileProvider;
@@ -145,20 +144,6 @@ public class StorageAccessPlugin extends Plugin {
      * Lists every file / folder below `root` (paths relative to root). The text of each
      * ".folder.json" file is included so JS needs no extra round trips.
      */
-    /** খালি জায়গা (বাইট) - ফোনের অভ্যন্তরীণ স্টোরেজের আসল ড্রাইভ (ব্যাকআপের আগে জায়গা দেখতে) */
-    @PluginMethod
-    public void getFreeSpace(PluginCall call) {
-        try {
-            StatFs st = new StatFs(Environment.getExternalStorageDirectory().getPath());
-            JSObject ret = new JSObject();
-            ret.put("free", st.getAvailableBytes());
-            ret.put("total", st.getTotalBytes());
-            call.resolve(ret);
-        } catch (Exception e) {
-            call.reject("Free space unavailable: " + e.getMessage());
-        }
-    }
-
     @PluginMethod
     public void scanTree(PluginCall call) {
         String root = call.getString("root");
@@ -175,33 +160,20 @@ public class StorageAccessPlugin extends Plugin {
             call.resolve(ret);
             return;
         }
-        // ধাপ ১.৫: যে ফোল্ডারের তালিকা পড়া যায়নি তার পথ এখানে জমে; JS ওই অংশে কিছু মোছে না
-        JSArray unreadable = new JSArray();
         try {
-            walk(base, "", entries, 0, unreadable);
+            walk(base, "", entries, 0);
         } catch (Exception e) {
             call.reject("Scan failed: " + e.getMessage());
             return;
         }
         ret.put("exists", true);
         ret.put("entries", entries);
-        ret.put("complete", unreadable.length() == 0);
-        ret.put("unreadable", unreadable);
         call.resolve(ret);
     }
 
-    private void walk(File dir, String rel, JSArray out, int depth, JSArray unreadable) {
-        File[] files;
-        try {
-            files = dir.listFiles();
-        } catch (Exception e) {
-            files = null;
-        }
-        if (files == null) {
-            // অনুমতি নেই, বা পড়ার মাঝে ফোল্ডারটা মুছে গেছে - "ফাঁকা" নয়, "পড়া যায়নি"
-            unreadable.put(rel);
-            return;
-        }
+    private void walk(File dir, String rel, JSArray out, int depth) {
+        File[] files = dir.listFiles();
+        if (files == null) return;
         for (File f : files) {
             String name = f.getName();
             String p = rel.isEmpty() ? name : rel + "/" + name;
@@ -217,7 +189,7 @@ public class StorageAccessPlugin extends Plugin {
             }
             out.put(o);
             if (isDir && depth < MAX_SCAN_DEPTH && !name.startsWith(".")) {
-                walk(f, p, out, depth + 1, unreadable);
+                walk(f, p, out, depth + 1);
             }
         }
     }

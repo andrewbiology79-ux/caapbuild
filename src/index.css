@@ -137,3 +137,11 @@ html[data-native='true'] .sm\:h-\[844px\] {
 html[data-native='true'] .sm\:rounded-\[36px\] {
   border-radius: 0;
 }
+
+/* নেটিভ অ্যাপ: উইন্ডো নিজে স্ক্রল হলে হেডার স্ট্যাটাস বারের নিচে ঢুকে কেটে যেত। স্ক্রল শুধু ভেতরের কনটেইনারে। */
+html[data-native='true'],
+html[data-native='true'] body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
