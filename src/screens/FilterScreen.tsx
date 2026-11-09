@@ -1398,7 +1398,7 @@ export const FilterScreen: React.FC = () => {
   const openDef = openDropdown ? dropdowns[openDropdown] : null;
 
   return (
-    <div className="flex-1 flex flex-col min-h-full pb-20 bg-[#F2F4F8]">
+    <div className="flex-1 flex flex-col min-h-full nav-pad bg-[#F2F4F8]">
       <Header
         title="Filter"
         subtitle={

@@ -145,3 +145,8 @@ html[data-native='true'] body {
   overflow: hidden;
   overscroll-behavior: none;
 }
+
+/* স্ক্রিনের নিচের অংশ ফিক্সড বটম নেভের (৪rem + ফোনের সেফ-এরিয়া) নিচে যেন না ঢাকে */
+.nav-pad {
+  padding-bottom: calc(5rem + var(--safe-bottom, env(safe-area-inset-bottom, 0px)));
+}

@@ -67,7 +67,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onTabChange }) 
               aria-label={item.ariaLabel}
               aria-current={isActive ? 'page' : undefined}
               onClick={() => onTabChange(item.key)}
-              className={`flex-1 min-h-[48px] h-full flex flex-col items-center justify-center gap-1 transition-all rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]/40 ${
+              className={`flex-1 min-h-[48px] h-full flex flex-col items-center justify-center gap-1 transition-all rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#3B4FD8]/40 ${
                 isActive
                   ? 'text-[#3B4FD8] dark:text-indigo-400 font-semibold'
                   : 'text-[#64748B] dark:text-slate-400 hover:text-[#1B1F2A] dark:hover:text-slate-200 font-medium'

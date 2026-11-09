@@ -2,11 +2,14 @@ package com.qbcollection.examv2;
 
 import android.os.Bundle;
 import android.view.View;
+import android.view.Window;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.core.view.WindowInsetsCompat;
 
 import com.getcapacitor.BridgeActivity;
@@ -34,6 +37,20 @@ public class MainActivity extends BridgeActivity {
 
             @JavascriptInterface
             public float bottom() { return safeBottom; }
+
+            // ফোনের নিচের বাটন বার (Back/Home/Recent) অ্যাপের থিমের সাথে মিলিয়ে আইকন ও রঙ বদলায়
+            @JavascriptInterface
+            public void setDark(final boolean dark) {
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        Window w = getWindow();
+                        WindowInsetsControllerCompat c = WindowCompat.getInsetsController(w, w.getDecorView());
+                        c.setAppearanceLightNavigationBars(!dark);
+                        w.setNavigationBarColor(dark ? 0xFF0F172A : 0xFFFFFFFF);
+                    }
+                });
+            }
         }, "QbInsets");
 
         final Runnable update = new Runnable() {

@@ -7,7 +7,7 @@
 export function initSafeArea(): void {
   const root = document.documentElement;
   const w = window as unknown as {
-    QbInsets?: { top(): number; bottom(): number };
+    QbInsets?: { top(): number; bottom(): number; setDark?(d: boolean): void };
     __qbSetInsets?: (t: number, b: number) => void;
   };
   const set = (t: number, b: number) => {
@@ -20,4 +20,15 @@ export function initSafeArea(): void {
   } catch {
     /* ignore */
   }
+
+  // নেভিগেশন বারের আইকন/রঙ অ্যাপের ডার্ক/লাইট থিমের সাথে মেলানো
+  const syncNavTheme = () => {
+    try {
+      w.QbInsets?.setDark?.(root.classList.contains('dark'));
+    } catch {
+      /* ignore */
+    }
+  };
+  syncNavTheme();
+  new MutationObserver(syncNavTheme).observe(root, { attributes: true, attributeFilter: ['class'] });
 }

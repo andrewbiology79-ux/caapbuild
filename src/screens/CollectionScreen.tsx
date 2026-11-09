@@ -1126,7 +1126,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
   }, [currentView, scope, openChapter]);
 
   return (
-    <div className="flex-1 flex flex-col min-h-full pb-20 bg-[#F2F4F8]">
+    <div className="flex-1 flex flex-col min-h-full nav-pad bg-[#F2F4F8]">
       {/* Top Header */}
       <Header
         title={currentTitle}

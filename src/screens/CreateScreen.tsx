@@ -315,7 +315,7 @@ export const CreateScreen: React.FC = () => {
       ];
 
   return (
-    <div className="flex-1 flex flex-col min-h-full pb-24 bg-[#F2F4F8] dark:bg-slate-900 transition-colors">
+    <div className="flex-1 flex flex-col min-h-full nav-pad bg-[#F2F4F8] dark:bg-slate-900 transition-colors">
       <Header
         title={selectMode ? `${toBn(picked.size)}টি নির্বাচিত` : 'তৈরি (Create)'}
         subtitle={selectMode ? 'প্রশ্নপত্র নির্বাচন মোড' : 'পরীক্ষা ও প্রশ্নপত্র ব্যবস্থাপনা'}
