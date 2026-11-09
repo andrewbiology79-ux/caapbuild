@@ -4,6 +4,7 @@ import { BACKUP_FOLDERS } from './storageAccess';
 import { compressImageToWebP } from './imageCompressor';
 import { hydrateImages } from '../storage/imageStore';
 import { pauseSync, resumeSync, rebuildFolders, flushAfterBulkChange } from '../storage/syncEngine';
+import { withSyncLock } from '../storage/syncLock';
 import { loadCustomBoards, saveCustomBoards, type CustomBoard } from './boards';
 
 export interface CollectionJsonSchema {
@@ -377,12 +378,15 @@ export async function executeCollectionImport(
   scope: CqScope = 'type'
 ): Promise<{ subjects: number; questions: number; images: number }> {
   // folder sync: no scanning while the database is being rewritten, then the folders follow the new data
+  // ধাপ ২.৫: ডাটাবেস লেখা + ফোল্ডার পুনর্গঠন একই সিঙ্ক-লকের ভেতরে - মাঝখানে ব্যাকগ্রাউন্ড লেখা/স্ক্যান ঢুকতে পারে না
   pauseSync();
   try {
-    const result = await executeCollectionImportInner(payload, options, scope);
-    if (options.mode === 'replace') await rebuildFolders([scope]);
-    else await flushAfterBulkChange();
-    return result;
+    return await withSyncLock(async (held) => {
+      const result = await executeCollectionImportInner(payload, options, scope);
+      if (options.mode === 'replace') await rebuildFolders([scope], held);
+      else await flushAfterBulkChange(held);
+      return result;
+    });
   } finally {
     resumeSync();
   }
@@ -651,8 +655,10 @@ export async function restoreFullBackup(jsonText: string, scope?: CqScope): Prom
   const target: CqScope = scope ?? (data && data.scope === 'chapter' ? 'chapter' : 'type');
   pauseSync();
   try {
-    await restoreFullBackupInner(data, target);
-    await rebuildFolders([target]);
+    await withSyncLock(async (held) => {
+      await restoreFullBackupInner(data, target);
+      await rebuildFolders([target], held);
+    });
   } finally {
     resumeSync();
   }
@@ -986,23 +992,25 @@ export async function restoreAppBackup(jsonText: string, mode: RestoreMode): Pro
   const touched: CqScope[] = [];
   pauseSync();
   try {
-    if (info.kind === 'app') {
-      if (data.databases.type) {
-        await writeDump('type', data.databases.type, mode);
-        touched.push('type');
+    await withSyncLock(async (held) => {
+      if (info.kind === 'app') {
+        if (data.databases.type) {
+          await writeDump('type', data.databases.type, mode);
+          touched.push('type');
+        }
+        if (data.databases.chapter) {
+          await writeDump('chapter', data.databases.chapter, mode);
+          touched.push('chapter');
+        }
+        applyLocalData(data.localData, mode);
+      } else {
+        const sc: CqScope = info.scope || 'type';
+        await writeDump(sc, data, mode);
+        touched.push(sc);
       }
-      if (data.databases.chapter) {
-        await writeDump('chapter', data.databases.chapter, mode);
-        touched.push('chapter');
-      }
-      applyLocalData(data.localData, mode);
-    } else {
-      const sc: CqScope = info.scope || 'type';
-      await writeDump(sc, data, mode);
-      touched.push(sc);
-    }
-    if (mode === 'replace') await rebuildFolders(touched);
-    else await flushAfterBulkChange();
+      if (mode === 'replace') await rebuildFolders(touched, held);
+      else await flushAfterBulkChange(held);
+    });
   } finally {
     resumeSync();
   }

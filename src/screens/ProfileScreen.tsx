@@ -49,11 +49,12 @@ import {
 import { db, type CqScope } from '../db/db';
 import {
   exportAppFullBackup,
-  restoreAppBackup,
   inspectBackupFile,
   exportQuestionCollection,
   type RestoreMode,
 } from '../utils/collectionTransfer';
+import { restoreAppBackupSafely } from '../utils/safeRestore';
+import { isSafetyBackupError } from '../utils/safetyBackup';
 import {
   FileText,
   HelpCircle,
@@ -1073,7 +1074,8 @@ export const ProfileScreen: React.FC = () => {
     if (!restoreJsonContent) return;
     setRestoring(true);
     try {
-      await restoreAppBackup(restoreJsonContent, mode);
+      // ধাপ ১.৪: আগে বর্তমান ডেটার ব্যাকআপ; না হলে রিস্টোর শুরুই হয় না
+      await restoreAppBackupSafely(restoreJsonContent, mode, (m) => showToast(m, 4000));
       showToast(
         mode === 'replace'
           ? 'ডাটাবেস রিপ্লেস সম্পন্ন। অ্যাপ রিলোড হচ্ছে...'
@@ -1084,7 +1086,12 @@ export const ProfileScreen: React.FC = () => {
       setTimeout(() => window.location.reload(), 1000);
     } catch (err: any) {
       console.error('Restore failed:', err);
-      showToast(`ইমপোর্ট ব্যর্থ: ${err.message || 'ভুল ফরম্যাট'}`, 3500);
+      if (isSafetyBackupError(err)) {
+        // ব্যাকআপ না হওয়ায় কিছুই বদলায়নি; ফাইল ও ডায়ালগ থেকে যায়, আবার চেষ্টা করা যাবে
+        showToast(err.message, 8000);
+      } else {
+        showToast(`ইমপোর্ট ব্যর্থ: ${err.message || 'ভুল ফরম্যাট'}`, 3500);
+      }
     } finally {
       setRestoring(false);
     }

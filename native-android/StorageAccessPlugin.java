@@ -175,20 +175,33 @@ public class StorageAccessPlugin extends Plugin {
             call.resolve(ret);
             return;
         }
+        // ধাপ ১.৫: যে ফোল্ডারের তালিকা পড়া যায়নি তার পথ এখানে জমে; JS ওই অংশে কিছু মোছে না
+        JSArray unreadable = new JSArray();
         try {
-            walk(base, "", entries, 0);
+            walk(base, "", entries, 0, unreadable);
         } catch (Exception e) {
             call.reject("Scan failed: " + e.getMessage());
             return;
         }
         ret.put("exists", true);
         ret.put("entries", entries);
+        ret.put("complete", unreadable.length() == 0);
+        ret.put("unreadable", unreadable);
         call.resolve(ret);
     }
 
-    private void walk(File dir, String rel, JSArray out, int depth) {
-        File[] files = dir.listFiles();
-        if (files == null) return;
+    private void walk(File dir, String rel, JSArray out, int depth, JSArray unreadable) {
+        File[] files;
+        try {
+            files = dir.listFiles();
+        } catch (Exception e) {
+            files = null;
+        }
+        if (files == null) {
+            // অনুমতি নেই, বা পড়ার মাঝে ফোল্ডারটা মুছে গেছে - "ফাঁকা" নয়, "পড়া যায়নি"
+            unreadable.put(rel);
+            return;
+        }
         for (File f : files) {
             String name = f.getName();
             String p = rel.isEmpty() ? name : rel + "/" + name;
@@ -204,7 +217,7 @@ public class StorageAccessPlugin extends Plugin {
             }
             out.put(o);
             if (isDir && depth < MAX_SCAN_DEPTH && !name.startsWith(".")) {
-                walk(f, p, out, depth + 1);
+                walk(f, p, out, depth + 1, unreadable);
             }
         }
     }

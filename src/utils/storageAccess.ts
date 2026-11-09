@@ -22,6 +22,13 @@ export interface ScanEntry {
 export interface ScanResult {
   exists: boolean;
   entries: ScanEntry[];
+  /**
+   * ধাপ ১.৫: false = কিছু ফোল্ডারের তালিকা পড়া যায়নি (অনুমতি / মাঝপথে মুছে যাওয়া)। পুরনো নেটিভ বিল্ডে এই ফিল্ড থাকে না
+   * (undefined) - তখন সম্পূর্ণ ধরা হয়।
+   */
+  complete?: boolean;
+  /** যে ফোল্ডারগুলো পড়া যায়নি (স্ক্যান-রুট থেকে আপেক্ষিক পথ; "" = রুটই) */
+  unreadable?: string[];
 }
 
 export interface StorageAccessPlugin {

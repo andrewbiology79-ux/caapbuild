@@ -84,7 +84,11 @@ export const RestoreModeDialog: React.FC<RestoreModeDialogProps> = ({
           </span>
         </button>
 
-        {busy && <p className="text-center text-xs font-semibold text-[#3B4FD8]">ইমপোর্ট হচ্ছে… অপেক্ষা করুন</p>}
+        <p className="text-center text-[0.6875rem] text-[#64748B] dark:text-slate-400 leading-snug">
+          ইমপোর্টের আগে বর্তমান ডেটার একটি ব্যাকআপ নিজে থেকে নেওয়া হবে। ব্যাকআপ না হলে ইমপোর্ট শুরু হবে না।
+        </p>
+
+        {busy && <p className="text-center text-xs font-semibold text-[#3B4FD8]">ব্যাকআপ ও ইমপোর্ট হচ্ছে… অপেক্ষা করুন</p>}
       </div>
     </div>
   );

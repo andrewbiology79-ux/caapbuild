@@ -167,8 +167,13 @@ interface PlannedFile {
  *  ৫) manifest.json (ফাইল, আকার, SHA-256, সংখ্যা) লিখে ফোল্ডারের নাম বদলে আসল নাম
  * কোনো ধাপে ব্যর্থ হলে \"শেষ সফল ব্যাকআপ\" তারিখ বদলায় না।
  * Runs at most once per day unless `force` is true.
+ *
+ * `reason` manifest.json-এ লেখা হয় (কেন নেওয়া): 'auto' (দৈনিক), 'manual' (এখনই ব্যাকআপ বাটন),
+ * অথবা 'before-...' (রিস্টোর/Replace-ইমপোর্টের আগের নিরাপত্তা ব্যাকআপ - ধাপ ১.৪)।
+ * 'before-' ব্যাকআপ \"আজকের দৈনিক ব্যাকআপ হয়ে গেছে\" চিহ্ন বসায় না: ওই কাজের পরে ডেটা বদলে যাবে,
+ * তাই আজকের দৈনিক ব্যাকআপ তখনও নেওয়া বাকি থাকে।
  */
-export async function runAutoBackup(force = false): Promise<AutoBackupResult> {
+export async function runAutoBackup(force = false, reason?: string): Promise<AutoBackupResult> {
   if (!Capacitor.isNativePlatform()) return { status: 'unsupported' };
   if (!force && !isAutoBackupEnabled()) return { status: 'skipped' };
 
@@ -178,6 +183,8 @@ export async function runAutoBackup(force = false): Promise<AutoBackupResult> {
 
   running = true;
   let unfinished = '';
+  const why = reason ?? (force ? 'manual' : 'auto');
+  const isSafetyBackup = why.startsWith('before-');
   try {
     let access = await hasStorageAccess();
     if (!access && (force || !askedAccessThisSession)) {
@@ -266,6 +273,7 @@ export async function runAutoBackup(force = false): Promise<AutoBackupResult> {
       type: 'qb-backup-manifest',
       version: 1,
       createdAt: now.toISOString(),
+      reason: why,
       complete: missingImages === 0,
       missingImages,
       files: manifestFiles,
@@ -287,7 +295,7 @@ export async function runAutoBackup(force = false): Promise<AutoBackupResult> {
 
     const stale = await countStaleUnfinished('');
     try {
-      localStorage.setItem(LAST_KEY, today);
+      if (!isSafetyBackup) localStorage.setItem(LAST_KEY, today);
       localStorage.setItem(LAST_TIME_KEY, stamp.replace('_', ' ').replace(/-(\d\d)-(\d\d)$/, ':$1:$2'));
       localStorage.setItem(LAST_SIZE_KEY, String(totalBytes));
       localStorage.setItem(LAST_OK_MS_KEY, String(Date.now()));
