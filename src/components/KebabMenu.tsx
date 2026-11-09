@@ -36,6 +36,8 @@ export const KebabMenu: React.FC<KebabMenuProps> = ({
   const menuRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
 
+  const startTopRef = useRef<number | null>(null);
+
   const close = () => setIsOpen(false);
   useBackClose(isOpen, close);
 
@@ -43,12 +45,14 @@ export const KebabMenu: React.FC<KebabMenuProps> = ({
   useLayoutEffect(() => {
     if (!isOpen || !btnRef.current) return;
     const rect = btnRef.current.getBoundingClientRect();
+    startTopRef.current = rect.top;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const el = menuRef.current;
     const width = Math.min(Math.max(el?.offsetWidth ?? MENU_MIN_W, MENU_MIN_W), MENU_MAX_W, vw - MARGIN * 2);
     const naturalH = el?.scrollHeight ?? items.length * 46 + 16;
-    const limit = vh - BOTTOM_NAV;
+    const safeBottom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom')) || 0;
+    const limit = vh - BOTTOM_NAV - safeBottom;
 
     let left = align === 'right' ? rect.right - width : rect.left;
     left = Math.max(MARGIN, Math.min(left, vw - width - MARGIN));
@@ -70,13 +74,21 @@ export const KebabMenu: React.FC<KebabMenuProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
+    // মেনুর নিজের স্ক্রলে বা পেছনের পেজের সামান্য নড়াচড়ায় মেনু বন্ধ হবে না;
+    // বাটন জায়গা থেকে অনেকটা সরে গেলে (>24px) তবেই বন্ধ
+    const onScroll = (e: Event) => {
+      const menu = menuRef.current;
+      const t = e.target as Node | null;
+      if (menu && t && t instanceof Node && menu.contains(t)) return;
+      const btn = btnRef.current;
+      if (!btn || startTopRef.current == null) return;
+      if (Math.abs(btn.getBoundingClientRect().top - startTopRef.current) > 24) close();
+    };
     document.addEventListener('keydown', onKey);
-    window.addEventListener('resize', close);
-    window.addEventListener('scroll', close, true);
+    window.addEventListener('scroll', onScroll, true);
     return () => {
       document.removeEventListener('keydown', onKey);
-      window.removeEventListener('resize', close);
-      window.removeEventListener('scroll', close, true);
+        window.removeEventListener('scroll', onScroll, true);
     };
   }, [isOpen]);
 
@@ -122,7 +134,7 @@ export const KebabMenu: React.FC<KebabMenuProps> = ({
               maxHeight: pos?.maxH,
               visibility: pos ? 'visible' : 'hidden',
             }}
-            className="fixed z-[61] w-max min-w-[12rem] max-w-[17rem] overflow-y-auto bg-white rounded-xl shadow-xl border border-[#D5D9E2] py-1.5 animate-in fade-in zoom-in-95 duration-100"
+            className="fixed z-[61] w-max min-w-[12rem] max-w-[17rem] overflow-y-auto overscroll-contain bg-white rounded-xl shadow-xl border border-[#D5D9E2] py-1.5 animate-in fade-in zoom-in-95 duration-100"
           >
             {items.length === 0 ? (
               <div className="px-4 py-2 text-xs text-[#64748B]">কোনো অপশন নেই</div>

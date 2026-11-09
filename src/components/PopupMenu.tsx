@@ -28,6 +28,8 @@ export const PopupMenu: React.FC<PopupMenuProps> = ({
   const btnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
+  const startTopRef = useRef<number | null>(null);
+
   const close = () => setIsOpen(false);
   useBackClose(isOpen, close);
 
@@ -35,9 +37,11 @@ export const PopupMenu: React.FC<PopupMenuProps> = ({
   useLayoutEffect(() => {
     if (!isOpen || !btnRef.current) return;
     const rect = btnRef.current.getBoundingClientRect();
+    startTopRef.current = rect.top;
     const menuH = menuRef.current?.offsetHeight ?? items.length * 48 + 16;
     const vw = window.innerWidth;
-    const vh = window.innerHeight;
+    const safeBottom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom')) || 0;
+    const vh = window.innerHeight - 72 - safeBottom; // নিচের ট্যাব বারের উপরে থাকার সীমা
     const width = Math.min(MENU_WIDTH, vw - MARGIN * 2);
 
     let left = rect.right - width;
@@ -54,13 +58,21 @@ export const PopupMenu: React.FC<PopupMenuProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
+    // মেনুর নিজের স্ক্রলে বা পেছনের পেজের সামান্য নড়াচড়ায় মেনু বন্ধ হবে না;
+    // বাটন জায়গা থেকে অনেকটা সরে গেলে (>24px) তবেই বন্ধ
+    const onScroll = (e: Event) => {
+      const menu = menuRef.current;
+      const t = e.target as Node | null;
+      if (menu && t && t instanceof Node && menu.contains(t)) return;
+      const btn = btnRef.current;
+      if (!btn || startTopRef.current == null) return;
+      if (Math.abs(btn.getBoundingClientRect().top - startTopRef.current) > 24) close();
+    };
     document.addEventListener('keydown', onKey);
-    window.addEventListener('resize', close);
-    window.addEventListener('scroll', close, true);
+    window.addEventListener('scroll', onScroll, true);
     return () => {
       document.removeEventListener('keydown', onKey);
-      window.removeEventListener('resize', close);
-      window.removeEventListener('scroll', close, true);
+        window.removeEventListener('scroll', onScroll, true);
     };
   }, [isOpen]);
 

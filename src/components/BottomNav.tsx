@@ -52,7 +52,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onTabChange }) 
   return (
     <nav
       aria-label="নিচের নেভিগেশন বার"
-      className="fixed bottom-0 left-0 right-0 z-40 bg-white dark:bg-slate-900 border-t border-[#D5D9E2] dark:border-slate-800 shadow-[0_-2px_10px_rgba(0,0,0,0.04)]"
+      className="relative shrink-0 w-full z-40 bg-white dark:bg-slate-900 border-t border-[#D5D9E2] dark:border-slate-800 shadow-[0_-2px_10px_rgba(0,0,0,0.04)]"
       style={{ paddingBottom: 'var(--safe-bottom, env(safe-area-inset-bottom, 0px))' }}
     >
       <div className="w-full flex items-center justify-around h-16 px-2">
