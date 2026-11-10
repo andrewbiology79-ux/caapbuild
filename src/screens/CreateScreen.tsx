@@ -1,13 +1,13 @@
 import { getSelectedIdsAll, getSelectedStimuliCountAll } from '../db/crossDb';
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Header } from '../components/Header';
 import { useToast } from '../components/Toast';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { PaperFormModal } from '../components/PaperFormModal';
 import { PaperViewModal } from '../components/PaperViewModal';
 import { CategoryPickerDialog } from '../components/CategoryPickerDialog';
-import { CategoryBackupDialog, CategoryImportDialog } from '../components/CategoryBackupDialogs';
-import { isManualSyncActive } from '../storage/syncEngine';
+import { RestoreModeDialog } from '../components/RestoreModeDialog';
+import { exportAppFullBackup, inspectBackupFile, restoreAppBackup, type BackupFileInfo } from '../utils/collectionTransfer';
 import {
   getPapers,
   getCategories,
@@ -88,10 +88,12 @@ export const CreateScreen: React.FC = () => {
   const [batchResult, setBatchResult] = useState<BatchPdfResult | null>(null);
   const [batchError, setBatchError] = useState<string | null>(null);
 
-  // Category backup / import (3-dot menu)
-  const [backupOpen, setBackupOpen] = useState(false);
-  const [importFile, setImportFile] = useState<File | null>(null);
-  const importInputRef = React.useRef<HTMLInputElement>(null);
+  // Full export/import for categories, papers and question collections.
+  const backupInputRef = useRef<HTMLInputElement>(null);
+  const [restoreFileName, setRestoreFileName] = useState('');
+  const [restoreInfo, setRestoreInfo] = useState<BackupFileInfo | null>(null);
+  const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
+  const [restoreBusy, setRestoreBusy] = useState(false);
 
   const setClipboard = (value: PaperClipboard) => {
     paperClipboard = value;
@@ -277,36 +279,56 @@ export const CreateScreen: React.FC = () => {
     }
   };
 
-  const guardNotBusy = (): boolean => {
-    if (batchProgress) {
-      showToast('পিডিএফ তৈরি চলছে, শেষ হলে আবার চেষ্টা করুন', 2500);
-      return false;
+  const handleExportCategoriesAndQuestions = async () => {
+    try {
+      const ok = await exportAppFullBackup();
+      showToast(ok ? 'ক্যাটেগরি ও প্রশ্নসহ সম্পূর্ণ ডাটা এক্সপোর্ট হয়েছে' : 'এক্সপোর্ট করা যায়নি');
+    } catch (err: any) {
+      console.error('Create tab backup export failed:', err);
+      showToast(err?.message || 'এক্সপোর্ট করতে সমস্যা হয়েছে');
     }
-    if (isManualSyncActive()) {
-      showToast('সিঙ্ক চলছে, শেষ হলে আবার চেষ্টা করুন', 2500);
-      return false;
-    }
-    return true;
   };
 
-  const handleOpenBackup = () => {
-    if (!guardNotBusy()) return;
-    if (categories.length === 0) {
-      showToast('ব্যাকআপ নেওয়ার মতো কোনো ক্যাটেগরি নেই');
-      return;
-    }
-    setBackupOpen(true);
-  };
-
-  const handleOpenImport = () => {
-    if (!guardNotBusy()) return;
-    importInputRef.current?.click();
-  };
-
-  const handleImportFilePicked = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBackupFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    // Allow selecting the same file again after closing the dialog.
     e.target.value = '';
-    if (file) setImportFile(file);
+    if (!file) return;
+    try {
+      const json = await file.text();
+      const info = inspectBackupFile(json);
+      // Keep the file text on the component while the restore choice is open.
+      setPendingBackupText(json);
+      setRestoreFileName(file.name);
+      setRestoreInfo(info);
+      setRestoreDialogOpen(true);
+    } catch (err: any) {
+      showToast(err?.message || 'এটি সঠিক ব্যাকআপ ফাইল নয়');
+    }
+  };
+
+  const [pendingBackupText, setPendingBackupText] = useState<string | null>(null);
+
+  const handleRestoreBackup = async (mode: 'replace' | 'merge') => {
+    if (!pendingBackupText || restoreBusy) return;
+    setRestoreBusy(true);
+    try {
+      const info = await restoreAppBackup(pendingBackupText, mode);
+      setRestoreDialogOpen(false);
+      setPendingBackupText(null);
+      setRestoreInfo(null);
+      showToast(
+        mode === 'replace'
+          ? `ডাটা প্রতিস্থাপন হয়েছে · ${toBn(info.questions)}টি প্রশ্ন`
+          : `ডাটা যুক্ত হয়েছে · ${toBn(info.questions)}টি প্রশ্ন`
+      );
+      await loadData();
+    } catch (err: any) {
+      console.error('Create tab backup import failed:', err);
+      showToast(err?.message || 'ইমপোর্ট করতে সমস্যা হয়েছে');
+    } finally {
+      setRestoreBusy(false);
+    }
   };
 
   const menuItems = selectMode
@@ -348,16 +370,16 @@ export const CreateScreen: React.FC = () => {
             ]
           : []),
         {
-          id: 'backup-categories',
-          label: 'ক্যাটেগরি ব্যাকআপ (প্রশ্নসহ)',
+          id: 'export-categories-questions',
+          label: 'ক্যাটেগরি ও প্রশ্ন এক্সপোর্ট',
           icon: <Download className="w-4 h-4 text-[#3B4FD8]" />,
-          onClick: handleOpenBackup,
+          onClick: handleExportCategoriesAndQuestions,
         },
         {
-          id: 'import-categories',
-          label: 'ক্যাটেগরি ইম্পোর্ট',
+          id: 'import-categories-questions',
+          label: 'ক্যাটেগরি ও প্রশ্ন ইমপোর্ট',
           icon: <Upload className="w-4 h-4 text-[#3B4FD8]" />,
-          onClick: handleOpenImport,
+          onClick: () => backupInputRef.current?.click(),
         },
         {
           id: 'go-collection',
@@ -777,25 +799,28 @@ export const CreateScreen: React.FC = () => {
         </div>
       )}
 
-      {/* Category backup / import (3-dot menu) */}
       <input
-        ref={importInputRef}
+        ref={backupInputRef}
         type="file"
         accept=".json,application/json"
-        onChange={handleImportFilePicked}
+        onChange={handleBackupFileChange}
         className="hidden"
+        aria-label="ক্যাটেগরি ও প্রশ্নের ব্যাকআপ ফাইল নির্বাচন"
       />
-      <CategoryBackupDialog
-        isOpen={backupOpen}
-        categories={categories}
-        stats={categoryStats}
-        onClose={() => setBackupOpen(false)}
-      />
-      <CategoryImportDialog
-        file={importFile}
-        onClose={() => setImportFile(null)}
-        onImported={() => {
-          loadData();
+
+      <RestoreModeDialog
+        isOpen={restoreDialogOpen}
+        fileName={restoreFileName}
+        questions={restoreInfo?.questions || 0}
+        papers={restoreInfo?.papers || 0}
+        busy={restoreBusy}
+        onReplace={() => handleRestoreBackup('replace')}
+        onMerge={() => handleRestoreBackup('merge')}
+        onCancel={() => {
+          if (restoreBusy) return;
+          setRestoreDialogOpen(false);
+          setPendingBackupText(null);
+          setRestoreInfo(null);
         }}
       />
 

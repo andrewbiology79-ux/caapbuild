@@ -206,15 +206,21 @@ export function flushAllWrites(strict = false, onUnit?: (label: string) => void)
     timer = null;
   }
   return withSyncLock(async () => {
+    const failures: string[] = [];
     for (const scope of SCOPES) {
       try {
         await flushScope(scope, onUnit);
       } catch (err: any) {
         console.warn(`Folder sync (${scope}) failed:`, err);
+        const message = err?.message || String(err);
+        onWriteError?.(message);
         if (strict) throw err;
-        onWriteError?.(err?.message || String(err));
+        failures.push(`${scope}: ${message}`);
       }
     }
+    // A non-strict flush must still reject when any scope failed. Otherwise callers
+    // (especially Auto Sync) can incorrectly report success while work remains queued.
+    if (failures.length) throw new Error(failures.join(' | '));
     lastWriteAt = Date.now();
   });
 }
@@ -295,9 +301,20 @@ async function flushScope(scope: CqScope, onUnit?: (label: string) => void): Pro
     }
   } catch (err) {
     // put the work back so the next round tries again
-    deletes.forEach((id) => p.deletes.add(id));
-    entities.forEach(([id, k]) => p.entities.set(id, k));
+    // Restore the complete snapshot, including image deletions. Preserve newer
+    // mutations that arrived while this flush was running.
+    deletes.forEach((id) => {
+      if (!p.entities.has(id)) p.deletes.add(id);
+    });
+    entities.forEach(([id, k]) => {
+      if (!p.deletes.has(id)) p.entities.set(id, k);
+    });
     topicIds.forEach((id) => p.topics.add(id));
+    const queuedImageDeletes = new Set(p.imageDeletes.map((img) => `${img.id}::${img.topicId ?? ''}`));
+    imageDeletes.forEach((img) => {
+      const key = `${img.id}::${img.topicId ?? ''}`;
+      if (!queuedImageDeletes.has(key)) p.imageDeletes.push(img);
+    });
     throw err;
   }
 }

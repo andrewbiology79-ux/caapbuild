@@ -2,7 +2,7 @@ import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { getDb, type CqScope } from '../db/db';
 import { StorageAccess, ensureStorageAccess, hasStorageAccess, QB_ROOT } from '../utils/storageAccess';
-import { QUESTION_BANK_ROOT, scopeRoot, DATA_FILE, entityPath } from './folderLayout';
+import { QUESTION_BANK_ROOT, scopeRoot, DATA_FILE, entityPath, mediaDirOf, imageFileName } from './folderLayout';
 import { makeDir, readText, pathExists, renamePath } from './nativeStore';
 import {
   installWriteHooks,
@@ -17,6 +17,7 @@ import {
 import { scanScope, type ScanSummary } from './scanner';
 import { withSyncLock } from './syncLock';
 import { waitForEditorsClosed } from './editorGuard';
+import { collectImageIds } from './syncCompare';
 
 /**
  * Folder sync - the one place that decides WHEN things are written / read.
@@ -126,8 +127,11 @@ export function syncNow(opts: SyncNowOptions = {}): Promise<SyncReport> {
 export async function autoWriteNow(): Promise<SyncReport> {
   const report = emptyReport();
   if (!isFolderSyncEnabled() || pauseCount > 0) return report;
+  const hadPending = hasPendingWrites();
   await flushAllWrites();
-  report.changed = true; // কিছু লেখা হয়েছে (অ্যাপের তালিকা বদলায়নি, তাই announce নেই)
+  // Do not claim a change when there was nothing to write. flushAllWrites rejects
+  // on failure, leaving the failed work queued for a later retry.
+  report.changed = hadPending;
   return report;
 }
 
@@ -279,16 +283,40 @@ export async function enableFolderSync(onProgress?: (text: string) => void): Pro
       for (const t of await sdb.topics.toArray()) {
         const dir = await entityPath(sdb, scope, t.id);
         const text = dir ? await readText(`${dir}/${DATA_FILE}`) : null;
-        const count = await sdb.questions.where('topicId').equals(t.id).count();
-        let fileCount = -1;
+        const [questionRows, stimulusRows] = await Promise.all([
+          sdb.questions.where('topicId').equals(t.id).toArray(),
+          sdb.stimuli.where('topicId').equals(t.id).toArray(),
+        ]);
+        const count = questionRows.length;
+        let payload: any = null;
         try {
-          fileCount = text ? JSON.parse(text).questions.length : -1;
+          payload = text ? JSON.parse(text) : null;
         } catch {
-          fileCount = -1;
+          payload = null;
         }
-        if (fileCount !== count) {
+        const fileQuestions = Array.isArray(payload?.questions) ? payload.questions : null;
+        const fileStimuli = Array.isArray(payload?.stimuli) ? payload.stimuli : null;
+        const expectedImageIds = collectImageIds(stimulusRows, questionRows);
+        const fileImages = Array.isArray(payload?.images) ? payload.images : null;
+        let imagesValid = !!fileImages && fileImages.length === expectedImageIds.length;
+        if (imagesValid && dir) {
+          const mediaDir = mediaDirOf(dir);
+          for (const imageId of expectedImageIds) {
+            const imageMeta = fileImages.find((entry: any) => entry?.id === imageId);
+            if (!imageMeta || !(await pathExists(`${mediaDir}/${imageFileName(imageId)}`))) {
+              imagesValid = false;
+              break;
+            }
+          }
+        }
+        if (
+          !payload || payload.type !== 'qb-topic-data' ||
+          fileQuestions?.length !== count ||
+          fileStimuli?.length !== stimulusRows.length ||
+          !imagesValid
+        ) {
           setWritesEnabled(false);
-          return { ok: false, reason: 'verify-failed', message: `"${t.name}" ফোল্ডারের তথ্য মেলেনি` };
+          return { ok: false, reason: 'verify-failed', message: `"${t.name}" ফোল্ডারের প্রশ্ন, উদ্দীপক বা ছবির তথ্য মেলেনি` };
         }
         topics++;
         questions += count;
