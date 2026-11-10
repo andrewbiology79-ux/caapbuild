@@ -106,6 +106,17 @@ export async function scanScope(scope: CqScope, opts: ScanOptions = {}): Promise
   // ---- identify folders (id from .folder.json; copied folders become NEW items) - rules live in syncCompare.ts ----
   const { dupNodes, diskIds } = identifyNodes(nodes, rowById, orderMax);
 
+  // ধাপ ৫ (Q1): কপি করা ফোল্ডার (একই id) নতুন আইটেম হয়ে ঢোকে না - ভেতরের সবকিছুসহ বাদ। মেনুর সিঙ্কে ওগুলো
+  // আগেই Sync_Conflicts-এ সরে যায়; অটো সিঙ্ক নিজে সরায় না, শুধু জানায়।
+  if (dupNodes.size > 0) {
+    const inDup = (n: Node) => {
+      for (let p: Node | undefined = n; p; p = p.parent) if (dupNodes.has(p)) return true;
+      return false;
+    };
+    for (let i = nodes.length - 1; i >= 0; i--) if (inDup(nodes[i])) nodes.splice(i, 1);
+    summary.warnings.push(`${dupNodes.size}টি কপি করা ফোল্ডার পাওয়া গেছে (অ্যাপে ঢোকানো হয়নি) - মেনু থেকে সিঙ্ক করে সমাধান করুন`);
+  }
+
   // ---- deleted folders ----
   const found = findDeletedRows(rows, diskIds);
   let deletedRows = found.deleted;

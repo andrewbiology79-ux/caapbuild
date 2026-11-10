@@ -74,6 +74,14 @@ export function peekPending(scope: CqScope): { entities: Set<string>; deletes: S
   return { entities: new Set(p.entities.keys()), deletes: new Set(p.deletes), topics: new Set(p.topics) };
 }
 
+/** ধাপ ৫: জমে থাকা কাজের আনুমানিক একক (প্রগ্রেসের মোট): প্রতিটি বদলানো আইটেম + প্রতিটি data.json */
+export function pendingUnitCount(): number {
+  return SCOPES.reduce((n, s) => {
+    const p = pending[s];
+    return n + p.entities.size + p.topics.size + p.deletes.size;
+  }, 0);
+}
+
 export function hasPendingWrites(): boolean {
   return SCOPES.some((s) => {
     const p = pending[s];
@@ -181,7 +189,7 @@ export function markTopicDirty(scope: CqScope, topicId: string): void {
 }
 
 /** Write everything that is queued. `strict` = throw on the first error (used by the migration) */
-export function flushAllWrites(strict = false): Promise<void> {
+export function flushAllWrites(strict = false, onUnit?: (label: string) => void): Promise<void> {
   if (timer) {
     clearTimeout(timer);
     timer = null;
@@ -189,7 +197,7 @@ export function flushAllWrites(strict = false): Promise<void> {
   return withSyncLock(async () => {
     for (const scope of SCOPES) {
       try {
-        await flushScope(scope);
+        await flushScope(scope, onUnit);
       } catch (err: any) {
         console.warn(`Folder sync (${scope}) failed:`, err);
         if (strict) throw err;
@@ -214,7 +222,7 @@ async function entityRow(sdb: QbDatabase, kind: FolderKind, id: string): Promise
   return table.get(id);
 }
 
-async function flushScope(scope: CqScope): Promise<void> {
+async function flushScope(scope: CqScope, onUnit?: (label: string) => void): Promise<void> {
   const sdb = getDb(scope);
   const p = pending[scope];
 
@@ -243,6 +251,7 @@ async function flushScope(scope: CqScope): Promise<void> {
       await sdb.syncState.delete(id);
       await sdb.syncState.delete(`data:${id}`);
       topicIds.delete(id);
+      onUnit?.('মোছা ফোল্ডার');
     }
 
     // 2) created / renamed / moved items -> folders (parents first)
@@ -253,6 +262,7 @@ async function flushScope(scope: CqScope): Promise<void> {
         if (!ent) continue;
         const created = await ensureEntity(sdb, scope, kind, ent);
         if (created && kind === 'topic') topicIds.add(id);
+        onUnit?.(String(ent.name ?? ''));
       }
     }
 
@@ -261,6 +271,7 @@ async function flushScope(scope: CqScope): Promise<void> {
       const topic = await sdb.topics.get(topicId);
       if (!topic) continue;
       await flushTopic(sdb, scope, topic);
+      onUnit?.(String(topic.name ?? ''));
     }
 
     // 4) deleted pictures -> delete their files

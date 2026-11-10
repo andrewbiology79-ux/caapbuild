@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useEditorOpen } from '../utils/useEditorOpen';
 import { X, ClipboardPaste, Copy, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
 import { useToast } from './Toast';
 import { toBn } from '../utils/toBn';
@@ -337,6 +338,7 @@ export const PasteQuestionsModal: React.FC<PasteQuestionsModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  useEditorOpen(isOpen);
   useBackClose(isOpen, () => { if (!saving) onClose(); });
   if (!isOpen) return null;
 

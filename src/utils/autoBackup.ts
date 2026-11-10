@@ -2,6 +2,7 @@ import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { App as CapacitorApp } from '@capacitor/app';
 import { buildQuestionCollectionExport, buildAppFullBackupExport } from './collectionTransfer';
+import { isManualSyncActive } from '../storage/syncEngine';
 import { hasStorageAccess, ensureStorageAccess, BACKUP_ROOT, BACKUP_FOLDERS } from './storageAccess';
 
 /** Every backup gets its own folder (date + time) in here, e.g. Download/QbCollection/Backup/AutoBackup/2026-11-02_14-30-25 */
@@ -136,6 +137,7 @@ export function startAutoBackupScheduler(onResult: (r: AutoBackupResult) => void
   if (!Capacitor.isNativePlatform()) return () => {};
 
   const check = async () => {
+    if (isManualSyncActive()) return; // সিঙ্ক উইন্ডো খোলা: পরের বারে
     const r = await runAutoBackup(false);
     if (r.status === 'done' || r.status === 'error' || r.status === 'no-access') onResult(r);
   };

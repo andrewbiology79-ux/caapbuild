@@ -16,6 +16,7 @@ import {
 } from './writer';
 import { scanScope, type ScanSummary } from './scanner';
 import { withSyncLock } from './syncLock';
+import { waitForEditorsClosed } from './editorGuard';
 
 /**
  * Folder sync - the one place that decides WHEN things are written / read.
@@ -67,6 +68,11 @@ export function resumeSync(): void {
   pauseCount = Math.max(0, pauseCount - 1);
 }
 
+/** ধাপ ৪: বড় ইমপোর্ট/রিস্টোর চলছে কি না (তখন স্ক্যান কিছু করে না) */
+export function isSyncPaused(): boolean {
+  return pauseCount > 0;
+}
+
 let confirmMassDelete: ((count: number, total: number) => boolean) | null = null;
 export function setMassDeleteConfirm(fn: ((count: number, total: number) => boolean) | null): void {
   confirmMassDelete = fn;
@@ -80,21 +86,40 @@ function announce(report: SyncReport): void {
   }
 }
 
+/** মেনু থেকে সিঙ্ক শেষে তালিকা রিফ্রেশ করার জন্য (CollectionScreen এই ইভেন্ট শোনে) */
+export function announceSyncChanged(): void {
+  announce({ changed: true, added: 0, renamed: 0, deleted: 0, topicsUpdated: 0, warnings: [] });
+}
+
 let syncInFlight: Promise<SyncReport> | null = null;
 
 /**
  * Write pending app changes into the folders, then read the folders back into the app.
  * ধাপ ১: দুই জায়গা (অটো রান + মেনুর বাটন) একসাথে ডাকলে একটাই কাজ চলে, দ্বিতীয় ডাক সেই ফলাফলই পায়।
  */
-export function syncNow(): Promise<SyncReport> {
+export interface SyncNowOptions {
+  /** ধাপ ৫ (Q2): প্রিভিউয়ে লাল [নিশ্চিত করুন] চাপা হয়েছে - আসল স্ক্যান আর দ্বিতীয়বার জিজ্ঞেস করে না */
+  massDeleteConfirmed?: boolean;
+}
+
+/** মেনুর সিঙ্ক উইন্ডো খোলা থাকলে অটো সিঙ্ক চুপ থাকে (প্রিভিউ বাসি হওয়া ঠেকাতে) */
+let manualActive = false;
+export function setManualSyncActive(on: boolean): void {
+  manualActive = on;
+}
+export function isManualSyncActive(): boolean {
+  return manualActive;
+}
+
+export function syncNow(opts: SyncNowOptions = {}): Promise<SyncReport> {
   if (syncInFlight) return syncInFlight;
-  syncInFlight = runSyncNow().finally(() => {
+  syncInFlight = runSyncNow(opts).finally(() => {
     syncInFlight = null;
   });
   return syncInFlight;
 }
 
-async function runSyncNow(): Promise<SyncReport> {
+async function runSyncNow(opts: SyncNowOptions): Promise<SyncReport> {
   const report = emptyReport();
   if (!isFolderSyncEnabled() || pauseCount > 0) return report;
 
@@ -104,7 +129,7 @@ async function runSyncNow(): Promise<SyncReport> {
     const out: ScanSummary[] = [];
     for (const scope of SCOPES) {
       try {
-        out.push(await scanScope(scope, { confirmMassDelete: confirmMassDelete ?? undefined }));
+        out.push(await scanScope(scope, { confirmMassDelete: opts.massDeleteConfirmed ? () => true : confirmMassDelete ?? undefined }));
       } catch (err: any) {
         console.warn(`Folder scan (${scope}) failed:`, err);
         out.push({ scope, added: 0, renamed: 0, deleted: 0, topicsUpdated: 0, warnings: [], changed: false, error: err?.message || String(err) });
@@ -134,7 +159,12 @@ async function runSyncNow(): Promise<SyncReport> {
  * Start / stop (mounted once by <SyncRunner />)
  * ---------------------------------------------------------------- */
 
-export function startFolderSync(onReport: (r: SyncReport) => void, onWriteError: (message: string) => void): () => void {
+export interface FolderSyncOptions {
+  /** অটো সিঙ্ক প্রগ্রেস উইন্ডো দিয়ে চালায়; null ফেরালে চলেনি */
+  present?: (task: () => Promise<SyncReport>) => Promise<SyncReport | null>;
+}
+
+export function startFolderSync(onReport: (r: SyncReport) => void, onWriteError: (message: string) => void, options: FolderSyncOptions = {}): () => void {
   if (!isFolderSyncEnabled()) return () => {};
 
   setWritesEnabled(true);
@@ -144,12 +174,20 @@ export function startFolderSync(onReport: (r: SyncReport) => void, onWriteError:
   let stopped = false;
   let running = false;
   const run = async () => {
-    if (stopped || running) return;
+    if (stopped || running || manualActive) return;
     running = true;
     try {
       if (!(await hasStorageAccess())) return;
-      const r = await syncNow();
-      if (r.changed || r.error || r.warnings.length) onReport(r);
+      // অ্যাপ পেছনে থাকলে উইন্ডো তোলা যায় না: সামনে ফিরলে আবার চলবে
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      // লেখার ফর্ম খোলা থাকলে ফর্ম বন্ধ হওয়া পর্যন্ত অপেক্ষা
+      if (!(await waitForEditorsClosed(() => stopped))) return;
+      if (options.present) {
+        await options.present(() => syncNow()); // ফল উইন্ডোতেই দেখায়, টোস্ট লাগে না
+      } else {
+        const r = await syncNow();
+        if (r.changed || r.error || r.warnings.length) onReport(r);
+      }
     } catch (err) {
       console.warn('Folder sync failed:', err);
     } finally {

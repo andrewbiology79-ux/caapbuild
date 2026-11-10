@@ -1,4 +1,5 @@
 import { SolutionView } from './SolutionView';
+import { useEditorOpen } from '../utils/useEditorOpen';
 import { splitStimulusImages } from '../utils/solutionParts';
 import { getQuestionsByIds, getStimuliByIds, getSelectedIdsAll } from '../db/crossDb';
 import React, { useState, useEffect, useRef } from 'react';
@@ -133,6 +134,7 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
   };
 
   // Android Back: ভেতরের পর্দা/ডায়ালগ আগে বন্ধ, তারপর পরিবর্তন থাকলে জিজ্ঞাসা, না থাকলে বন্ধ
+  useEditorOpen(isOpen);
   useBackClose(isOpen, () => {
     if (saving) return true;
     if (showNewCatPrompt || editingGroupId || showExitConfirm) return true; // এগুলোর নিজস্ব হ্যান্ডলার আছে

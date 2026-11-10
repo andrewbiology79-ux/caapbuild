@@ -2,6 +2,7 @@ import { getDb, type CqScope, type QbDatabase } from '../db/db';
 import { scopeRoot, DATA_FILE } from './folderLayout';
 import { scanTree, readText } from './nativeStore';
 import { withSyncLock } from './syncLock';
+import { ProgressTracker, type ProgressCallback } from './syncProgress';
 import { peekPending } from './writer';
 import {
   buildNodes,
@@ -13,6 +14,7 @@ import {
   summarize,
   hasAnyChange,
   makeStamp,
+  SCOPE_LABEL,
   type AppSnapshot,
   type FileDataMap,
   type FilePayload,
@@ -84,7 +86,7 @@ async function snapshotApp(sdb: QbDatabase): Promise<AppSnapshot> {
 }
 
 /** Read the given data.json files a few at a time */
-async function readDataFiles(root: string, nodes: FolderNode[]): Promise<FileDataMap> {
+async function readDataFiles(root: string, nodes: FolderNode[], onRead?: (n: FolderNode) => void): Promise<FileDataMap> {
   const out: FileDataMap = new Map();
   let next = 0;
   const worker = async () => {
@@ -107,6 +109,7 @@ async function readDataFiles(root: string, nodes: FolderNode[]): Promise<FileDat
         }
       }
       out.set(n.path, { payload });
+      onRead?.(n);
     }
   };
   await Promise.all(Array.from({ length: Math.min(READ_PARALLEL, nodes.length) }, worker));
@@ -118,11 +121,15 @@ function insideDuplicate(n: FolderNode, dup: Set<FolderNode>): boolean {
   return false;
 }
 
-async function previewScope(direction: SyncDirection, scope: CqScope, stamp: string) {
+async function previewScope(direction: SyncDirection, scope: CqScope, stamp: string, tracker?: ProgressTracker) {
   const sdb = getDb(scope);
   const root = scopeRoot(scope);
+  const scopeName = SCOPE_LABEL[scope];
+  tracker?.setPhase('list', scopeName);
   const listing = await scanTree(root);
+  tracker?.step(1, scopeName, 'snapshot');
   const app = await snapshotApp(sdb);
+  tracker?.step(1, scopeName);
   const folderRows = app.rows.filter((r) => r.kind !== 'data' && r.dirName).length;
 
   if (!listing.exists) {
@@ -149,15 +156,25 @@ async function previewScope(direction: SyncDirection, scope: CqScope, stamp: str
     const dataRow = topicId ? rowById.get(`data:${topicId}`) : undefined;
     if (needsDataRead(n, false, dataRow)) toRead.push(n);
   }
-  const fileData = await readDataFiles(root, toRead);
+  // এখন জানা গেল কয়টি ফাইল পড়তে হবে - মোট একক বাড়ে (বার পিছোয় না, লাফায়ও না)
+  tracker?.addTotal(toRead.length);
+  tracker?.setPhase('read', scopeName);
+  const fileData = await readDataFiles(root, toRead, (n) => tracker?.step(1, `${scopeName} › ${n.path}`));
 
-  return direction === 'folder-to-app'
-    ? compareFolderToApp({ scope, stamp, nodes, app, fileData, pending: peekPending(scope) })
-    : compareAppToFolder({ scope, stamp, nodes, app, fileData });
+  tracker?.setPhase('compare', scopeName);
+  const result =
+    direction === 'folder-to-app'
+      ? compareFolderToApp({ scope, stamp, nodes, app, fileData, pending: peekPending(scope) })
+      : compareAppToFolder({ scope, stamp, nodes, app, fileData });
+  tracker?.step(1, scopeName);
+  return result;
 }
 
-async function runPreview(direction: SyncDirection): Promise<SyncPreview> {
+async function runPreview(direction: SyncDirection, onProgress?: ProgressCallback): Promise<SyncPreview> {
   const stamp = makeStamp();
+  // প্রতি স্কোপে ৩টি নিশ্চিত একক (তালিকা পড়া, অ্যাপের তথ্য, তুলনা); data.json পড়ার সংখ্যা জানা গেলে যোগ হয়
+  const tracker = onProgress ? new ProgressTracker(onProgress, SCOPES.length * 3, 'list') : undefined;
+  tracker?.setPhase('list');
   const out: SyncPreview = {
     direction,
     stamp,
@@ -173,7 +190,7 @@ async function runPreview(direction: SyncDirection): Promise<SyncPreview> {
   await withSyncLock(async () => {
     for (const scope of SCOPES) {
       try {
-        const r = await previewScope(direction, scope, stamp);
+        const r = await previewScope(direction, scope, stamp, tracker);
         out.entries.push(...r.entries);
         out.conflicts.push(...r.conflicts);
         out.warnings.push(...r.warnings);
@@ -191,15 +208,16 @@ async function runPreview(direction: SyncDirection): Promise<SyncPreview> {
 
   out.totals = summarize(out.entries, out.conflicts);
   out.empty = !hasAnyChange(out.totals);
+  tracker?.finish();
   return out;
 }
 
 /** "ফোল্ডার থেকে সিঙ্ক করুন" - ফোল্ডারের তথ্য অ্যাপে এলে কী বদলাবে (কিছু লেখে না) */
-export function previewFolderToApp(): Promise<SyncPreview> {
-  return runPreview('folder-to-app');
+export function previewFolderToApp(onProgress?: ProgressCallback): Promise<SyncPreview> {
+  return runPreview('folder-to-app', onProgress);
 }
 
 /** "অ্যাপ থেকে ফোল্ডারে সিঙ্ক করুন" - অ্যাপের তথ্য ফোল্ডারে গেলে কী বদলাবে (কিছু লেখে না) */
-export function previewAppToFolder(): Promise<SyncPreview> {
-  return runPreview('app-to-folder');
+export function previewAppToFolder(onProgress?: ProgressCallback): Promise<SyncPreview> {
+  return runPreview('app-to-folder', onProgress);
 }

@@ -8,6 +8,8 @@ import {
   setMassDeleteConfirm,
   type SyncReport,
 } from '../storage/syncEngine';
+import { SyncPreviewDialog } from './SyncPreviewDialog';
+import { syncController, useSyncDialogState, presentAutoSync } from '../storage/syncDialogStore';
 
 /** Text for a sync result ("2টি নতুন, 1টি নাম বদল, ...") */
 export function describeSyncReport(r: SyncReport): string {
@@ -28,6 +30,7 @@ export const SyncRunner: React.FC = () => {
   const { showToast } = useToast();
   const stopRef = useRef<(() => void) | null>(null);
   const triedRef = useRef(false);
+  const dialogState = useSyncDialogState();
 
   useEffect(() => {
     if (!isNativeApp()) return;
@@ -46,7 +49,8 @@ export const SyncRunner: React.FC = () => {
           const text = describeSyncReport(r);
           if (text) showToast(text, 3500);
         },
-        (message) => showToast(`ফোল্ডারে লিখতে সমস্যা: ${message}`, 5000)
+        (message) => showToast(`ফোল্ডারে লিখতে সমস্যা: ${message}`, 5000),
+        { present: presentAutoSync }
       );
     };
 
@@ -76,7 +80,15 @@ export const SyncRunner: React.FC = () => {
     };
   }, [showToast]);
 
-  return null;
+  // ধাপ ৪: মেনু থেকে শুরু করা সিঙ্কের উইন্ডো (সব স্ক্রিনের ওপরে, একটাই)
+  return (
+    <SyncPreviewDialog
+      state={dialogState}
+      onConfirm={syncController.confirm}
+      onCancel={syncController.cancel}
+      onClose={syncController.close}
+    />
+  );
 };
 
 export default SyncRunner;

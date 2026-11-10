@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useEditorOpen } from '../utils/useEditorOpen';
 import { LatexEditor } from './LatexEditor';
 import { RichText } from './RichText';
 import { SolutionView } from './SolutionView';
@@ -646,6 +647,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
   scope = 'type' as CqScope,
 }) => {
   const { getSubjects, getChapters, getTopics, saveImageBlob, getImageBlobUrl, getQuestionGroupForEdit, saveQuestionGroup } = getApi(scope);
+  useEditorOpen(isOpen);
   const { showToast } = useToast();
   const { registerBackHandler } = useNavigation();
 

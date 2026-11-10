@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { Header } from '../components/Header';
 import { KebabMenu, type MenuItem } from '../components/KebabMenu';
+import { useSyncMenuItems } from '../utils/useSyncMenuItems';
 import { RichText } from '../components/RichText';
 import { QuestionBoardTags } from '../components/QuestionBoardTags';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -1296,6 +1297,7 @@ export const FilterScreen: React.FC = () => {
     setSearchInput('');
   };
 
+  const syncMenuItems = useSyncMenuItems();
   const headerMenuItems = useMemo((): MenuItem[] => {
     const items: MenuItem[] = [
       {
@@ -1385,9 +1387,10 @@ export const FilterScreen: React.FC = () => {
         }
       );
     }
+    items.push(...syncMenuItems);
     return items;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchOpen, selectedIds, results, selectedRows, savedFilters, hasAnyFilter]);
+  }, [searchOpen, selectedIds, results, selectedRows, savedFilters, hasAnyFilter, syncMenuItems]);
 
   const resultIdSet = useMemo(() => new Set(results.map((r) => r.question.id)), [results]);
   const hiddenSelected = useMemo(

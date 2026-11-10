@@ -26,7 +26,7 @@ import { KebabMenu, type MenuItem } from '../components/KebabMenu';
 import { toBn, toBnPad2 } from '../utils/toBn';
 import { useNavigation } from '../utils/navigation';
 import { getDb, type CqScope } from '../db/db';
-import { SYNC_CHANGED_EVENT, syncNow, isFolderSyncEnabled } from '../storage/syncEngine';
+import { SYNC_CHANGED_EVENT } from '../storage/syncEngine';
 
 import {
   getApi,
@@ -966,21 +966,6 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
         icon: <Trash2 className="w-4 h-4 text-red-500" />,
         isDestructive: true,
         onClick: () => handleDeleteItem('chapter', currentView.chapter.id, currentView.chapter.name),
-      });
-    }
-
-    // Folder sync: read the storage folders right now
-    if (isFolderSyncEnabled()) {
-      items.push({
-        id: 'sync-now',
-        label: 'ফোল্ডার থেকে সিঙ্ক করুন',
-        icon: <RefreshCw className="w-4 h-4 text-[#3B4FD8]" />,
-        onClick: async () => {
-          const r = await syncNow();
-          if (r.error) showToast(`সিঙ্ক: ${r.error}`, 4000);
-          else showToast(r.changed ? 'সিঙ্ক সম্পন্ন হয়েছে' : 'সব ঠিকই আছে, নতুন কিছু নেই', 2500);
-          if (!r.changed) loadData();
-        },
       });
     }
 
