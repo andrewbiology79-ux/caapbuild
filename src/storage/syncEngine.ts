@@ -119,6 +119,18 @@ export function syncNow(opts: SyncNowOptions = {}): Promise<SyncReport> {
   return syncInFlight;
 }
 
+/**
+ * অটো সিঙ্ক = শুধু অ্যাপ -> ফোল্ডার: জমে থাকা অ্যাপের বদল ফোল্ডারে লেখা। ফোল্ডার স্ক্যান করে অ্যাপে আনা হয় না -
+ * সেটা শুধু থ্রি ডট মেনুর "ফোল্ডার থেকে সিঙ্ক করুন" দিয়ে (syncNow)।
+ */
+export async function autoWriteNow(): Promise<SyncReport> {
+  const report = emptyReport();
+  if (!isFolderSyncEnabled() || pauseCount > 0) return report;
+  await flushAllWrites();
+  report.changed = true; // কিছু লেখা হয়েছে (অ্যাপের তালিকা বদলায়নি, তাই announce নেই)
+  return report;
+}
+
 async function runSyncNow(opts: SyncNowOptions): Promise<SyncReport> {
   const report = emptyReport();
   if (!isFolderSyncEnabled() || pauseCount > 0) return report;
@@ -160,7 +172,7 @@ async function runSyncNow(opts: SyncNowOptions): Promise<SyncReport> {
  * ---------------------------------------------------------------- */
 
 export interface FolderSyncOptions {
-  /** অটো সিঙ্ক প্রগ্রেস উইন্ডো দিয়ে চালায়; null ফেরালে চলেনি */
+  /** অটো সিঙ্ক রিবনের নিচের ছোট লেখা দেখিয়ে চালায়; null ফেরালে চলেনি */
   present?: (task: () => Promise<SyncReport>) => Promise<SyncReport | null>;
 }
 
@@ -182,11 +194,14 @@ export function startFolderSync(onReport: (r: SyncReport) => void, onWriteError:
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       // লেখার ফর্ম খোলা থাকলে ফর্ম বন্ধ হওয়া পর্যন্ত অপেক্ষা
       if (!(await waitForEditorsClosed(() => stopped))) return;
+      if (!hasPendingWrites()) return; // লেখার কিছু নেই - ফোল্ডার স্ক্যান অটোতে হয় না
       if (options.present) {
-        await options.present(() => syncNow()); // ফল উইন্ডোতেই দেখায়, টোস্ট লাগে না
+        // রিবনের নিচে "অটো সিঙ্ক হচ্ছে…" লেখা (present ভেতরে দেখায়); পরিবর্তন/ত্রুটি/সতর্কতা টোস্টে
+        const r = await options.present(() => autoWriteNow());
+        if (r && (r.changed || r.error || r.warnings.length)) onReport(r);
       } else {
-        const r = await syncNow();
-        if (r.changed || r.error || r.warnings.length) onReport(r);
+        const r = await autoWriteNow();
+        if (r.error || r.warnings.length) onReport(r);
       }
     } catch (err) {
       console.warn('Folder sync failed:', err);
@@ -205,38 +220,12 @@ export function startFolderSync(onReport: (r: SyncReport) => void, onWriteError:
     if (stopped) h.remove();
   });
 
-  // live folder watcher (extra - the scan on resume is the safety net)
-  let watchHandle: { remove: () => Promise<void> } | null = null;
-  let watchTimer: ReturnType<typeof setTimeout> | null = null;
-  (async () => {
-    try {
-      if (!(await hasStorageAccess())) return;
-      await makeDir(QUESTION_BANK_ROOT);
-      watchHandle = await StorageAccess.addListener('storageChanged', () => {
-        if (watchTimer) clearTimeout(watchTimer);
-        watchTimer = setTimeout(() => {
-          // ignore the echo of our own writes
-          if (Date.now() - getLastWriteAt() < 3000 || hasPendingWrites()) return;
-          run();
-        }, 1500);
-      });
-      await StorageAccess.watch({ root: QUESTION_BANK_ROOT });
-      if (stopped) {
-        watchHandle?.remove();
-        StorageAccess.unwatch().catch(() => {});
-      }
-    } catch (err) {
-      console.warn('Folder watcher not available (the scan still works):', err);
-    }
-  })();
+  // ফোল্ডার বদলানো ধরার ওয়াচার আর নেই: ফোল্ডারের বদল অ্যাপে আসে শুধু মেনুর "ফোল্ডার থেকে সিঙ্ক করুন" দিয়ে
 
   return () => {
     stopped = true;
     clearTimeout(first);
-    if (watchTimer) clearTimeout(watchTimer);
     resumeHandle?.remove().catch(() => {});
-    watchHandle?.remove().catch(() => {});
-    StorageAccess.unwatch().catch(() => {});
   };
 }
 

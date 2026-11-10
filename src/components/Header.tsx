@@ -2,6 +2,7 @@ import React from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { KebabMenu, type MenuItem } from './KebabMenu';
 import { useSyncMenuItems } from '../utils/useSyncMenuItems';
+import { AutoSyncStrip } from './AutoSyncStrip';
 
 export interface HeaderProps {
   title: string;
@@ -81,6 +82,8 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </div>
       </div>
+      {/* অটো সিঙ্ক চললে রিবনের নিচে ছোট লেখা */}
+      <AutoSyncStrip />
     </header>
   );
 };

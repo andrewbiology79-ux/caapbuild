@@ -5,6 +5,7 @@ import { useToast } from '../components/Toast';
 import { isNativeApp } from '../storage/nativeStore';
 import { isFolderSyncEnabled } from '../storage/syncEngine';
 import { syncController } from '../storage/syncDialogStore';
+import { autoSyncStore } from '../storage/autoSyncStatus';
 import { syncUnavailableReason } from '../storage/syncView';
 
 /**
@@ -19,6 +20,10 @@ export function useSyncMenuItems(): MenuItem[] {
     const why = syncUnavailableReason(isNativeApp(), isFolderSyncEnabled());
     if (why) {
       showToast(why, 4500);
+      return;
+    }
+    if (autoSyncStore.isRunning()) {
+      showToast('অটো সিঙ্ক চলছে, শেষ হলে আবার চেষ্টা করুন', 2500);
       return;
     }
     if (!syncController.start(direction)) showToast('সিঙ্ক উইন্ডো আগে থেকেই খোলা আছে', 2500);

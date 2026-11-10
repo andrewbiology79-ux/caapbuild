@@ -107,9 +107,6 @@ export const ACTION_LABEL: Record<ChangeAction, string> = {
 
 export const CONFLICT_KIND_LABEL: Record<ConflictKind, string> = {
   'duplicate-id': 'কপি করা ফোল্ডার',
-  'both-changed': 'দুই দিকেই বদল',
-  'data-differs': 'ডেটা মেলে না',
-  'same-name': 'একই নামের আইটেম',
 };
 
 export const EXTRA_KIND_LABEL: Record<ExtraKind, string> = {

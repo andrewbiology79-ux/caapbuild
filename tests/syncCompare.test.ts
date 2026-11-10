@@ -143,30 +143,31 @@ describe('syncCompare - ফোল্ডার -> অ্যাপ', () => {
     expect(r.entries.filter((e) => e.action === 'update')).toEqual([]);
   });
 
-  it('কপি করা ফোল্ডার (একই id) কনফ্লিক্ট, মোছা হয় না - সরানোর পথ দেখায়', () => {
+  it('কপি করা ফোল্ডার (একই id) কনফ্লিক্ট নয় - বাড়তি হিসেবে বাবার unnecessary/Sync_Conflicts/-এ যায়, মোছা হয় না', () => {
     const copy = [
       { p: 'পদার্থ - Copy', d: true, s: 0, m: 0 },
       { p: 'পদার্থ - Copy/.folder.json', d: false, s: 10, m: 1, t: meta('s1', 'subject', 'পদার্থ') },
     ];
     const nodes = buildNodes('type', baseEntries(copy));
     const r = compareFolderToApp({ scope: 'type', stamp: STAMP, nodes, app: baseApp(), fileData: new Map(), pending: NO_PENDING });
-    expect(r.conflicts).toHaveLength(1);
-    expect(r.conflicts[0].kind).toBe('duplicate-id');
-    expect(r.conflicts[0].moveTo).toBe('Download/QB Collection/Sync_Conflicts/2026-11-10_14-30-05/Type_CQ/পদার্থ - Copy');
+    expect(r.conflicts).toEqual([]);
+    expect(r.extras).toHaveLength(1);
+    expect(r.extras[0].kind).toBe('extra-folder');
+    expect(r.extras[0].sourcePath).toBe('পদার্থ - Copy');
+    expect(r.extras[0].moveTo).toBe('Download/QB Collection/Question_Bank/Type_CQ/unnecessary/Sync_Conflicts/পদার্থ - Copy');
     expect(r.entries.filter((e) => e.action === 'delete')).toEqual([]);
-    const t = summarize(r.entries, r.conflicts);
-    expect(t.conflicts).toBe(1); // সাধারণ সংখ্যায় মেশে না
+    const t = summarize(r.entries, r.conflicts, r.extras);
+    expect(t.conflicts).toBe(0);
+    expect(t.extras).toBe(1);
     expect(t.add).toBe(0);
   });
 
-  it('অ্যাপের জমে থাকা বদল + ফোল্ডারে বাইরের বদল = both-changed কনফ্লিক্ট', () => {
+  it('অ্যাপের জমে থাকা বদল + ফোল্ডারে বাইরের বদল = কোনো কনফ্লিক্ট নেই (অ্যাপ নিজেই ফোল্ডারে লেখে)', () => {
     const entries = baseEntries().map((e) => (e.p.endsWith('data.json') ? { ...e, s: 200, m: 20 } : e));
     const nodes = buildNodes('type', entries);
     const pending: PendingInfo = { entities: new Set(), deletes: new Set(), topics: new Set(['t1']) };
     const r = compareFolderToApp({ scope: 'type', stamp: STAMP, nodes, app: baseApp(), fileData: files([q('q9', 'বাইরে')]), pending });
-    expect(r.conflicts).toHaveLength(1);
-    expect(r.conflicts[0].kind).toBe('both-changed');
-    expect(r.conflicts[0].moveTo.endsWith('Type_CQ/পদার্থ/অধ্যায় ১/ক/data.json')).toBe(true);
+    expect(r.conflicts).toEqual([]);
     expect(r.entries.filter((e) => e.action === 'update')).toEqual([]);
   });
 
@@ -179,7 +180,7 @@ describe('syncCompare - ফোল্ডার -> অ্যাপ', () => {
 
   it('media/ থেকে ছবি ফাইল হারালে "info" দেখায় (অ্যাপে রেকর্ড থেকে যাবে)', () => {
     const nodes = buildNodes('type', baseEntries());
-    const app = baseApp();
+    const app = baseApp([q('q1', 'প্রথম', { solutionImageIds: ['img1'] }), q('q2', 'দ্বিতীয়')]);
     app.imageById.set('img1', { id: 'img1', hasBlob: false, topicId: 't1' });
     const r = compareFolderToApp({ scope: 'type', stamp: STAMP, nodes, app, fileData: new Map(), pending: NO_PENDING });
     const info = r.entries.filter((e) => e.action === 'info');
@@ -238,7 +239,7 @@ describe('syncCompare - অ্যাপ -> ফোল্ডার', () => {
     expect(ren[0].to).toBe('নতুন অধ্যায়');
   });
 
-  it('ফোল্ডারে বাড়তি/ভিন্ন প্রশ্ন থাকলে data-differs কনফ্লিক্ট, অ্যাপের কপি জেতে', () => {
+  it('ফোল্ডারে বাড়তি/ভিন্ন প্রশ্ন থাকলে লাল আপডেট (অ্যাপের কপি জেতে), কনফ্লিক্ট নয়', () => {
     const nodes = buildNodes('type', baseEntries());
     const r = compareAppToFolder({
       scope: 'type',
@@ -250,8 +251,8 @@ describe('syncCompare - অ্যাপ -> ফোল্ডার', () => {
     const upd = r.entries.find((e) => e.action === 'update');
     expect(upd?.topic?.questionsRemoved.map((x) => x.id)).toEqual(['q5']);
     expect(upd?.topic?.questionsChanged.map((x) => x.id)).toEqual(['q1']);
-    expect(r.conflicts).toHaveLength(1);
-    expect(r.conflicts[0].kind).toBe('data-differs');
+    expect(upd?.destructive).toBe(true);
+    expect(r.conflicts).toEqual([]);
   });
 
   it('শুধু অ্যাপে বাড়তি প্রশ্ন থাকলে সাধারণ আপডেট, কনফ্লিক্ট নয়', () => {
@@ -289,12 +290,30 @@ describe('syncCompare - অ্যাপ -> ফোল্ডার', () => {
     expect(r.extras[0].owner).toEqual(['পদার্থ', 'অধ্যায় ১', 'ক']);
   });
 
-  it('অ্যাপের চেনা ছবি media/-তে থাকলে বাড়তি নয়', () => {
-    const app = baseApp();
+  it('এই টাইপের প্রশ্ন যে ছবি ব্যবহার করে সেটা media/-তে থাকলে বাড়তি নয়', () => {
+    const app = baseApp([q('q1', 'প্রথম', { solutionImageIds: ['keep1'] }), q('q2', 'দ্বিতীয়')]);
     app.imageById.set('keep1', { id: 'keep1', hasBlob: false, topicId: 't1' });
     const nodes = buildNodes('type', baseEntries([{ p: 'পদার্থ/অধ্যায় ১/ক/media/keep1.webp', d: false, s: 5, m: 1 }]));
     const r = compareAppToFolder({ scope: 'type', stamp: STAMP, nodes, app, fileData: files([q('q1', 'প্রথম'), q('q2', 'দ্বিতীয়')]) });
     expect(r.extras).toEqual([]);
+  });
+
+  it('অ্যাপের ছবির টেবিলে রেকর্ড আছে কিন্তু কোনো প্রশ্ন ব্যবহার করে না (পুরোনো/বদলানো ছবি) = বাড়তি', () => {
+    const app = baseApp();
+    app.imageById.set('old1', { id: 'old1', hasBlob: false, topicId: 't1' });
+    const nodes = buildNodes('type', baseEntries([{ p: 'পদার্থ/অধ্যায় ১/ক/media/old1.webp', d: false, s: 5, m: 1 }]));
+    const r = compareAppToFolder({ scope: 'type', stamp: STAMP, nodes, app, fileData: files([q('q1', 'প্রথম'), q('q2', 'দ্বিতীয়')]) });
+    expect(r.extras.map((x) => x.name)).toEqual(['media/old1.webp']);
+  });
+
+  it('ফোল্ডার -> অ্যাপেও একই: অব্যবহৃত ছবি (রেকর্ড থাকলেও) বাড়তি; মোট ২৭টির মধ্যে ২১টি ব্যবহৃত হলে ৬টি বাড়তি', () => {
+    const used = Array.from({ length: 21 }, (_, i) => `u${i}`);
+    const app = baseApp([q('q1', 'প্রথম', { solutionImageIds: used }), q('q2', 'দ্বিতীয়')]);
+    const media = [...used, ...Array.from({ length: 6 }, (_, i) => `x${i}`)];
+    for (const id of media) app.imageById.set(id, { id, hasBlob: false, topicId: 't1' });
+    const nodes = buildNodes('type', baseEntries(media.map((id) => ({ p: `পদার্থ/অধ্যায় ১/ক/media/${id}.webp`, d: false, s: 5, m: 1 }))));
+    const r = compareFolderToApp({ scope: 'type', stamp: STAMP, nodes, app, fileData: new Map(), pending: NO_PENDING });
+    expect(r.extras.map((x) => x.name).sort()).toEqual(Array.from({ length: 6 }, (_, i) => `media/x${i}.webp`).sort());
   });
 
   it('টাইপ ফোল্ডারের ভেতরের অচেনা ফাইল/ফোল্ডার ও media/-র অচেনা ফাইল বাড়তি; .nomedia, .tmp, .bak, unnecessary/ নয়', () => {

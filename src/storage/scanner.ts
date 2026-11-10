@@ -1,5 +1,5 @@
 import { getDb, type CqScope, type QbDatabase, type Stimulus, type Question, type SyncRow } from '../db/db';
-import { scopeRoot, FOLDER_META, DATA_FILE, imageIdFromFileName, type FolderKind, type FolderMeta } from './folderLayout';
+import { scopeRoot, FOLDER_META, DATA_FILE, imageIdFromFileName, uniqueAppName, type FolderKind, type FolderMeta } from './folderLayout';
 import {
   buildNodes,
   identifyNodes,
@@ -227,6 +227,17 @@ export async function scanScope(scope: CqScope, opts: ScanOptions = {}): Promise
         if (gone) summary.deleted++;
       }
 
+      // an item whose folder name is already an app item's name (same parent) comes in as "name (2)"
+      const freeName = async (kind: FolderKind, id: string, parentId: string | undefined, desired: string): Promise<string> => {
+        const rows: Array<{ id: string; name: string }> =
+          kind === 'subject'
+            ? await sdb.subjects.toArray()
+            : kind === 'chapter'
+              ? (await sdb.chapters.toArray()).filter((c) => c.subjectId === parentId)
+              : (await sdb.topics.toArray()).filter((t) => t.chapterId === parentId);
+        return uniqueAppName(desired, rows.filter((r) => r.id !== id).map((r) => r.name));
+      };
+
       // 2) folders -> subjects / chapters / types
       for (const n of nodes) {
         const id = n.id as string;
@@ -237,13 +248,13 @@ export async function scanScope(scope: CqScope, opts: ScanOptions = {}): Promise
           const ent = subjectById.get(id);
           if (!ent) {
             if (rowById.has(id) && !n.isNew) continue; // deleted inside the app a moment ago
-            await sdb.subjects.put({ id, name: dirName, order: n.order ?? 1 });
+            await sdb.subjects.put({ id, name: await freeName('subject', id, undefined, dirName), order: n.order ?? 1 });
             await sdb.syncState.put({ id, kind: 'subject', dirName });
             summary.added++;
           } else {
             const row = rowById.get(id);
             const patch: any = {};
-            if (row && row.dirName !== dirName) patch.name = dirName;
+            if (row && row.dirName !== dirName) patch.name = await freeName('subject', id, undefined, dirName);
             if (n.order !== undefined && n.order !== ent.order) patch.order = n.order;
             if (Object.keys(patch).length) {
               await sdb.subjects.update(id, patch);
@@ -256,13 +267,13 @@ export async function scanScope(scope: CqScope, opts: ScanOptions = {}): Promise
           const ent = chapterById.get(id);
           if (!ent) {
             if (rowById.has(id) && !n.isNew) continue;
-            await sdb.chapters.put({ id, subjectId: parentId, name: dirName, order: n.order ?? 1 });
+            await sdb.chapters.put({ id, subjectId: parentId, name: await freeName('chapter', id, parentId, dirName), order: n.order ?? 1 });
             await sdb.syncState.put({ id, kind: 'chapter', parentId, dirName });
             summary.added++;
           } else {
             const row = rowById.get(id);
             const patch: any = {};
-            if (row && row.dirName !== dirName) patch.name = dirName;
+            if (row && row.dirName !== dirName) patch.name = await freeName('chapter', id, parentId, dirName);
             if (ent.subjectId !== parentId) patch.subjectId = parentId;
             if (n.order !== undefined && n.order !== ent.order) patch.order = n.order;
             if (Object.keys(patch).length) {
@@ -278,13 +289,13 @@ export async function scanScope(scope: CqScope, opts: ScanOptions = {}): Promise
           const ent = topicById.get(id);
           if (!ent) {
             if (rowById.has(id) && !n.isNew) continue;
-            await sdb.topics.put({ id, chapterId: parentId, name: dirName, order: n.order ?? 1 });
+            await sdb.topics.put({ id, chapterId: parentId, name: await freeName('topic', id, parentId, dirName), order: n.order ?? 1 });
             await sdb.syncState.put({ id, kind: 'topic', parentId, dirName });
             summary.added++;
           } else {
             const row = rowById.get(id);
             const patch: any = {};
-            if (row && row.dirName !== dirName) patch.name = dirName;
+            if (row && row.dirName !== dirName) patch.name = await freeName('topic', id, parentId, dirName);
             if (ent.chapterId !== parentId) patch.chapterId = parentId;
             if (n.order !== undefined && n.order !== ent.order) patch.order = n.order;
             if (Object.keys(patch).length) {

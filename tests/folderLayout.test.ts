@@ -53,3 +53,18 @@ describe('folderLayout', () => {
     expect(kindOfDepth('type', 1)).toBe('subject');
   });
 });
+
+import { uniqueAppName } from '../src/storage/folderLayout';
+
+describe('uniqueAppName (একই নাম হলে নামের পরে (2))', () => {
+  it('ফাঁকা থাকলে নাম বদলায় না', () => {
+    expect(uniqueAppName('ক', ['খ', 'গ'])).toBe('ক');
+  });
+  it('একই নাম থাকলে (2), তারপর (3)', () => {
+    expect(uniqueAppName('ক', ['ক'])).toBe('ক (2)');
+    expect(uniqueAppName('ক', ['ক', 'ক (2)'])).toBe('ক (3)');
+  });
+  it('ছোট/বড় হাতের তফাত ধরা হয় না', () => {
+    expect(uniqueAppName('Force', ['force'])).toBe('Force (2)');
+  });
+});

@@ -118,7 +118,8 @@ export interface PreviewEntry {
   destructive?: boolean;
 }
 
-export type ConflictKind = 'duplicate-id' | 'both-changed' | 'data-differs' | 'same-name';
+/** কনফ্লিক্টের কোনো ধরন এখন আর তৈরি হয় না (কপি করা ফোল্ডারও unnecessary/-তে যায়); ধরনটা শুধু পুরোনো কোডের সঙ্গে মেলানোর জন্য */
+export type ConflictKind = 'duplicate-id';
 
 export interface ConflictEntry {
   scope: CqScope;
@@ -272,6 +273,9 @@ export function unnecessaryDestination(scope: CqScope, ownerPath: string, name: 
   return [scopeRoot(scope), ownerPath, UNNECESSARY_DIR, name].filter(Boolean).join('/');
 }
 
+/** unnecessary/-র ভেতরের যে উপ-ফোল্ডারে কপি করা ফোল্ডার জমে */
+export const CONFLICT_SUBDIR = 'Sync_Conflicts';
+
 function makeExtra(scope: CqScope, kind: ExtraKind, ownerPath: string, name: string, folderSide: string): ExtraEntry {
   const owner = ownerPath ? ownerPath.split('/') : [];
   return {
@@ -303,6 +307,16 @@ export function extraFolderEntry(scope: CqScope, n: FolderNode): ExtraEntry {
   const cut = n.path.lastIndexOf('/');
   const ownerPath = cut < 0 ? '' : n.path.slice(0, cut);
   return makeExtra(scope, 'extra-folder', ownerPath, n.name, `ফোল্ডারে আছে: ${n.path.split('/').join(' › ')} (অ্যাপে নেই)`);
+}
+
+/** কপি করা ফোল্ডার (একই id): বাবার unnecessary/Sync_Conflicts/<নাম>-এ যায় (সরায়, মোছে না) */
+export function copiedFolderEntry(scope: CqScope, n: FolderNode, folderSide: string): ExtraEntry {
+  const ex = extraFolderEntry(scope, n);
+  const cut = n.path.lastIndexOf('/');
+  const ownerPath = cut < 0 ? '' : n.path.slice(0, cut);
+  ex.moveTo = unnecessaryDestination(scope, ownerPath, `${CONFLICT_SUBDIR}/${n.name}`);
+  ex.folderSide = folderSide;
+  return ex;
 }
 
 /** media/-র যেসব ছবির ফাইল কেউ ব্যবহার করে না (known = অ্যাপ/data.json যেসব ছবির id চেনে) */
@@ -590,9 +604,11 @@ function imageDiff(
   const fileIds = new Set(node.mediaFiles.filter((f) => !skipFiles?.has(f)).map((f) => imageIdFromFileName(f) as string));
   let imagesNew = 0;
   for (const id of fileIds) if (!app.imageById.has(id)) imagesNew++;
+  // only pictures the type still uses can be "missing" (a leftover record of a replaced / deleted picture is not)
+  const used = new Set(collectImageIds(app.stimuliByTopic.get(topicId) ?? [], app.questionsByTopic.get(topicId) ?? []));
   const imagesMissing: string[] = [];
   for (const img of app.imageById.values()) {
-    if (img.topicId === topicId && !img.hasBlob && !fileIds.has(img.id)) imagesMissing.push(img.id);
+    if (img.topicId === topicId && used.has(img.id) && !img.hasBlob && !fileIds.has(img.id)) imagesMissing.push(img.id);
   }
   return { imagesNew, imagesMissing };
 }
@@ -639,21 +655,13 @@ export function compareFolderToApp(input: FolderToAppInput): CompareResult {
 
   const { dupNodes, diskIds } = identifyNodes(nodes, rowById, orderMax);
 
-  // ---- copied folders (same id twice) are conflicts: the copy is set aside, never deleted ----
+  // ---- copied folders (same id twice) are not conflicts: the copy goes to unnecessary/ (never deleted) ----
   const nodeById = new Map<string, FolderNode>();
   for (const n of nodes) if (!dupNodes.has(n)) nodeById.set(n.id as string, n);
   for (const n of dupNodes) {
     const keeperId = parseMeta(n.metaText, n.kind)?.id;
     const keeper = keeperId ? nodeById.get(keeperId) : undefined;
-    res.conflicts.push({
-      scope,
-      kind: 'duplicate-id',
-      path: nodePathNames(n),
-      folderSide: `কপি করা ফোল্ডার: ${nodeLabel(n)}`,
-      appSide: keeper ? `মূল ফোল্ডার: ${nodeLabel(keeper)}` : 'মূল ফোল্ডার পাওয়া যায়নি',
-      moveTo: conflictDestination(stamp, scope, n.path),
-      sourcePath: n.path,
-    });
+    res.extras.push(copiedFolderEntry(scope, n, `কপি করা ফোল্ডার: ${nodeLabel(n)}${keeper ? ` (মূল: ${nodeLabel(keeper)})` : ''}`));
   }
   // everything inside a copied folder travels with it
   const insideDup = (n: FolderNode): boolean => {
@@ -738,7 +746,7 @@ export function compareFolderToApp(input: FolderToAppInput): CompareResult {
     }
   }
 
-  // ---- same name, different item: a new / renamed folder takes the name another app item (same parent) already has ----
+  // ---- same name, different item: a new / renamed folder takes the name another app item (same parent) already has -> "name (2)" ----
   for (const n of nodes) {
     if (insideDup(n)) continue;
     const id = n.id as string;
@@ -760,20 +768,18 @@ export function compareFolderToApp(input: FolderToAppInput): CompareResult {
       return true;
     });
     if (!clash) continue;
-    res.conflicts.push({
+    // not a conflict: the folder item comes into the app as "name (2)" (the scan picks the free number)
+    res.entries.push({
       scope,
-      kind: 'same-name',
+      kind: n.kind,
+      action: 'info',
       path: nodePathNames(n),
-      folderSide: `ফোল্ডারে নাম: ${n.name}`,
-      appSide: `অ্যাপে একই নামের আরেকটি আইটেম আছে: ${clash.name}`,
-      moveTo: conflictDestination(stamp, scope, n.path),
-      sourcePath: n.path,
+      note: `অ্যাপে "${clash.name}" নামে আরেকটি আছে - এটা "${n.name} (2)" নামে আসবে`,
     });
   }
 
   // ---- extras: files / folders / pictures the app does not need -> unnecessary/ (never a conflict, never deleted) ----
   const skipImages = new Map<string, Set<string>>(); // folder path -> media file names that are extra
-  const appImageIds = new Set<string>(app.imageById.keys());
   for (const n of nodes) {
     if (insideDup(n) || pending.deletes.has(n.id as string)) continue;
     res.extras.push(...extrasOfNode(scope, n));
@@ -786,12 +792,12 @@ export function compareFolderToApp(input: FolderToAppInput): CompareResult {
     if (!n.hasData && !tKnown) continue; // nothing to judge the pictures by yet
     const fileRead = fileData.get(n.path);
     if (n.hasData && fileRead && !fileRead.payload) continue; // damaged data.json: cannot judge
-    const known = new Set<string>(appImageIds);
+    // only pictures the type's questions / stimuli use are needed (not every picture the app's image table still holds)
+    const known = new Set<string>();
     if (tKnown) collectImageIds(app.stimuliByTopic.get(tid) ?? [], app.questionsByTopic.get(tid) ?? []).forEach((i) => known.add(i));
     if (fileRead?.payload) {
       const fs = normalizePayload(fileRead.payload, tid || '_new');
       collectImageIds(fs.stimuli, fs.questions).forEach((i) => known.add(i));
-      for (const im of fileRead.payload.images) if (im && typeof im.id === 'string') known.add(im.id);
     }
     const ex = extraImageEntries(scope, n, known);
     if (!ex.length) continue;
@@ -814,21 +820,8 @@ export function compareFolderToApp(input: FolderToAppInput): CompareResult {
     const path = nodePathNames(n);
     const entryKind: FolderKind = scope === 'type' ? 'topic' : 'chapter';
     const topicPending = !!topicId && pending.topics.has(topicId);
-    const externallyChanged = n.hasData && !!dataRow && (dataRow.mtime !== n.dataMtime || dataRow.size !== n.dataSize);
 
-    // the app has unwritten changes for this type AND the file was changed outside -> real conflict, the app copy wins
-    if (topicPending && externallyChanged) {
-      res.conflicts.push({
-        scope,
-        kind: 'both-changed',
-        path,
-        folderSide: 'data.json ফোল্ডারে বাইরে থেকে বদলেছে',
-        appSide: `অ্যাপেও বদলেছে (${app.questionsByTopic.get(topicId)?.length ?? 0}টি প্রশ্ন) - অ্যাপের কপি থাকবে`,
-        moveTo: conflictDestination(stamp, scope, `${n.path}/${DATA_FILE}`),
-        sourcePath: `${n.path}/${DATA_FILE}`,
-      });
-      continue;
-    }
+    // the app writes straight into the folder, so a pending write is just the app's own change on its way - no conflict kind exists for it
     if (topicPending) continue; // plain app -> folder write, not a folder change
 
     if (!n.hasData) {
@@ -1019,16 +1012,7 @@ export function compareAppToFolder(input: AppToFolderInput): CompareResult {
 
     const read = fileData.get(node.path);
     if (!read || !read.payload) {
-      // damaged data.json: it is replaced from the app (the damaged file is set aside)
-      res.conflicts.push({
-        scope,
-        kind: 'data-differs',
-        path,
-        folderSide: 'data.json পড়া যায়নি (ফাইলে ভুল আছে)',
-        appSide: `অ্যাপের ${questions.length}টি প্রশ্ন দিয়ে আবার লেখা হবে`,
-        moveTo: conflictDestination(stamp, scope, `${node.path}/${DATA_FILE}`),
-        sourcePath: `${node.path}/${DATA_FILE}`,
-      });
+      // damaged data.json: it is simply rewritten from the app (the app always has the full data)
       res.entries.push({ scope, kind: it.kind, action: 'update', path, note: 'data.json আবার লেখা হবে', topic: toTopicDiff(emptySetDiff(), { imagesNew: 0, imagesMissing: [] }, toWrite) });
       continue;
     }
@@ -1046,22 +1030,10 @@ export function compareAppToFolder(input: AppToFolderInput): CompareResult {
         destructive: diff.questionsRemoved.length > 0 || diff.questionsChanged.length > 0,
       });
     }
-    // the folder holds questions the app does not have, or different versions -> the folder copy is set aside
-    if (diff.questionsRemoved.length + diff.questionsChanged.length + diff.stimuliRemoved + diff.stimuliChanged > 0) {
-      res.conflicts.push({
-        scope,
-        kind: 'data-differs',
-        path,
-        folderSide: `ফোল্ডারে ${diff.questionsRemoved.length}টি বাড়তি, ${diff.questionsChanged.length}টি ভিন্ন প্রশ্ন`,
-        appSide: `অ্যাপের ${questions.length}টি প্রশ্ন ফোল্ডারে লেখা হবে`,
-        moveTo: conflictDestination(stamp, scope, `${node.path}/${DATA_FILE}`),
-        sourcePath: `${node.path}/${DATA_FILE}`,
-      });
-    }
-
     // picture files in media/ that nothing in the app refers to -> unnecessary/media/
+    // (only pictures this type's questions / stimuli really use count - a leftover picture that is merely still in the
+    //  app's image table, e.g. after a replaced picture or a deleted question, is unnecessary too)
     const known = new Set<string>(ids);
-    for (const id of app.imageById.keys()) known.add(id);
     res.extras.push(...extraImageEntries(scope, node, known));
   }
 
@@ -1070,15 +1042,7 @@ export function compareAppToFolder(input: AppToFolderInput): CompareResult {
 
   // ---- folders the app does not have ----
   for (const n of dupNodes) {
-    res.conflicts.push({
-      scope,
-      kind: 'duplicate-id',
-      path: nodePathNames(n),
-      folderSide: `কপি করা ফোল্ডার: ${nodeLabel(n)}`,
-      appSide: 'একই id-র মূল ফোল্ডার আছে',
-      moveTo: conflictDestination(stamp, scope, n.path),
-      sourcePath: n.path,
-    });
+    res.extras.push(copiedFolderEntry(scope, n, `কপি করা ফোল্ডার: ${nodeLabel(n)} (একই id-র মূল ফোল্ডার আছে)`));
   }
   const isUnmatched = (n: FolderNode): boolean => !matched.has(n) && !dupNodes.has(n);
   const handled = new Set<FolderNode>();

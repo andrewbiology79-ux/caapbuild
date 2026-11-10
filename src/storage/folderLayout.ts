@@ -72,6 +72,17 @@ export function baseOfDirName(dirName: string): string {
   return dirName.replace(/ \(\d+\)$/, '');
 }
 
+/** App item name that is free among its siblings: "নাম" -> "নাম (2)" -> "নাম (3)" (case-insensitive, pure) */
+export function uniqueAppName(desired: string, siblingNames: string[]): string {
+  const taken = new Set(siblingNames.map((n) => n.toLowerCase()));
+  if (!taken.has(desired.toLowerCase())) return desired;
+  for (let i = 2; i < 500; i++) {
+    const cand = `${desired} (${i})`;
+    if (!taken.has(cand.toLowerCase())) return cand;
+  }
+  return `${desired} (${Date.now()})`;
+}
+
 /** Choose a folder name that is not used yet ("নাম", "নাম (2)", "নাম (3)" ...) */
 export async function pickDirName(
   desired: string,

@@ -18,6 +18,7 @@ import { imageFilePath, blobDimensions } from './imageStore';
 import { blobToBase64 } from '../utils/fileExport';
 import { withSyncLock } from './syncLock';
 import { collectImageIds } from './syncCompare';
+import { autoSyncStore } from './autoSyncStatus';
 
 /**
  * App -> folders ("write-through").
@@ -93,7 +94,17 @@ function schedule(): void {
   if (timer) clearTimeout(timer);
   timer = setTimeout(() => {
     timer = null;
-    flushAllWrites().catch((err) => console.warn('Folder sync write failed:', err));
+    // অ্যাপে বদল -> ফোল্ডারে লেখা: রিবনের নিচে ছোট "অটো সিঙ্ক হচ্ছে…" লেখা (অন্য অটো সিঙ্ক চললে দ্বিতীয়বার নয়)
+    const showBanner = !autoSyncStore.isRunning();
+    if (showBanner) autoSyncStore.start();
+    flushAllWrites()
+      .then(() => {
+        if (showBanner) autoSyncStore.finish(true);
+      })
+      .catch((err) => {
+        console.warn('Folder sync write failed:', err);
+        if (showBanner) autoSyncStore.fail();
+      });
   }, DEBOUNCE_MS);
 }
 
