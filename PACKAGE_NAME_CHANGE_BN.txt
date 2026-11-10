@@ -1,0 +1,24 @@
+Android Package Name পরিবর্তন
+
+পুরাতন Application ID: com.qbcollection.examv2
+নতুন Application ID: com.qbcollection.app
+
+যে জায়গাগুলো আপডেট করা হয়েছে:
+1. capacitor.config.json-এর appId
+2. native-android/MainActivity.java-এর Java package declaration
+3. native-android/StorageAccessPlugin.java-এর Java package declaration
+
+Android project তৈরি/সিঙ্ক করার সময় Capacitor এই appId ব্যবহার করে Android namespace/applicationId তৈরি করবে।
+
+নতুন APK ইনস্টল করার ক্ষেত্রে মনে রাখবে: Android নতুন package-টিকে আলাদা অ্যাপ হিসেবে দেখবে। পুরোনো package-এর অ্যাপের ডেটা স্বয়ংক্রিয়ভাবে নতুন অ্যাপে স্থানান্তর হবে না। প্রয়োজন হলে পুরোনো অ্যাপের ভেতর থেকে Backup/Export নিয়ে নতুন অ্যাপে Import করবে।
+
+পরবর্তী ধাপ:
+1. ZIP Extract করো।
+2. npm ci চালাও।
+3. npm run build চালাও।
+4. npx cap add android (যদি android project আগে থেকে না থাকে)।
+5. npx cap sync android চালাও।
+6. node scripts/patch-android.cjs চালাও।
+7. Android Studio/Gradle দিয়ে APK build করো।
+
+নোট: এই প্যাকেজ পরিবর্তনের ZIP-এ সোর্স কনফিগারেশন আপডেট করা হয়েছে; এখানে APK build বা বাস্তব Android device installation পরীক্ষা করা হয়নি।

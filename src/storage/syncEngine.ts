@@ -2,7 +2,7 @@ import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { getDb, type CqScope } from '../db/db';
 import { StorageAccess, ensureStorageAccess, hasStorageAccess, QB_ROOT } from '../utils/storageAccess';
-import { QUESTION_BANK_ROOT, scopeRoot, DATA_FILE, entityPath, mediaDirOf, imageFileName } from './folderLayout';
+import { QUESTION_BANK_ROOT, scopeRoot, DATA_FILE, entityPath } from './folderLayout';
 import { makeDir, readText, pathExists, renamePath } from './nativeStore';
 import {
   installWriteHooks,
@@ -17,7 +17,7 @@ import {
 import { scanScope, type ScanSummary } from './scanner';
 import { withSyncLock } from './syncLock';
 import { waitForEditorsClosed } from './editorGuard';
-import { collectImageIds } from './syncCompare';
+import { installCategoryWriteHooks, setCategoryWritesEnabled, scanCategories, flushCategoryWrites } from './categorySync';
 
 /**
  * Folder sync - the one place that decides WHEN things are written / read.
@@ -127,11 +127,8 @@ export function syncNow(opts: SyncNowOptions = {}): Promise<SyncReport> {
 export async function autoWriteNow(): Promise<SyncReport> {
   const report = emptyReport();
   if (!isFolderSyncEnabled() || pauseCount > 0) return report;
-  const hadPending = hasPendingWrites();
   await flushAllWrites();
-  // Do not claim a change when there was nothing to write. flushAllWrites rejects
-  // on failure, leaving the failed work queued for a later retry.
-  report.changed = hadPending;
+  report.changed = true; // কিছু লেখা হয়েছে (অ্যাপের তালিকা বদলায়নি, তাই announce নেই)
   return report;
 }
 
@@ -164,6 +161,16 @@ async function runSyncNow(opts: SyncNowOptions): Promise<SyncReport> {
     if (s.changed) report.changed = true;
   }
 
+  try {
+    const categoryResult = await withSyncLock(() => scanCategories());
+    report.added += categoryResult.added;
+    report.topicsUpdated += categoryResult.updated;
+    report.warnings.push(...categoryResult.warnings);
+    if (categoryResult.changed) report.changed = true;
+  } catch (err: any) {
+    report.warnings.push(`Category ফোল্ডার সিঙ্ক হয়নি: ${err?.message || String(err)}`);
+  }
+
   // the scan may have queued follow-up writes (missing data.json, new folders ...)
   if (hasPendingWrites()) await flushAllWrites();
 
@@ -184,6 +191,8 @@ export function startFolderSync(onReport: (r: SyncReport) => void, onWriteError:
   if (!isFolderSyncEnabled()) return () => {};
 
   setWritesEnabled(true);
+  setCategoryWritesEnabled(true);
+  installCategoryWriteHooks();
   installWriteHooks();
   setWriteErrorHandler(onWriteError);
 
@@ -270,10 +279,13 @@ export async function enableFolderSync(onProgress?: (text: string) => void): Pro
     for (const scope of SCOPES) await makeDir(scopeRoot(scope));
 
     setWritesEnabled(true);
+    setCategoryWritesEnabled(true);
+    installCategoryWriteHooks();
     installWriteHooks();
     for (const scope of SCOPES) await markEverythingDirty(scope);
-    say('প্রশ্ন ও ছবি ফোল্ডারে লেখা হচ্ছে…');
+    say('প্রশ্ন, ছবি ও ক্যাটেগরি ফোল্ডারে লেখা হচ্ছে…');
     await flushAllWrites(true);
+    await flushCategoryWrites();
 
     say('যাচাই করা হচ্ছে…');
     let topics = 0;
@@ -283,40 +295,17 @@ export async function enableFolderSync(onProgress?: (text: string) => void): Pro
       for (const t of await sdb.topics.toArray()) {
         const dir = await entityPath(sdb, scope, t.id);
         const text = dir ? await readText(`${dir}/${DATA_FILE}`) : null;
-        const [questionRows, stimulusRows] = await Promise.all([
-          sdb.questions.where('topicId').equals(t.id).toArray(),
-          sdb.stimuli.where('topicId').equals(t.id).toArray(),
-        ]);
-        const count = questionRows.length;
-        let payload: any = null;
+        const count = await sdb.questions.where('topicId').equals(t.id).count();
+        let fileCount = -1;
         try {
-          payload = text ? JSON.parse(text) : null;
+          fileCount = text ? JSON.parse(text).questions.length : -1;
         } catch {
-          payload = null;
+          fileCount = -1;
         }
-        const fileQuestions = Array.isArray(payload?.questions) ? payload.questions : null;
-        const fileStimuli = Array.isArray(payload?.stimuli) ? payload.stimuli : null;
-        const expectedImageIds = collectImageIds(stimulusRows, questionRows);
-        const fileImages = Array.isArray(payload?.images) ? payload.images : null;
-        let imagesValid = !!fileImages && fileImages.length === expectedImageIds.length;
-        if (imagesValid && dir) {
-          const mediaDir = mediaDirOf(dir);
-          for (const imageId of expectedImageIds) {
-            const imageMeta = fileImages.find((entry: any) => entry?.id === imageId);
-            if (!imageMeta || !(await pathExists(`${mediaDir}/${imageFileName(imageId)}`))) {
-              imagesValid = false;
-              break;
-            }
-          }
-        }
-        if (
-          !payload || payload.type !== 'qb-topic-data' ||
-          fileQuestions?.length !== count ||
-          fileStimuli?.length !== stimulusRows.length ||
-          !imagesValid
-        ) {
+        if (fileCount !== count) {
           setWritesEnabled(false);
-          return { ok: false, reason: 'verify-failed', message: `"${t.name}" ফোল্ডারের প্রশ্ন, উদ্দীপক বা ছবির তথ্য মেলেনি` };
+          setCategoryWritesEnabled(false);
+          return { ok: false, reason: 'verify-failed', message: `"${t.name}" ফোল্ডারের তথ্য মেলেনি` };
         }
         topics++;
         questions += count;
@@ -327,6 +316,7 @@ export async function enableFolderSync(onProgress?: (text: string) => void): Pro
     return { ok: true, topics, questions };
   } catch (err: any) {
     setWritesEnabled(false);
+    setCategoryWritesEnabled(false);
     return { ok: false, reason: 'error', message: err?.message || String(err) };
   } finally {
     resumeSync();
@@ -337,6 +327,7 @@ export async function enableFolderSync(onProgress?: (text: string) => void): Pro
 export function disableFolderSync(): void {
   setEnabledFlag(false);
   setWritesEnabled(false);
+  setCategoryWritesEnabled(false);
 }
 
 /* ------------------------------------------------------------------

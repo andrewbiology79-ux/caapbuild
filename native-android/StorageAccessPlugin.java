@@ -1,4 +1,4 @@
-package com.qbcollection.examv2;
+package com.qbcollection.app;
 
 import android.app.DownloadManager;
 import android.content.ActivityNotFoundException;
