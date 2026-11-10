@@ -1,6 +1,7 @@
 import type { Paper, PaperEdits, Category } from '../db/db';
 import { QB_ROOT } from '../utils/storageAccess';
 import { FOLDER_META, UNNECESSARY_DIR, sanitizeFolderName, isSystemFileName, isReservedDirName } from './folderLayout';
+export { sanitizeFolderName };
 import { stableStringify } from './syncCompare';
 
 /**
