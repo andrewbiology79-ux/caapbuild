@@ -17,6 +17,15 @@ export const FOLDER_META = '.folder.json';
 export const DATA_FILE = 'data.json';
 export const MEDIA_DIR = 'media';
 export const NOMEDIA_FILE = '.nomedia';
+/** অপ্রয়োজনীয় (অ্যাপ যা চেনে না) জিনিস এই নামের ফোল্ডারে সরে যায়; স্ক্যানার এই ফোল্ডার দেখে না */
+export const UNNECESSARY_DIR = 'unnecessary';
+
+export const isReservedDirName = (name: string): boolean => name.trim().toLowerCase() === UNNECESSARY_DIR;
+
+/** সিস্টেমের/লেখার সময়ের ফাইল (.folder.json, .nomedia, data.json.tmp, data.json.bak ...) - এগুলো কখনো "বাড়তি" নয় */
+export function isSystemFileName(name: string): boolean {
+  return name.startsWith('.') || /\.(tmp|bak)$/i.test(name);
+}
 
 export type FolderKind = 'subject' | 'chapter' | 'topic';
 
@@ -70,6 +79,7 @@ export async function pickDirName(
   existsOnDisk?: (candidate: string) => Promise<boolean>
 ): Promise<string> {
   const takenLower = new Set(Array.from(taken).map((t) => t.toLowerCase()));
+  takenLower.add(UNNECESSARY_DIR); // এই নামে কোনো বিষয়/অধ্যায়/টাইপের ফোল্ডার হবে না
   for (let i = 1; i < 500; i++) {
     const cand = i === 1 ? desired : `${desired} (${i})`;
     if (takenLower.has(cand.toLowerCase())) continue;

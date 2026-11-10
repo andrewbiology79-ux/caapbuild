@@ -1,6 +1,6 @@
 import type { SyncDirection, SyncPreview } from './syncPreview';
 import type { SyncProgress, ProgressCallback } from './syncProgress';
-import { emptyCounts, makeResultView, type SyncCounts, type SyncDialogState, type SyncResultConflict } from './syncView';
+import { emptyCounts, makeResultView, type SyncCounts, type SyncDialogState, type SyncResultConflict, type SyncResultExtra } from './syncView';
 
 /**
  * ধাপ ৪ - থ্রি ডট মেনু থেকে সিঙ্কের পুরো পথ চালানোর নিয়ন্ত্রক (খাঁটি কোড: কোনো ফাইল/ডেটাবেস/React IO নেই)।
@@ -15,6 +15,8 @@ export interface RunOutcome {
   counts: SyncCounts;
   /** preview.conflicts-এর সূচক অনুযায়ী: সত্যিই সরানো হয়েছে কি না (না দিলে সব moved:false) */
   conflictsMoved?: boolean[];
+  /** preview.extras-এর সূচক অনুযায়ী: unnecessary/-তে সরেছে কি না */
+  extrasMoved?: boolean[];
   warnings?: string[];
 }
 
@@ -138,11 +140,16 @@ export function createSyncController(deps: SyncControllerDeps): SyncController {
       .then((out) => {
         if (my !== token) return;
         const conflicts: SyncResultConflict[] = preview.conflicts.map((c, i) => ({ ...c, moved: !!out.conflictsMoved?.[i] }));
-        const finalCounts = { ...out.counts, conflictsMoved: conflicts.filter((c) => c.moved).length };
+        const extras: SyncResultExtra[] = (preview.extras ?? []).map((x, i) => ({ ...x, moved: !!out.extrasMoved?.[i] }));
+        const finalCounts = {
+          ...out.counts,
+          conflictsMoved: conflicts.filter((c) => c.moved).length,
+          extrasMoved: extras.filter((x) => x.moved).length,
+        };
         set({
           kind: 'result',
           direction,
-          result: makeResultView(finalCounts, conflicts, [...preview.warnings, ...(out.warnings ?? [])], preview.stamp),
+          result: makeResultView(finalCounts, conflicts, [...preview.warnings, ...(out.warnings ?? [])], preview.stamp, extras),
         });
       })
       .catch((err) => {

@@ -33,6 +33,7 @@ const totals = (over: Partial<PreviewTotals> = {}): PreviewTotals => ({
   questionsChanged: 0,
   imagesToWrite: 0,
   conflicts: 0,
+  extras: 0,
   ...over,
 });
 
@@ -150,12 +151,13 @@ describe('syncView (ধাপ ৩ - বাংলা লেখা ও অবস�
   });
 
   it('চলতি সংখ্যা: যোগ = নতুন+তৈরি, বদল = আপডেট+নাম+সরানো', () => {
-    const cells = counterCells({ add: 1, create: 2, rename: 1, move: 1, update: 3, delete: 4, conflictsMoved: 5 });
+    const cells = counterCells({ add: 1, create: 2, rename: 1, move: 1, update: 3, delete: 4, conflictsMoved: 5, extrasMoved: 2 });
     expect(cells.map((c) => [c.key, c.value])).toEqual([
       ['added', 3],
       ['changed', 5],
       ['deleted', 4],
       ['conflicts', 5],
+      ['extras', 2],
     ]);
   });
 });

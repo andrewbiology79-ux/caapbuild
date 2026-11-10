@@ -1,4 +1,4 @@
-import type { ConflictEntry } from './syncCompare';
+import type { CqScope } from '../db/db';
 
 /** ধাপ ৫ - কনফ্লিক্ট সরানোর খাঁটি পরিকল্পনা (IO নেই, টেস্ট করা যায়) */
 
@@ -12,7 +12,7 @@ export interface ConflictMovePlan {
 const isInside = (child: string, parent: string) => child === parent || child.startsWith(parent + '/');
 
 /** খাঁটি: কোনটা আগে সরবে, কোনটা আরেকটার ভেতরে থাকায় সঙ্গে চলে যাবে */
-export function planConflictMoves(conflicts: Pick<ConflictEntry, 'scope' | 'sourcePath'>[]): ConflictMovePlan {
+export function planConflictMoves(conflicts: Array<{ scope: CqScope; sourcePath: string }>): ConflictMovePlan {
   const idx = conflicts.map((_, i) => i).sort((a, b) => {
     const da = conflicts[a].sourcePath.split('/').length;
     const db = conflicts[b].sourcePath.split('/').length;
@@ -29,3 +29,11 @@ export function planConflictMoves(conflicts: Pick<ConflictEntry, 'scope' | 'sour
   return { order, covered };
 }
 
+
+/** "a/b.webp" + 2 -> "a/b (2).webp"; "a/folder" + 2 -> "a/folder (2)" (খাঁটি ফাংশন) */
+export function withNumberSuffix(path: string, n: number): string {
+  const slash = path.lastIndexOf('/');
+  const dot = path.lastIndexOf('.');
+  if (dot > slash + 1) return `${path.slice(0, dot)} (${n})${path.slice(dot)}`;
+  return `${path} (${n})`;
+}

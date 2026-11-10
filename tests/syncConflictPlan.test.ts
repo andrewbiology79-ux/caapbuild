@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { planConflictMoves } from '../src/storage/syncConflictPlan';
+import { planConflictMoves, withNumberSuffix } from '../src/storage/syncConflictPlan';
 
 const c = (sourcePath: string, scope: 'type' | 'chapter' = 'type') => ({ scope, sourcePath }) as any;
 
@@ -20,5 +20,13 @@ describe('planConflictMoves', () => {
   });
   it('খালি তালিকা', () => {
     expect(planConflictMoves([]).order).toEqual([]);
+  });
+});
+
+describe('withNumberSuffix (unnecessary/-তে একই নাম থাকলে)', () => {
+  it('ফাইলের এক্সটেনশন ঠিক থাকে, ফোল্ডারের শেষে সংখ্যা বসে', () => {
+    expect(withNumberSuffix('a/media/x.webp', 2)).toBe('a/media/x (2).webp');
+    expect(withNumberSuffix('a/ফোল্ডার', 3)).toBe('a/ফোল্ডার (3)');
+    expect(withNumberSuffix('a.b/ফোল্ডার', 2)).toBe('a.b/ফোল্ডার (2)');
   });
 });

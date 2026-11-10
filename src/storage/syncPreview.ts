@@ -21,6 +21,7 @@ import {
   type FolderNode,
   type PreviewEntry,
   type ConflictEntry,
+  type ExtraEntry,
   type PreviewTotals,
   type ImageInfo,
 } from './syncCompare';
@@ -45,13 +46,15 @@ export interface SyncPreview {
   createdAt: number;
   entries: PreviewEntry[];
   conflicts: ConflictEntry[];
+  /** অপ্রয়োজনীয় জিনিস - কনফ্লিক্ট নয়, নিজের ফোল্ডারের unnecessary/-তে সরবে */
+  extras: ExtraEntry[];
   warnings: string[];
   /** a scope that could not be read: the other scope is still shown */
   errors: string[];
   /** folders -> app: more than half of the folders look deleted (the real scan asks before deleting) */
   massDelete?: { count: number; total: number };
   totals: PreviewTotals;
-  /** nothing would change and there is no conflict */
+  /** nothing would change and there is no conflict / extra item */
   empty: boolean;
 }
 
@@ -181,6 +184,7 @@ async function runPreview(direction: SyncDirection, onProgress?: ProgressCallbac
     createdAt: Date.now(),
     entries: [],
     conflicts: [],
+    extras: [],
     warnings: [],
     errors: [],
     totals: summarize([], []),
@@ -193,6 +197,7 @@ async function runPreview(direction: SyncDirection, onProgress?: ProgressCallbac
         const r = await previewScope(direction, scope, stamp, tracker);
         out.entries.push(...r.entries);
         out.conflicts.push(...r.conflicts);
+        out.extras.push(...r.extras);
         out.warnings.push(...r.warnings);
         if (r.massDelete) {
           out.massDelete = out.massDelete
@@ -206,7 +211,7 @@ async function runPreview(direction: SyncDirection, onProgress?: ProgressCallbac
     }
   });
 
-  out.totals = summarize(out.entries, out.conflicts);
+  out.totals = summarize(out.entries, out.conflicts, out.extras);
   out.empty = !hasAnyChange(out.totals);
   tracker?.finish();
   return out;

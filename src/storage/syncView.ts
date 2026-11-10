@@ -1,5 +1,5 @@
 import type { CqScope } from '../db/db';
-import type { ChangeAction, ConflictEntry, ConflictKind, PreviewEntry, PreviewTotals, TopicDiff } from './syncCompare';
+import type { ChangeAction, ConflictEntry, ConflictKind, ExtraEntry, ExtraKind, PreviewEntry, PreviewTotals, TopicDiff } from './syncCompare';
 import type { SyncDirection, SyncPreview } from './syncPreview';
 import { PHASE_LABEL, type SyncProgress } from './syncProgress';
 import { toBn } from '../utils/toBn';
@@ -22,18 +22,27 @@ export interface SyncCounts {
   update: number;
   delete: number;
   conflictsMoved: number;
+  /** unnecessary/-তে সরানো বাড়তি জিনিস */
+  extrasMoved: number;
 }
 
-export const emptyCounts = (): SyncCounts => ({ add: 0, create: 0, rename: 0, move: 0, update: 0, delete: 0, conflictsMoved: 0 });
+export const emptyCounts = (): SyncCounts => ({ add: 0, create: 0, rename: 0, move: 0, update: 0, delete: 0, conflictsMoved: 0, extrasMoved: 0 });
 
 export interface SyncResultConflict extends ConflictEntry {
   /** সত্যিই সরানো হয়েছে (অটো সিঙ্ক নিজে সরায় না: false) */
   moved: boolean;
 }
 
+export interface SyncResultExtra extends ExtraEntry {
+  /** সত্যিই unnecessary/-তে সরানো হয়েছে কি না */
+  moved: boolean;
+}
+
 export interface SyncResultView {
   counts: SyncCounts;
   conflicts: SyncResultConflict[];
+  /** অপ্রয়োজনীয় জিনিস (কনফ্লিক্ট নয়) */
+  extras: SyncResultExtra[];
   warnings: string[];
   /** Sync_Conflicts/<stamp> */
   stamp?: string;
@@ -52,10 +61,12 @@ export function makeResultView(
   counts: SyncCounts,
   conflicts: SyncResultConflict[],
   warnings: string[] = [],
-  stamp?: string
+  stamp?: string,
+  extras: SyncResultExtra[] = []
 ): SyncResultView {
-  const sum = counts.add + counts.create + counts.rename + counts.move + counts.update + counts.delete + counts.conflictsMoved;
-  return { counts, conflicts, warnings, stamp, nothingChanged: sum === 0 && conflicts.length === 0 };
+  const sum =
+    counts.add + counts.create + counts.rename + counts.move + counts.update + counts.delete + counts.conflictsMoved + (counts.extrasMoved ?? 0);
+  return { counts, conflicts, extras, warnings, stamp, nothingChanged: sum === 0 && conflicts.length === 0 && extras.length === 0 };
 }
 
 /** আসল সিঙ্ক চলার সময়ও Back ব্লক থাকবে; উইন্ডো কখন কোন বাটন দেখাবে তার নিয়ম */
@@ -98,10 +109,62 @@ export const CONFLICT_KIND_LABEL: Record<ConflictKind, string> = {
   'duplicate-id': 'কপি করা ফোল্ডার',
   'both-changed': 'দুই দিকেই বদল',
   'data-differs': 'ডেটা মেলে না',
-  'extra-folder': 'বাড়তি ফোল্ডার',
-  'extra-media': 'বাড়তি ছবি',
   'same-name': 'একই নামের আইটেম',
 };
+
+export const EXTRA_KIND_LABEL: Record<ExtraKind, string> = {
+  'extra-folder': 'বাড়তি ফোল্ডার',
+  'extra-file': 'বাড়তি ফাইল',
+  'extra-media': 'বাড়তি ছবি/ফাইল (media)',
+};
+
+export interface ExtraGroup {
+  key: string;
+  scope: CqScope;
+  scopeTitle: string;
+  /** যে ফোল্ডারের ভেতরে (বিষয › অধ্যায › টাইপ); স্কোপ রুট হলে খালি */
+  ownerText: string;
+  /** <ফোল্ডার>/unnecessary */
+  moveToText: string;
+  names: string[];
+  items: ExtraEntry[];
+}
+
+/** একই ফোল্ডারের বাড়তি জিনিসগুলো একসাথে (ছবি অনেক হলে তালিকা লম্বা হয় না) */
+export function groupExtras<T extends ExtraEntry>(extras: T[]): ExtraGroup[] {
+  const groups = new Map<string, ExtraGroup>();
+  for (const x of extras) {
+    const key = `${x.scope}|${x.owner.join('/')}`;
+    let g = groups.get(key);
+    if (!g) {
+      const cut = x.moveTo.length - x.name.length - 1; // .../unnecessary
+      g = { key, scope: x.scope, scopeTitle: SCOPE_TITLE[x.scope], ownerText: x.owner.join(' › '), moveToText: x.moveTo.slice(0, cut), names: [], items: [] };
+      groups.set(key, g);
+    }
+    g.names.push(x.name);
+    g.items.push(x);
+  }
+  const order: Record<CqScope, number> = { type: 0, chapter: 1 };
+  return [...groups.values()].sort((a, b) => order[a.scope] - order[b.scope]);
+}
+
+/** "৩টি ছবি, ১টি ফোল্ডার, ২টি ফাইল" */
+export function extraGroupSummary(g: ExtraGroup): string {
+  let img = 0;
+  let dir = 0;
+  let file = 0;
+  for (const x of g.items) {
+    if (x.kind === 'extra-folder') dir++;
+    else if (x.kind === 'extra-file') file++;
+    else if (/\.(webp|png|jpe?g|gif)$/i.test(x.name)) img++;
+    else file++;
+  }
+  const parts: string[] = [];
+  if (img) parts.push(`${toBn(img)}টি ছবি`);
+  if (dir) parts.push(`${toBn(dir)}টি ফোল্ডার`);
+  if (file) parts.push(`${toBn(file)}টি ফাইল`);
+  return parts.join(', ');
+}
 
 export const SCOPE_TITLE: Record<CqScope, string> = { type: 'Type CQ', chapter: 'Chapter CQ' };
 
@@ -196,6 +259,10 @@ export function conflictChip(t: PreviewTotals): Chip | null {
   return t.conflicts ? { key: 'conflicts', text: `${n(t.conflicts)}টি কনফ্লিক্ট`, tone: 'warn' } : null;
 }
 
+export function extrasChip(t: PreviewTotals): Chip | null {
+  return t.extras ? { key: 'extras', text: `${n(t.extras)}টি অপ্রয়োজনীয় (unnecessary-তে যাবে)`, tone: 'neutral' } : null;
+}
+
 /** "৩টি প্রশ্ন যোগ, ১টি বাদ, ২টি বদল" */
 export function questionsLine(t: PreviewTotals): string {
   const parts: string[] = [];
@@ -204,6 +271,10 @@ export function questionsLine(t: PreviewTotals): string {
   if (t.questionsChanged) parts.push(`${n(t.questionsChanged)}টি প্রশ্ন বদল`);
   if (t.imagesToWrite) parts.push(`${n(t.imagesToWrite)}টি ছবি লেখা হবে`);
   return parts.join(', ');
+}
+
+export function extraMoveText(moved: boolean, moveToText: string): string {
+  return moved ? `unnecessary-তে সরানো হয়েছে: ${moveToText}` : `সরানো হবে: ${moveToText}`;
 }
 
 export function conflictMoveText(c: Pick<ConflictEntry, 'moveTo'>, moved: boolean, auto?: boolean): string {
@@ -231,7 +302,7 @@ export function currentWork(p: SyncProgress): string {
 }
 
 export interface CounterCell {
-  key: 'added' | 'changed' | 'deleted' | 'conflicts';
+  key: 'added' | 'changed' | 'deleted' | 'conflicts' | 'extras';
   label: string;
   value: number;
 }
@@ -243,6 +314,7 @@ export function counterCells(c: SyncCounts): CounterCell[] {
     { key: 'changed', label: 'বদল', value: c.update + c.rename + c.move },
     { key: 'deleted', label: 'মোছা', value: c.delete },
     { key: 'conflicts', label: 'কনফ্লিক্ট সরানো', value: c.conflictsMoved },
+    { key: 'extras', label: 'unnecessary-তে সরানো', value: c.extrasMoved ?? 0 },
   ];
 }
 

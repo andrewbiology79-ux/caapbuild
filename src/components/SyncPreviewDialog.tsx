@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { AlertCircle, AlertTriangle, CheckCircle2, Info, RefreshCw } from 'lucide-react';
 import { useBackClose } from '../utils/useBackClose';
 import { toBn } from '../utils/toBn';
-import type { ConflictEntry, PreviewEntry } from '../storage/syncCompare';
+import type { ConflictEntry, ExtraEntry, PreviewEntry } from '../storage/syncCompare';
 import type { SyncPreview } from '../storage/syncPreview';
 import { SyncProgressBar } from './SyncProgressBar';
 import {
@@ -13,13 +13,18 @@ import {
   counterCells,
   dialogTitle,
   entryText,
+  extraGroupSummary,
+  extraMoveText,
+  extrasChip,
   groupEntries,
+  groupExtras,
   questionsLine,
   resultHeadline,
   totalsChips,
   type Chip,
   type SyncDialogState,
   type SyncResultConflict,
+  type SyncResultExtra,
 } from '../storage/syncView';
 
 export interface SyncPreviewDialogProps {
@@ -141,6 +146,42 @@ const ConflictCard: React.FC<{ c: ConflictEntry | SyncResultConflict; moveText: 
   </div>
 );
 
+/** অপ্রয়োজনীয় জিনিস (কনফ্লিক্ট নয়): মোছা হয় না, নিজের টাইপ/অধ্যায় ফোল্ডারের unnecessary/-তে যায় */
+const ExtrasSection: React.FC<{ extras: Array<ExtraEntry | SyncResultExtra>; done?: boolean }> = ({ extras, done }) => {
+  if (extras.length === 0) return null;
+  const groups = groupExtras(extras);
+  return (
+    <section className="space-y-2">
+      <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+        অপ্রয়োজনীয় ({toBn(extras.length)}টি) <span className="text-xs font-normal text-[#64748B]">— কনফ্লিক্ট নয়</span>
+      </h3>
+      <p className="text-xs text-[#64748B] dark:text-slate-400">
+        অ্যাপের দরকার নেই এমন ছবি/ফোল্ডার/ফাইল মোছা হয় না; ওই টাইপ বা অধ্যায় ফোল্ডারের ভেতরে unnecessary ফোল্ডারে সরিয়ে রাখা হয়।
+      </p>
+      {groups.map((g) => {
+        const moved = done ? g.items.every((x) => (x as SyncResultExtra).moved) : false;
+        const shown = g.names.slice(0, 5);
+        return (
+          <div key={g.key} className="rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/60 p-3 space-y-1.5">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                {extraGroupSummary(g)}
+              </span>
+              <span className="text-xs text-[#64748B] dark:text-slate-400">{g.scopeTitle}</span>
+            </div>
+            <p className="text-sm font-medium text-[#1B1F2A] dark:text-slate-100 break-words">{g.ownerText || 'মূল ফোল্ডার'}</p>
+            <p className="text-xs text-[#1B1F2A] dark:text-slate-200 break-words">
+              {shown.join(', ')}
+              {g.names.length > shown.length ? ` ... আরও ${toBn(g.names.length - shown.length)}টি` : ''}
+            </p>
+            <p className="text-xs text-slate-600 dark:text-slate-300 break-words">{extraMoveText(moved, g.moveToText)}</p>
+          </div>
+        );
+      })}
+    </section>
+  );
+};
+
 const EntryRow: React.FC<{ e: PreviewEntry }> = ({ e }) => {
   const t = entryText(e);
   const title = e.path[e.path.length - 1] ?? '';
@@ -176,6 +217,7 @@ const EntryRow: React.FC<{ e: PreviewEntry }> = ({ e }) => {
 const PreviewBody: React.FC<{ preview: SyncPreview }> = ({ preview }) => {
   const groups = groupEntries(preview.entries);
   const cChip = conflictChip(preview.totals);
+  const xChip = extrasChip(preview.totals);
   const qLine = questionsLine(preview.totals);
   return (
     <>
@@ -204,7 +246,7 @@ const PreviewBody: React.FC<{ preview: SyncPreview }> = ({ preview }) => {
         </Notice>
       ) : (
         <div className="space-y-2">
-          <ChipRow chips={[...totalsChips(preview.totals), ...(cChip ? [cChip] : [])]} />
+          <ChipRow chips={[...totalsChips(preview.totals), ...(cChip ? [cChip] : []), ...(xChip ? [xChip] : [])]} />
           {qLine && <p className="text-xs text-[#64748B] dark:text-slate-400">{qLine}</p>}
         </div>
       )}
@@ -230,6 +272,8 @@ const PreviewBody: React.FC<{ preview: SyncPreview }> = ({ preview }) => {
           ))}
         </section>
       )}
+
+      <ExtrasSection extras={preview.extras ?? []} />
 
       {groups.map((g) => (
         <section key={g.key} className="space-y-2">
@@ -390,6 +434,8 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({ state, onC
               ))}
             </Notice>
           )}
+
+          <ExtrasSection extras={r.extras ?? []} done />
 
           {hasConflicts && (
             <section className="space-y-2">

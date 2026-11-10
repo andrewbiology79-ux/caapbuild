@@ -5,6 +5,7 @@ import {
   compareFolderToApp,
   compareAppToFolder,
   conflictDestination,
+  unnecessaryDestination,
   makeStamp,
   stableStringify,
   diffContent,
@@ -260,7 +261,7 @@ describe('syncCompare - অ্যাপ -> ফোল্ডার', () => {
     expect(r.conflicts).toEqual([]);
   });
 
-  it('অ্যাপে নেই এমন ফোল্ডার = extra-folder কনফ্লিক্ট (শুধু সবচেয়ে ওপরেরটা)', () => {
+  it('অ্যাপে নেই এমন ফোল্ডার = বাড়তি (কনফ্লিক্ট নয়), শুধু সবচেয়ে ওপরেরটা, scope root-এর unnecessary/-তে', () => {
     const nodes = buildNodes(
       'type',
       baseEntries([
@@ -270,17 +271,91 @@ describe('syncCompare - অ্যাপ -> ফোল্ডার', () => {
       ])
     );
     const r = compareAppToFolder({ scope: 'type', stamp: STAMP, nodes, app: baseApp(), fileData: files([q('q1', 'প্রথম'), q('q2', 'দ্বিতীয়')]) });
-    expect(r.conflicts).toHaveLength(1);
-    expect(r.conflicts[0].kind).toBe('extra-folder');
-    expect(r.conflicts[0].sourcePath).toBe('গণিত');
+    expect(r.conflicts).toEqual([]);
+    expect(r.extras).toHaveLength(1);
+    expect(r.extras[0].kind).toBe('extra-folder');
+    expect(r.extras[0].sourcePath).toBe('গণিত');
+    expect(r.extras[0].moveTo).toBe('Download/QB Collection/Question_Bank/Type_CQ/unnecessary/গণিত');
   });
 
-  it('media/-তে অ্যাপের অজানা ছবি = extra-media কনফ্লিক্ট', () => {
+  it('media/-তে অ্যাপের অজানা ছবি = বাড়তি, ওই টাইপের unnecessary/media/-তে (মোটেও কনফ্লিক্ট নয়)', () => {
     const nodes = buildNodes('type', baseEntries([{ p: 'পদার্থ/অধ্যায় ১/ক/media/zzz.webp', d: false, s: 5, m: 1 }]));
     const r = compareAppToFolder({ scope: 'type', stamp: STAMP, nodes, app: baseApp(), fileData: files([q('q1', 'প্রথম'), q('q2', 'দ্বিতীয়')]) });
-    expect(r.conflicts).toHaveLength(1);
-    expect(r.conflicts[0].kind).toBe('extra-media');
-    expect(r.conflicts[0].sourcePath).toBe('পদার্থ/অধ্যায় ১/ক/media');
+    expect(r.conflicts).toEqual([]);
+    expect(r.extras).toHaveLength(1);
+    expect(r.extras[0].kind).toBe('extra-media');
+    expect(r.extras[0].sourcePath).toBe('পদার্থ/অধ্যায় ১/ক/media/zzz.webp');
+    expect(r.extras[0].moveTo).toBe('Download/QB Collection/Question_Bank/Type_CQ/পদার্থ/অধ্যায় ১/ক/unnecessary/media/zzz.webp');
+    expect(r.extras[0].owner).toEqual(['পদার্থ', 'অধ্যায় ১', 'ক']);
+  });
+
+  it('অ্যাপের চেনা ছবি media/-তে থাকলে বাড়তি নয়', () => {
+    const app = baseApp();
+    app.imageById.set('keep1', { id: 'keep1', hasBlob: false, topicId: 't1' });
+    const nodes = buildNodes('type', baseEntries([{ p: 'পদার্থ/অধ্যায় ১/ক/media/keep1.webp', d: false, s: 5, m: 1 }]));
+    const r = compareAppToFolder({ scope: 'type', stamp: STAMP, nodes, app, fileData: files([q('q1', 'প্রথম'), q('q2', 'দ্বিতীয়')]) });
+    expect(r.extras).toEqual([]);
+  });
+
+  it('টাইপ ফোল্ডারের ভেতরের অচেনা ফাইল/ফোল্ডার ও media/-র অচেনা ফাইল বাড়তি; .nomedia, .tmp, .bak, unnecessary/ নয়', () => {
+    const nodes = buildNodes(
+      'type',
+      baseEntries([
+        { p: 'পদার্থ/অধ্যায় ১/ক/notes.txt', d: false, s: 5, m: 1 },
+        { p: 'পদার্থ/অধ্যায় ১/ক/পুরোনো', d: true, s: 0, m: 0 },
+        { p: 'পদার্থ/অধ্যায় ১/ক/media/info.pdf', d: false, s: 5, m: 1 },
+        { p: 'পদার্থ/অধ্যায় ১/ক/media/.nomedia', d: false, s: 0, m: 1 },
+        { p: 'পদার্থ/অধ্যায় ১/ক/data.json.bak', d: false, s: 5, m: 1 },
+        { p: 'পদার্থ/অধ্যায় ১/ক/data.json.tmp', d: false, s: 5, m: 1 },
+        { p: 'পদার্থ/অধ্যায় ১/ক/unnecessary', d: true, s: 0, m: 0 },
+        { p: 'পদার্থ/অধ্যায় ১/ক/unnecessary/media/old.webp', d: false, s: 5, m: 1 },
+      ])
+    );
+    const r = compareAppToFolder({ scope: 'type', stamp: STAMP, nodes, app: baseApp(), fileData: files([q('q1', 'প্রথম'), q('q2', 'দ্বিতীয়')]) });
+    expect(r.conflicts).toEqual([]);
+    const got = r.extras.map((x) => `${x.kind}:${x.name}`).sort();
+    expect(got).toEqual(['extra-file:notes.txt', 'extra-folder:পুরোনো', 'extra-media:media/info.pdf'].sort());
+    // unnecessary/ নিজে আর স্ক্যানে ঢোকে না
+    expect(nodes.every((n) => !n.path.includes('unnecessary'))).toBe(true);
+  });
+
+  it('ফোল্ডার -> অ্যাপ: অ্যাপ বা data.json যে ছবি চেনে না সেটা বাড়তি, নতুন ছবি হিসেবে গোনা হয় না', () => {
+    const nodes = buildNodes('type', baseEntries([{ p: 'পদার্থ/অধ্যায় ১/ক/media/zzz.webp', d: false, s: 5, m: 1 }]));
+    const r = compareFolderToApp({ scope: 'type', stamp: STAMP, nodes, app: baseApp(), fileData: new Map(), pending: NO_PENDING });
+    expect(r.conflicts).toEqual([]);
+    expect(r.extras.map((x) => x.name)).toEqual(['media/zzz.webp']);
+    expect(r.entries.some((e) => (e.topic?.imagesNew ?? 0) > 0)).toBe(false);
+    const t = summarize(r.entries, r.conflicts, r.extras);
+    expect(t.extras).toBe(1);
+    expect(t.conflicts).toBe(0);
+    expect(hasAnyChange(t)).toBe(true); // শুধু বাড়তি জিনিস থাকলেও সিঙ্ক চালানো যায়
+  });
+
+  it('ফোল্ডার -> অ্যাপ: data.json যে ছবির কথা বলে সেটা বাড়তি নয়', () => {
+    const nodes = buildNodes('type', baseEntries([{ p: 'পদার্থ/অধ্যায় ১/ক/media/new1.webp', d: false, s: 5, m: 1 }]));
+    const fileQs = [q('q1', 'প্রথম'), q('q2', 'দ্বিতীয় [[img:new1]]')];
+    const r = compareFolderToApp({ scope: 'type', stamp: STAMP, nodes, app: baseApp(), fileData: files(fileQs), pending: NO_PENDING });
+    expect(r.extras).toEqual([]);
+  });
+
+  it('Chapter CQ: অধ্যায় ফোল্ডারের অচেনা ফাইল অধ্যায়ের unnecessary/-তে যায়', () => {
+    const app = baseApp();
+    app.rows = [
+      { id: 's1', kind: 'subject', dirName: 'পদার্থ' },
+      { id: 'c1', kind: 'chapter', parentId: 's1', dirName: 'অধ্যায় ১' },
+      { id: 'data:t1', kind: 'data', mtime: 10, size: 100 },
+    ];
+    const nodes = buildNodes('chapter', [
+      { p: 'পদার্থ', d: true, s: 0, m: 0 },
+      { p: 'পদার্থ/.folder.json', d: false, s: 10, m: 1, t: meta('s1', 'subject', 'পদার্থ') },
+      { p: 'পদার্থ/অধ্যায় ১', d: true, s: 0, m: 0 },
+      { p: 'পদার্থ/অধ্যায় ১/.folder.json', d: false, s: 10, m: 1, t: meta('c1', 'chapter', 'অধ্যায় ১') },
+      { p: 'পদার্থ/অধ্যায় ১/data.json', d: false, s: 100, m: 10 },
+      { p: 'পদার্থ/অধ্যায় ১/scan.pdf', d: false, s: 100, m: 10 },
+    ]);
+    const r = compareFolderToApp({ scope: 'chapter', stamp: STAMP, nodes, app, fileData: new Map(), pending: NO_PENDING });
+    expect(r.extras).toHaveLength(1);
+    expect(r.extras[0].moveTo).toBe('Download/QB Collection/Question_Bank/Chapter_CQ/পদার্থ/অধ্যায় ১/unnecessary/scan.pdf');
   });
 
   it('অ্যাপের ছবি ফোল্ডারে নেই: blob থাকলে লেখা হবে, কোথাও না থাকলে সতর্কতা', () => {
@@ -296,6 +371,11 @@ describe('syncCompare - অ্যাপ -> ফোল্ডার', () => {
 });
 
 describe('syncCompare - সাহায্যকারী', () => {
+  it('unnecessaryDestination: মালিক ফোল্ডারের ভেতরে unnecessary/, রুট হলে scope root-এর নিচে', () => {
+    expect(unnecessaryDestination('type', 'ক/খ/গ', 'media/a.webp')).toBe('Download/QB Collection/Question_Bank/Type_CQ/ক/খ/গ/unnecessary/media/a.webp');
+    expect(unnecessaryDestination('chapter', '', 'ঘ')).toBe('Download/QB Collection/Question_Bank/Chapter_CQ/unnecessary/ঘ');
+  });
+
   it('conflictDestination নিয়ম অনুযায়ী পথ বানায়', () => {
     expect(conflictDestination(STAMP, 'chapter', 'ক/খ')).toBe('Download/QB Collection/Sync_Conflicts/2026-11-10_14-30-05/Chapter_CQ/ক/খ');
   });

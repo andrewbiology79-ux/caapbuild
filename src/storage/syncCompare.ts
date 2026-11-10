@@ -7,6 +7,10 @@ import {
   imageIdFromFileName,
   sanitizeFolderName,
   baseOfDirName,
+  scopeRoot,
+  isReservedDirName,
+  isSystemFileName,
+  UNNECESSARY_DIR,
   type FolderKind,
   type FolderMeta,
 } from './folderLayout';
@@ -38,6 +42,10 @@ export interface FolderNode {
   dataMtime: number;
   dataSize: number;
   mediaFiles: string[];
+  /** ফোল্ডারের ভেতরে অ্যাপ যা চেনে না: বাড়তি ফাইল/ফোল্ডার (name = এই ফোল্ডারের ভেতরের নাম) */
+  extraItems?: Array<{ name: string; dir: boolean }>;
+  /** media/-র ভেতরে ছবি নয় এমন বাড়তি ফাইল/ফোল্ডার */
+  extraMedia?: Array<{ name: string; dir: boolean }>;
 }
 
 export interface ImageInfo {
@@ -110,7 +118,7 @@ export interface PreviewEntry {
   destructive?: boolean;
 }
 
-export type ConflictKind = 'duplicate-id' | 'both-changed' | 'data-differs' | 'extra-folder' | 'extra-media' | 'same-name';
+export type ConflictKind = 'duplicate-id' | 'both-changed' | 'data-differs' | 'same-name';
 
 export interface ConflictEntry {
   scope: CqScope;
@@ -125,9 +133,32 @@ export interface ConflictEntry {
   sourcePath: string;
 }
 
+/**
+ * বাড়তি (অপ্রয়োজনীয়) জিনিস - কনফ্লিক্ট নয়। মোছা হয় না; নিজের টাইপ/অধ্যায় ফোল্ডারের ভেতরে
+ * unnecessary/ ফোল্ডারে সরে যায় (media/-র ছবি -> unnecessary/media/...)।
+ */
+export type ExtraKind = 'extra-folder' | 'extra-file' | 'extra-media';
+
+export interface ExtraEntry {
+  scope: CqScope;
+  kind: ExtraKind;
+  /** যে ফোল্ডারের ভেতরে জিনিসটা আছে (বিষয় থেকে নিচের নাম; স্কোপ রুট হলে খালি) */
+  owner: string[];
+  /** owner-এর ভেতরের পথ, যেমন "media/abc.webp" */
+  name: string;
+  /** owner + name (দেখানোর জন্য) */
+  path: string[];
+  folderSide: string;
+  /** ফোল্ডারে আছে এমন জায়গা, স্কোপ রুটের সাপেক্ষে */
+  sourcePath: string;
+  /** সরে যাবে যেখানে: <owner>/unnecessary/<name> (পুরো পথ) */
+  moveTo: string;
+}
+
 export interface CompareResult {
   entries: PreviewEntry[];
   conflicts: ConflictEntry[];
+  extras: ExtraEntry[];
   warnings: string[];
   /** folders -> app only: more than half of the folders look deleted (the scan asks before deleting) */
   massDelete?: { count: number; total: number };
@@ -236,6 +267,55 @@ export function conflictDestination(stamp: string, scope: CqScope, relPath: stri
   return `${QB_ROOT}/Sync_Conflicts/${stamp}/${SCOPE_LABEL[scope]}/${relPath}`;
 }
 
+/** <scope>/<owner>/unnecessary/<name> - owner খালি হলে স্কোপ রুটের নিচে */
+export function unnecessaryDestination(scope: CqScope, ownerPath: string, name: string): string {
+  return [scopeRoot(scope), ownerPath, UNNECESSARY_DIR, name].filter(Boolean).join('/');
+}
+
+function makeExtra(scope: CqScope, kind: ExtraKind, ownerPath: string, name: string, folderSide: string): ExtraEntry {
+  const owner = ownerPath ? ownerPath.split('/') : [];
+  return {
+    scope,
+    kind,
+    owner,
+    name,
+    path: [...owner, ...name.split('/')],
+    folderSide,
+    sourcePath: ownerPath ? `${ownerPath}/${name}` : name,
+    moveTo: unnecessaryDestination(scope, ownerPath, name),
+  };
+}
+
+/** একটি ফোল্ডারের ভেতরের বাড়তি ফাইল/ফোল্ডার + media/-র ভেতরের ছবি-নয় এমন জিনিস */
+export function extrasOfNode(scope: CqScope, n: FolderNode): ExtraEntry[] {
+  const out: ExtraEntry[] = [];
+  for (const it of n.extraItems ?? []) {
+    out.push(makeExtra(scope, it.dir ? 'extra-folder' : 'extra-file', n.path, it.name, it.dir ? `বাড়তি ফোল্ডার: ${it.name}` : `বাড়তি ফাইল: ${it.name}`));
+  }
+  for (const it of n.extraMedia ?? []) {
+    out.push(makeExtra(scope, 'extra-media', n.path, `${MEDIA_DIR}/${it.name}`, `media/-তে বাড়তি ${it.dir ? 'ফোল্ডার' : 'ফাইল'}: ${it.name}`));
+  }
+  return out;
+}
+
+/** অ্যাপ চেনে না এমন পুরো ফোল্ডার (বাবার ভেতরের unnecessary/-তে যায়) */
+export function extraFolderEntry(scope: CqScope, n: FolderNode): ExtraEntry {
+  const cut = n.path.lastIndexOf('/');
+  const ownerPath = cut < 0 ? '' : n.path.slice(0, cut);
+  return makeExtra(scope, 'extra-folder', ownerPath, n.name, `ফোল্ডারে আছে: ${n.path.split('/').join(' › ')} (অ্যাপে নেই)`);
+}
+
+/** media/-র যেসব ছবির ফাইল কেউ ব্যবহার করে না (known = অ্যাপ/data.json যেসব ছবির id চেনে) */
+export function extraImageEntries(scope: CqScope, n: FolderNode, known: Set<string>): ExtraEntry[] {
+  const out: ExtraEntry[] = [];
+  for (const f of n.mediaFiles) {
+    const id = imageIdFromFileName(f);
+    if (id && known.has(id)) continue;
+    out.push(makeExtra(scope, 'extra-media', n.path, `${MEDIA_DIR}/${f}`, `media/-তে বাড়তি ছবি: ${f}`));
+  }
+  return out;
+}
+
 /* ------------------------------------------------------------------
  * Folder tree
  * ---------------------------------------------------------------- */
@@ -251,7 +331,7 @@ export function buildNodes(scope: CqScope, entries: Array<{ p: string; d: boolea
     const parts = path.split('/');
     const kind = kindOfDepth(scope, parts.length);
     if (!kind) return null;
-    n = { path, name: parts[parts.length - 1], depth: parts.length, kind, hasData: false, dataMtime: 0, dataSize: 0, mediaFiles: [] };
+    n = { path, name: parts[parts.length - 1], depth: parts.length, kind, hasData: false, dataMtime: 0, dataSize: 0, mediaFiles: [], extraItems: [], extraMedia: [] };
     nodes.set(path, n);
     return n;
   };
@@ -260,10 +340,18 @@ export function buildNodes(scope: CqScope, entries: Array<{ p: string; d: boolea
     const parts = e.p.split('/');
     const last = parts[parts.length - 1];
     const dirParts = e.d ? parts : parts.slice(0, -1);
-    if (dirParts.some((x) => x.startsWith('.'))) continue; // hidden folders are not part of the bank
+    // hidden folders and the "unnecessary" folder are not part of the bank
+    if (dirParts.some((x) => x.startsWith('.') || isReservedDirName(x))) continue;
 
     if (e.d) {
-      if (parts.length <= maxDepth) getNode(e.p);
+      if (parts.length <= maxDepth) {
+        getNode(e.p);
+      } else if (parts.length === maxDepth + 1) {
+        // a folder inside a type / chapter folder: only media/ is known, the rest is extra
+        if (last !== MEDIA_DIR) getNode(parts.slice(0, -1).join('/'))?.extraItems?.push({ name: last, dir: true });
+      } else if (parts.length === maxDepth + 2 && parts[maxDepth] === MEDIA_DIR) {
+        getNode(parts.slice(0, maxDepth).join('/'))?.extraMedia?.push({ name: last, dir: true });
+      }
       continue;
     }
 
@@ -279,10 +367,14 @@ export function buildNodes(scope: CqScope, entries: Array<{ p: string; d: boolea
         n.hasData = true;
         n.dataMtime = e.m;
         n.dataSize = e.s;
+      } else if (!isSystemFileName(last)) {
+        n.extraItems?.push({ name: last, dir: false });
       }
     } else if (parentParts.length === maxDepth + 1 && parentParts[parentParts.length - 1] === MEDIA_DIR) {
       const n = getNode(parentParts.slice(0, -1).join('/'));
-      if (n && imageIdFromFileName(last)) n.mediaFiles.push(last);
+      if (!n) continue;
+      if (imageIdFromFileName(last)) n.mediaFiles.push(last);
+      else if (!isSystemFileName(last)) n.extraMedia?.push({ name: last, dir: false });
     }
   }
 
@@ -487,9 +579,15 @@ function describeBelow(c: { chapters: number; topics: number; questions: number 
   return 'ভেতরে ' + parts.join(', ');
 }
 
-function imageDiff(node: FolderNode | undefined, topicId: string, app: AppSnapshot): { imagesNew: number; imagesMissing: string[] } {
+function imageDiff(
+  node: FolderNode | undefined,
+  topicId: string,
+  app: AppSnapshot,
+  skipFiles?: Set<string>
+): { imagesNew: number; imagesMissing: string[] } {
   if (!node) return { imagesNew: 0, imagesMissing: [] };
-  const fileIds = new Set(node.mediaFiles.map((f) => imageIdFromFileName(f) as string));
+  // বাড়তি ছবি (unnecessary-তে যাবে) "নতুন ছবি" নয়
+  const fileIds = new Set(node.mediaFiles.filter((f) => !skipFiles?.has(f)).map((f) => imageIdFromFileName(f) as string));
   let imagesNew = 0;
   for (const id of fileIds) if (!app.imageById.has(id)) imagesNew++;
   const imagesMissing: string[] = [];
@@ -526,7 +624,7 @@ export function needsDataRead(n: FolderNode, isDup: boolean, dataRow: SyncRow | 
 
 export function compareFolderToApp(input: FolderToAppInput): CompareResult {
   const { scope, stamp, nodes, app, fileData, pending } = input;
-  const res: CompareResult = { entries: [], conflicts: [], warnings: [] };
+  const res: CompareResult = { entries: [], conflicts: [], extras: [], warnings: [] };
   const names = namesOf(app);
   const rowById = new Map(app.rows.map((r) => [r.id, r]));
   const subjectById = new Map(app.subjects.map((s) => [s.id, s]));
@@ -673,6 +771,34 @@ export function compareFolderToApp(input: FolderToAppInput): CompareResult {
     });
   }
 
+  // ---- extras: files / folders / pictures the app does not need -> unnecessary/ (never a conflict, never deleted) ----
+  const skipImages = new Map<string, Set<string>>(); // folder path -> media file names that are extra
+  const appImageIds = new Set<string>(app.imageById.keys());
+  for (const n of nodes) {
+    if (insideDup(n) || pending.deletes.has(n.id as string)) continue;
+    res.extras.push(...extrasOfNode(scope, n));
+  }
+  const leafDepth = scope === 'type' ? 3 : 2;
+  for (const n of nodes) {
+    if (n.depth !== leafDepth || insideDup(n) || !n.mediaFiles.length || pending.deletes.has(n.id as string)) continue;
+    const tid = topicIdOfDataNode(scope, n, app.topics);
+    const tKnown = !!tid && topicById.has(tid);
+    if (!n.hasData && !tKnown) continue; // nothing to judge the pictures by yet
+    const fileRead = fileData.get(n.path);
+    if (n.hasData && fileRead && !fileRead.payload) continue; // damaged data.json: cannot judge
+    const known = new Set<string>(appImageIds);
+    if (tKnown) collectImageIds(app.stimuliByTopic.get(tid) ?? [], app.questionsByTopic.get(tid) ?? []).forEach((i) => known.add(i));
+    if (fileRead?.payload) {
+      const fs = normalizePayload(fileRead.payload, tid || '_new');
+      collectImageIds(fs.stimuli, fs.questions).forEach((i) => known.add(i));
+      for (const im of fileRead.payload.images) if (im && typeof im.id === 'string') known.add(im.id);
+    }
+    const ex = extraImageEntries(scope, n, known);
+    if (!ex.length) continue;
+    res.extras.push(...ex);
+    skipImages.set(n.path, new Set(ex.map((e) => e.name.slice(MEDIA_DIR.length + 1))));
+  }
+
   // ---- data.json of every type / chapter folder ----
   const dataDepth = scope === 'type' ? 3 : 2;
   for (const n of nodes) {
@@ -715,7 +841,7 @@ export function compareFolderToApp(input: FolderToAppInput): CompareResult {
 
     if (!needsDataRead(n, false, dataRow) && !n.isNew) {
       // file untouched since the last sync - only report missing picture files (the scan does not drop them)
-      const img = imageDiff(n, topicId, app);
+      const img = imageDiff(n, topicId, app, skipImages.get(n.path));
       if (img.imagesMissing.length) {
         res.entries.push({
           scope,
@@ -739,7 +865,7 @@ export function compareFolderToApp(input: FolderToAppInput): CompareResult {
       ? { stimuli: app.stimuliByTopic.get(topicId) ?? [], questions: app.questionsByTopic.get(topicId) ?? [] }
       : { stimuli: [], questions: [] };
     const diff = diffContent(fileSide, appSide);
-    const img = imageDiff(n, topicId, app);
+    const img = imageDiff(n, topicId, app, skipImages.get(n.path));
     const td = toTopicDiff(diff, img);
     if (hasSetDiff(diff) || img.imagesMissing.length || img.imagesNew) {
       res.entries.push({
@@ -772,7 +898,7 @@ export interface AppToFolderInput {
 
 export function compareAppToFolder(input: AppToFolderInput): CompareResult {
   const { scope, stamp, nodes, app, fileData } = input;
-  const res: CompareResult = { entries: [], conflicts: [], warnings: [] };
+  const res: CompareResult = { entries: [], conflicts: [], extras: [], warnings: [] };
   const rowById = new Map(app.rows.map((r) => [r.id, r]));
   const orderMax = new Map<string, number>();
   const { dupNodes } = identifyNodes(nodes, rowById, orderMax);
@@ -933,22 +1059,14 @@ export function compareAppToFolder(input: AppToFolderInput): CompareResult {
       });
     }
 
-    // picture files in media/ that nothing in the app refers to
+    // picture files in media/ that nothing in the app refers to -> unnecessary/media/
     const known = new Set<string>(ids);
-    for (const img of app.imageById.values()) if (img.topicId === it.topicId) known.add(img.id);
-    const extra = node.mediaFiles.filter((f) => !known.has(imageIdFromFileName(f) as string));
-    if (extra.length) {
-      res.conflicts.push({
-        scope,
-        kind: 'extra-media',
-        path,
-        folderSide: `media/ ফোল্ডারে ${extra.length}টি বাড়তি ছবি`,
-        appSide: 'অ্যাপে এই ছবিগুলোর কোনো ব্যবহার নেই',
-        moveTo: conflictDestination(stamp, scope, `${node.path}/${MEDIA_DIR}`),
-        sourcePath: `${node.path}/${MEDIA_DIR}`,
-      });
-    }
+    for (const id of app.imageById.keys()) known.add(id);
+    res.extras.push(...extraImageEntries(scope, node, known));
   }
+
+  // files / folders inside the folders the app knows, that the app does not need
+  for (const n of matched) if (!dupNodes.has(n)) res.extras.push(...extrasOfNode(scope, n));
 
   // ---- folders the app does not have ----
   for (const n of dupNodes) {
@@ -971,15 +1089,7 @@ export function compareAppToFolder(input: AppToFolderInput): CompareResult {
     for (let p = n.parent; p; p = p.parent) if (isUnmatched(p) || dupNodes.has(p)) top = false;
     if (!top || handled.has(n)) continue;
     handled.add(n);
-    res.conflicts.push({
-      scope,
-      kind: 'extra-folder',
-      path: nodePathNames(n),
-      folderSide: `ফোল্ডারে আছে: ${nodeLabel(n)}`,
-      appSide: 'অ্যাপে নেই',
-      moveTo: conflictDestination(stamp, scope, n.path),
-      sourcePath: n.path,
-    });
+    res.extras.push(extraFolderEntry(scope, n));
   }
 
   return res;
@@ -1002,9 +1112,11 @@ export interface PreviewTotals {
   imagesToWrite: number;
   /** conflicts are counted on their own, never mixed into the numbers above */
   conflicts: number;
+  /** extra (unnecessary) items - also counted on their own */
+  extras: number;
 }
 
-export function summarize(entries: PreviewEntry[], conflicts: ConflictEntry[]): PreviewTotals {
+export function summarize(entries: PreviewEntry[], conflicts: ConflictEntry[], extras: ExtraEntry[] = []): PreviewTotals {
   const t: PreviewTotals = {
     add: 0,
     create: 0,
@@ -1017,6 +1129,7 @@ export function summarize(entries: PreviewEntry[], conflicts: ConflictEntry[]): 
     questionsChanged: 0,
     imagesToWrite: 0,
     conflicts: conflicts.length,
+    extras: extras.length,
   };
   for (const e of entries) {
     if (e.action !== 'info') t[e.action]++;
@@ -1031,5 +1144,5 @@ export function summarize(entries: PreviewEntry[], conflicts: ConflictEntry[]): 
 }
 
 export function hasAnyChange(t: PreviewTotals): boolean {
-  return t.add + t.create + t.rename + t.move + t.delete + t.update + t.conflicts > 0;
+  return t.add + t.create + t.rename + t.move + t.delete + t.update + t.conflicts + (t.extras ?? 0) > 0;
 }
