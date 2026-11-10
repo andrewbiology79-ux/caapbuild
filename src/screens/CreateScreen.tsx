@@ -6,6 +6,8 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { PaperFormModal } from '../components/PaperFormModal';
 import { PaperViewModal } from '../components/PaperViewModal';
 import { CategoryPickerDialog } from '../components/CategoryPickerDialog';
+import { CategoryBackupDialog, CategoryImportDialog } from '../components/CategoryBackupDialogs';
+import { isManualSyncActive } from '../storage/syncEngine';
 import {
   getPapers,
   getCategories,
@@ -43,6 +45,8 @@ import {
   FileDown,
   Loader2,
   CheckCircle2,
+  Download,
+  Upload,
 } from 'lucide-react';
 
 /**
@@ -83,6 +87,11 @@ export const CreateScreen: React.FC = () => {
   const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
   const [batchResult, setBatchResult] = useState<BatchPdfResult | null>(null);
   const [batchError, setBatchError] = useState<string | null>(null);
+
+  // Category backup / import (3-dot menu)
+  const [backupOpen, setBackupOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const importInputRef = React.useRef<HTMLInputElement>(null);
 
   const setClipboard = (value: PaperClipboard) => {
     paperClipboard = value;
@@ -268,6 +277,38 @@ export const CreateScreen: React.FC = () => {
     }
   };
 
+  const guardNotBusy = (): boolean => {
+    if (batchProgress) {
+      showToast('পিডিএফ তৈরি চলছে, শেষ হলে আবার চেষ্টা করুন', 2500);
+      return false;
+    }
+    if (isManualSyncActive()) {
+      showToast('সিঙ্ক চলছে, শেষ হলে আবার চেষ্টা করুন', 2500);
+      return false;
+    }
+    return true;
+  };
+
+  const handleOpenBackup = () => {
+    if (!guardNotBusy()) return;
+    if (categories.length === 0) {
+      showToast('ব্যাকআপ নেওয়ার মতো কোনো ক্যাটেগরি নেই');
+      return;
+    }
+    setBackupOpen(true);
+  };
+
+  const handleOpenImport = () => {
+    if (!guardNotBusy()) return;
+    importInputRef.current?.click();
+  };
+
+  const handleImportFilePicked = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) setImportFile(file);
+  };
+
   const menuItems = selectMode
     ? [
         {
@@ -306,6 +347,18 @@ export const CreateScreen: React.FC = () => {
               },
             ]
           : []),
+        {
+          id: 'backup-categories',
+          label: 'ক্যাটেগরি ব্যাকআপ (প্রশ্নসহ)',
+          icon: <Download className="w-4 h-4 text-[#3B4FD8]" />,
+          onClick: handleOpenBackup,
+        },
+        {
+          id: 'import-categories',
+          label: 'ক্যাটেগরি ইম্পোর্ট',
+          icon: <Upload className="w-4 h-4 text-[#3B4FD8]" />,
+          onClick: handleOpenImport,
+        },
         {
           id: 'go-collection',
           label: 'কালেকশন থেকে প্রশ্ন নির্বাচন',
@@ -723,6 +776,28 @@ export const CreateScreen: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Category backup / import (3-dot menu) */}
+      <input
+        ref={importInputRef}
+        type="file"
+        accept=".json,application/json"
+        onChange={handleImportFilePicked}
+        className="hidden"
+      />
+      <CategoryBackupDialog
+        isOpen={backupOpen}
+        categories={categories}
+        stats={categoryStats}
+        onClose={() => setBackupOpen(false)}
+      />
+      <CategoryImportDialog
+        file={importFile}
+        onClose={() => setImportFile(null)}
+        onImported={() => {
+          loadData();
+        }}
+      />
 
       {/* Paper Form Modal (Create / Edit) */}
       <PaperFormModal

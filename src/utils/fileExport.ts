@@ -53,7 +53,12 @@ export interface ExportJsonOptions {
    * Without it the old behaviour is kept (file is handed to the Share / Save dialog).
    */
   folder?: string;
+  /** after a direct save, check the file size on disk equals what was written (throws on mismatch) */
+  verifySize?: boolean;
 }
+
+/** The file on disk is not as big as what was written */
+export class FileSizeMismatchError extends Error {}
 
 /** Tell the UI (Toast) where a file was saved */
 export const FILE_SAVED_EVENT = 'qb:file-saved';
@@ -96,6 +101,20 @@ export async function exportJsonFile(
             encoding: Encoding.UTF8,
             recursive: true,
           });
+          // লেখা শেষে ফাইলের সাইজ মিলিয়ে দেখা - অর্ধেক লেখা ফাইলকে "সফল" বলা হবে না
+          if (options.verifySize) {
+            const expected = new Blob([jsonString]).size;
+            const st = await Filesystem.stat({ path, directory: Directory.ExternalStorage });
+            if (Number(st.size) !== expected) {
+              // অসম্পূর্ণ ফাইল রেখে দেওয়া হয় না
+              try {
+                await Filesystem.deleteFile({ path, directory: Directory.ExternalStorage });
+              } catch {
+                /* ignore */
+              }
+              throw new FileSizeMismatchError(`ফাইল পুরোপুরি লেখা হয়নি (${st.size}/${expected} বাইট) - আবার চেষ্টা করুন`);
+            }
+          }
           // shown a moment later so it is not hidden by the caller's own "done" message
           setTimeout(() => {
             window.dispatchEvent(new CustomEvent(FILE_SAVED_EVENT, { detail: { path } }));
@@ -103,6 +122,7 @@ export async function exportJsonFile(
           return true;
         }
       } catch (saveErr) {
+        if (saveErr instanceof FileSizeMismatchError) throw saveErr;
         console.warn('Direct save failed, falling back to Share dialog:', saveErr);
       }
     }

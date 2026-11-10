@@ -55,6 +55,7 @@ export const BACKUP_FOLDERS = {
   chapter: 'Chapter CQ',
   full: 'Full Backup',
   category: 'Category',
+  categoryBackup: 'Category Backup',
   paper: 'Paper',
   papers: 'Papers',
   auto: 'AutoBackup',
