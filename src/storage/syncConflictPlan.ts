@@ -1,3 +1,5 @@
+import type { ConflictEntry } from './syncCompare';
+
 /** ধাপ ৫ - কনফ্লিক্ট সরানোর খাঁটি পরিকল্পনা (IO নেই, টেস্ট করা যায়) */
 
 export interface ConflictMovePlan {
