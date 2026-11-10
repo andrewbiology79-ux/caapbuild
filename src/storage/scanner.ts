@@ -1,14 +1,15 @@
 import { getDb, type CqScope, type QbDatabase, type Stimulus, type Question, type SyncRow } from '../db/db';
+import { scopeRoot, FOLDER_META, DATA_FILE, imageIdFromFileName, type FolderKind, type FolderMeta } from './folderLayout';
 import {
-  scopeRoot,
-  kindOfDepth,
-  FOLDER_META,
-  DATA_FILE,
-  MEDIA_DIR,
-  imageIdFromFileName,
-  type FolderKind,
-  type FolderMeta,
-} from './folderLayout';
+  buildNodes,
+  identifyNodes,
+  findDeletedRows,
+  needsDataRead,
+  newId,
+  normStimulus,
+  normQuestion,
+  type FolderNode as Node,
+} from './syncCompare';
 import { scanTree, readText, writeText, makeDir } from './nativeStore';
 import { markSyncTx, markTopicDirty, markEntityDirty, forgetWritten } from './writer';
 
@@ -44,127 +45,7 @@ export interface ScanOptions {
   confirmMassDelete?: (count: number, total: number) => boolean;
 }
 
-interface Node {
-  path: string;
-  name: string;
-  depth: number;
-  kind: FolderKind;
-  metaText?: string;
-  id?: string;
-  isNew?: boolean;
-  parent?: Node;
-  order?: number;
-  hasData: boolean;
-  dataMtime: number;
-  dataSize: number;
-  mediaFiles: string[];
-}
-
-const DEFAULT_MARKS: Record<string, number> = { 'ক': 1, 'খ': 2, 'গ': 3, 'ঘ': 4 };
-
-function newId(): string {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
-  return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 9);
-}
-
 let declinedSignature = '';
-
-function normStimulus(s: any, topicId: string, id: string): Stimulus {
-  const imageIds: string[] = Array.isArray(s?.imageIds) ? s.imageIds.filter((x: any) => typeof x === 'string') : [];
-  return {
-    ...s,
-    id,
-    topicId,
-    text: typeof s?.text === 'string' ? s.text : '',
-    imageIds,
-    usedInBoards: Array.isArray(s?.usedInBoards) ? s.usedInBoards : [],
-  };
-}
-
-function normQuestion(q: any, index: number, topicId: string, id: string, stimulusId?: string): Question {
-  const type = ['ক', 'খ', 'গ', 'ঘ'].includes(q?.type) ? q.type : 'ক';
-  const marks = Number(q?.marks);
-  const rating = Number(q?.rating);
-  const order = Number(q?.order);
-  return {
-    ...q,
-    id,
-    topicId,
-    stimulusId,
-    type,
-    marks: Number.isFinite(marks) && marks > 0 ? marks : DEFAULT_MARKS[type] ?? 1,
-    questionText: typeof q?.questionText === 'string' ? q.questionText : '',
-    solutionText: typeof q?.solutionText === 'string' ? q.solutionText : '',
-    solutionImageIds: Array.isArray(q?.solutionImageIds) ? q.solutionImageIds.filter((x: any) => typeof x === 'string') : [],
-    rating: Number.isFinite(rating) && rating >= 1 && rating <= 5 ? Math.round(rating) : 3,
-    order: Number.isFinite(order) ? order : index + 1,
-    usedInBoards: Array.isArray(q?.usedInBoards) ? q.usedInBoards : [],
-  };
-}
-
-function parseMeta(text: string | undefined, kind: FolderKind): FolderMeta | null {
-  if (!text) return null;
-  try {
-    const m = JSON.parse(text);
-    if (m && typeof m.id === 'string' && m.id && m.kind === kind) return m as FolderMeta;
-  } catch {
-    /* ignore */
-  }
-  return null;
-}
-
-/** Build the folder tree from the flat native listing */
-function buildNodes(scope: CqScope, entries: Array<{ p: string; d: boolean; s: number; m: number; t?: string }>): Node[] {
-  const maxDepth = scope === 'type' ? 3 : 2;
-  const nodes = new Map<string, Node>();
-
-  const getNode = (path: string): Node | null => {
-    let n = nodes.get(path);
-    if (n) return n;
-    const parts = path.split('/');
-    const kind = kindOfDepth(scope, parts.length);
-    if (!kind) return null;
-    n = { path, name: parts[parts.length - 1], depth: parts.length, kind, hasData: false, dataMtime: 0, dataSize: 0, mediaFiles: [] };
-    nodes.set(path, n);
-    return n;
-  };
-
-  for (const e of entries) {
-    const parts = e.p.split('/');
-    const last = parts[parts.length - 1];
-    const dirParts = e.d ? parts : parts.slice(0, -1);
-    if (dirParts.some((x) => x.startsWith('.'))) continue; // hidden folders are not part of the bank
-
-    if (e.d) {
-      if (parts.length <= maxDepth) getNode(e.p);
-      continue;
-    }
-
-    // a file
-    const parentParts = parts.slice(0, -1);
-    if (parentParts.length === 0) continue;
-
-    if (parentParts.length <= maxDepth) {
-      const n = getNode(parentParts.join('/'));
-      if (!n) continue;
-      if (last === FOLDER_META) n.metaText = e.t;
-      else if (last === DATA_FILE && parentParts.length === maxDepth) {
-        n.hasData = true;
-        n.dataMtime = e.m;
-        n.dataSize = e.s;
-      }
-    } else if (parentParts.length === maxDepth + 1 && parentParts[parentParts.length - 1] === MEDIA_DIR) {
-      const n = getNode(parentParts.slice(0, -1).join('/'));
-      if (n && imageIdFromFileName(last)) n.mediaFiles.push(last);
-    }
-  }
-
-  // parents
-  for (const n of nodes.values()) {
-    if (n.depth > 1) n.parent = nodes.get(n.path.split('/').slice(0, -1).join('/'));
-  }
-  return Array.from(nodes.values()).sort((a, b) => a.depth - b.depth || a.path.localeCompare(b.path));
-}
 
 interface TopicPlan {
   node: Node;
@@ -222,53 +103,20 @@ export async function scanScope(scope: CqScope, opts: ScanOptions = {}): Promise
   chapters.forEach((c) => bump(c.subjectId, c.order));
   topics.forEach((t) => bump(t.chapterId, t.order));
 
-  // ---- identify folders (id from .folder.json) ----
-  // a folder that was COPIED in the file manager carries the same id twice: the one that still has
-  // the name we know stays the original, the other one becomes a NEW item
-  const byId = new Map<string, Node[]>();
-  for (const n of nodes) {
-    const meta = parseMeta(n.metaText, n.kind);
-    if (!meta) continue;
-    n.id = meta.id;
-    n.order = Number.isFinite(meta.order) ? meta.order : undefined;
-    const list = byId.get(meta.id) ?? [];
-    list.push(n);
-    byId.set(meta.id, list);
-  }
-  const dupNodes = new Set<Node>();
-  for (const [id, list] of byId) {
-    if (list.length < 2) continue;
-    const known = rowById.get(id)?.dirName;
-    const keeper = list.find((n) => n.name === known) ?? list[0];
-    for (const n of list) if (n !== keeper) dupNodes.add(n);
-  }
-  for (const n of nodes) {
-    if (!n.id || dupNodes.has(n)) {
-      n.id = newId();
-      n.isNew = true;
-    }
-  }
-  for (const n of nodes) {
-    if (n.isNew) {
-      const key = n.parent?.id ?? '';
-      n.order = (orderMax.get(key) ?? 0) + 1;
-      bump(key, n.order);
-    }
-  }
-
-  const diskIds = new Set(nodes.map((n) => n.id as string));
+  // ---- identify folders (id from .folder.json; copied folders become NEW items) - rules live in syncCompare.ts ----
+  const { dupNodes, diskIds } = identifyNodes(nodes, rowById, orderMax);
 
   // ---- deleted folders ----
-  const folderRows = rows.filter((r) => r.kind !== 'data' && r.dirName);
-  let deletedRows = folderRows.filter((r) => !diskIds.has(r.id));
+  const found = findDeletedRows(rows, diskIds);
+  let deletedRows = found.deleted;
   if (deletedRows.length > 0) {
     const sig = deletedRows.map((r) => r.id).sort().join(',');
-    const massive = deletedRows.length >= 3 && deletedRows.length / Math.max(1, folderRows.length) > 0.5;
+    const massive = found.massive;
     if (massive) {
       if (sig === declinedSignature) {
         deletedRows = [];
       } else {
-        const ok = opts.confirmMassDelete ? opts.confirmMassDelete(deletedRows.length, folderRows.length) : false;
+        const ok = opts.confirmMassDelete ? opts.confirmMassDelete(deletedRows.length, found.total) : false;
         if (!ok) {
           declinedSignature = sig;
           summary.warnings.push('অনেকগুলো ফোল্ডার পাওয়া যাচ্ছে না - কিছু মোছা হয়নি');
@@ -312,7 +160,7 @@ export async function scanScope(scope: CqScope, opts: ScanOptions = {}): Promise
 
     const dataRow = topicId ? rowById.get(`data:${topicId}`) : undefined;
     const isDup = dupNodes.has(n);
-    const needRead = n.hasData && (isDup || n.isNew || !dataRow || dataRow.mtime !== n.dataMtime || dataRow.size !== n.dataSize);
+    const needRead = needsDataRead(n, isDup, dataRow);
 
     if (!n.hasData) {
       // no data.json yet (new folder) or it was deleted -> it is written again from the app's copy

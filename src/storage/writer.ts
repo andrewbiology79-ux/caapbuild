@@ -1,4 +1,4 @@
-import { getDb, type CqScope, type QbDatabase, type Stimulus, type Question } from '../db/db';
+import { getDb, type CqScope, type QbDatabase } from '../db/db';
 import {
   scopeRoot,
   entityPath,
@@ -17,6 +17,7 @@ import { pathExists, statPath, makeDir, writeText, writeTextSafe, writeBase64, r
 import { imageFilePath, blobDimensions } from './imageStore';
 import { blobToBase64 } from '../utils/fileExport';
 import { withSyncLock } from './syncLock';
+import { collectImageIds } from './syncCompare';
 
 /**
  * App -> folders ("write-through").
@@ -65,6 +66,12 @@ export function getLastWriteAt(): number {
 
 export function setWriteErrorHandler(fn: ((message: string) => void) | null): void {
   onWriteError = fn;
+}
+
+/** ধাপ ২: অ্যাপের জমে থাকা (এখনো ফোল্ডারে না লেখা) বদলের কপি - প্রিভিউ কিছু না লিখে এটা দেখে */
+export function peekPending(scope: CqScope): { entities: Set<string>; deletes: Set<string>; topics: Set<string> } {
+  const p = pending[scope];
+  return { entities: new Set(p.entities.keys()), deletes: new Set(p.deletes), topics: new Set(p.topics) };
 }
 
 export function hasPendingWrites(): boolean {
@@ -366,29 +373,6 @@ export async function ensureEntity(sdb: QbDatabase, scope: CqScope, kind: Folder
 }
 
 /* ------------------------------------------------------------------ */
-
-const IMG_MARKER_RE = /\[\[img:([^\]\s]+)\]\]/g;
-
-function collectImageIds(stimuli: Stimulus[], questions: Question[]): string[] {
-  const ids = new Set<string>();
-  const fromText = (t?: string | null) => {
-    if (!t) return;
-    const re = new RegExp(IMG_MARKER_RE.source, 'g');
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(t)) !== null) ids.add(m[1]);
-  };
-  for (const s of stimuli) {
-    (s.imageIds || []).forEach((i) => ids.add(i));
-    fromText(s.text);
-  }
-  for (const q of questions) {
-    (q.solutionImageIds || []).forEach((i) => ids.add(i));
-    fromText(q.solutionText);
-    fromText(q.questionText);
-    fromText(q.answerText);
-  }
-  return Array.from(ids);
-}
 
 interface ImageMeta {
   id: string;
