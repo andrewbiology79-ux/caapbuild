@@ -430,7 +430,9 @@ export function installCategoryWriteHooks(): void {
   db.papers.hook('updating', (mods, pk, obj, tx: any) => {
     if (!categoryWritesEnabled || tx?.qbSync) return;
     queueCategoryWrite(obj?.categoryId);
-    queueCategoryWrite(mods?.categoryId);
+    // Dexie types update modifiers as Object; narrow to the Paper field we need.
+    const changedCategoryId = (mods as { categoryId?: string }).categoryId;
+    queueCategoryWrite(changedCategoryId);
     // categoryId undefined হলে কাগজটি অশ্রেণিবদ্ধে গেছে/সেখান থেকে এসেছে; সব ক্যাটেগরি
     // পুনর্লিখলে পুরনো ক্যাটেগরির data.json-ও সঠিকভাবে পরিষ্কার হয়।
     if (Object.prototype.hasOwnProperty.call(mods || {}, 'categoryId')) queueAllCategoryWrites();
