@@ -1,6 +1,6 @@
 import { db, getDb, type Category, type CqScope, type DbImage, type Paper } from '../db/db';
 import { sanitizeFolderName, baseOfDirName, NOMEDIA_FILE } from './folderLayout';
-import { pathExists, statPath, makeDir, readText, writeText, writeTextSafe, writeBase64, renamePath, copyFile, removeDir } from './nativeStore';
+import { pathExists, statPath, makeDir, readText, writeText, writeTextSafe, writeBase64, renamePath, copyFile, removeDir, scanTree } from './nativeStore';
 import { imageFilePath } from './imageStore';
 import { blobToBase64 } from '../utils/fileExport';
 import { withSyncLock } from './syncLock';
@@ -16,8 +16,13 @@ import {
   categoryMetaToText,
   normalizeCategorySyncState,
   parseCategoryData,
+  parseCategoryMeta,
   type CategorySyncState,
 } from './categoryLayout';
+import { buildCategoryNodes, compareAppToFolder, type CategoryExtra } from './categoryCompare';
+import { resolveCategoryWork, selectAutoTidyExtras, type CategoryWork, type PaperRef } from './categoryQueue';
+import { UNNECESSARY_DIR } from './folderLayout';
+import { withNumberSuffix } from './syncConflictPlan';
 import {
   bankPathOf,
   buildCategoryCopies,
@@ -212,6 +217,8 @@ export interface WriteCategoryResult {
   warnings: string[];
   /** media/-তে রাখা যায়নি এমন ছবির id (উৎসই পাওয়া যায়নি) */
   missingImages: string[];
+  /** data.json যে ছবিগুলো চায় (media/-র বাকি ছবি \"অপ্রয়োজনীয়\") - written/unchanged হলে থাকে */
+  wantedImageIds?: string[];
 }
 
 /** শেষ যে লেখা দিয়েছি (একই হলে আবার লিখি না): dirName -> data.json-এর লেখা */
@@ -292,7 +299,7 @@ export async function writeCategoryFolder(cat: Category, state: CategorySyncStat
   state.categories[cat.id] = { dirName, ...(st ? { dataMtime: st.mtime, dataSize: st.size } : {}) };
   for (const p of papers) state.papers[p.id] = { categoryId: cat.id };
 
-  return { ...result, status: changed ? 'written' : 'unchanged', dirName };
+  return { ...result, status: changed ? 'written' : 'unchanged', dirName, wantedImageIds: verified.file.images.map((i) => i.id) };
 }
 
 /**
@@ -322,191 +329,192 @@ export function writeCategories(categoryIds: string[], opts: { allowCreate?: boo
   });
 }
 
-
 /* ------------------------------------------------------------------
- * অংশ ১খ-২ (প্রথম ছোট ধাপ): ক্যাটেগরি/প্রশ্নপত্রের অটো-লেখা hook
+ * অংশ ১খ-২ক - ক্যাটেগরি মোছা, unnecessary/-তে সরানো, সারি থেকে লেখা
+ * (Dexie hook, debounce, ফর্ম-অপেক্ষা ও UI লাইন দ্বিতীয় রাউন্ডে)
  * ---------------------------------------------------------------- */
 
-import { autoSyncStore } from './autoSyncStatus';
-import { waitForEditorsClosed } from './editorGuard';
-
-const CATEGORY_DEBOUNCE_MS = 800;
-let categoryHooksInstalled = false;
-let categoryWritesEnabled = false;
-let categoryTimer: ReturnType<typeof setTimeout> | null = null;
-let categoryFlush: Promise<void> | null = null;
-let categoryErrorHandler: ((message: string) => void) | null = null;
-const dirtyCategoryIds = new Set<string>();
-const deletedCategoryIds = new Set<string>();
-
-export function setCategoryWritesEnabled(enabled: boolean): void {
-  categoryWritesEnabled = enabled;
-  if (!enabled && categoryTimer) {
-    clearTimeout(categoryTimer);
-    categoryTimer = null;
-  }
-  if (enabled && (dirtyCategoryIds.size || deletedCategoryIds.size)) scheduleCategoryWrite();
-}
-
-export function setCategoryWriteErrorHandler(handler: ((message: string) => void) | null): void {
-  categoryErrorHandler = handler;
-}
-
-function queueCategoryWrite(id: unknown): void {
-  if (!categoryWritesEnabled || typeof id !== 'string' || !id) return;
-  deletedCategoryIds.delete(id);
-  dirtyCategoryIds.add(id);
-  scheduleCategoryWrite();
-}
-
-function queueCategoryDelete(id: unknown): void {
-  if (!categoryWritesEnabled || typeof id !== 'string' || !id) return;
-  dirtyCategoryIds.delete(id);
-  deletedCategoryIds.add(id);
-  scheduleCategoryWrite();
-}
-
-function queueAllCategoryWrites(): void {
-  if (!categoryWritesEnabled) return;
-  void db.categories.toArray().then((categories) => {
-    for (const category of categories) queueCategoryWrite(category.id);
-  }).catch((err) => {
-    categoryErrorHandler?.(err?.message || String(err));
-  });
-}
-
-function scheduleCategoryWrite(): void {
-  if (categoryTimer) clearTimeout(categoryTimer);
-  categoryTimer = setTimeout(() => {
-    categoryTimer = null;
-    void flushCategoryWrites();
-  }, CATEGORY_DEBOUNCE_MS);
-}
-
-/** ক্যাটেগরির ফোল্ডার মুছে ফেলা কেবল অ্যাপের category delete hook থেকে আসে। */
-async function removeDeletedCategoryFolders(ids: string[]): Promise<void> {
-  if (!ids.length) return;
-  await withSyncLock(async () => {
-    const state = await loadCategorySyncState();
-    for (const id of ids) {
-      // delete-এর পরে একই id আবার তৈরি হলে পুরনো ফোল্ডার মুছবে না।
-      if (await db.categories.get(id)) continue;
-      const row = state.categories[id];
-      if (row?.dirName) await removeDir(categoryDirPath(row.dirName));
-      delete state.categories[id];
-      for (const [paperId, paperRow] of Object.entries(state.papers)) {
-        if (paperRow.categoryId === id) delete state.papers[paperId];
-      }
-    }
-    await saveCategorySyncState(state);
-  });
+export interface RemoveCategoryResult {
+  id: string;
+  status: 'removed' | 'nothing-to-remove' | 'kept';
+  /** kept হলে কারণ */
+  reason?: string;
 }
 
 /**
- * Dexie hooks: categories/papers-এর নির্দিষ্ট ক্যাটেগরি; ব্যাংকের প্রশ্ন/উদ্দীপক/ছবির বদলে
- * সংশ্লিষ্ট সব ক্যাটেগরি queue হয়। এতে কোনো ব্যবহৃত কপি stale থেকে যায় না।
+ * অ্যাপে মোছা ক্যাটেগরির ফোল্ডার সরানো (লকের ভেতর থেকে ডাকতে হবে)।
+ * নিরাপত্তা: ফোল্ডারের .folder.json-এর id ক্যাটেগরির id-র সাথে না মিললে (ব্যবহারকারী অন্য কিছু রেখেছেন / পড়া যায়নি)
+ * ফোল্ডার মোছা হয় না ('kept')। ফোল্ডার আগেই নেই = সমস্যা নয়। স্মৃতি (state) সবক্ষেত্রে পরিষ্কার হয়, কারণ ক্যাটেগরি অ্যাপে নেই।
  */
-export function installCategoryWriteHooks(): void {
-  if (categoryHooksInstalled) return;
-  categoryHooksInstalled = true;
+export async function removeCategoryFolder(id: string, state: CategorySyncState): Promise<RemoveCategoryResult> {
+  const dirName = state.categories[id]?.dirName;
+  const forgetMemory = () => {
+    delete state.categories[id];
+    for (const [pid, row] of Object.entries(state.papers)) if (row.categoryId === id) delete state.papers[pid];
+  };
 
-  db.categories.hook('creating', (_pk, obj, tx: any) => {
-    if (!categoryWritesEnabled || tx?.qbSync) return;
-    queueCategoryWrite(obj?.id);
-  });
-  db.categories.hook('updating', (_mods, pk, _obj, tx: any) => {
-    if (!categoryWritesEnabled || tx?.qbSync) return;
-    queueCategoryWrite(pk);
-  });
-  db.categories.hook('deleting', (pk, _obj, tx: any) => {
-    if (!categoryWritesEnabled || tx?.qbSync) return;
-    queueCategoryDelete(pk);
-  });
-
-  db.papers.hook('creating', (_pk, obj, tx: any) => {
-    if (!categoryWritesEnabled || tx?.qbSync) return;
-    queueCategoryWrite(obj?.categoryId);
-  });
-  db.papers.hook('updating', (mods, pk, obj, tx: any) => {
-    if (!categoryWritesEnabled || tx?.qbSync) return;
-    queueCategoryWrite(obj?.categoryId);
-    // Dexie types update modifiers as Object; narrow to the Paper field we need.
-    const changedCategoryId = (mods as { categoryId?: string }).categoryId;
-    queueCategoryWrite(changedCategoryId);
-    // categoryId undefined হলে কাগজটি অশ্রেণিবদ্ধে গেছে/সেখান থেকে এসেছে; সব ক্যাটেগরি
-    // পুনর্লিখলে পুরনো ক্যাটেগরির data.json-ও সঠিকভাবে পরিষ্কার হয়।
-    if (Object.prototype.hasOwnProperty.call(mods || {}, 'categoryId')) queueAllCategoryWrites();
-  });
-  db.papers.hook('deleting', (_pk, obj, tx: any) => {
-    if (!categoryWritesEnabled || tx?.qbSync) return;
-    queueCategoryWrite(obj?.categoryId);
-  });
-
-  // Question, stimulus ও image দুই CQ database-এই থাকতে পারে। এই পরিবর্তনগুলো কোন
-  // ক্যাটেগরির প্রশ্নপত্রে ব্যবহৃত তা নির্ধারণের জন্য নিরাপদ conservative refresh।
-  for (const scope of ['type', 'chapter'] as CqScope[]) {
-    const sdb = getDb(scope);
-    for (const table of [sdb.questions, sdb.stimuli, sdb.images]) {
-      table.hook('creating', (_pk, _obj, tx: any) => {
-        if (!categoryWritesEnabled || tx?.qbSync) return;
-        queueAllCategoryWrites();
-      });
-      table.hook('updating', (_mods, _pk, _obj, tx: any) => {
-        if (!categoryWritesEnabled || tx?.qbSync) return;
-        queueAllCategoryWrites();
-      });
-      table.hook('deleting', (_pk, _obj, tx: any) => {
-        if (!categoryWritesEnabled || tx?.qbSync) return;
-        queueAllCategoryWrites();
-      });
-    }
+  if (!dirName) {
+    forgetMemory();
+    return { id, status: 'nothing-to-remove' };
   }
+  if (!(await pathExists(categoryDirPath(dirName)))) {
+    forgetMemory();
+    lastData.delete(dirName);
+    lastMeta.delete(dirName);
+    return { id, status: 'nothing-to-remove' };
+  }
+
+  const meta = parseCategoryMeta(await readText(categoryMetaPath(dirName)));
+  if (!meta || meta.id !== id) {
+    forgetMemory(); // ক্যাটেগরি অ্যাপে নেই; কিন্তু অচেনা ফোল্ডারে হাত দেওয়া হলো না
+    return { id, status: 'kept', reason: `ফোল্ডার \"${dirName}\" এই ক্যাটেগরির বলে নিশ্চিত হওয়া যায়নি (.folder.json মেলেনি) - মোছা হয়নি` };
+  }
+
+  await removeDir(categoryDirPath(dirName));
+  lastData.delete(dirName);
+  lastMeta.delete(dirName);
+  forgetMemory();
+  return { id, status: 'removed' };
 }
 
-/** debounce শেষে editor বন্ধ হওয়া পর্যন্ত অপেক্ষা করে, তারপর একবারে dirty category লেখে। */
-export function flushCategoryWrites(): Promise<void> {
-  if (categoryFlush) return categoryFlush;
-  if (categoryTimer) {
-    clearTimeout(categoryTimer);
-    categoryTimer = null;
+/** unnecessary/-তে সরানোর জায়গা খালি আছে কি (একই নাম থাকলে \"নাম (2)\") */
+async function freeTidyDestination(moveTo: string): Promise<string> {
+  if (!(await pathExists(moveTo))) return moveTo;
+  for (let i = 2; i < 500; i++) {
+    const cand = withNumberSuffix(moveTo, i);
+    if (!(await pathExists(cand))) return cand;
   }
-  if (!categoryWritesEnabled || (!dirtyCategoryIds.size && !deletedCategoryIds.size)) return Promise.resolve();
+  throw new Error('গন্তব্যে একই নামে অনেকগুলো আছে');
+}
 
-  categoryFlush = (async () => {
-    const showStatus = !autoSyncStore.isRunning();
-    const deletes = Array.from(deletedCategoryIds);
-    const writes = Array.from(dirtyCategoryIds);
-    if (showStatus) autoSyncStore.start();
+export interface TidyResult {
+  moved: number;
+  failures: string[];
+}
+
+/**
+ * ক্যাটেগরি ফোল্ডারের অপ্রয়োজনীয় জিনিস (কোনো প্রশ্ন ব্যবহার করে না এমন ছবি, অচেনা ফাইল/ফোল্ডার) unnecessary/-তে সরানো।
+ * কখনো মোছে না। শুধু dirNames-এর (এই রাউন্ডে লেখা ক্যাটেগরির) ফোল্ডারে হাত দেয়। লকের ভেতর থেকে ডাকতে হবে।
+ */
+export async function tidyCategoryExtras(
+  written: Array<{ id: string; dirName: string; wantedImageIds: string[] }>,
+  state: CategorySyncState
+): Promise<TidyResult> {
+  const out: TidyResult = { moved: 0, failures: [] };
+  if (written.length === 0) return out;
+
+  const scan = await scanTree(CATEGORY_ROOT);
+  if (!scan.exists) return out;
+  const { nodes, rootExtras } = buildCategoryNodes(scan.entries);
+
+  const cats = await db.categories.toArray();
+  const papers = await db.papers.toArray();
+  const wantedImages: Record<string, Set<string>> = {};
+  for (const w of written) wantedImages[w.id] = new Set(w.wantedImageIds);
+
+  const result = compareAppToFolder({
+    folder: { rootExists: true, nodes, rootExtras },
+    app: { categories: cats.filter((c) => wantedImages[c.id]), papers },
+    state,
+    wantedImages,
+  });
+
+  const owners = new Set(written.map((w) => w.dirName));
+  const extras: CategoryExtra[] = selectAutoTidyExtras(result.extras, owners);
+  for (const e of extras) {
+    const from = `${CATEGORY_ROOT}/${e.sourcePath}`;
     try {
-      const openEditors = await waitForEditorsClosed(() => !categoryWritesEnabled);
-      if (!openEditors) {
-        if (showStatus) autoSyncStore.finish(false);
-        return;
+      if (!(await pathExists(from))) continue;
+      const to = await freeTidyDestination(e.moveTo);
+      await makeDir(to.slice(0, to.lastIndexOf('/')));
+      await renamePath(from, to);
+      // unnecessary/-র ভেতরের ছবি গ্যালারিতে আসে না
+      const marker = `/${UNNECESSARY_DIR}/`;
+      const at = to.indexOf(marker);
+      if (at >= 0) {
+        const nomedia = `${to.slice(0, at + marker.length - 1)}/.nomedia`;
+        if (!(await pathExists(nomedia))) await writeText(nomedia, '').catch(() => undefined);
       }
-      deletedCategoryIds.clear();
-      dirtyCategoryIds.clear();
-      await removeDeletedCategoryFolders(deletes);
-      if (writes.length) {
-        const results = await writeCategories(writes, { allowCreate: false });
-        const failures = results.filter((r) => r.status === 'refused' || r.status === 'folder-missing');
-        const warnings = results.flatMap((r) => r.warnings);
-        if (failures.length) {
-          const message = failures.map((r) => r.reason || r.status).slice(0, 3).join('; ');
-          categoryErrorHandler?.(message);
-        }
-        if (warnings.length) categoryErrorHandler?.(warnings[0]);
-      }
-      if (showStatus) autoSyncStore.finish(writes.length > 0 || deletes.length > 0);
+      out.moved++;
     } catch (err: any) {
-      // exception হলে কাজগুলো ফেরত queue-তে যায়; পরের debounce-এ আবার চেষ্টা হবে।
-      writes.forEach((id) => dirtyCategoryIds.add(id));
-      deletes.forEach((id) => deletedCategoryIds.add(id));
-      categoryErrorHandler?.(err?.message || String(err));
-      if (showStatus) autoSyncStore.fail();
-    } finally {
-      categoryFlush = null;
-      if (dirtyCategoryIds.size || deletedCategoryIds.size) scheduleCategoryWrite();
+      out.failures.push(`${e.name}: ${err?.message || String(err)}`);
     }
-  })();
-  return categoryFlush;
+  }
+  return out;
+}
+
+export interface FlushCategoryResult {
+  written: WriteCategoryResult[];
+  removed: RemoveCategoryResult[];
+  tidy: TidyResult;
+  /** ব্যবহারকারীকে জানানোর মতো সব সতর্কতা/কারণ */
+  messages: string[];
+}
+
+/**
+ * সারি থেকে তুলে নেওয়া কাজ ফোল্ডারে লেখা: (১) মোছা ক্যাটেগরির ফোল্ডার সরানো, (২) লেখার ক্যাটেগরিগুলো লেখা,
+ * (৩) যেগুলো লেখা হলো তাদের ফোল্ডারে অপ্রয়োজনীয় জিনিস unnecessary/-তে সরানো। সবটা সিঙ্ক লকের ভেতরে; স্মৃতি একবার পড়ে একবার সেভ।
+ * extraQuestionIds: ছবির বদল থেকে খুঁজে পাওয়া প্রশ্নের id (দেখুন questionIdsUsingImages)।
+ * strict = প্রথম ব্যর্থতায় exception (হুক-চালক তখন কাজ restore করবে)।
+ */
+export function flushCategoryWork(
+  work: CategoryWork,
+  opts: { allowCreate?: boolean; strict?: boolean; extraQuestionIds?: Iterable<string>; onUnit?: (name: string) => void } = {}
+): Promise<FlushCategoryResult> {
+  return withSyncLock(async () => {
+    const state = await loadCategorySyncState();
+    const out: FlushCategoryResult = { written: [], removed: [], tidy: { moved: 0, failures: [] }, messages: [] };
+    try {
+      const papers = (await db.papers.toArray()) as PaperRef[];
+      const cats = await db.categories.toArray();
+      const plan = resolveCategoryWork(work, papers, {
+        extraQuestionIds: opts.extraQuestionIds,
+        existingCategoryIds: new Set(cats.map((c) => c.id)),
+      });
+
+      for (const id of plan.deletes) {
+        // অ্যাপে ক্যাটেগরি আবার আছে (মোছা-তারপর-আবার-তৈরি) হলে ফোল্ডার সরাব না
+        if (cats.some((c) => c.id === id)) continue;
+        try {
+          const r = await removeCategoryFolder(id, state);
+          out.removed.push(r);
+          if (r.status === 'kept' && r.reason) out.messages.push(r.reason);
+        } catch (err: any) {
+          if (opts.strict) throw err;
+          out.messages.push(`ক্যাটেগরির ফোল্ডার সরানো যায়নি: ${err?.message || String(err)}`);
+        }
+      }
+
+      const tidyInput: Array<{ id: string; dirName: string; wantedImageIds: string[] }> = [];
+      for (const id of plan.write) {
+        const cat = cats.find((c) => c.id === id);
+        if (!cat) continue;
+        try {
+          const r = await writeCategoryFolder(cat, state, { allowCreate: opts.allowCreate });
+          out.written.push(r);
+          if (r.status === 'refused' || r.status === 'folder-missing') out.messages.push(`${cat.name}: ${r.reason ?? ''}`.trim());
+          for (const w of r.warnings) out.messages.push(`${cat.name}: ${w}`);
+          if ((r.status === 'written' || r.status === 'unchanged') && r.dirName && r.wantedImageIds) {
+            tidyInput.push({ id: cat.id, dirName: r.dirName, wantedImageIds: r.wantedImageIds });
+          }
+        } catch (err: any) {
+          if (opts.strict) throw err;
+          out.written.push({ id, status: 'refused', reason: err?.message || String(err), warnings: [], missingImages: [] });
+          out.messages.push(`${cat.name}: ${err?.message || String(err)}`);
+        }
+        opts.onUnit?.(cat.name);
+      }
+
+      try {
+        out.tidy = await tidyCategoryExtras(tidyInput, state);
+        for (const f of out.tidy.failures) out.messages.push(`unnecessary/-তে সরানো যায়নি: ${f}`);
+      } catch (err: any) {
+        if (opts.strict) throw err;
+        out.messages.push(`অপ্রয়োজনীয় জিনিস সরানো যায়নি: ${err?.message || String(err)}`);
+      }
+    } finally {
+      await saveCategorySyncState(state);
+    }
+    return out;
+  });
 }

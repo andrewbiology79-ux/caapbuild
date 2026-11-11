@@ -108,7 +108,8 @@ function schedule(): void {
   }, DEBOUNCE_MS);
 }
 
-const isSyncTx = (tx: any): boolean => !writesEnabled || (!!tx && tx.qbSync === true);
+/** ফোল্ডার -> অ্যাপ লেখা, অথবা ফোল্ডার সিঙ্ক বন্ধ: এই বদল ফোল্ডারে ফেরত যাবে না (ক্যাটেগরির hook-ও এটা ব্যবহার করে) */
+export const isSyncTx = (tx: any): boolean => !writesEnabled || (!!tx && tx.qbSync === true);
 
 /** Run `fn` inside a transaction whose changes are NOT sent back to the folders (used when reading folders -> app) */
 export function markSyncTx(tx: any): void {

@@ -4,7 +4,7 @@ import './index.css';
 import { initSafeArea } from './utils/safeArea';
 import { isFolderSyncEnabled } from './storage/syncEngine';
 import { installWriteHooks, setWritesEnabled } from './storage/writer';
-import { installCategoryWriteHooks, setCategoryWritesEnabled } from './storage/categoryWriter';
+import { installCategoryHooks } from './storage/categoryAuto';
 
 initSafeArea();
 
@@ -12,8 +12,7 @@ initSafeArea();
 if (isFolderSyncEnabled()) {
   setWritesEnabled(true);
   installWriteHooks();
-  setCategoryWritesEnabled(true);
-  installCategoryWriteHooks();
+  installCategoryHooks(); // Create ট্যাবের ক্যাটেগরি ও প্রশ্নপত্র -> Category/ ফোল্ডার (অটো)
 }
 
 createRoot(document.getElementById('root')!).render(<App />);

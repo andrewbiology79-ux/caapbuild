@@ -14,10 +14,10 @@ import {
   hasPendingWrites,
   resetWriterCaches,
 } from './writer';
+import { installCategoryHooks, resumeCategoryAuto, setCategoryErrorHandler, setCategoryMessageHandler, stopCategoryAuto } from './categoryAuto';
 import { scanScope, type ScanSummary } from './scanner';
 import { withSyncLock } from './syncLock';
 import { waitForEditorsClosed } from './editorGuard';
-import { installCategoryWriteHooks, setCategoryWritesEnabled } from './categoryWriter';
 
 /**
  * Folder sync - the one place that decides WHEN things are written / read.
@@ -182,9 +182,12 @@ export function startFolderSync(onReport: (r: SyncReport) => void, onWriteError:
 
   setWritesEnabled(true);
   installWriteHooks();
-  setCategoryWritesEnabled(true);
-  installCategoryWriteHooks();
   setWriteErrorHandler(onWriteError);
+  // ক্যাটেগরি ফোল্ডারের অটো লেখা: hook + ত্রুটি/সতর্কতা একই টোস্ট-পথে ("ফোল্ডারে লিখতে সমস্যা: ...")
+  installCategoryHooks();
+  setCategoryErrorHandler(onWriteError);
+  setCategoryMessageHandler((messages) => onWriteError(messages.slice(0, 2).join(' | ') + (messages.length > 2 ? ` (আরও ${messages.length - 2}টি)` : '')));
+  resumeCategoryAuto();
 
   let stopped = false;
   let running = false;
@@ -227,6 +230,9 @@ export function startFolderSync(onReport: (r: SyncReport) => void, onWriteError:
 
   return () => {
     stopped = true;
+    stopCategoryAuto();
+    setCategoryErrorHandler(null);
+    setCategoryMessageHandler(null);
     clearTimeout(first);
     resumeHandle?.remove().catch(() => {});
   };
@@ -270,8 +276,6 @@ export async function enableFolderSync(onProgress?: (text: string) => void): Pro
 
     setWritesEnabled(true);
     installWriteHooks();
-    setCategoryWritesEnabled(true);
-    installCategoryWriteHooks();
     for (const scope of SCOPES) await markEverythingDirty(scope);
     say('প্রশ্ন ও ছবি ফোল্ডারে লেখা হচ্ছে…');
     await flushAllWrites(true);
@@ -293,7 +297,6 @@ export async function enableFolderSync(onProgress?: (text: string) => void): Pro
         }
         if (fileCount !== count) {
           setWritesEnabled(false);
-          setCategoryWritesEnabled(false);
           return { ok: false, reason: 'verify-failed', message: `"${t.name}" ফোল্ডারের তথ্য মেলেনি` };
         }
         topics++;
@@ -305,7 +308,6 @@ export async function enableFolderSync(onProgress?: (text: string) => void): Pro
     return { ok: true, topics, questions };
   } catch (err: any) {
     setWritesEnabled(false);
-    setCategoryWritesEnabled(false);
     return { ok: false, reason: 'error', message: err?.message || String(err) };
   } finally {
     resumeSync();
@@ -316,7 +318,6 @@ export async function enableFolderSync(onProgress?: (text: string) => void): Pro
 export function disableFolderSync(): void {
   setEnabledFlag(false);
   setWritesEnabled(false);
-  setCategoryWritesEnabled(false);
 }
 
 /* ------------------------------------------------------------------

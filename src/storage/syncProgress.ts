@@ -21,6 +21,7 @@ export type SyncPhase =
   | 'data' // data.json লেখা
   | 'images' // ছবি কপি
   | 'conflicts' // কনফ্লিক্ট সরানো
+  | 'tidy' // অপ্রয়োজনীয় জিনিস unnecessary/-তে সরানো (ক্যাটেগরি সিঙ্ক)
   | 'finish'; // শেষ করা
 
 export const PHASE_LABEL: Record<SyncPhase, string> = {
@@ -32,6 +33,7 @@ export const PHASE_LABEL: Record<SyncPhase, string> = {
   data: 'data.json লেখা',
   images: 'ছবি কপি',
   conflicts: 'কনফ্লিক্ট সরানো',
+  tidy: 'অপ্রয়োজনীয় জিনিস সরানো',
   finish: 'শেষ করা হচ্ছে',
 };
 
