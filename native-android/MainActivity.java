@@ -1,4 +1,4 @@
-package com.qbcollection.app;
+package com.qbcollection.examv2;
 
 import android.os.Bundle;
 import android.view.View;

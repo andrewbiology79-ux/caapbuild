@@ -19,7 +19,6 @@ import { blobToBase64 } from '../utils/fileExport';
 import { withSyncLock } from './syncLock';
 import { collectImageIds } from './syncCompare';
 import { autoSyncStore } from './autoSyncStatus';
-import { flushCategoryWrites } from './categorySync';
 
 /**
  * App -> folders ("write-through").
@@ -215,11 +214,6 @@ export function flushAllWrites(strict = false, onUnit?: (label: string) => void)
         if (strict) throw err;
         onWriteError?.(err?.message || String(err));
       }
-    }
-    try { await flushCategoryWrites(); } catch (err: any) {
-      console.warn('Category folder sync failed:', err);
-      if (strict) throw err;
-      onWriteError?.(err?.message || String(err));
     }
     lastWriteAt = Date.now();
   });

@@ -1,21 +1,22 @@
 import type { Category, Paper } from '../db/db';
 import type { ScanEntry } from '../utils/storageAccess';
-import { FOLDER_META, baseOfDirName, isReservedDirName, isSystemFileName, sanitizeFolderName, uniqueAppName } from './folderLayout';
+import { FOLDER_META, MEDIA_DIR, baseOfDirName, isReservedDirName, isSystemFileName, sanitizeFolderName, uniqueAppName, imageIdFromFileName, imageFileName } from './folderLayout';
 import { CONFLICT_SUBDIR, newId } from './syncCompare';
 import {
+  CATEGORY_DATA_FILE,
   CATEGORY_ROOT,
   categoryDirNameFor,
   categoryUnnecessaryPath,
-  isPaperFileName,
   isUncategorizedName,
-  paperFileBase,
-  paperFileNameFor,
-  paperFileStem,
   parseCategoryMeta,
   samePaperContent,
   normalizePaper,
   type CategoryFolderMeta,
   type CategorySyncState,
+  type CopiedQuestion,
+  type CopiedStimulus,
+  type ParsedCategoryData,
+  type ParseCategoryDataResult,
   type ParsedPaper,
 } from './categoryLayout';
 
@@ -27,11 +28,12 @@ import {
  * একই ফল দেয়। Question_Bank-এর syncCompare.ts-এর মতোই গঠন।
  *
  * মূল নিয়ম:
- *  - চেনা হয় id দিয়ে (ক্যাটেগরি ফোল্ডারের .folder.json, প্রশ্নপত্র ফাইলের ভেতরের id), নাম দিয়ে নয়।
+ *  - চেনা হয় id দিয়ে (ক্যাটেগরি ফোল্ডারের .folder.json, data.json-এর ভেতর প্রশ্নপত্রের id), নাম দিয়ে নয়।
+ *  - একটা ক্যাটেগরির সব প্রশ্নপত্র একটাই data.json-এ; তাই প্রশ্নপত্র "ফাইল" মানে data.json-এর ভেতরের একটা সারি (paperId)।
  *  - ফোল্ডার -> অ্যাপ: ফোল্ডারে যা বদলেছে তা অ্যাপে আসে; অ্যাপে যে বদল এখনো ফোল্ডারে লেখা হয়নি (pending) তা ছোঁয়া হয় না।
  *  - অ্যাপ -> ফোল্ডার: অ্যাপের কপিই জেতে।
  *  - অচেনা জিনিস কখনো মোছা হয় না; নিজের ফোল্ডারের unnecessary/-তে সরে যায় (extras)।
- *  - ভাঙা প্রশ্নপত্র ফাইল: সতর্কতা, কিছু মোছা/বদলানো হয় না।
+ *  - ভাঙা data.json: সতর্কতা, কিছু মোছা/বদলানো হয় না।
  *  - Category ফোল্ডারই না থাকলে ফোল্ডার -> অ্যাপে কিছু মোছা হয় না।
  */
 
@@ -39,20 +41,49 @@ import {
  * Types
  * ---------------------------------------------------------------- */
 
+/**
+ * data.json-এর ভেতরের একটি প্রশ্নপত্র (ফোল্ডার দেখার একক)। fileName সবসময় data.json।
+ * parsed: data.json পড়া হলে প্রশ্নপত্রের লেখা; undefined = পড়া হয়নি (শেষবারের মতোই আছে ধরা হয়)।
+ */
 export interface PaperFileNode {
   fileName: string;
   mtime: number;
   size: number;
-  /** ফাইল পড়ে পাওয়া প্রশ্নপত্র; null = পড়া/বোঝা যায়নি; undefined = পড়া হয়নি (শেষবারের মতোই আছে ধরা হয়) */
-  parsed?: ParsedPaper | null;
-  /** parsed null হলে কারণ */
-  error?: string;
+  /** প্রশ্নপত্রের id */
+  paperId: string;
+  parsed?: ParsedPaper;
+}
+
+export interface DataFileNode {
+  mtime: number;
+  size: number;
+}
+
+export interface CategoryCopies {
+  questions: CopiedQuestion[];
+  stimuli: CopiedStimulus[];
+  imageIds: string[];
 }
 
 export interface CategoryFolderNode {
   dirName: string;
   meta: CategoryFolderMeta | null;
+  /** data.json আছে কি (mtime/size সহ); null = নেই */
+  data: DataFileNode | null;
+  /** data.json পড়া/বোঝা না গেলে কারণ (তখন কিছু মোছা/বদলানো হয় না) */
+  dataError?: string;
+  /** data.json পড়া গেলেও কিছু অংশে আপত্তি (বাদ পড়া প্রশ্নপত্র, গণনা না মেলা ...) */
+  dataWarnings?: string[];
+  /** data.json পড়া গেছে কিন্তু সন্দেহজনক (বাদ পড়া অংশ, গণনা না মেলা, .folder.json-এর id না মেলা ...): কিছু মোছা হবে না */
+  dataUnsafe?: boolean;
+  /** বৈধ id আছে কিন্তু বাদ পড়া প্রশ্নপত্রের id (\"ফাইলে নেই\" ধরে মোছা হয় না) */
+  skippedPaperIds?: string[];
+  /** data.json-এর প্রশ্নপত্রগুলো; expandCategoryNode বসায় */
   files: PaperFileNode[];
+  /** data.json-এ থাকা প্রশ্ন/উদ্দীপক/ছবির কপি (পড়া হলে) */
+  copies?: CategoryCopies;
+  /** media/ ফোল্ডারের ছবির ফাইলের নাম */
+  mediaFiles: string[];
   /** ক্যাটেগরি ফোল্ডারের ভেতরে অ্যাপ যা চেনে না (ফাইল/ফোল্ডার) */
   extraItems: Array<{ name: string; dir: boolean }>;
 }
@@ -85,8 +116,10 @@ export interface CategoryCompareInput {
   app: CategoryAppSide;
   state: CategorySyncState;
   pending?: CategoryPending;
-  /** প্রশ্নব্যাংকে থাকা প্রশ্নের id (দিলে ঝুলে থাকা প্রশ্নের সতর্কতা আসে) */
+  /** প্রশ্নব্যাংকে থাকা প্রশ্নের id (দিলে "ব্যাংকে নেই" প্রশ্ন ধরা পড়ে) */
   knownQuestionIds?: Set<string>;
+  /** অ্যাপ -> ফোল্ডার: ক্যাটেগরির id -> media/-তে যে ছবির ফাইল থাকা উচিত (দিলে বাড়তি ছবি unnecessary/-তে সরার তালিকায় আসে) */
+  wantedImages?: Record<string, Set<string>>;
   /** ফোল্ডারে ক্যাটেগরি মুছলে তার প্রশ্নপত্রের কী হবে (ডিফল্ট: মুছবে) */
   onCategoryDelete?: CategoryDeleteMode;
   makeId?: () => string;
@@ -115,9 +148,10 @@ export interface CategoryEntry {
   name?: string;
   order?: number;
   dirName?: string;
-  fileName?: string;
   categoryId?: string;
   paper?: ParsedPaper;
+  /** ফোল্ডার -> অ্যাপ: প্রশ্নপত্রের যে প্রশ্নগুলো ব্যাংকে নেই কিন্তু data.json-এ কপি আছে ("ব্যাংকে নেই" চিহ্ন পাবে) */
+  bankMissingIds?: string[];
 }
 
 export type CategoryExtraKind = 'extra-folder' | 'extra-file';
@@ -143,6 +177,11 @@ export interface CategoryCompareResult {
   dirNames: Record<string, string>;
   /** ফোল্ডার -> অ্যাপ: অর্ধেকের বেশি জিনিস উধাও মনে হচ্ছে (আসল কাজ আগে জিজ্ঞেস করবে) */
   massDelete?: { count: number; total: number };
+  /**
+   * ফোল্ডার -> অ্যাপ: যে ক্যাটেগরির data.json পড়া যায়নি (invalid) বা সন্দেহজনক (unsafe) হওয়ায় কিছু মোছা হচ্ছে না।
+   * প্রিভিউ উইন্ডো এ থেকে \"কয়টি প্রশ্নপত্র বাদ/সুরক্ষিত, কেন\" দেখাবে।
+   */
+  protectedCategories?: Array<{ id: string; name: string; reason: 'invalid' | 'unsafe'; skippedPapers: number; heldPapers: number; why: string[] }>;
 }
 
 export interface CategoryTotals {
@@ -152,7 +191,6 @@ export interface CategoryTotals {
   papersAdded: number;
   papersUpdated: number;
   papersMoved: number;
-  papersRenamed: number;
   papersDeleted: number;
   extras: number;
   warnings: number;
@@ -163,8 +201,9 @@ export interface CategoryTotals {
  * ---------------------------------------------------------------- */
 
 /**
- * scanTree(Category/) -এর তালিকা -> ক্যাটেগরি ফোল্ডারের নোড। প্রশ্নপত্র ফাইলের লেখা এখানে পড়া হয় না
- * (দেখুন needsPaperRead); parsed পরে বসানো হয়। বাদ যায়: unnecessary/, সিস্টেম ফাইল (.folder.json ছাড়া).
+ * scanTree(Category/)-এর তালিকা -> ক্যাটেগরি ফোল্ডারের নোড। data.json-এর লেখা এখানে পড়া হয় না
+ * (দেখুন needsDataRead / expandCategoryNode)। বাদ যায়: unnecessary/, সিস্টেম ফাইল (.folder.json ছাড়া).
+ * ক্যাটেগরি ফোল্ডারের ভেতরে চেনা জিনিস: .folder.json, data.json, media/ (ও তার ভেতরের ছবি)।
  */
 export function buildCategoryNodes(entries: ScanEntry[]): { nodes: CategoryFolderNode[]; rootExtras: Array<{ name: string; dir: boolean }> } {
   const dirs = new Map<string, CategoryFolderNode>();
@@ -176,33 +215,38 @@ export function buildCategoryNodes(entries: ScanEntry[]): { nodes: CategoryFolde
     if (parts.length === 1) {
       const name = parts[0];
       if (isSystemFileName(name) || isReservedDirName(name)) continue;
-      if (e.d) dirs.set(name, { dirName: name, meta: null, files: [], extraItems: [] });
+      if (e.d) dirs.set(name, { dirName: name, meta: null, data: null, files: [], mediaFiles: [], extraItems: [] });
       else rootExtras.push({ name, dir: false });
     }
   }
 
   for (const e of entries) {
     const parts = e.p.split('/').filter(Boolean);
-    if (parts.length !== 2) continue; // গভীরের জিনিস দেখার দরকার নেই
     const node = dirs.get(parts[0]);
     if (!node) continue;
-    const name = parts[1];
-    if (!e.d && name === FOLDER_META) {
-      node.meta = parseCategoryMeta(e.t);
-    } else if (isSystemFileName(name)) {
-      // .nomedia, .tmp, .bak ... কখনো বাড়তি নয়
-    } else if (e.d && isReservedDirName(name)) {
-      // আগে সরানো অপ্রয়োজনীয় জিনিস
-    } else if (!e.d && isPaperFileName(name)) {
-      node.files.push({ fileName: name, mtime: e.m, size: e.s });
-    } else {
-      node.extraItems.push({ name, dir: e.d });
+    if (parts.length === 2) {
+      const name = parts[1];
+      if (!e.d && name === FOLDER_META) {
+        node.meta = parseCategoryMeta(e.t);
+      } else if (!e.d && name === CATEGORY_DATA_FILE) {
+        node.data = { mtime: e.m, size: e.s };
+      } else if (isSystemFileName(name)) {
+        // .nomedia, .tmp, .bak ... কখনো বাড়তি নয়
+      } else if (e.d && isReservedDirName(name)) {
+        // আগে সরানো অপ্রয়োজনীয় জিনিস
+      } else if (e.d && name === MEDIA_DIR) {
+        // ছবির ফোল্ডার (ভেতরের ফাইল নিচে)
+      } else {
+        node.extraItems.push({ name, dir: e.d });
+      }
+    } else if (parts.length === 3 && parts[1] === MEDIA_DIR && !e.d) {
+      if (!isSystemFileName(parts[2])) node.mediaFiles.push(parts[2]);
     }
   }
 
   const nodes = Array.from(dirs.values()).sort((a, b) => a.dirName.localeCompare(b.dirName));
   for (const n of nodes) {
-    n.files.sort((a, b) => a.fileName.localeCompare(b.fileName));
+    n.mediaFiles.sort((a, b) => a.localeCompare(b));
     n.extraItems.sort((a, b) => a.name.localeCompare(b.name));
   }
   rootExtras.sort((a, b) => a.name.localeCompare(b.name));
@@ -219,23 +263,65 @@ export function categoryIdForNode(node: CategoryFolderNode, state: CategorySyncS
   return null;
 }
 
-/** এই ফাইলটা শেষবার যে প্রশ্নপত্র হিসেবে লেখা/পড়া হয়েছিল তার id */
-export function paperIdForFile(state: CategorySyncState, categoryId: string | null, fileName: string): string | null {
-  if (!categoryId) return null;
-  const low = fileName.toLowerCase();
-  for (const [id, r] of Object.entries(state.papers)) {
-    if (r.categoryId === categoryId && r.fileName.toLowerCase() === low) return id;
-  }
-  return null;
+/** data.json-এর লেখা পড়তে হবে কি: শেষবার এখানে লেখা/পড়া হয়নি, বা mtime/size বদলেছে (ফাইল না থাকলে পড়ার কিছু নেই) */
+export function needsDataRead(node: CategoryFolderNode, state: CategorySyncState): boolean {
+  if (!node.data) return false;
+  const id = categoryIdForNode(node, state);
+  const row = id ? state.categories[id] : undefined;
+  if (!row || row.dataMtime === undefined || row.dataSize === undefined) return true;
+  return row.dataMtime !== node.data.mtime || row.dataSize !== node.data.size;
 }
 
-/** ফাইলের লেখা পড়তে হবে কি: নতুন ফাইল, অন্য জায়গা থেকে আসা ফাইল, বা mtime/size বদলেছে */
-export function needsPaperRead(node: CategoryFolderNode, file: PaperFileNode, state: CategorySyncState): boolean {
+/**
+ * নোডের "প্রশ্নপত্রের তালিকা" (files/copies/dataError) বসায়। IO স্তর data.json পড়ার পর (বা না পড়ে) এটা ডাকে।
+ *  - read দেওয়া হলে ও ok: data.json-এর প্রশ্নপত্রগুলো (parsed সহ)।
+ *  - read দেওয়া হলে ও ভুল: dataError (কিছু মোছা হবে না)।
+ *  - read না দিলে: শেষবারের মতোই আছে ধরে স্মৃতির সারি থেকে (parsed ছাড়া)।
+ *  - data.json নেই: খালি তালিকা (স্মৃতিতে প্রশ্নপত্র থাকলে সেগুলো মোছা ধরা পড়বে)।
+ */
+export function expandCategoryNode(node: CategoryFolderNode, state: CategorySyncState, read?: ParseCategoryDataResult): CategoryFolderNode {
+  const mtime = node.data?.mtime ?? 0;
+  const size = node.data?.size ?? 0;
+  node.files = [];
+  node.copies = undefined;
+  node.dataError = undefined;
+  node.dataWarnings = undefined;
+  node.dataUnsafe = undefined;
+  node.skippedPaperIds = undefined;
+  if (!node.data) return node;
+  if (read) {
+    if (!read.ok) {
+      node.dataError = read.reason;
+      return node;
+    }
+    node.files = read.data.papers.map((p) => ({ fileName: CATEGORY_DATA_FILE, mtime, size, paperId: p.id, parsed: p }));
+    node.copies = { questions: read.data.questions, stimuli: read.data.stimuli, imageIds: read.data.imageIds };
+    const warnings = [...read.data.warnings];
+    let unsafe = read.data.unsafe;
+    // পরিচয়ে .folder.json-এর id-ই শেষ কথা; data.json-এর category.id না মিললে মোছা বন্ধ, নাম/ক্রম না মিললে শুধু সতর্কতা
+    if (node.meta) {
+      if (read.data.category.id !== node.meta.id) {
+        warnings.push(`data.json-এর category.id (${read.data.category.id}) আর .folder.json-এর id (${node.meta.id}) মেলেনি - ফোল্ডারটা কপি/সরানো হতে পারে`);
+        unsafe = true;
+      } else {
+        if (read.data.category.name !== node.meta.name) warnings.push(`data.json-এ ক্যাটেগরির নাম \"${read.data.category.name}\", .folder.json-এ \"${node.meta.name}\" - .folder.json-এরটা ধরা হবে`);
+        if (read.data.category.order !== node.meta.order) warnings.push(`data.json-এ ক্যাটেগরির ক্রম ${read.data.category.order}, .folder.json-এ ${node.meta.order} - .folder.json-এরটা ধরা হবে`);
+      }
+    }
+    if (warnings.length) node.dataWarnings = warnings;
+    if (unsafe) node.dataUnsafe = true;
+    if (read.data.skippedPaperIds.length) node.skippedPaperIds = read.data.skippedPaperIds;
+    return node;
+  }
   const catId = categoryIdForNode(node, state);
-  const id = paperIdForFile(state, catId, file.fileName);
-  if (!id) return true;
-  const row = state.papers[id];
-  return !row || row.mtime !== file.mtime || row.size !== file.size;
+  if (catId) {
+    node.files = Object.entries(state.papers)
+      .filter(([, r]) => r.categoryId === catId)
+      .map(([id]) => id)
+      .sort()
+      .map((paperId) => ({ fileName: CATEGORY_DATA_FILE, mtime, size, paperId }));
+  }
+  return node;
 }
 
 /* ------------------------------------------------------------------
@@ -344,34 +430,49 @@ interface FoundFile {
 }
 
 /**
- * কেন্দ্রীয় ফোল্ডারের প্রশ্নপত্র ফাইলগুলো পড়ে id অনুযায়ী সাজায়।
- * একই id দুই ফাইলে থাকলে (ফাইল কপি করা) আসলটা (শেষবারের লেখা ফাইল) থাকে, বাকিগুলো extras।
+ * ক্যাটেগরি ফোল্ডারগুলোর data.json-এর প্রশ্নপত্রগুলো id অনুযায়ী সাজায়।
+ * একই id দুই ক্যাটেগরির data.json-এ থাকলে (ফোল্ডার/ফাইল কপি) আসলটা (শেষবার যে ক্যাটেগরিতে লেখা ছিল) থাকে,
+ * বাকিগুলো সতর্কতা হয়ে বাদ যায়। ভাঙা data.json-এর ক্যাটেগরির স্মৃতির প্রশ্নপত্রগুলো "দেখা হয়েছে" ধরা হয় (কিছু মোছা হয় না)।
  */
 function collectFiles(
   keepers: Map<string, CategoryFolderNode>,
   state: CategorySyncState,
   warnings: string[],
-  extras: CategoryExtra[],
   catName: (id: string) => string
 ): { byId: Map<string, FoundFile>; seenIds: Set<string> } {
   const seenIds = new Set<string>();
   const all: FoundFile[] = [];
   const ordered = Array.from(keepers.entries()).sort((a, b) => a[1].dirName.localeCompare(b[1].dirName));
   for (const [catId, node] of ordered) {
+    if (node.dataError) {
+      warnings.push(`ক্যাটেগরির data.json পড়া যায়নি: ${catName(catId)} (${node.dataError}) - কিছু বদলানো হয়নি`);
+      for (const [pid, r] of Object.entries(state.papers)) if (r.categoryId === catId) seenIds.add(pid);
+      continue;
+    }
+    for (const w of node.dataWarnings ?? []) warnings.push(`${catName(catId)}: ${w}`);
+    if (node.dataUnsafe) {
+      // বাদ পড়া/সন্দেহজনক অংশ থাকলে এই ক্যাটেগরির কোনো প্রশ্নপত্রই \"ফাইলে নেই\" ধরা যাবে না (id ছাড়া entry-র ক্ষেত্রেও নিরাপদ)
+      let held = 0;
+      for (const [pid, r] of Object.entries(state.papers)) {
+        if (r.categoryId === catId) {
+          seenIds.add(pid);
+          held++;
+        }
+      }
+      for (const pid of node.skippedPaperIds ?? []) seenIds.add(pid);
+      warnings.push(
+        `ক্যাটেগরির data.json-এ সমস্যা আছে: ${catName(catId)} - বাদ পড়া প্রশ্নপত্র ${node.skippedPaperIds?.length ?? 0}টি (id সহ); এই ক্যাটেগরির কিছুই মোছা হবে না (${held}টি প্রশ্নপত্র সুরক্ষিত)`
+      );
+    }
+    if (node.copies) {
+      const have = new Set(node.mediaFiles);
+      const missing = node.copies.imageIds.filter((id) => !have.has(imageFileName(id)));
+      if (missing.length) {
+        warnings.push(`${catName(catId)}: media/-তে ${missing.length}টি ছবির ফাইল নেই (${missing.slice(0, 3).map(imageFileName).join(', ')}${missing.length > 3 ? ' ...' : ''})`);
+      }
+    }
     for (const file of node.files) {
-      const rowId = paperIdForFile(state, catId, file.fileName);
-      if (file.parsed === null) {
-        warnings.push(`প্রশ্নপত্র ফাইল পড়া যায়নি: ${catName(catId)} › ${file.fileName} (${file.error || 'বোঝা যায়নি'}) - কিছু বদলানো হয়নি`);
-        if (rowId) seenIds.add(rowId);
-        continue;
-      }
-      if (file.parsed) {
-        all.push({ id: file.parsed.id, categoryId: catId, node, file, parsed: file.parsed, isRowFile: rowId === file.parsed.id });
-      } else if (rowId) {
-        all.push({ id: rowId, categoryId: catId, node, file, isRowFile: true });
-      } else {
-        warnings.push(`প্রশ্নপত্র ফাইল পড়া হয়নি: ${catName(catId)} › ${file.fileName}`);
-      }
+      all.push({ id: file.paperId, categoryId: catId, node, file, parsed: file.parsed, isRowFile: state.papers[file.paperId]?.categoryId === catId });
     }
   }
 
@@ -384,7 +485,7 @@ function collectFiles(
     seenIds.add(id);
     for (const f of list) {
       if (f === keeper) continue;
-      extras.push(extra('extra-file', f.node.dirName, f.file.fileName, `কপি করা প্রশ্নপত্র ফাইল: ${f.node.dirName} › ${f.file.fileName} (একই id-র আরেকটা আছে)`));
+      warnings.push(`একই প্রশ্নপত্র দুই ক্যাটেগরিতে: ${catName(f.categoryId)} › ${f.parsed?.shortName ?? id} (${catName(keeper.categoryId)}-এরটাই ধরা হয়েছে)`);
     }
   }
   return { byId, seenIds };
@@ -419,11 +520,25 @@ export function changedPaperFields(a: ParsedPaper, b: ParsedPaper): string[] {
   return out;
 }
 
-function missingQuestionWarning(paper: ParsedPaper, catName: string, known?: Set<string>): string | null {
-  if (!known) return null;
-  const missing = paper.questionIds.filter((q) => !known.has(q)).length;
-  return missing > 0 ? `${catName} › ${paper.shortName}: ${missing}টি প্রশ্ন প্রশ্নব্যাংকে পাওয়া যায়নি (প্রশ্নপত্রে যেমন আছে তেমনই থাকবে)` : null;
+/**
+ * প্রশ্নপত্রের যেসব প্রশ্ন প্রশ্নব্যাংকে (known) নেই:
+ *  - withCopy: ক্যাটেগরির data.json-এ কপি আছে -> প্রশ্নপত্রে কপি থেকে থাকবে, "ব্যাংকে নেই" চিহ্ন পাবে
+ *  - lost: কপিও নেই -> সতর্কতা (প্রশ্নপত্রে id থেকে যাবে, দেখানোর মতো কিছু নেই)
+ */
+function bankMissing(paper: ParsedPaper, node: CategoryFolderNode, known?: Set<string>): { withCopy: string[]; lost: string[] } {
+  if (!known) return { withCopy: [], lost: [] };
+  const have = new Set((node.copies?.questions ?? []).map((c) => c.question.id));
+  const withCopy: string[] = [];
+  const lost: string[] = [];
+  for (const q of paper.questionIds) {
+    if (known.has(q)) continue;
+    (have.has(q) ? withCopy : lost).push(q);
+  }
+  return { withCopy, lost };
 }
+
+const lostWarning = (paper: ParsedPaper, catName: string, lost: string[]): string | null =>
+  lost.length > 0 ? `${catName} › ${paper.shortName}: ${lost.length}টি প্রশ্ন প্রশ্নব্যাংকেও নেই, ক্যাটেগরির data.json-এও কপি নেই (প্রশ্নপত্রে যেমন আছে তেমনই থাকবে)` : null;
 
 const sortCats = (cats: Category[]): Category[] =>
   [...cats].sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.createdAt ?? 0) - (b.createdAt ?? 0) || a.name.localeCompare(b.name));
@@ -530,15 +645,16 @@ export function compareFolderToApp(input: CategoryCompareInput): CategoryCompare
   const catLabel = (id: string): string => finalName.get(id) ?? appCatById.get(id)?.name ?? '?';
 
   /* ---------- প্রশ্নপত্র ---------- */
-  const { byId, seenIds } = collectFiles(keeperNodes, state, warnings, extras, catLabel);
+  const { byId, seenIds } = collectFiles(keeperNodes, state, warnings, catLabel);
   const paperEntries: CategoryEntry[] = [];
 
-  for (const [id, f] of Array.from(byId.entries()).sort((a, b) => a[1].node.dirName.localeCompare(b[1].node.dirName) || a[1].file.fileName.localeCompare(b[1].file.fileName))) {
+  for (const [id, f] of Array.from(byId.entries()).sort((a, b) => a[1].node.dirName.localeCompare(b[1].node.dirName) || a[0].localeCompare(b[0]))) {
     if (pending.deletes.has(id) || pending.papers.has(id)) continue;
     if (!validCat.has(f.categoryId)) continue;
     const appP = appPaperById.get(id);
     if (!appP) {
-      if (!f.parsed) continue; // শেষবারের মতোই আছে অথচ অ্যাপে নেই: অ্যাপ -> ফোল্ডার সিঙ্ক ফাইলটা সরাবে
+      if (!f.parsed) continue; // শেষবারের মতোই আছে অথচ অ্যাপে নেই: অ্যাপ -> ফোল্ডার সিঙ্ক সারিটা সরাবে
+      const bm = bankMissing(f.parsed, f.node, input.knownQuestionIds);
       paperEntries.push({
         kind: 'paper',
         action: 'add',
@@ -547,10 +663,10 @@ export function compareFolderToApp(input: CategoryCompareInput): CategoryCompare
         to: f.parsed.shortName,
         categoryId: f.categoryId,
         dirName: dirNames[f.categoryId],
-        fileName: f.file.fileName,
         paper: f.parsed,
+        bankMissingIds: bm.withCopy.length ? bm.withCopy : undefined,
       });
-      const w = missingQuestionWarning(f.parsed, catLabel(f.categoryId), input.knownQuestionIds);
+      const w = lostWarning(f.parsed, catLabel(f.categoryId), bm.lost);
       if (w) warnings.push(w);
       continue;
     }
@@ -565,11 +681,11 @@ export function compareFolderToApp(input: CategoryCompareInput): CategoryCompare
         to: catLabel(f.categoryId),
         categoryId: f.categoryId,
         dirName: dirNames[f.categoryId],
-        fileName: f.file.fileName,
       });
     }
     if (f.parsed && !samePaperContent(f.parsed, appP)) {
       const fields = changedPaperFields(f.parsed, appP);
+      const bm = bankMissing(f.parsed, f.node, input.knownQuestionIds);
       paperEntries.push({
         kind: 'paper',
         action: 'update',
@@ -578,10 +694,10 @@ export function compareFolderToApp(input: CategoryCompareInput): CategoryCompare
         note: fields.length ? `বদলেছে: ${fields.join(', ')}` : undefined,
         categoryId: f.categoryId,
         dirName: dirNames[f.categoryId],
-        fileName: f.file.fileName,
         paper: f.parsed,
+        bankMissingIds: bm.withCopy.length ? bm.withCopy : undefined,
       });
-      const w = missingQuestionWarning(f.parsed, catLabel(f.categoryId), input.knownQuestionIds);
+      const w = lostWarning(f.parsed, catLabel(f.categoryId), bm.lost);
       if (w) warnings.push(w);
     }
   }
@@ -590,7 +706,7 @@ export function compareFolderToApp(input: CategoryCompareInput): CategoryCompare
   let deletedPapers = 0;
   let deletedCats = 0;
 
-  // ফাইল নেই -> প্রশ্নপত্র মোছা (ক্যাটেগরি ফোল্ডার আছে, তাই এটা শুধু ফাইল মোছা)
+  // data.json-এ নেই -> প্রশ্নপত্র মোছা (ক্যাটেগরি ফোল্ডার আছে, তাই এটা শুধু প্রশ্নপত্র মোছা)
   if (!rootGone) {
     for (const [id, row] of Object.entries(state.papers).sort((a, b) => a[0].localeCompare(b[0]))) {
       if (seenIds.has(id) || pending.papers.has(id) || pending.deletes.has(id)) continue;
@@ -606,7 +722,7 @@ export function compareFolderToApp(input: CategoryCompareInput): CategoryCompare
         path: [catLabel(row.categoryId), appP.shortName],
         from: appP.shortName,
         destructive: true,
-        note: 'ফোল্ডারে ফাইলটা নেই',
+        note: 'ফোল্ডারের data.json-এ প্রশ্নপত্রটা নেই',
       });
     }
   }
@@ -660,7 +776,19 @@ export function compareFolderToApp(input: CategoryCompareInput): CategoryCompare
 
   const catOrder = (e: CategoryEntry) => (e.action === 'add' ? 0 : e.action === 'rename' ? 1 : e.action === 'info' ? 2 : 3);
   const out = [...entries.sort((a, b) => catOrder(a) - catOrder(b)), ...catEntries, ...paperEntries];
-  return { entries: out, extras, warnings, dirNames, massDelete };
+  const protectedCategories: NonNullable<CategoryCompareResult['protectedCategories']> = [];
+  for (const [catId, n] of Array.from(keeperNodes.entries()).sort((a, b) => a[1].dirName.localeCompare(b[1].dirName))) {
+    if (!n.dataError && !n.dataUnsafe) continue;
+    protectedCategories.push({
+      id: catId,
+      name: catLabel(catId),
+      reason: n.dataError ? 'invalid' : 'unsafe',
+      skippedPapers: n.skippedPaperIds?.length ?? 0,
+      heldPapers: Object.values(state.papers).filter((r) => r.categoryId === catId).length,
+      why: n.dataError ? [n.dataError] : n.dataWarnings ?? [],
+    });
+  }
+  return { entries: out, extras, warnings, dirNames, massDelete, protectedCategories: protectedCategories.length ? protectedCategories : undefined };
 }
 
 const UNCAT_LABEL = 'অশ্রেণিবদ্ধ';
@@ -735,16 +863,7 @@ export function compareAppToFolder(input: CategoryCompareInput): CategoryCompare
   const nameOfCat = (id: string): string => appCatById.get(id)?.name ?? orphanNodes.get(id)?.dirName ?? '?';
 
   /* ---------- প্রশ্নপত্র ---------- */
-  const { byId } = collectFiles(allKeepers, state, warnings, extras, nameOfCat);
-  const takenFiles = new Map<string, Set<string>>(); // ক্যাটেগরির id -> ওই ফোল্ডারে থাকা ফাইলের নামগুলো (ছোট হাতের)
-  const filesIn = (catId: string): Set<string> => {
-    let s = takenFiles.get(catId);
-    if (!s) {
-      s = new Set(resolved.keepers.get(catId)?.files.map((f) => f.fileName.toLowerCase()) ?? []);
-      takenFiles.set(catId, s);
-    }
-    return s;
-  };
+  const { byId } = collectFiles(allKeepers, state, warnings, nameOfCat);
 
   const papers = [...app.papers].sort((a, b) => {
     const ca = appCatById.get(a.categoryId ?? '')?.order ?? 0;
@@ -760,34 +879,22 @@ export function compareAppToFolder(input: CategoryCompareInput): CategoryCompare
     }
     const targetDir = dirNames[cat.id];
     const found = byId.get(p.id);
-    const taken = filesIn(cat.id);
 
     if (!found) {
-      const fileName = paperFileNameFor(p.shortName, taken);
-      taken.add(fileName.toLowerCase());
       entries.push({
         kind: 'paper',
         action: 'add',
         id: p.id,
         path: [cat.name, p.shortName],
-        to: fileName,
+        to: p.shortName,
         categoryId: cat.id,
         dirName: targetDir,
-        fileName,
         paper: normalizePaper(p),
       });
       continue;
     }
 
-    const moved = found.categoryId !== cat.id;
-    const nameOk = paperFileBase(found.file.fileName).toLowerCase() === paperFileStem(p.shortName).toLowerCase();
-    let fileName = found.file.fileName;
-    if (moved || !nameOk) {
-      if (!moved) taken.delete(found.file.fileName.toLowerCase());
-      fileName = paperFileNameFor(p.shortName, taken);
-      taken.add(fileName.toLowerCase());
-    }
-    if (moved) {
+    if (found.categoryId !== cat.id) {
       entries.push({
         kind: 'paper',
         action: 'move',
@@ -797,20 +904,6 @@ export function compareAppToFolder(input: CategoryCompareInput): CategoryCompare
         to: cat.name,
         categoryId: cat.id,
         dirName: targetDir,
-        fileName,
-      });
-    }
-    if (!nameOk) {
-      entries.push({
-        kind: 'paper',
-        action: 'rename',
-        id: p.id,
-        path: [cat.name, p.shortName],
-        from: found.file.fileName,
-        to: fileName,
-        categoryId: cat.id,
-        dirName: targetDir,
-        fileName,
       });
     }
     const folderDiffers = !!found.parsed && !samePaperContent(found.parsed, p);
@@ -820,10 +913,9 @@ export function compareAppToFolder(input: CategoryCompareInput): CategoryCompare
         action: 'update',
         id: p.id,
         path: [cat.name, p.shortName],
-        note: folderDiffers ? `ফোল্ডারের ফাইলে অন্য লেখা ছিল (${changedPaperFields(found.parsed!, p).join(', ') || 'পার্থক্য'}) - অ্যাপেরটাই থাকবে` : undefined,
+        note: folderDiffers ? `ফোল্ডারের data.json-এ অন্য লেখা ছিল (${changedPaperFields(found.parsed!, p).join(', ') || 'পার্থক্য'}) - অ্যাপেরটাই থাকবে` : undefined,
         categoryId: cat.id,
         dirName: targetDir,
-        fileName,
         paper: normalizePaper(p),
       });
     }
@@ -839,23 +931,21 @@ export function compareAppToFolder(input: CategoryCompareInput): CategoryCompare
           kind: 'paper',
           action: 'delete',
           id,
-          path: [nameOfCat(f.categoryId), f.parsed?.shortName ?? paperFileBase(f.file.fileName)],
-          from: f.file.fileName,
+          path: [nameOfCat(f.categoryId), f.parsed?.shortName ?? id],
+          from: f.parsed?.shortName ?? id,
           destructive: true,
           note: 'অ্যাপে মোছা হয়েছে',
         });
       }
     } else {
-      // অ্যাপ কখনো এটা চেনেনি: বাড়তি ফাইল (মোছা হয় না)
-      extras.push(extra('extra-file', f.node.dirName, f.file.fileName, `ফোল্ডারে আছে, অ্যাপে নেই: ${f.node.dirName} › ${f.file.fileName}`));
+      // অ্যাপ কখনো এটা চেনেনি (হাতে data.json-এ বসানো): মোছা হয় না, অ্যাপ -> ফোল্ডার সিঙ্কে data.json নতুন করে লেখার সময়
+      // হারাবে - তাই আগে জানিয়ে রাখা হয় (ফোল্ডার -> অ্যাপ সিঙ্কে এটা অ্যাপে আসে)
+      warnings.push(`ফোল্ডারের data.json-এ আছে, অ্যাপে নেই: ${f.node.dirName} › ${f.parsed?.shortName ?? id} (ফোল্ডার -> অ্যাপ সিঙ্ক না করলে অ্যাপ থেকে ফোল্ডারে লেখার সময় বাদ পড়বে)`);
     }
   }
 
   for (const [id, node] of Array.from(orphanNodes.entries()).sort((a, b) => a[1].dirName.localeCompare(b[1].dirName))) {
-    const stillInside = node.files.filter((f) => {
-      const pid = f.parsed?.id ?? paperIdForFile(state, id, f.fileName);
-      return !!pid && !!appPaperById.get(pid) && byId.get(pid)?.node === node;
-    }).length;
+    const stillInside = node.files.filter((f) => !!appPaperById.get(f.paperId) && byId.get(f.paperId)?.node === node).length;
     entries.push({
       kind: 'category',
       action: 'delete',
@@ -866,6 +956,20 @@ export function compareAppToFolder(input: CategoryCompareInput): CategoryCompare
       papers: stillInside,
       note: 'অ্যাপে মোছা হয়েছে',
     });
+  }
+
+  // media/-তে যে ছবি কোনো প্রশ্ন ব্যবহার করে না -> মোছা হয় না, unnecessary/media/-তে সরে
+  if (input.wantedImages) {
+    for (const cat of cats) {
+      const node = resolved.keepers.get(cat.id);
+      const wanted = input.wantedImages[cat.id];
+      if (!node || !wanted) continue;
+      for (const f of node.mediaFiles) {
+        const imgId = imageIdFromFileName(f);
+        if (imgId && wanted.has(imgId)) continue;
+        extras.push(extra('extra-file', node.dirName, `${MEDIA_DIR}/${f}`, `কোনো প্রশ্ন ব্যবহার করে না এমন ছবি: ${node.dirName} › ${MEDIA_DIR} › ${f}`));
+      }
+    }
   }
 
   // মূল ক্রম: ক্যাটেগরি আগে (নতুন, নাম বদল), তারপর প্রশ্নপত্র, শেষে ক্যাটেগরি মোছা
@@ -892,7 +996,6 @@ export function summarizeCategory(r: CategoryCompareResult): CategoryTotals {
     papersAdded: count('paper', 'add'),
     papersUpdated: count('paper', 'update'),
     papersMoved: count('paper', 'move'),
-    papersRenamed: count('paper', 'rename'),
     papersDeleted: count('paper', 'delete'),
     extras: r.extras.length,
     warnings: r.warnings.length,
