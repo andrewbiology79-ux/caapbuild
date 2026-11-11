@@ -15,7 +15,7 @@ export const AutoSyncStrip: React.FC = () => {
     <div
       role="status"
       aria-live="polite"
-      className="flex items-center justify-center gap-1.5 bg-[#2F40B8] px-3 py-1 text-xs text-white/95"
+      className={`flex items-center justify-center gap-1.5 px-3 py-1 text-xs text-white/95 ${status.phase === 'running' ? 'bg-red-600' : 'bg-[#2F40B8]'}`}
     >
       <Icon className={`w-3.5 h-3.5 ${status.phase === 'running' ? 'animate-spin' : ''}`} />
       <span className="truncate">{autoSyncText(status)}</span>

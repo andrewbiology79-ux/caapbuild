@@ -110,11 +110,35 @@ export async function readBase64(path: string): Promise<string | null> {
   }
 }
 
+function isPathNotFoundError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err ?? '');
+  return /\b(enoent|not found|does not exist|no such file|file\s+does not exist)\b/i.test(message);
+}
+
+async function confirmPathRemoved(path: string): Promise<boolean> {
+  try {
+    await Filesystem.stat({ path, directory: DIR });
+    return false; // এখনও আছে
+  } catch (err) {
+    // কেবল স্পষ্ট not-found error-ই অনুপস্থিতির প্রমাণ। Permission বা অন্য
+    // storage error-কে কখনোই "ফোল্ডার নেই" ধরে নেওয়া যাবে না।
+    if (isPathNotFoundError(err)) return true;
+    throw err;
+  }
+}
+
 export async function removeDir(path: string): Promise<void> {
   try {
     await Filesystem.rmdir({ path, directory: DIR, recursive: true });
-  } catch {
-    /* already gone */
+  } catch (removeError) {
+    if (await confirmPathRemoved(path)) return;
+    throw removeError;
+  }
+
+  // সফল response-এর পরও path থাকলে deletion সম্পূর্ণ হয়নি। stat-এর
+  // permission/অন্যান্য error-ও caller-এর কাছে যাবে; metadata অক্ষত থাকবে।
+  if (!(await confirmPathRemoved(path))) {
+    throw new Error(`ফোল্ডার মুছতে ব্যর্থ: ${path}`);
   }
 }
 

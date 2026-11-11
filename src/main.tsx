@@ -4,6 +4,7 @@ import './index.css';
 import { initSafeArea } from './utils/safeArea';
 import { isFolderSyncEnabled } from './storage/syncEngine';
 import { installWriteHooks, setWritesEnabled } from './storage/writer';
+import { installCategoryWriteHooks, setCategoryWritesEnabled } from './storage/categoryWriter';
 
 initSafeArea();
 
@@ -11,6 +12,8 @@ initSafeArea();
 if (isFolderSyncEnabled()) {
   setWritesEnabled(true);
   installWriteHooks();
+  setCategoryWritesEnabled(true);
+  installCategoryWriteHooks();
 }
 
 createRoot(document.getElementById('root')!).render(<App />);

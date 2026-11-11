@@ -10,6 +10,7 @@ import {
 } from '../storage/syncEngine';
 import { SyncPreviewDialog } from './SyncPreviewDialog';
 import { syncController, useSyncDialogState, presentAutoSync } from '../storage/syncDialogStore';
+import { setCategoryWriteErrorHandler } from '../storage/categoryWriter';
 
 /** Text for a sync result ("2টি নতুন, 1টি নাম বদল, ...") */
 export function describeSyncReport(r: SyncReport): string {
@@ -34,6 +35,8 @@ export const SyncRunner: React.FC = () => {
 
   useEffect(() => {
     if (!isNativeApp()) return;
+
+    setCategoryWriteErrorHandler((message) => showToast(`ক্যাটেগরি ফোল্ডারে লিখতে সমস্যা: ${message}`, 5000));
 
     setMassDeleteConfirm(
       (count, total) =>
@@ -77,6 +80,7 @@ export const SyncRunner: React.FC = () => {
       stopRef.current?.();
       stopRef.current = null;
       setMassDeleteConfirm(null);
+      setCategoryWriteErrorHandler(null);
     };
   }, [showToast]);
 
