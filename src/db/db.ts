@@ -1,4 +1,5 @@
 import Dexie, { type Table } from 'dexie';
+import type { BankPath } from '../storage/categoryLayout';
 
 export interface Subject {
   id: string;
@@ -134,6 +135,32 @@ export interface SyncRow {
   size?: number;
 }
 
+/**
+ * ব্যাংকে-নেই প্রশ্নের কপি (অংশ ১ঘ)। প্রশ্নপত্র প্রশ্ন ধরে রাখে: প্রশ্নটা ব্যাংক থেকে মুছলেও প্রশ্নপত্র কপি থেকে পূর্ণ দেখায়।
+ * শুধু Type CQ ডেটাবেসে (QbExamDatabase) ব্যবহার হয়, কারণ প্রশ্নপত্র সেখানেই থাকে (প্রশ্ন Type/Chapter যেকোনো ডেটাবেসের হতে পারে)।
+ * id = প্রশ্নের id (একই id-তে ব্যাংকে ফেরে, তাই প্রশ্নপত্রের লিংক নিজে জোড়া লাগে)।
+ */
+export interface QuestionCopy {
+  id: string;
+  question: Question;
+  /** প্রশ্নের উদ্দীপক (থাকলে) - একই উদ্দীপকের কয়েকটি প্রশ্নের কপিতে প্রত্যেকটায় আলাদা করে থাকে */
+  stimulus?: Stimulus;
+  /** ব্যাংকে আগের জায়গা (নাম দিয়ে; ফেরানোর সময় এই পথ খোঁজা/বানানো হয়) */
+  path: BankPath;
+  /** কপির ছবির id (উদ্দীপকের ছবি, তারপর সমাধানের ছবি) */
+  imageIds: string[];
+  savedAt: number;
+}
+
+/** ব্যাংকে-নেই প্রশ্নের কপির ছবি (ব্যাংকের images টেবিল থেকে প্রশ্ন মোছার সময় ছবিও মুছে যায়, তাই এখানে আলাদা রাখা) */
+export interface CopyImage {
+  id: string;
+  fileName: string;
+  blob: Blob;
+  w?: number;
+  h?: number;
+}
+
 export interface MetaRecord {
   key: string;
   value: any;
@@ -150,6 +177,8 @@ export class QbDatabase extends Dexie {
   images!: Table<DbImage, string>;
   meta!: Table<MetaRecord, string>;
   syncState!: Table<SyncRow, string>;
+  questionCopies!: Table<QuestionCopy, string>;
+  copyImages!: Table<CopyImage, string>;
 
   constructor(name: string = 'QbExamDatabase') {
     super(name);
@@ -236,6 +265,22 @@ export class QbDatabase extends Dexie {
       images: 'id, fileName, topicId',
       meta: 'key',
       syncState: 'id, kind, parentId',
+    });
+
+    // v4: ব্যাংকে-নেই প্রশ্নের কপি (আগের কোনো টেবিল/ডেটা বদলায় না)
+    this.version(4).stores({
+      subjects: 'id, name, order',
+      chapters: 'id, subjectId, name, order',
+      topics: 'id, chapterId, name, order',
+      stimuli: 'id, topicId',
+      questions: 'id, stimulusId, topicId, type, rating, order',
+      papers: 'id, shortName, category, categoryId, createdAt',
+      categories: 'id, name, order, createdAt',
+      images: 'id, fileName, topicId',
+      meta: 'key',
+      syncState: 'id, kind, parentId',
+      questionCopies: 'id, savedAt',
+      copyImages: 'id',
     });
   }
 }

@@ -23,15 +23,16 @@ import { buildCategoryNodes, compareAppToFolder, type CategoryExtra } from './ca
 import { resolveCategoryWork, selectAutoTidyExtras, type CategoryWork, type PaperRef } from './categoryQueue';
 import { UNNECESSARY_DIR } from './folderLayout';
 import { withNumberSuffix } from './syncConflictPlan';
+import { buildBankLookup } from './bankLookup';
 import {
-  bankPathOf,
   buildCategoryCopies,
   buildVerifiedCategoryData,
   previousCopiesOf,
-  type BankLookup,
-  type BankQuestionRef,
   type PreviousCopies,
 } from './categoryCopies';
+
+// buildBankLookup অংশ ১ঘ-তে bankLookup.ts-এ সরানো হয়েছে (api.ts থেকে আনলে categoryWriter-এর ভারী import-চক্র এড়াতে); পুরনো import-পথ চালু রাখতে এখানে আবার এক্সপোর্ট
+export { buildBankLookup };
 
 /**
  * অংশ ১খ (প্রথম অর্ধেক) - অ্যাপ -> ক্যাটেগরি ফোল্ডার: একটা ক্যাটেগরির ফোল্ডার লেখা।
@@ -60,42 +61,6 @@ export async function saveCategorySyncState(state: CategorySyncState): Promise<v
 /* ------------------------------------------------------------------
  * ব্যাংক থেকে কপি জোগাড় (Type CQ ও Chapter CQ দুই ডেটাবেসেই খোঁজে)
  * ---------------------------------------------------------------- */
-
-/** ids-এর প্রশ্নগুলো (উদ্দীপক ও পথসহ) আগে থেকে পড়ে একটা সহজ lookup ফাংশন দেয় */
-export async function buildBankLookup(ids: string[]): Promise<BankLookup> {
-  const found = new Map<string, BankQuestionRef>();
-  const remaining = new Set(ids);
-
-  for (const scope of ['type', 'chapter'] as CqScope[]) {
-    if (remaining.size === 0) break;
-    const sdb = getDb(scope);
-    const list = Array.from(remaining);
-    const questions = await sdb.questions.bulkGet(list);
-    const have = questions.filter((q): q is NonNullable<typeof q> => !!q);
-    if (have.length === 0) continue;
-
-    const topics = new Map((await sdb.topics.bulkGet(Array.from(new Set(have.map((q) => q.topicId))))).filter(Boolean).map((t) => [t!.id, t!]));
-    const chapters = new Map((await sdb.chapters.bulkGet(Array.from(new Set(Array.from(topics.values()).map((t) => t.chapterId))))).filter(Boolean).map((c) => [c!.id, c!]));
-    const subjects = new Map((await sdb.subjects.bulkGet(Array.from(new Set(Array.from(chapters.values()).map((c) => c.subjectId))))).filter(Boolean).map((s) => [s!.id, s!]));
-    const stimIds = Array.from(new Set(have.map((q) => q.stimulusId).filter((x): x is string => !!x)));
-    const stimuli = new Map((await sdb.stimuli.bulkGet(stimIds)).filter(Boolean).map((s) => [s!.id, s!]));
-
-    for (const q of have) {
-      const topic = topics.get(q.topicId);
-      const chapter = topic ? chapters.get(topic.chapterId) : undefined;
-      const subject = chapter ? subjects.get(chapter.subjectId) : undefined;
-      // পথ না পেলে (এতিম প্রশ্ন) কপি বানানো যায় না - আগের data.json-এর কপিই কাজে লাগবে
-      if (!topic || !chapter || !subject) continue;
-      found.set(q.id, {
-        question: q,
-        stimulus: q.stimulusId ? stimuli.get(q.stimulusId) : undefined,
-        path: bankPathOf(scope, subject.name, chapter.name, topic.name),
-      });
-      remaining.delete(q.id);
-    }
-  }
-  return (id) => found.get(id);
-}
 
 /** ফোল্ডারে আগে থাকা data.json-এর কপি (পড়া না গেলে খালি) */
 async function readPreviousCopies(dirName: string): Promise<PreviousCopies> {
