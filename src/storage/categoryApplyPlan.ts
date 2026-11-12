@@ -76,7 +76,7 @@ export interface CategoryApplyInput {
 /** প্রিভিউয়ের entries-এর একটা ছোট ছাপ। আসল কাজের আগে আবার compare করে ছাপ না মিললে কাজ থামে (খণ্ড গ §৫) */
 export function previewSignature(result: Pick<CategoryCompareResult, 'entries' | 'massDelete'>): string {
   const rows = result.entries
-    .filter((e) => e.action !== 'info')
+    .filter((e) => e.action !== 'info' || e.recreateFolder)
     .map((e) => [e.kind, e.action, e.id, e.name ?? '', e.from ?? '', e.to ?? '', e.categoryId ?? '', e.moveToCategoryId ?? '', (e.paperIds ?? []).join(','), e.paper ? paperContentKey(e.paper) : '']);
   return JSON.stringify({ rows, mass: result.massDelete ? [result.massDelete.count, result.massDelete.total] : null });
 }
@@ -145,7 +145,11 @@ export function planCategoryApply(input: CategoryApplyInput): CategoryApplyPlan 
   const nodeByDir = new Map(folderNodes.map((n) => [n.dirName, n]));
 
   for (const e of result.entries) {
-    if (e.action === 'info') continue;
+    if (e.action === 'info') {
+      // ফোল্ডার নেই কিন্তু অ্যাপের ক্যাটেগরি থাকছে: ডেটাবেসে কিছু বদলায় না, ফোল্ডার আবার লেখা হবে
+      if (e.recreateFolder && e.kind === 'category') needsWrite.add(e.id);
+      continue;
+    }
     if (e.kind === 'category') applyCategoryEntry(e);
     else applyPaperEntry(e);
   }

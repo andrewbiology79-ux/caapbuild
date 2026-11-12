@@ -136,8 +136,8 @@ describe('সতর্কতা ও বাছাই', () => {
     expect(deletedCategoryPapers(r)).toEqual({ categories: 2, papers: 5 });
     expect(needsDeleteChoice({ entries: [entry({})] })).toBe(false);
   });
-  it('DELETE_CHOICES দুটি অপশন', () => {
-    expect(DELETE_CHOICES.map((c) => c.mode)).toEqual(['delete-papers', 'move-to-uncategorized']);
+  it('DELETE_CHOICES তিনটি অপশন (তৃতীয়: ফোল্ডার আবার তৈরি, ১গ-২খ)', () => {
+    expect(DELETE_CHOICES.map((c) => c.mode)).toEqual(['delete-papers', 'move-to-uncategorized', 'recreate-folder']);
   });
   it('emptyPreviewText', () => {
     expect(emptyPreviewText({ rootExists: true })).toContain('মিলে আছে');

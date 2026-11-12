@@ -25,6 +25,8 @@ export interface SyncControllerDeps {
   run(direction: SyncDirection, preview: SyncPreview, onProgress: ProgressCallback, onCounts: (c: SyncCounts) => void): Promise<RunOutcome>;
   /** result বন্ধ করার সময়: কিছু বদলালে true (তালিকা রিফ্রেশ করতে) */
   onClosedResult?(changed: boolean): void;
+  /** অন্য সিঙ্ক উইন্ডো (ক্যাটেগরি সিঙ্ক) খোলা থাকলে true - তখন এই উইন্ডো শুরু হয় না */
+  busy?(): boolean;
 }
 
 /** প্রিভিউয়ের তালিকা থেকে সংখ্যা গোনা ('info' ধরা হয় না) */
@@ -78,7 +80,7 @@ export function createSyncController(deps: SyncControllerDeps): SyncController {
   };
 
   const start = (direction: SyncDirection): boolean => {
-    if (state) return false;
+    if (state || deps.busy?.()) return false;
     const my = ++token;
     set({ kind: 'calculating', direction, progress: null });
     deps
@@ -97,7 +99,7 @@ export function createSyncController(deps: SyncControllerDeps): SyncController {
   };
 
   const startAuto = (task: (onProgress: ProgressCallback) => Promise<RunOutcome>): boolean => {
-    if (state) return false;
+    if (state || deps.busy?.()) return false;
     const my = ++token;
     const direction: SyncDirection = 'folder-to-app';
     let progress: SyncProgress | null = null;

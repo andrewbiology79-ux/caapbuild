@@ -9,7 +9,9 @@ import {
   type SyncReport,
 } from '../storage/syncEngine';
 import { SyncPreviewDialog } from './SyncPreviewDialog';
+import { CategorySyncDialog } from './CategorySyncDialog';
 import { syncController, useSyncDialogState, presentAutoSync } from '../storage/syncDialogStore';
+import { categorySyncController, useCategoryDialogState } from '../storage/categorySyncStore';
 
 /** Text for a sync result ("2টি নতুন, 1টি নাম বদল, ...") */
 export function describeSyncReport(r: SyncReport): string {
@@ -31,6 +33,7 @@ export const SyncRunner: React.FC = () => {
   const stopRef = useRef<(() => void) | null>(null);
   const triedRef = useRef(false);
   const dialogState = useSyncDialogState();
+  const categoryState = useCategoryDialogState();
 
   useEffect(() => {
     if (!isNativeApp()) return;
@@ -80,14 +83,28 @@ export const SyncRunner: React.FC = () => {
     };
   }, [showToast]);
 
-  // ধাপ ৪: মেনু থেকে শুরু করা সিঙ্কের উইন্ডো (সব স্ক্রিনের ওপরে, একটাই)
+  // ধাপ ৪: মেনু থেকে শুরু করা সিঙ্কের উইন্ডো (সব স্ক্রিনের ওপরে, একটাই)।
+  // ১গ-২খ: ক্যাটেগরি সিঙ্কের উইন্ডোও এখানে; দুটো একসাথে খোলা যায় না (দুই নিয়ন্ত্রক একে অন্যকে আটকায়)।
   return (
-    <SyncPreviewDialog
-      state={dialogState}
-      onConfirm={syncController.confirm}
-      onCancel={syncController.cancel}
-      onClose={syncController.close}
-    />
+    <>
+      <SyncPreviewDialog
+        state={dialogState}
+        onConfirm={syncController.confirm}
+        onCancel={syncController.cancel}
+        onClose={syncController.close}
+      />
+      <CategorySyncDialog
+        state={categoryState}
+        onConfirm={(opts) => {
+          categorySyncController.confirm(opts);
+        }}
+        onSetDeleteMode={(mode) => {
+          categorySyncController.setDeleteMode(mode);
+        }}
+        onCancel={categorySyncController.cancel}
+        onClose={categorySyncController.close}
+      />
+    </>
   );
 };
 

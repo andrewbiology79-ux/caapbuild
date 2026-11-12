@@ -70,7 +70,7 @@ export function makeCategoryResultView(
     bankMissingPapers: bankMissing.length,
     bankMissingQuestions: bankMissing.reduce((s, p) => s + p.questionIds.length, 0),
     queuedWrites,
-    nothingChanged: sumCounts(counts) === 0 && extras.length === 0,
+    nothingChanged: sumCounts(counts) === 0 && extras.length === 0 && queuedWrites === 0,
   };
 }
 
@@ -94,6 +94,9 @@ export const CATEGORY_ACTION_LABEL: Record<CategoryAction, string> = {
   update: 'আপডেট',
   info: 'তথ্য',
 };
+
+/** ফোল্ডার নেই, অ্যাপের ক্যাটেগরি থাকছে - ফোল্ডার আবার তৈরি হবে */
+export const RECREATE_ACTION_LABEL = 'ফোল্ডার আবার তৈরি';
 
 export const CATEGORY_KIND_LABEL = { category: 'ক্যাটেগরি', paper: 'প্রশ্নপত্র' } as const;
 
@@ -124,7 +127,7 @@ export function categoryEntryText(e: CategoryEntry): CategoryEntryText {
   const bank = e.bankMissingIds?.length ? `${n(e.bankMissingIds.length)}টি প্রশ্ন ব্যাংকে নেই (প্রশ্নপত্রে কপি থেকে যাবে)` : '';
   return {
     action: e.action,
-    actionLabel: CATEGORY_ACTION_LABEL[e.action],
+    actionLabel: e.recreateFolder ? RECREATE_ACTION_LABEL : CATEGORY_ACTION_LABEL[e.action],
     kindLabel: CATEGORY_KIND_LABEL[e.kind],
     pathText: e.path.join(' › '),
     change,
@@ -180,6 +183,12 @@ export function categoryTotalsChips(t: CategoryTotals): CategoryChip[] {
   return out;
 }
 
+/** "ফোল্ডার আবার তৈরি" বাছাইয়ে: কয়টি ক্যাটেগরির ফোল্ডার আবার তৈরি হবে (CategoryTotals বদলায়নি, তাই আলাদা) */
+export function categoryRecreateChip(r: Pick<CategoryCompareResult, 'entries'>): CategoryChip | null {
+  const count = r.entries.filter((e) => e.recreateFolder).length;
+  return count ? { key: 'recreate', text: `${n(count)}টি ক্যাটেগরির ফোল্ডার আবার তৈরি হবে`, tone: 'neutral' } : null;
+}
+
 /** কোন কোন ক্যাটেগরি সুরক্ষিত (ভাঙা/সন্দেহজনক data.json) - প্রিভিউয়ে লাল/হলুদ বার্তা */
 export function protectedLines(r: Pick<CategoryCompareResult, 'protectedCategories'>): string[] {
   const out: string[] = [];
@@ -214,19 +223,21 @@ export interface DeleteChoice {
 export const DELETE_CHOICES: DeleteChoice[] = [
   { mode: 'delete-papers', label: 'প্রশ্নপত্রসহ মুছুক', hint: 'ক্যাটেগরি ও তার সব প্রশ্নপত্র অ্যাপ থেকে মুছে যাবে' },
   { mode: 'move-to-uncategorized', label: 'প্রশ্নপত্র অশ্রেণিবদ্ধে যাক', hint: 'ক্যাটেগরি মুছবে, প্রশ্নপত্রগুলো "অশ্রেণিবদ্ধ"-এ থাকবে' },
+  { mode: 'recreate-folder', label: 'ফোল্ডার আবার তৈরি করুন', hint: 'অ্যাপের ক্যাটেগরি ও প্রশ্নপত্র থাকবে, কিছু মুছবে না; Category/ ফোল্ডারে ক্যাটেগরির ফোল্ডার আবার তৈরি হবে' },
 ];
 
 /** প্রিভিউয়ে মোছা ক্যাটেগরি থাকলে তবেই বাছাইয়ের অংশ দেখাবে */
 export function needsDeleteChoice(r: Pick<CategoryCompareResult, 'entries'>): boolean {
-  return r.entries.some((e) => e.kind === 'category' && e.action === 'delete');
+  // "ফোল্ডার আবার তৈরি" বেছে নিলে মোছা এন্ট্রি থাকে না, তবু বাছাইয়ের অংশ থাকতে হবে - নইলে ফেরার পথ থাকে না
+  return r.entries.some((e) => e.kind === 'category' && (e.action === 'delete' || !!e.recreateFolder));
 }
 
-/** মোছা ক্যাটেগরিগুলোর ভেতরের প্রশ্নপত্র মিলিয়ে কয়টি (বাছাইয়ের অংশে দেখানোর জন্য) */
+/** ফোল্ডার-নেই ক্যাটেগরিগুলো (মোছা বা আবার-তৈরি) ও তাদের ভেতরের প্রশ্নপত্র মিলিয়ে কয়টি (বাছাইয়ের অংশে দেখানোর জন্য) */
 export function deletedCategoryPapers(r: Pick<CategoryCompareResult, 'entries'>): { categories: number; papers: number } {
   let categories = 0;
   let papers = 0;
   for (const e of r.entries) {
-    if (e.kind === 'category' && e.action === 'delete') {
+    if (e.kind === 'category' && (e.action === 'delete' || e.recreateFolder)) {
       categories++;
       papers += e.papers ?? 0;
     }
@@ -241,7 +252,7 @@ export function emptyPreviewText(p: Pick<CategoryPreview, 'rootExists'>): string
 
 /** [নিশ্চিত করুন] চাপা যাবে কি না */
 export function canConfirmCategoryPreview(p: Pick<CategoryPreview, 'empty' | 'result'>): boolean {
-  return !p.empty && (p.result.entries.some((e) => e.action !== 'info') || p.result.extras.length > 0);
+  return !p.empty && (p.result.entries.some((e) => e.action !== 'info' || !!e.recreateFolder) || p.result.extras.length > 0);
 }
 
 /* ------------------------------------------------------------------

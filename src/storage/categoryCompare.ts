@@ -109,7 +109,13 @@ export interface CategoryPending {
   deletes: Set<string>;
 }
 
-export type CategoryDeleteMode = 'delete-papers' | 'move-to-uncategorized';
+/**
+ * ফোল্ডার নেই এমন ক্যাটেগরির কী হবে:
+ *  delete-papers          - ক্যাটেগরি ও তার প্রশ্নপত্র অ্যাপ থেকে মুছবে (ডিফল্ট)
+ *  move-to-uncategorized  - ক্যাটেগরি মুছবে, প্রশ্নপত্র "অশ্রেণিবদ্ধ"-এ যাবে
+ *  recreate-folder        - অ্যাপের ক্যাটেগরি ও প্রশ্নপত্র থাকবে; Category/-তে ফোল্ডার আবার তৈরি হবে (অ্যাপ -> ফোল্ডার লেখক)
+ */
+export type CategoryDeleteMode = 'delete-papers' | 'move-to-uncategorized' | 'recreate-folder';
 
 export interface CategoryCompareInput {
   folder: CategoryFolderSide;
@@ -152,6 +158,8 @@ export interface CategoryEntry {
   paper?: ParsedPaper;
   /** ফোল্ডার -> অ্যাপ: প্রশ্নপত্রের যে প্রশ্নগুলো ব্যাংকে নেই কিন্তু data.json-এ কপি আছে ("ব্যাংকে নেই" চিহ্ন পাবে) */
   bankMissingIds?: string[];
+  /** ফোল্ডার নেই, তবু অ্যাপের ক্যাটেগরি থাকছে - ফোল্ডার অ্যাপ থেকে আবার তৈরি হবে (mode: recreate-folder) */
+  recreateFolder?: boolean;
 }
 
 export type CategoryExtraKind = 'extra-folder' | 'extra-file';
@@ -744,6 +752,20 @@ export function compareFolderToApp(input: CategoryCompareInput): CategoryCompare
         });
         continue;
       }
+      if (mode === 'recreate-folder') {
+        // অ্যাপের ক্যাটেগরি ও প্রশ্নপত্র থাকবে; কিছু মোছা নয় - ফোল্ডার আবার তৈরির জন্য লেখকের সারিতে যাবে (applyPlan)
+        const kept = app.papers.filter((p) => p.categoryId === id).length;
+        catEntries.push({
+          kind: 'category',
+          action: 'info',
+          id,
+          path: [cat.name],
+          recreateFolder: true,
+          papers: kept,
+          note: `ফোল্ডার নেই; অ্যাপের ক্যাটেগরি ও ${kept}টি প্রশ্নপত্র থাকবে, ফোল্ডার আবার তৈরি হবে`,
+        });
+        continue;
+      }
       const inside = app.papers.filter((p) => p.categoryId === id && !seenIds.has(p.id) && !pending.papers.has(p.id) && !pending.deletes.has(p.id));
       const keep = mode === 'move-to-uncategorized' && !!uncategorized;
       deletedCats++;
@@ -1004,7 +1026,7 @@ export function summarizeCategory(r: CategoryCompareResult): CategoryTotals {
 
 /** কিছু বদলাবে কি (শুধু info বা সতর্কতা বদল নয়) */
 export function hasAnyCategoryChange(r: CategoryCompareResult): boolean {
-  return r.entries.some((e) => e.action !== 'info');
+  return r.entries.some((e) => e.action !== 'info' || !!e.recreateFolder);
 }
 
 /** Category/ ফোল্ডারের পূর্ণ পথ দেখানোর জন্য (প্রিভিউ উইন্ডোর শিরোনাম) */

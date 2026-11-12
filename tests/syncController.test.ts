@@ -243,3 +243,15 @@ describe('syncController পথ', () => {
     expect(s2?.kind === 'result' && s2.result.nothingChanged).toBe(false);
   });
 });
+
+describe('অন্য সিঙ্ক উইন্ডো (ক্যাটেগরি) খোলা থাকলে - busy', () => {
+  it('busy() true হলে start ও startAuto শুরু হয় না, অবস্থা বদলায় না', () => {
+    let busy = true;
+    const { c } = setup({ busy: () => busy });
+    expect(c.start('folder-to-app')).toBe(false);
+    expect(c.startAuto(async () => ({ counts: {} as any }))).toBe(false);
+    expect(c.getState()).toBeNull();
+    busy = false;
+    expect(c.start('folder-to-app')).toBe(true);
+  });
+});

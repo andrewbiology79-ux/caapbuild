@@ -20,6 +20,8 @@ import { openSavedFolder } from '../utils/storageAccess';
 import { Capacitor } from '@capacitor/core';
 import { useNavigation } from '../utils/navigation';
 import { toBn } from '../utils/toBn';
+import { SYNC_CHANGED_EVENT } from '../storage/syncEngine';
+import { useCategorySyncMenuItem } from '../utils/useCategorySyncMenuItem';
 import {
   FileText,
   Plus,
@@ -55,6 +57,7 @@ let paperClipboard: PaperClipboard = null;
 export const CreateScreen: React.FC = () => {
   const { showToast } = useToast();
   const { switchTab } = useNavigation();
+  const categorySyncItem = useCategorySyncMenuItem();
 
   const [papers, setPapers] = useState<Paper[]>([]);
   const [selectedCount, setSelectedCount] = useState<number>(0);
@@ -117,6 +120,20 @@ export const CreateScreen: React.FC = () => {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // ফোল্ডার থেকে (ক্যাটেগরি) সিঙ্ক শেষে ক্যাটেগরি/প্রশ্নপত্রের তালিকা রিফ্রেশ
+  useEffect(() => {
+    const onSynced = () => {
+      loadData();
+    };
+    window.addEventListener(SYNC_CHANGED_EVENT, onSynced);
+    return () => window.removeEventListener(SYNC_CHANGED_EVENT, onSynced);
+  }, [loadData]);
+
+  // বাছাই করা ক্যাটেগরি সিঙ্কে মুছে গেলে ফিল্টার আবার "সব"-এ
+  useEffect(() => {
+    if (filterCat !== 'all' && categories.length > 0 && !categories.some((c) => c.id === filterCat)) setFilterCat('all');
+  }, [categories, filterCat]);
 
   const handleOpenCreateNew = () => {
     setEditPaper(null);
@@ -290,6 +307,7 @@ export const CreateScreen: React.FC = () => {
           icon: <Plus className="w-4 h-4 text-[#3B4FD8]" />,
           onClick: handleOpenCreateNew,
         },
+        categorySyncItem,
         {
           id: 'select-papers',
           label: 'প্রশ্নপত্র নির্বাচন করুন',
