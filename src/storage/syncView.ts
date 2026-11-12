@@ -51,11 +51,11 @@ export interface SyncResultView {
 }
 
 export type SyncDialogState =
-  | { kind: 'calculating'; direction: SyncDirection; auto?: boolean; progress: SyncProgress | null }
+  | { kind: 'calculating'; direction: SyncDirection; scope?: CqScope; auto?: boolean; progress: SyncProgress | null }
   | { kind: 'preview'; preview: SyncPreview }
-  | { kind: 'running'; direction: SyncDirection; auto?: boolean; progress: SyncProgress | null; counts: SyncCounts }
-  | { kind: 'result'; direction: SyncDirection; auto?: boolean; result: SyncResultView }
-  | { kind: 'error'; direction: SyncDirection; auto?: boolean; message: string; stage?: string; dataSafe: boolean };
+  | { kind: 'running'; direction: SyncDirection; scope?: CqScope; auto?: boolean; progress: SyncProgress | null; counts: SyncCounts }
+  | { kind: 'result'; direction: SyncDirection; scope?: CqScope; auto?: boolean; result: SyncResultView }
+  | { kind: 'error'; direction: SyncDirection; scope?: CqScope; auto?: boolean; message: string; stage?: string; dataSafe: boolean };
 
 export function makeResultView(
   counts: SyncCounts,
@@ -89,8 +89,10 @@ export function directionLabel(d: SyncDirection): string {
   return DIRECTION_LABEL[d];
 }
 
-export function dialogTitle(direction: SyncDirection, auto?: boolean): string {
-  return `${auto ? 'স্বয়ংক্রিয় সিঙ্ক' : 'সিঙ্ক'}: ${directionLabel(direction)}`;
+export function dialogTitle(direction: SyncDirection, auto?: boolean, scope?: CqScope): string {
+  const base = `${auto ? 'স্বয়ংক্রিয় সিঙ্ক' : 'সিঙ্ক'}: ${directionLabel(direction)}`;
+  // ধাপ ২ক: স্কোপ-সীমিত সিঙ্কে উইন্ডোর নামে কোন স্কোপ তা দেখায় (SCOPE_TITLE নিচে const - ফাংশন চলার সময় তৈরি থাকে)
+  return scope ? `${base} (${SCOPE_TITLE[scope]})` : base;
 }
 
 export const KIND_LABEL = { subject: 'বিষয়', chapter: 'অধ্যায়', topic: 'টাইপ' } as const;
@@ -164,6 +166,13 @@ export function extraGroupSummary(g: ExtraGroup): string {
 }
 
 export const SCOPE_TITLE: Record<CqScope, string> = { type: 'Type CQ', chapter: 'Chapter CQ' };
+
+export const ALL_SCOPES: CqScope[] = ['type', 'chapter'];
+
+/** ধাপ ২ক: সিঙ্কের স্কোপ - দিলে শুধু সেটা (Type CQ / Chapter CQ উইন্ডো), না দিলে দুটোই */
+export function scopesFor(scope?: CqScope): CqScope[] {
+  return scope ? [scope] : [...ALL_SCOPES];
+}
 
 const n = (v: number) => toBn(v);
 

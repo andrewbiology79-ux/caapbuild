@@ -339,7 +339,7 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({ state, onC
     case 'calculating':
       return (
         <Shell
-          title={dialogTitle(state.direction, state.auto)}
+          title={dialogTitle(state.direction, state.auto, state.scope)}
           subtitle="কী বদলাবে হিসাব করা হচ্ছে (কিছু বদলানো হচ্ছে না)"
           footer={
             <button type="button" className={BTN_NEUTRAL} onClick={onCancel}>
@@ -356,7 +356,7 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({ state, onC
       const canConfirm = !p.empty && p.errors.length === 0;
       return (
         <Shell
-          title={dialogTitle(p.direction)}
+          title={dialogTitle(p.direction, undefined, p.scope)}
           subtitle="কী কী বদলাবে - নিশ্চিত করার আগে দেখে নিন"
           footer={
             canConfirm ? (
@@ -382,7 +382,7 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({ state, onC
 
     case 'running':
       return (
-        <Shell title={dialogTitle(state.direction, state.auto)} subtitle="সিঙ্ক চলছে - শেষ না হওয়া পর্যন্ত অ্যাপে অন্য কিছু করা যাবে না">
+        <Shell title={dialogTitle(state.direction, state.auto, state.scope)} subtitle="সিঙ্ক চলছে - শেষ না হওয়া পর্যন্ত অ্যাপে অন্য কিছু করা যাবে না">
           <div className="flex justify-center pt-2 text-[#3B4FD8] dark:text-indigo-300">
             <RefreshCw className="w-8 h-8 animate-spin" />
           </div>
@@ -397,7 +397,7 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({ state, onC
       const cells = counterCells(r.counts).filter((c) => c.value > 0);
       return (
         <Shell
-          title={dialogTitle(state.direction, state.auto)}
+          title={dialogTitle(state.direction, state.auto, state.scope)}
           footer={
             <button type="button" className={BTN_PRIMARY} onClick={onClose}>
               ঠিক আছে
@@ -454,7 +454,7 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({ state, onC
     case 'error':
       return (
         <Shell
-          title={dialogTitle(state.direction, state.auto)}
+          title={dialogTitle(state.direction, state.auto, state.scope)}
           footer={
             <button type="button" className={BTN_NEUTRAL} onClick={onClose}>
               বন্ধ করুন

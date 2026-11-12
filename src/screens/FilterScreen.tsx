@@ -29,7 +29,6 @@ import {
 } from 'lucide-react';
 import { Header } from '../components/Header';
 import { KebabMenu, type MenuItem } from '../components/KebabMenu';
-import { useSyncMenuItems } from '../utils/useSyncMenuItems';
 import { RichText } from '../components/RichText';
 import { QuestionBoardTags } from '../components/QuestionBoardTags';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -1297,7 +1296,6 @@ export const FilterScreen: React.FC = () => {
     setSearchInput('');
   };
 
-  const syncMenuItems = useSyncMenuItems();
   const headerMenuItems = useMemo((): MenuItem[] => {
     const items: MenuItem[] = [
       {
@@ -1387,10 +1385,9 @@ export const FilterScreen: React.FC = () => {
         }
       );
     }
-    items.push(...syncMenuItems);
     return items;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchOpen, selectedIds, results, selectedRows, savedFilters, hasAnyFilter, syncMenuItems]);
+  }, [searchOpen, selectedIds, results, selectedRows, savedFilters, hasAnyFilter]);
 
   const resultIdSet = useMemo(() => new Set(results.map((r) => r.question.id)), [results]);
   const hiddenSelected = useMemo(
@@ -1401,7 +1398,7 @@ export const FilterScreen: React.FC = () => {
   const openDef = openDropdown ? dropdowns[openDropdown] : null;
 
   return (
-    <div className="flex-1 flex flex-col min-h-full nav-pad bg-[#F2F4F8]">
+    <div className="flex-none flex flex-col min-h-full nav-pad bg-[#F2F4F8]">
       <Header
         title="Filter"
         subtitle={
@@ -1432,7 +1429,10 @@ export const FilterScreen: React.FC = () => {
       />
 
       {/* Sticky control bar */}
-      <div className="sticky top-14 z-30 bg-white dark:bg-slate-900 border-b border-[#D5D9E2] dark:border-slate-700 px-3.5 pt-2.5 pb-2.5 space-y-2.5">
+      <div
+        className="sticky z-30 bg-white dark:bg-slate-900 border-b border-[#D5D9E2] dark:border-slate-700 px-3.5 pt-2.5 pb-2.5 space-y-2.5"
+        style={{ top: 'calc(3.5rem + var(--safe-top, env(safe-area-inset-top, 0px)))' }}
+      >
         {searchOpen && (
           <div className="relative">
             <Search className="w-4 h-4 text-[#64748B] absolute left-3 top-1/2 -translate-y-1/2" />

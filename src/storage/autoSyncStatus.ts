@@ -19,6 +19,26 @@ export const AUTO_SYNC_ERROR_TEXT = 'অটো সিঙ্ক হয়নি';
 /** শেষ/ত্রুটির লেখা এতক্ষণ (মিলিসেকেন্ড) থাকে */
 export const AUTO_SYNC_LINGER_MS = 2500;
 
+/**
+ * ধাপ ২খ: রিবনের নিচের লেখার রঙ (ব্যবহারকারীর সিদ্ধান্ত): চলছে = হলুদ (গাঢ় লেখা, নইলে পড়া যায় না),
+ * শেষ = সবুজ, ত্রুটি = লাল (দুটোতেই সাদা লেখা)।
+ */
+export const AUTO_SYNC_RUNNING_CLASS = 'bg-yellow-400 text-slate-900 font-medium';
+export const AUTO_SYNC_DONE_CLASS = 'bg-green-600 text-white font-medium';
+export const AUTO_SYNC_ERROR_CLASS = 'bg-red-600 text-white font-medium';
+export function autoSyncStripClass(s: AutoSyncStatus): string {
+  switch (s.phase) {
+    case 'running':
+      return AUTO_SYNC_RUNNING_CLASS;
+    case 'done':
+      return AUTO_SYNC_DONE_CLASS;
+    case 'error':
+      return AUTO_SYNC_ERROR_CLASS;
+    default:
+      return '';
+  }
+}
+
 export function autoSyncText(s: AutoSyncStatus): string {
   switch (s.phase) {
     case 'running':

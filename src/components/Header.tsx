@@ -1,7 +1,6 @@
 import React from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { KebabMenu, type MenuItem } from './KebabMenu';
-import { useSyncMenuItems } from '../utils/useSyncMenuItems';
 import { AutoSyncStrip } from './AutoSyncStrip';
 
 export interface HeaderProps {
@@ -15,8 +14,6 @@ export interface HeaderProps {
   actions?: React.ReactNode;
   /** replaces the title in the middle of the ribbon (e.g. the search box) */
   centerOverride?: React.ReactNode;
-  /** ধাপ ৪: মেনুর শেষে সিঙ্কের দুটো অপশন (ডিফল্ট চালু) */
-  syncMenu?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -28,10 +25,8 @@ export const Header: React.FC<HeaderProps> = ({
   rightAction,
   actions,
   centerOverride,
-  syncMenu = true,
 }) => {
-  const syncItems = useSyncMenuItems();
-  const allItems = syncMenu ? [...menuItems, ...syncItems] : menuItems;
+  // ধাপ ২ক: Header আর নিজে সিঙ্কের আইটেম যোগ করে না; Type CQ / Chapter CQ উইন্ডো (CollectionScreen) নিজের menuItems-এ দেয়
   return (
     <header
       className="sticky top-0 z-40 bg-[#3B4FD8] text-white shadow-md select-none transition-colors"
@@ -78,7 +73,7 @@ export const Header: React.FC<HeaderProps> = ({
           {rightAction ? (
             rightAction
           ) : (
-            <KebabMenu items={allItems} buttonAriaLabel="মেনু" align="right" />
+            <KebabMenu items={menuItems} buttonAriaLabel="মেনু" align="right" />
           )}
         </div>
       </div>

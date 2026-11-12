@@ -103,6 +103,8 @@ let syncInFlight: Promise<SyncReport> | null = null;
 export interface SyncNowOptions {
   /** ধাপ ৫ (Q2): প্রিভিউয়ে লাল [নিশ্চিত করুন] চাপা হয়েছে - আসল স্ক্যান আর দ্বিতীয়বার জিজ্ঞেস করে না */
   massDeleteConfirmed?: boolean;
+  /** ধাপ ২ক: শুধু এই স্কোপ(গুলো) স্ক্যান হবে (Type CQ / Chapter CQ উইন্ডোর সিঙ্ক); না দিলে দুটোই */
+  scopes?: CqScope[];
 }
 
 /** মেনুর সিঙ্ক উইন্ডো খোলা থাকলে অটো সিঙ্ক চুপ থাকে (প্রিভিউ বাসি হওয়া ঠেকাতে) */
@@ -142,7 +144,7 @@ async function runSyncNow(opts: SyncNowOptions): Promise<SyncReport> {
 
   const summaries: ScanSummary[] = await withSyncLock(async () => {
     const out: ScanSummary[] = [];
-    for (const scope of SCOPES) {
+    for (const scope of opts.scopes ?? SCOPES) {
       try {
         out.push(await scanScope(scope, { confirmMassDelete: opts.massDeleteConfirmed ? () => true : confirmMassDelete ?? undefined }));
       } catch (err: any) {

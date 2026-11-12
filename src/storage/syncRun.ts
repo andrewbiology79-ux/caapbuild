@@ -1,8 +1,7 @@
-import type { CqScope } from '../db/db';
 import type { SyncDirection, SyncPreview } from './syncPreview';
 import { previewFolderToApp, previewAppToFolder } from './syncPreview';
 import { ProgressTracker, type ProgressCallback } from './syncProgress';
-import { emptyCounts, type SyncCounts } from './syncView';
+import { emptyCounts, scopesFor, type SyncCounts } from './syncView';
 import { countsFromPreview, type RunOutcome, type SyncControllerDeps } from './syncController';
 import { moveConflicts } from './syncConflictMove';
 import { syncNow, pauseSync, resumeSync, isSyncPaused, announceSyncChanged } from './syncEngine';
@@ -19,8 +18,6 @@ import { withSyncLock } from './syncLock';
  *  ২) ফোল্ডার -> অ্যাপ : স্ক্যান (প্রিভিউয়ের লাল নিশ্চিতকরণই মোছার নিশ্চিতকরণ - Q2)।
  *  ৩) অ্যাপ -> ফোল্ডার : অ্যাপের সবকিছু জোর করে ফোল্ডারে (তৈরি, নাম বদল, data.json, ছবি); প্রতিটি একক শেষে প্রগ্রেস।
  */
-
-const SCOPES: CqScope[] = ['type', 'chapter'];
 
 /** কনফ্লিক্ট + বাড়তি জিনিস একসাথে সরানো (বাড়তি জিনিসের গন্তব্য unnecessary/); ফল দুই ভাগ করে ফেরত */
 async function moveAside(preview: SyncPreview, onUnit: (label: string) => void) {
@@ -45,7 +42,8 @@ async function runFolderToApp(preview: SyncPreview, onProgress: ProgressCallback
   warnings.push(...mv.warnings);
 
   t.setPhase('folders', 'ফোল্ডার পড়ে অ্যাপে আনা হচ্ছে');
-  const r = await syncNow({ massDeleteConfirmed: !!preview.massDelete });
+  // ধাপ ২ক: প্রিভিউ যে স্কোপের ছিল শুধু সেটাই স্ক্যান হয় (অন্য স্কোপের ফোল্ডার ছোঁয়া হয় না)
+  const r = await syncNow({ massDeleteConfirmed: !!preview.massDelete, scopes: scopesFor(preview.scope) });
   if (r.error) throw new Error(r.error);
   t.step(1);
   warnings.push(...r.warnings);
@@ -68,7 +66,7 @@ async function runAppToFolder(preview: SyncPreview, onProgress: ProgressCallback
     extrasMoved = mv.extrasMoved;
     warnings.push(...mv.warnings);
 
-    for (const scope of SCOPES) await markEverythingDirty(scope);
+    for (const scope of scopesFor(preview.scope)) await markEverythingDirty(scope);
     t.addTotal(Math.max(1, pendingUnitCount()));
     t.setPhase('data', 'ফোল্ডারে লেখা হচ্ছে (ফোল্ডার, data.json, ছবি)');
     await flushAllWrites(true, (label) => t.step(1, label, 'data'));
@@ -80,8 +78,8 @@ async function runAppToFolder(preview: SyncPreview, onProgress: ProgressCallback
 }
 
 export const defaultSyncDeps: SyncControllerDeps = {
-  preview: (direction: SyncDirection, onProgress) =>
-    direction === 'folder-to-app' ? previewFolderToApp(onProgress) : previewAppToFolder(onProgress),
+  preview: (direction: SyncDirection, onProgress, scope) =>
+    direction === 'folder-to-app' ? previewFolderToApp(onProgress, scope) : previewAppToFolder(onProgress, scope),
   run: (direction, preview, onProgress) =>
     direction === 'folder-to-app' ? runFolderToApp(preview, onProgress) : runAppToFolder(preview, onProgress),
   onClosedResult: () => announceSyncChanged(),

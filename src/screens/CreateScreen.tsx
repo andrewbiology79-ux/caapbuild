@@ -34,7 +34,6 @@ import {
   FolderCheck,
   Sparkles,
   RefreshCw,
-  Layers,
   Search,
   X,
   Check,
@@ -316,12 +315,6 @@ export const CreateScreen: React.FC = () => {
         },
       ]
     : [
-        {
-          id: 'new-paper',
-          label: 'নতুন প্রশ্নপত্র তৈরি',
-          icon: <Plus className="w-4 h-4 text-[#3B4FD8]" />,
-          onClick: handleOpenCreateNew,
-        },
         categorySyncItem,
         {
           id: 'select-papers',
@@ -339,16 +332,10 @@ export const CreateScreen: React.FC = () => {
               },
             ]
           : []),
-        {
-          id: 'go-collection',
-          label: 'কালেকশন থেকে প্রশ্ন নির্বাচন',
-          icon: <Layers className="w-4 h-4 text-[#2A3BB0]" />,
-          onClick: () => switchTab('typeCq'),
-        },
       ];
 
   return (
-    <div className="flex-1 flex flex-col min-h-full nav-pad bg-[#F2F4F8] dark:bg-slate-900 transition-colors">
+    <div className="flex-none flex flex-col min-h-full nav-pad bg-[#F2F4F8] dark:bg-slate-900 transition-colors">
       <Header
         title={selectMode ? `${toBn(picked.size)}টি নির্বাচিত` : 'তৈরি (Create)'}
         subtitle={selectMode ? 'প্রশ্নপত্র নির্বাচন মোড' : 'পরীক্ষা ও প্রশ্নপত্র ব্যবস্থাপনা'}

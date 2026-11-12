@@ -255,3 +255,76 @@ describe('অন্য সিঙ্ক উইন্ডো (ক্যাটেগ
     expect(c.start('folder-to-app')).toBe(true);
   });
 });
+
+describe('ধাপ ২ক - স্কোপ-সীমিত সিঙ্ক', () => {
+  it('start(direction, scope): প্রিভিউ হিসাবে স্কোপ যায়; calculating অবস্থায় স্কোপ থাকে', () => {
+    const seen: Array<string | undefined> = [];
+    const { c } = setup({
+      preview: (_d, _p, scope) => {
+        seen.push(scope);
+        return new Promise(() => {});
+      },
+    });
+    expect(c.start('folder-to-app', 'type')).toBe(true);
+    expect(seen).toEqual(['type']);
+    const s = c.getState();
+    expect(s?.kind === 'calculating' && s.scope === 'type').toBe(true);
+  });
+
+  it('স্কোপ না দিলে প্রিভিউয়ে undefined (দুটোই) - আগের আচরণ', () => {
+    const seen: Array<string | undefined> = [];
+    const { c } = setup({
+      preview: async (_d, _p, scope) => {
+        seen.push(scope);
+        return mkPreview();
+      },
+    });
+    c.start('app-to-folder');
+    expect(seen).toEqual([undefined]);
+  });
+
+  it('পুরো পথে (running / result) স্কোপ বজায় থাকে এবং run প্রিভিউয়ের স্কোপ পায়', async () => {
+    let runScope: string | undefined = 'unset';
+    const { c } = setup({
+      preview: async (_d, _p, scope) => mkPreview({ scope }),
+      run: async (_d, p) => {
+        runScope = p.scope;
+        return { counts: countsFromPreview(p) };
+      },
+    });
+    c.start('folder-to-app', 'chapter');
+    await tick();
+    const pv = c.getState();
+    expect(pv?.kind === 'preview' && pv.preview.scope === 'chapter').toBe(true);
+    c.confirm();
+    const run = c.getState();
+    expect(run?.kind === 'running' && run.scope === 'chapter').toBe(true);
+    await tick();
+    expect(runScope).toBe('chapter');
+    const res = c.getState();
+    expect(res?.kind === 'result' && res.scope === 'chapter').toBe(true);
+  });
+
+  it('প্রিভিউ ব্যর্থ হলে error অবস্থাতেও স্কোপ থাকে', async () => {
+    const { c } = setup({ preview: async () => Promise.reject(new Error('boom')) });
+    c.start('folder-to-app', 'type');
+    await tick();
+    await tick();
+    const s = c.getState();
+    expect(s?.kind === 'error' && s.scope === 'type').toBe(true);
+  });
+
+  it('চলার সময় ব্যর্থ হলে error অবস্থাতেও স্কোপ থাকে', async () => {
+    const { c } = setup({
+      preview: async (_d, _p, scope) => mkPreview({ scope }),
+      run: async () => Promise.reject(new Error('লেখা যায়নি')),
+    });
+    c.start('app-to-folder', 'chapter');
+    await tick();
+    c.confirm();
+    await tick();
+    await tick();
+    const s = c.getState();
+    expect(s?.kind === 'error' && s.scope === 'chapter').toBe(true);
+  });
+});

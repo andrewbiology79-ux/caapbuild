@@ -1425,7 +1425,7 @@ export const ProfileScreen: React.FC = () => {
   ];
 
   return (
-    <div className="flex-1 flex flex-col min-h-full nav-pad bg-[#F2F4F8] dark:bg-slate-900 transition-colors">
+    <div className="flex-none flex flex-col min-h-full nav-pad bg-[#F2F4F8] dark:bg-slate-900 transition-colors">
       {/* ----------------- SUB-VIEW: CATEGORY DETAIL ----------------- */}
       {viewMode === 'category-detail' && selectedCategory && (
         <>

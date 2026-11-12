@@ -18,6 +18,7 @@ import {
   currentWork,
   counterCells,
   dialogTitle,
+  scopesFor,
   type SyncDialogState,
 } from '../src/storage/syncView';
 
@@ -91,6 +92,21 @@ describe('syncView (ধাপ ৩ - বাংলা লেখা ও অবস�
   it('শিরোনামে দিক, অটো হলে "স্বয়ংক্রিয় সিঙ্ক"', () => {
     expect(dialogTitle('folder-to-app')).toBe('সিঙ্ক: ফোল্ডার → অ্যাপ');
     expect(dialogTitle('app-to-folder', true)).toBe('স্বয়ংক্রিয় সিঙ্ক: অ্যাপ → ফোল্ডার');
+  });
+
+  it('ধাপ ২ক: স্কোপ থাকলে শিরোনামে Type CQ / Chapter CQ, না থাকলে আগের মতো', () => {
+    expect(dialogTitle('folder-to-app', undefined, 'type')).toBe('সিঙ্ক: ফোল্ডার → অ্যাপ (Type CQ)');
+    expect(dialogTitle('app-to-folder', false, 'chapter')).toBe('সিঙ্ক: অ্যাপ → ফোল্ডার (Chapter CQ)');
+    expect(dialogTitle('folder-to-app', undefined, undefined)).toBe('সিঙ্ক: ফোল্ডার → অ্যাপ');
+  });
+
+  it('ধাপ ২ক: scopesFor - স্কোপ দিলে শুধু সেটা, না দিলে দুটোই (প্রতিবার নতুন তালিকা)', () => {
+    expect(scopesFor('type')).toEqual(['type']);
+    expect(scopesFor('chapter')).toEqual(['chapter']);
+    expect(scopesFor()).toEqual(['type', 'chapter']);
+    const a = scopesFor();
+    a.push('type');
+    expect(scopesFor()).toEqual(['type', 'chapter']);
   });
 
   it('টাইপের প্রশ্ন-পার্থক্য বাংলা অঙ্কে', () => {

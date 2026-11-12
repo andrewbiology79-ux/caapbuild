@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { createAutoSyncStore, autoSyncText, AUTO_SYNC_RUNNING_TEXT, AUTO_SYNC_DONE_TEXT, AUTO_SYNC_DONE_NOTHING_TEXT, AUTO_SYNC_ERROR_TEXT } from '../src/storage/autoSyncStatus';
+import { createAutoSyncStore, autoSyncText, autoSyncStripClass, AUTO_SYNC_RUNNING_CLASS, AUTO_SYNC_DONE_CLASS, AUTO_SYNC_ERROR_CLASS, AUTO_SYNC_RUNNING_TEXT, AUTO_SYNC_DONE_TEXT, AUTO_SYNC_DONE_NOTHING_TEXT, AUTO_SYNC_ERROR_TEXT } from '../src/storage/autoSyncStatus';
 
 afterEach(() => vi.useRealTimers());
 
@@ -61,5 +61,32 @@ describe('অটো সিঙ্কের ছোট অবস্থা (রি�
     off();
     s.fail();
     expect(fn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ধাপ ২খ - রিবনের নিচের লেখার রঙ', () => {
+  it('চলছে = হলুদ পটভূমি, গাঢ় লেখা', () => {
+    const c = autoSyncStripClass({ phase: 'running' });
+    expect(c).toBe(AUTO_SYNC_RUNNING_CLASS);
+    expect(c).toContain('bg-yellow-400');
+    expect(c).toContain('text-slate-900');
+  });
+
+  it('শেষ = সবুজ (কিছু বদলাক বা না বদলাক), সাদা লেখা', () => {
+    for (const st of [{ phase: 'done', changed: true }, { phase: 'done', changed: false }] as const) {
+      expect(autoSyncStripClass(st)).toBe(AUTO_SYNC_DONE_CLASS);
+    }
+    expect(AUTO_SYNC_DONE_CLASS).toContain('bg-green-600');
+    expect(AUTO_SYNC_DONE_CLASS).toContain('text-white');
+  });
+
+  it('ত্রুটি = লাল, সাদা লেখা', () => {
+    expect(autoSyncStripClass({ phase: 'error' })).toBe(AUTO_SYNC_ERROR_CLASS);
+    expect(AUTO_SYNC_ERROR_CLASS).toContain('bg-red-600');
+    expect(AUTO_SYNC_ERROR_CLASS).toContain('text-white');
+  });
+
+  it('তিন রঙ আলাদা', () => {
+    expect(new Set([AUTO_SYNC_RUNNING_CLASS, AUTO_SYNC_DONE_CLASS, AUTO_SYNC_ERROR_CLASS]).size).toBe(3);
   });
 });

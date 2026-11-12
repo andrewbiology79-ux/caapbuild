@@ -27,6 +27,7 @@ import { QuestionBoardTags } from '../components/QuestionBoardTags';
 import { KebabMenu, type MenuItem } from '../components/KebabMenu';
 import { toBn, toBnPad2 } from '../utils/toBn';
 import { useNavigation } from '../utils/navigation';
+import { useSyncMenuItems } from '../utils/useSyncMenuItems';
 import { getDb, type CqScope } from '../db/db';
 import { SYNC_CHANGED_EVENT } from '../storage/syncEngine';
 
@@ -891,8 +892,11 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
     return scope === 'chapter' ? 'Chapter CQ' : 'Type CQ';
   }, [currentView, scope]);
 
+  // ধাপ ২ক: সিঙ্কের দুটো অপশন শুধু Type CQ / Chapter CQ উইন্ডোতে; চাপলে দুই ফোল্ডারই একসাথে সিঙ্ক হয়
+  const syncMenuItems = useSyncMenuItems();
+
   // Header KebabMenu Items (rebuilt on every render so counts / clipboard are always current)
-  const headerMenuItems: MenuItem[] = (() => {
+  const baseMenuItems: MenuItem[] = (() => {
     const items: MenuItem[] = [];
 
     // ---------- inside a type / chapter (the questions list) ----------
@@ -1021,6 +1025,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
 
     return items;
   })();
+  const headerMenuItems: MenuItem[] = [...baseMenuItems, ...syncMenuItems];
 
   // Filter questions by search query
   const filteredQuestionGroups = useMemo(() => {
@@ -1125,7 +1130,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
   }, [currentView, scope, openChapter]);
 
   return (
-    <div className="flex-1 flex flex-col min-h-full nav-pad bg-[#F2F4F8]">
+    <div className="flex-none flex flex-col min-h-full nav-pad bg-[#F2F4F8]">
       {/* Top Header */}
       <Header
         title={currentTitle}

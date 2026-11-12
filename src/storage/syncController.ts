@@ -1,3 +1,4 @@
+import type { CqScope } from '../db/db';
 import type { SyncDirection, SyncPreview } from './syncPreview';
 import type { SyncProgress, ProgressCallback } from './syncProgress';
 import { emptyCounts, makeResultView, type SyncCounts, type SyncDialogState, type SyncResultConflict, type SyncResultExtra } from './syncView';
@@ -21,7 +22,8 @@ export interface RunOutcome {
 }
 
 export interface SyncControllerDeps {
-  preview(direction: SyncDirection, onProgress: ProgressCallback): Promise<SyncPreview>;
+  /** scope দিলে (ধাপ ২ক) শুধু সেই স্কোপের প্রিভিউ; না দিলে দুটোই */
+  preview(direction: SyncDirection, onProgress: ProgressCallback, scope?: CqScope): Promise<SyncPreview>;
   run(direction: SyncDirection, preview: SyncPreview, onProgress: ProgressCallback, onCounts: (c: SyncCounts) => void): Promise<RunOutcome>;
   /** result বন্ধ করার সময়: কিছু বদলালে true (তালিকা রিফ্রেশ করতে) */
   onClosedResult?(changed: boolean): void;
@@ -47,8 +49,8 @@ export function canConfirmPreview(p: SyncPreview): boolean {
 export interface SyncController {
   getState(): SyncDialogState | null;
   subscribe(fn: () => void): () => void;
-  /** মেনু থেকে শুরু; অন্য সিঙ্ক উইন্ডো খোলা থাকলে false */
-  start(direction: SyncDirection): boolean;
+  /** মেনু থেকে শুরু (scope = Type CQ বা Chapter CQ উইন্ডোর স্কোপ); অন্য সিঙ্ক উইন্ডো খোলা থাকলে false */
+  start(direction: SyncDirection, scope?: CqScope): boolean;
   /**
    * ধাপ ৫খ - অটো সিঙ্ক: উইন্ডো সরাসরি 'running' (স্বয়ংক্রিয়) দিয়ে শুরু; শেষে সবসময় ফল দেখিয়ে থাকে ([ঠিক আছে] চেপে বন্ধ)।
    * অন্য উইন্ডো খোলা থাকলে false। task ব্যর্থ হলে error অবস্থা।
@@ -79,21 +81,21 @@ export function createSyncController(deps: SyncControllerDeps): SyncController {
     }
   };
 
-  const start = (direction: SyncDirection): boolean => {
+  const start = (direction: SyncDirection, scope?: CqScope): boolean => {
     if (state || deps.busy?.()) return false;
     const my = ++token;
-    set({ kind: 'calculating', direction, progress: null });
+    set({ kind: 'calculating', direction, scope, progress: null });
     deps
       .preview(direction, (p: SyncProgress) => {
-        if (my === token && state?.kind === 'calculating') set({ kind: 'calculating', direction, progress: p });
-      })
+        if (my === token && state?.kind === 'calculating') set({ kind: 'calculating', direction, scope, progress: p });
+      }, scope)
       .then((preview) => {
         if (my !== token || state?.kind !== 'calculating') return; // বাতিল হয়ে গেছে: ফল ফেলে দেওয়া (P3)
         set({ kind: 'preview', preview });
       })
       .catch((err) => {
         if (my !== token || state?.kind !== 'calculating') return;
-        set({ kind: 'error', direction, message: msgOf(err), stage: 'হিসাব করা', dataSafe: true });
+        set({ kind: 'error', direction, scope, message: msgOf(err), stage: 'হিসাব করা', dataSafe: true });
       });
     return true;
   };
@@ -126,10 +128,11 @@ export function createSyncController(deps: SyncControllerDeps): SyncController {
     const preview = state.preview;
     if (!canConfirmPreview(preview)) return;
     const direction = preview.direction;
+    const scope = preview.scope;
     const my = ++token;
     let counts = emptyCounts();
     let progress: SyncProgress | null = null;
-    const show = () => set({ kind: 'running', direction, progress, counts });
+    const show = () => set({ kind: 'running', direction, scope, progress, counts });
     show();
     deps
       .run(direction, preview, (p) => {
@@ -151,13 +154,14 @@ export function createSyncController(deps: SyncControllerDeps): SyncController {
         set({
           kind: 'result',
           direction,
+          scope,
           result: makeResultView(finalCounts, conflicts, [...preview.warnings, ...(out.warnings ?? [])], preview.stamp, extras),
         });
       })
       .catch((err) => {
         if (my !== token) return;
         // সিঙ্কের লেখা একেকটা ফাইল নিরাপদে (.tmp -> যাচাই -> বদল) হয়; তবুও অর্ধেক হয়ে থাকতে পারে, তাই "অক্ষত" বলা হয় না
-        set({ kind: 'error', direction, message: msgOf(err), stage: progress?.label || undefined, dataSafe: false });
+        set({ kind: 'error', direction, scope, message: msgOf(err), stage: progress?.label || undefined, dataSafe: false });
       });
   };
 

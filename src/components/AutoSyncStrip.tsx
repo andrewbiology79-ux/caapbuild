@@ -1,6 +1,6 @@
 import React from 'react';
 import { RefreshCw, Check, AlertCircle } from 'lucide-react';
-import { autoSyncText, useAutoSyncStatus } from '../storage/autoSyncStatus';
+import { autoSyncStripClass, autoSyncText, useAutoSyncStatus } from '../storage/autoSyncStatus';
 
 /**
  * অটো সিঙ্ক চলার সময় রিবনের ঠিক নিচে ছোট এক লাইনের লেখা (পুরো উইন্ডো নয়)।
@@ -15,7 +15,7 @@ export const AutoSyncStrip: React.FC = () => {
     <div
       role="status"
       aria-live="polite"
-      className="flex items-center justify-center gap-1.5 bg-[#2F40B8] px-3 py-1 text-xs text-white/95"
+      className={`flex items-center justify-center gap-1.5 px-3 py-1 text-xs ${autoSyncStripClass(status)}`}
     >
       <Icon className={`w-3.5 h-3.5 ${status.phase === 'running' ? 'animate-spin' : ''}`} />
       <span className="truncate">{autoSyncText(status)}</span>

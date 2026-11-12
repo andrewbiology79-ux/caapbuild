@@ -2,6 +2,7 @@ import { getDb, type CqScope, type QbDatabase } from '../db/db';
 import { scopeRoot, DATA_FILE } from './folderLayout';
 import { scanTree, readText } from './nativeStore';
 import { withSyncLock } from './syncLock';
+import { scopesFor } from './syncView';
 import { ProgressTracker, type ProgressCallback } from './syncProgress';
 import { peekPending } from './writer';
 import {
@@ -41,6 +42,8 @@ export type SyncDirection = 'folder-to-app' | 'app-to-folder';
 
 export interface SyncPreview {
   direction: SyncDirection;
+  /** ধাপ ২ক: কোন স্কোপের প্রিভিউ (Type CQ বা Chapter CQ উইন্ডো থেকে); না থাকলে দুটোই */
+  scope?: CqScope;
   /** names the Sync_Conflicts/<stamp> folder - the real sync reuses it so the shown path is the real path */
   stamp: string;
   createdAt: number;
@@ -58,7 +61,6 @@ export interface SyncPreview {
   empty: boolean;
 }
 
-const SCOPES: CqScope[] = ['type', 'chapter'];
 const READ_PARALLEL = 4;
 
 async function snapshotApp(sdb: QbDatabase): Promise<AppSnapshot> {
@@ -173,13 +175,15 @@ async function previewScope(direction: SyncDirection, scope: CqScope, stamp: str
   return result;
 }
 
-async function runPreview(direction: SyncDirection, onProgress?: ProgressCallback): Promise<SyncPreview> {
+async function runPreview(direction: SyncDirection, onProgress?: ProgressCallback, scope?: CqScope): Promise<SyncPreview> {
   const stamp = makeStamp();
+  const scopes = scopesFor(scope);
   // প্রতি স্কোপে ৩টি নিশ্চিত একক (তালিকা পড়া, অ্যাপের তথ্য, তুলনা); data.json পড়ার সংখ্যা জানা গেলে যোগ হয়
-  const tracker = onProgress ? new ProgressTracker(onProgress, SCOPES.length * 3, 'list') : undefined;
+  const tracker = onProgress ? new ProgressTracker(onProgress, scopes.length * 3, 'list') : undefined;
   tracker?.setPhase('list');
   const out: SyncPreview = {
     direction,
+    scope,
     stamp,
     createdAt: Date.now(),
     entries: [],
@@ -192,9 +196,9 @@ async function runPreview(direction: SyncDirection, onProgress?: ProgressCallbac
   };
 
   await withSyncLock(async () => {
-    for (const scope of SCOPES) {
+    for (const sc of scopes) {
       try {
-        const r = await previewScope(direction, scope, stamp, tracker);
+        const r = await previewScope(direction, sc, stamp, tracker);
         out.entries.push(...r.entries);
         out.conflicts.push(...r.conflicts);
         out.extras.push(...r.extras);
@@ -205,8 +209,8 @@ async function runPreview(direction: SyncDirection, onProgress?: ProgressCallbac
             : r.massDelete;
         }
       } catch (err: any) {
-        console.warn(`Sync preview (${scope}) failed:`, err);
-        out.errors.push(`${scope === 'chapter' ? 'Chapter CQ' : 'Type CQ'}: ${err?.message || String(err)}`);
+        console.warn(`Sync preview (${sc}) failed:`, err);
+        out.errors.push(`${sc === 'chapter' ? 'Chapter CQ' : 'Type CQ'}: ${err?.message || String(err)}`);
       }
     }
   });
@@ -218,11 +222,11 @@ async function runPreview(direction: SyncDirection, onProgress?: ProgressCallbac
 }
 
 /** "ফোল্ডার থেকে সিঙ্ক করুন" - ফোল্ডারের তথ্য অ্যাপে এলে কী বদলাবে (কিছু লেখে না) */
-export function previewFolderToApp(onProgress?: ProgressCallback): Promise<SyncPreview> {
-  return runPreview('folder-to-app', onProgress);
+export function previewFolderToApp(onProgress?: ProgressCallback, scope?: CqScope): Promise<SyncPreview> {
+  return runPreview('folder-to-app', onProgress, scope);
 }
 
 /** "অ্যাপ থেকে ফোল্ডারে সিঙ্ক করুন" - অ্যাপের তথ্য ফোল্ডারে গেলে কী বদলাবে (কিছু লেখে না) */
-export function previewAppToFolder(onProgress?: ProgressCallback): Promise<SyncPreview> {
-  return runPreview('app-to-folder', onProgress);
+export function previewAppToFolder(onProgress?: ProgressCallback, scope?: CqScope): Promise<SyncPreview> {
+  return runPreview('app-to-folder', onProgress, scope);
 }
