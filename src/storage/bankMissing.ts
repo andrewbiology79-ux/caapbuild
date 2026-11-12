@@ -204,6 +204,36 @@ export function fillMissingStimuli(ids: string[], found: Stimulus[], copies: Que
   return out;
 }
 
+/**
+ * ক্যাটেগরির data.json-এর কপি থেকে বেছে নেওয়া: wantedIds-এর যেগুলোর কপি এই ফাইলে আছে (উদ্দীপক শুধু প্রশ্নের stimulusId-র সাথে মিললে)।
+ * ফেরত: (প্রশ্ন, উদ্দীপক?) জোড়ার তালিকা এবং ফাইলে না-পাওয়া id-গুলো।
+ */
+export function selectCopiesForIds(
+  wantedIds: Iterable<string>,
+  questions: CopiedQuestion[],
+  stimuli: CopiedStimulus[]
+): { items: Array<{ question: CopiedQuestion; stimulus?: CopiedStimulus }>; notFound: string[] } {
+  const qById = new Map<string, CopiedQuestion>();
+  for (const cq of questions) if (cq?.question?.id && !qById.has(cq.question.id)) qById.set(cq.question.id, cq);
+  const sById = new Map<string, CopiedStimulus>();
+  for (const cs of stimuli) if (cs?.stimulus?.id && !sById.has(cs.stimulus.id)) sById.set(cs.stimulus.id, cs);
+  const items: Array<{ question: CopiedQuestion; stimulus?: CopiedStimulus }> = [];
+  const notFound: string[] = [];
+  const seen = new Set<string>();
+  for (const id of wantedIds) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const cq = qById.get(id);
+    if (!cq) {
+      notFound.push(id);
+      continue;
+    }
+    const sid = cq.question.stimulusId;
+    items.push({ question: cq, stimulus: sid ? sById.get(sid) : undefined });
+  }
+  return { items, notFound };
+}
+
 /** একটা প্রশ্নপত্রের কোন কোন প্রশ্ন ব্যাংকে নেই (কিন্তু কপি আছে) - প্রশ্নপত্রের ক্রমে, একবার করে */
 export function bankMissingIdsOfPaper(paper: Pick<Paper, 'questionIds'>, bankIds: Set<string>, copyIds: Set<string>): string[] {
   return uniq(idsOf((paper as any).questionIds)).filter((id) => !bankIds.has(id) && copyIds.has(id));

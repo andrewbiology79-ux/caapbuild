@@ -24,6 +24,8 @@ import { resolveCategoryWork, selectAutoTidyExtras, type CategoryWork, type Pape
 import { UNNECESSARY_DIR } from './folderLayout';
 import { withNumberSuffix } from './syncConflictPlan';
 import { buildBankLookup } from './bankLookup';
+import { copiesToPrevious, mergePreviousCopies } from './bankMissing';
+import { loadCopies } from './bankMissingStore';
 import {
   buildCategoryCopies,
   buildVerifiedCategoryData,
@@ -147,6 +149,15 @@ export async function placeCategoryImages(dirName: string, imageIds: string[]): 
 
     const hit = await findImageRecord(id);
     if (!hit) {
+      // অংশ ১ঘ-খ: ব্যাংকে ছবি নেই - ব্যাংকে-নেই প্রশ্নের কপির ছবি (db.copyImages) থেকে
+      const copyImg = await db.copyImages.get(id);
+      if (copyImg?.blob) {
+        const dataUrl = await blobToBase64(copyImg.blob);
+        await writeBase64(target, dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl);
+        const afterCopy = await statPath(target);
+        if (!afterCopy || afterCopy.size === 0) throw new Error('ছবির ফাইল লেখা যায়নি');
+        continue;
+      }
       missing.push(id);
       continue;
     }
@@ -212,7 +223,15 @@ export async function writeCategoryFolder(cat: Category, state: CategorySyncStat
   const ids = Array.from(new Set(papers.flatMap((p) => (Array.isArray(p.questionIds) ? p.questionIds.filter((x) => typeof x === 'string') : []))));
   const lookup = await buildBankLookup(ids);
   const previousDir = dir.renamedFrom ?? dir.dirName;
-  const previous = await readPreviousCopies(previousDir); // নতুন ফোল্ডার হলে ফাইল নেই -> খালি
+  const filePrevious = await readPreviousCopies(previousDir); // নতুন ফোল্ডার হলে ফাইল নেই -> খালি
+  // অংশ ১ঘ-খ: ডেটাবেসের কপিও (ব্যাংকে-নেই প্রশ্ন) - ফাইলের কপি আগে, না থাকলে ডেটাবেসের; যাতে ফাইল মুছে গেলেও কপি data.json-এ ফেরে
+  let previous = filePrevious;
+  try {
+    const dbCopies = await loadCopies(ids);
+    if (dbCopies.size > 0) previous = mergePreviousCopies(filePrevious, copiesToPrevious(Array.from(dbCopies.values())));
+  } catch (e) {
+    result.warnings.push('ডেটাবেসের কপি পড়া যায়নি - শুধু ফাইলের কপি ব্যবহার হয়েছে');
+  }
   const copies = buildCategoryCopies(papers, lookup, previous);
   result.warnings.push(...copies.warnings);
 

@@ -19,6 +19,7 @@ import {
   questionsNeedingCopy,
   restoreCopyToBank,
   restoreResultMessage,
+  selectCopiesForIds,
   usedQuestionIds,
   type BankPort,
 } from '../src/storage/bankMissing';
@@ -438,5 +439,44 @@ describe('বার্তা', () => {
     expect(restoreResultMessage({ status: 'failed', questionId: 'a', reason: 'কপি ঠিক নেই', created: { subject: false, chapter: false, topic: false, stimulus: false }, missingImages: [], warnings: [] })).toBe('ব্যাংকে ফেরানো যায়নি: কপি ঠিক নেই');
     const ok = restoreResultMessage({ status: 'restored', questionId: 'a', created: { subject: false, chapter: true, topic: true, stimulus: false }, missingImages: [], warnings: [] });
     expect(ok).toBe('প্রশ্নটা ব্যাংকে ফিরেছে (নতুন অধ্যায়, টপিক তৈরি হয়েছে)');
+  });
+});
+
+describe('selectCopiesForIds (ক্যাটেগরির data.json থেকে কপি বাছা)', () => {
+  const cq = (id: string, over: Partial<Question> = {}) => ({ question: q(id, over), path: typePath });
+  const cs = (id: string) => ({ stimulus: stim(id), path: typePath });
+
+  it('চাওয়া id-র প্রশ্ন ও সংশ্লিষ্ট উদ্দীপক বাছে; ফাইলে না থাকলে notFound', () => {
+    const r = selectCopiesForIds(['a', 'b', 'zzz'], [cq('a', { stimulusId: 's1' }), cq('b'), cq('c')], [cs('s1'), cs('s2')]);
+    expect(r.items.map((i) => i.question.question.id)).toEqual(['a', 'b']);
+    expect(r.items[0].stimulus?.stimulus.id).toBe('s1');
+    expect(r.items[1].stimulus).toBeUndefined();
+    expect(r.notFound).toEqual(['zzz']);
+  });
+
+  it('উদ্দীপক ফাইলে না থাকলে প্রশ্ন তবু বাছা হয় (উদ্দীপক ছাড়া)', () => {
+    const r = selectCopiesForIds(['a'], [cq('a', { stimulusId: 'missing' })], []);
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0].stimulus).toBeUndefined();
+    expect(r.notFound).toEqual([]);
+  });
+
+  it('একই id দুবার চাইলে একবারই; একই id-র দুই কপি থাকলে প্রথমটা', () => {
+    const r = selectCopiesForIds(['a', 'a'], [cq('a', { questionText: 'প্রথম' }), cq('a', { questionText: 'দ্বিতীয়' })], []);
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0].question.question.questionText).toBe('প্রথম');
+  });
+
+  it('বাছাই করা জোড়া copyRecordFromCopied-এ বৈধ রেকর্ড হয়', () => {
+    const r = selectCopiesForIds(['a'], [cq('a', { stimulusId: 's1' })], [cs('s1')]);
+    const made = copyRecordFromCopied(r.items[0].question, r.items[0].stimulus, 5);
+    expect(made.ok).toBe(true);
+    if (made.ok) expect(made.record.stimulus?.id).toBe('s1');
+  });
+
+  it('খালি ইনপুটে খালি ফল', () => {
+    const r = selectCopiesForIds([], [], []);
+    expect(r.items).toEqual([]);
+    expect(r.notFound).toEqual([]);
   });
 });

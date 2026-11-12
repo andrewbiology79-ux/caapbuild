@@ -33,6 +33,13 @@ export async function getImageBlob(imageId: string, preferred: QbDatabase = db):
     const blob = await readBlobFromRecord(sdb, rec);
     if (blob) return blob;
   }
+  // অংশ ১ঘ-খ: ব্যাংকে-নেই প্রশ্নের কপির ছবি (ব্যাংকের images-এ না থাকলে) - সরাসরি db.copyImages (bankMissingStore import করলে চক্র হয়)
+  try {
+    const copy = await db.copyImages.get(imageId);
+    if (copy?.blob) return copy.blob;
+  } catch {
+    /* কপির টেবিল না পড়া গেলে আগের মতোই null */
+  }
   return null;
 }
 

@@ -768,7 +768,7 @@ export async function generateAndSharePdf(options: GeneratePdfOptions): Promise<
 
     for (const imgId of allImageIds) {
       // Images live in the database of the collection they belong to (Type CQ / Chapter CQ)
-      const imgRecord = (await db.images.get(imgId)) ?? (await chapterDb.images.get(imgId));
+      const imgRecord = (await db.images.get(imgId)) ?? (await chapterDb.images.get(imgId)) ?? (await db.copyImages.get(imgId)); // শেষেরটা: ব্যাংকে-নেই প্রশ্নের কপির ছবি
       const imgBlob = imgRecord ? await getImageBlob(imgId) : null;
       if (imgRecord && imgBlob) {
         try {

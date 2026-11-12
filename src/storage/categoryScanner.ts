@@ -20,6 +20,7 @@ import {
   type CategoryPending,
   type CategoryTotals,
 } from './categoryCompare';
+import { bankMissingCareNoLock } from './categoryBankMissing';
 import { planCategoryApply, planHasDbChanges, previewSignature, stampIdMaker, type BankMissingPaper, type CategoryApplyCounts, type CategoryOp } from './categoryApplyPlan';
 
 /**
@@ -205,7 +206,9 @@ export async function applyCategoriesFromFolder(
     tracker?.setPhase('folders', 'অ্যাপে প্রয়োগ হচ্ছে');
     await applyOps(plan.ops, plan.state, (label) => tracker?.step(1, label));
     tracker?.step(1, 'স্মৃতি সেভ');
-    return { counts: plan.counts, warnings: g.result.warnings, bankMissing: plan.bankMissing, changed: planHasDbChanges(plan), needsWrite: plan.needsWrite };
+    // অংশ ১ঘ-খ: ব্যাংকে-নেই প্রশ্নের কপি data.json/media/ থেকে ডেটাবেসে (ব্যর্থ হলেও প্রয়োগ অক্ষত - শুধু সতর্কতা)
+    const care = await bankMissingCareNoLock();
+    return { counts: plan.counts, warnings: [...g.result.warnings, ...care.warnings], bankMissing: plan.bankMissing, changed: planHasDbChanges(plan), needsWrite: plan.needsWrite };
   });
   // ফোল্ডারে নতুন করে লেখা দরকার (নাম অমিল / অশ্রেণিবদ্ধে সরানো প্রশ্নপত্র) - লক ছেড়ে সারিতে দেওয়া
   const queuedWrites = out.needsWrite;

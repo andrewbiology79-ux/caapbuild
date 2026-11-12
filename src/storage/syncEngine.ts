@@ -18,6 +18,7 @@ import { installCategoryHooks, resumeCategoryAuto, setCategoryErrorHandler, setC
 import { scanScope, type ScanSummary } from './scanner';
 import { withSyncLock } from './syncLock';
 import { waitForEditorsClosed } from './editorGuard';
+import { bankMissingCare, bankMissingCareNoLock } from './categoryBankMissing';
 
 /**
  * Folder sync - the one place that decides WHEN things are written / read.
@@ -148,6 +149,11 @@ async function runSyncNow(opts: SyncNowOptions): Promise<SyncReport> {
         out.push({ scope, added: 0, renamed: 0, deleted: 0, topicsUpdated: 0, warnings: [], changed: false, error: err?.message || String(err) });
       }
     }
+    // অংশ ১ঘ-খ: ফোল্ডার থেকে প্রশ্ন মুছে গেলে (প্রশ্নপত্রে থাকলে) কপি ক্যাটেগরির data.json থেকে ডেটাবেসে আনা - data.json এখনো পুরনো কপিসহ (লেখক পরে চলবে)
+    if (out.some((s) => s.deleted > 0)) {
+      const care = await bankMissingCareNoLock();
+      if (care.warnings.length) console.warn('Bank-missing care:', care.warnings);
+    }
     return out;
   });
 
@@ -188,6 +194,15 @@ export function startFolderSync(onReport: (r: SyncReport) => void, onWriteError:
   setCategoryErrorHandler(onWriteError);
   setCategoryMessageHandler((messages) => onWriteError(messages.slice(0, 2).join(' | ') + (messages.length > 2 ? ` (আরও ${messages.length - 2}টি)` : '')));
   resumeCategoryAuto();
+  // অংশ ১ঘ-খ: অ্যাপ চালুর কিছু পরে একবার - বাসি কপি ছাঁটাই + ব্যাংকে-নেই প্রশ্নের কপি ফোল্ডার থেকে আনা (আগে সিঙ্ক করা প্রশ্নপত্রের জন্যও)
+  const careTimer = setTimeout(() => {
+    void hasStorageAccess()
+      .then((ok) => (ok ? bankMissingCare() : null))
+      .then((r) => {
+        if (r?.warnings.length) console.warn('Bank-missing care:', r.warnings);
+      })
+      .catch((e) => console.warn('Bank-missing care failed:', e));
+  }, 4000);
 
   let stopped = false;
   let running = false;
@@ -231,6 +246,7 @@ export function startFolderSync(onReport: (r: SyncReport) => void, onWriteError:
   return () => {
     stopped = true;
     stopCategoryAuto();
+    clearTimeout(careTimer);
     setCategoryErrorHandler(null);
     setCategoryMessageHandler(null);
     clearTimeout(first);

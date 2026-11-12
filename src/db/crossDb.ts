@@ -1,6 +1,8 @@
 import { db, chapterDb, getDb, type CqScope, type Question, type Stimulus } from './db';
 import { typeApi, chapterApi, generateId } from './api';
 import { getImageBlob } from '../storage/imageStore';
+import { fillMissingQuestions, fillMissingStimuli } from '../storage/bankMissing';
+import { loadCopies } from '../storage/bankMissingStore';
 
 /**
  * Papers can contain questions from BOTH collections (Type CQ + Chapter CQ).
@@ -12,20 +14,42 @@ export async function getQuestionsByIds(ids: string[]): Promise<Question[]> {
   if (!ids || ids.length === 0) return [];
   const fromType = await db.questions.where('id').anyOf(ids).toArray();
   const found = new Set(fromType.map((q: Question) => q.id));
-  const missing = ids.filter((id) => !found.has(id));
+  let missing = ids.filter((id) => !found.has(id));
   if (missing.length === 0) return fromType;
   const fromChapter = await chapterDb.questions.where('id').anyOf(missing).toArray();
-  return [...fromType, ...fromChapter];
+  const all = [...fromType, ...fromChapter];
+  const foundAll = new Set(all.map((q: Question) => q.id));
+  missing = missing.filter((id) => !foundAll.has(id));
+  if (missing.length === 0) return all;
+  // অংশ ১ঘ-খ: ব্যাংকে না পাওয়া প্রশ্ন নিঃশব্দে বাদ না দিয়ে কপি থেকে পূরণ (ব্যাংকে থাকলে ব্যাংকই জেতে)
+  try {
+    const copies = await loadCopies(missing);
+    return copies.size > 0 ? fillMissingQuestions(missing, all, copies) : all;
+  } catch (e) {
+    console.warn('Bank-missing copies could not be read:', e);
+    return all;
+  }
 }
 
 export async function getStimuliByIds(ids: string[]): Promise<Stimulus[]> {
   if (!ids || ids.length === 0) return [];
   const fromType = await db.stimuli.where('id').anyOf(ids).toArray();
   const found = new Set(fromType.map((s: Stimulus) => s.id));
-  const missing = ids.filter((id) => !found.has(id));
+  let missing = ids.filter((id) => !found.has(id));
   if (missing.length === 0) return fromType;
   const fromChapter = await chapterDb.stimuli.where('id').anyOf(missing).toArray();
-  return [...fromType, ...fromChapter];
+  const all = [...fromType, ...fromChapter];
+  const foundAll = new Set(all.map((s: Stimulus) => s.id));
+  missing = missing.filter((id) => !foundAll.has(id));
+  if (missing.length === 0) return all;
+  // অংশ ১ঘ-খ: ব্যাংকে না পাওয়া উদ্দীপক কপি থেকে (কপি প্রশ্ন-প্রতি, তাই সব কপি দেখা হয়; কপি সাধারণত অল্প)
+  try {
+    const copies = await loadCopies();
+    return copies.size > 0 ? fillMissingStimuli(missing, all, Array.from(copies.values())) : all;
+  } catch (e) {
+    console.warn('Bank-missing copies could not be read:', e);
+    return all;
+  }
 }
 
 /** Questions picked in Type CQ followed by the ones picked in Chapter CQ */
@@ -45,7 +69,11 @@ export async function setSelectionFromPaperIds(ids: string[]): Promise<void> {
   const typeQs = await db.questions.where('id').anyOf(ids).primaryKeys();
   const typeSet = new Set<string>(typeQs as string[]);
   const typeIds = ids.filter((id) => typeSet.has(id));
-  const chapterIds = ids.filter((id) => !typeSet.has(id));
+  // অংশ ১ঘ-খ: ব্যাংকে-নেই প্রশ্ন (কপি আছে, ব্যাংকে নেই) \"chapter\"-এ ধরা হতো - এখন Chapter CQ-তে সত্যিই আছে কি না দেখা হয়, না থাকলে বাদ
+  const restIds = ids.filter((id) => !typeSet.has(id));
+  const chapterQs = restIds.length ? await chapterDb.questions.where('id').anyOf(restIds).primaryKeys() : [];
+  const chapterSet = new Set<string>(chapterQs as string[]);
+  const chapterIds = restIds.filter((id) => chapterSet.has(id));
   await typeApi.reorderSelected(typeIds);
   await chapterApi.reorderSelected(chapterIds);
 }

@@ -18,6 +18,7 @@ import {
 
 import { toBn, toEn } from '../utils/toBn';
 import { getImageObjectUrl } from '../storage/imageStore';
+import { saveCopiesBeforeDelete } from '../storage/bankMissingStore';
 
 
 export type {
@@ -431,6 +432,9 @@ async function deleteQuestion(questionId: string): Promise<void> {
   const q = await db.questions.get(questionId);
   if (!q) return;
 
+  // অংশ ১ঘ-খ: কোনো প্রশ্নপত্রে থাকলে মোছার ঠিক আগে কপি রাখা (ব্যর্থ হলেও মোছা আটকায় না - আগের আচরণ)
+  await saveCopiesBeforeDelete([questionId]);
+
   // 1. Remove associated solution images
   if (q.solutionImageIds && q.solutionImageIds.length > 0) {
     await deleteImages(q.solutionImageIds);
@@ -468,6 +472,7 @@ async function deleteStimulusOnly(stimulusId: string): Promise<void> {
 
 async function deleteStimulus(stimulusId: string): Promise<void> {
   const questions = await db.questions.where('stimulusId').equals(stimulusId).toArray();
+  await saveCopiesBeforeDelete(questions.map((q) => q.id)); // অংশ ১ঘ-খ
   for (const q of questions) {
     if (q.solutionImageIds) {
       await deleteImages(q.solutionImageIds);
@@ -480,6 +485,7 @@ async function deleteStimulus(stimulusId: string): Promise<void> {
 
 async function deleteTopic(topicId: string): Promise<void> {
   const questions = await db.questions.where('topicId').equals(topicId).toArray();
+  await saveCopiesBeforeDelete(questions.map((q) => q.id)); // অংশ ১ঘ-খ (deleteChapter/deleteSubject এই পথেই আসে)
   for (const q of questions) {
     if (q.solutionImageIds) await deleteImages(q.solutionImageIds);
     await db.questions.delete(q.id);
@@ -849,6 +855,7 @@ async function deleteStimulusGroup(
   stimulusId: string | undefined,
   questionIds: string[]
 ): Promise<void> {
+  await saveCopiesBeforeDelete(questionIds); // অংশ ১ঘ-খ: transaction-এর আগে (কপির টেবিল আলাদা)
   await db.transaction('rw', [db.stimuli, db.questions, db.meta], async () => {
     if (stimulusId) {
       await db.stimuli.delete(stimulusId);
