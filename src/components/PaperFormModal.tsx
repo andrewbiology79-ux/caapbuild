@@ -496,7 +496,7 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
         {/* Header with Safe Area Inset */}
         <header
           className="bg-[#3B4FD8] text-white pl-4 pr-2 h-14 flex items-center justify-between shrink-0 shadow-md"
-          style={{ paddingTop: 'var(--safe-top, env(safe-area-inset-top, 0px))' }}
+          style={{ boxSizing: 'content-box', paddingTop: 'var(--safe-top, env(safe-area-inset-top, 0px))' }}
         >
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-white" />
@@ -802,7 +802,7 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
           >
             <header
               className="bg-[#3B4FD8] text-white px-4 h-14 flex items-center justify-between shrink-0 shadow-md"
-              style={{ paddingTop: 'var(--safe-top, env(safe-area-inset-top, 0px))' }}
+              style={{ boxSizing: 'content-box', paddingTop: 'var(--safe-top, env(safe-area-inset-top, 0px))' }}
             >
               <h3 className="text-sm font-bold">প্রশ্নপত্রের তথ্য</h3>
               <button

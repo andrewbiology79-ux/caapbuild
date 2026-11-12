@@ -53,6 +53,18 @@ button,
   overflow-y: hidden;
 }
 
+/* ইনলাইন গণিতে (যেমন CO₂) সামান্য উপচানোয় ছোট স্ক্রলবার দেখা যেত; ইনলাইনে স্ক্রলবার লুকানো (স্ক্রল চলে), ব্লক গণিতে আগের মতো */
+.qb-inline-math,
+.qb-inline-math .katex {
+  scrollbar-width: none;
+}
+.qb-inline-math::-webkit-scrollbar,
+.qb-inline-math .katex::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 /* Custom subtle scrollbar */
 ::-webkit-scrollbar {
   width: 4px;

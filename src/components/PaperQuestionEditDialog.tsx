@@ -98,7 +98,7 @@ export const PaperQuestionEditDialog: React.FC<PaperQuestionEditDialogProps> = (
     >
       <header
         className="bg-[#3B4FD8] text-white px-4 h-14 flex items-center justify-between shrink-0 shadow-md"
-        style={{ paddingTop: 'var(--safe-top, env(safe-area-inset-top, 0px))' }}
+        style={{ boxSizing: 'content-box', paddingTop: 'var(--safe-top, env(safe-area-inset-top, 0px))' }}
       >
         <h3 className="text-sm font-bold">প্রশ্ন সম্পাদনা</h3>
         <button

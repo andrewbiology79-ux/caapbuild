@@ -1554,7 +1554,10 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
       <div className="w-full max-w-[390px] h-full sm:h-[844px] bg-[#F2F4F8] text-[#1B1F2A] flex flex-col relative overflow-hidden shadow-2xl sm:rounded-[32px] border border-[#D5D9E2]">
         
         {/* Header */}
-        <header className="sticky top-0 z-30 bg-[#3B4FD8] text-white px-4 h-14 flex items-center justify-between shadow-md shrink-0">
+        <header
+          className="sticky top-0 z-30 bg-[#3B4FD8] text-white px-4 h-14 flex items-center justify-between shadow-md shrink-0"
+          style={{ boxSizing: 'content-box', paddingTop: 'var(--safe-top, env(safe-area-inset-top, 0px))' }}
+        >
           <div className="flex items-center gap-2 min-w-0">
             <button
               type="button"

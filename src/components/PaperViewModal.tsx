@@ -352,7 +352,7 @@ export const PaperViewModal: React.FC<PaperViewModalProps> = ({
         {/* Top Header with Safe Area Inset */}
         <header
           className="bg-[#3B4FD8] text-white px-4 h-14 flex items-center justify-between shrink-0 shadow-md"
-          style={{ paddingTop: 'var(--safe-top, env(safe-area-inset-top, 0px))' }}
+          style={{ boxSizing: 'content-box', paddingTop: 'var(--safe-top, env(safe-area-inset-top, 0px))' }}
         >
           <div className="flex items-center gap-2">
             <button

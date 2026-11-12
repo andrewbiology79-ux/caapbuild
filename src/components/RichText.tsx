@@ -116,7 +116,7 @@ export const RichText: React.FC<RichTextProps> = ({ text, className = '', style 
           return (
             <span
               key={index}
-              className="inline-block mx-0.5 align-middle select-text max-w-full overflow-x-auto"
+              className="qb-inline-math inline-block mx-0.5 align-middle select-text max-w-full overflow-x-auto"
               style={{
                 maxWidth: '100%',
                 overflowX: 'auto',
