@@ -6,6 +6,7 @@ import {
   groupRows,
   computeScopedFacets,
   rowBoards,
+  rowRating,
   type FilterRow,
   type FilterCriteria,
 } from '../src/utils/filterEngine';
@@ -93,6 +94,21 @@ describe('filterEngine', () => {
     expect(ids(applyFilters(rows, crit({ ratings: [4, 5] }), 'default'))).toEqual(['g', 'gh']);
     expect(ids(applyFilters(rows, crit({}), 'rating-desc'))[0]).toBe('gh');
     expect(ids(applyFilters(rows, crit({}), 'rating-asc'))[0]).toBe('k');
+  });
+
+  it('উদ্দীপকের রেটিংই মূল: ছাঁকনি, সর্ট; উদ্দীপকে রেটিং না থাকলে প্রশ্নের রেটিং', () => {
+    const withStim = [
+      row({ id: 'a', rating: 1, stimulus: { id: 's1', text: 'x', rating: 5 } }),
+      row({ id: 'b', rating: 5, stimulus: { id: 's2', text: 'y', rating: 2 } }),
+      row({ id: 'c', rating: 4, stimulus: { id: 's3', text: 'z' } }), // old data: no stimulus rating
+      row({ id: 'd', rating: 3 }), // no stimulus at all
+    ];
+    expect(rowRating(withStim[0])).toBe(5);
+    expect(rowRating(withStim[2])).toBe(4);
+    expect(rowRating(withStim[3])).toBe(3);
+    expect(ids(applyFilters(withStim, crit({ ratings: [5] }), 'default'))).toEqual(['a']);
+    expect(ids(applyFilters(withStim, crit({}), 'rating-desc'))).toEqual(['a', 'c', 'd', 'b']);
+    expect(ids(applyFilters(withStim, crit({}), 'rating-asc'))).toEqual(['b', 'd', 'c', 'a']);
   });
 
   it('সর্ট "type" ক -> ঘ ক্রমে', () => {

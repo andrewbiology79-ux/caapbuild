@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { X, BarChart3 } from 'lucide-react';
-import { loadFilterDataset, rowBoards, type FilterRow } from '../utils/filterEngine';
+import { loadFilterDataset, rowBoards, rowRating, type FilterRow } from '../utils/filterEngine';
 import { toBn } from '../utils/toBn';
 import type { CqScope } from '../db/db';
 import { useBackClose } from '../utils/useBackClose';
@@ -100,7 +100,7 @@ export const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose }) => {
       t.total += 1;
       const type = r.question.type || '?';
       c.types[type] = (c.types[type] || 0) + 1;
-      const rating = Math.min(5, Math.max(1, Math.round(r.question.rating || 3)));
+      const rating = Math.min(5, Math.max(1, Math.round(rowRating(r) || 3)));
       c.ratings[rating - 1] += 1;
       if (r.usages.length > 0) {
         c.used += 1;

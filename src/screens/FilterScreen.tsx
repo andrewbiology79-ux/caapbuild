@@ -222,8 +222,10 @@ const GroupCard: React.FC<GroupCardProps> = React.memo(
       };
     }, [source, stimulus, rows, openSolutions]);
 
-    // average rating of the shown questions (same rule as the Type CQ / Chapter CQ cards)
-    const avgRating = Math.round(rows.reduce((sum, r) => sum + (r.question.rating || 3), 0) / rows.length);
+    // card badge = the stimulus (উদ্দীপক) rating; old data without one falls back to the average of the shown questions
+    const avgRating =
+      stimulus?.rating ??
+      Math.round(rows.reduce((sum, r) => sum + (r.question.rating || 3), 0) / rows.length);
 
     // top chips: boards of the stimulus only (each question's own boards sit beside its সমাধান button)
     const boards = (() => {

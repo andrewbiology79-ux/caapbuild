@@ -1632,14 +1632,16 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
                   groupQuestionIds.length > 0 &&
                   groupQuestionIds.every((id) => selectedIds.includes(id));
 
-                // Calculate average rating of questions in group
+                // Card badge = the stimulus (উদ্দীপক) rating. Old data without one falls back to the
+                // average of the sub-question ratings (গ / ঘ ratings themselves stay untouched).
                 const avgRating =
-                  grp.questions.length > 0
+                  grp.stimulus?.rating ??
+                  (grp.questions.length > 0
                     ? Math.round(
                         grp.questions.reduce((sum, q) => sum + (q.rating || 3), 0) /
                           grp.questions.length
                       )
-                    : 3;
+                    : 3);
                 const starsText = getRatingStarsText(avgRating);
 
                 // Collect usage chips & board chips for group

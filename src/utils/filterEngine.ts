@@ -255,6 +255,11 @@ function inList<T>(list: T[], value: T): boolean {
   return list.length === 0 || list.includes(value);
 }
 
+/** The rating of a result row = the stimulus (উদ্দীপক) rating. Old data without one falls back to the question's own rating. */
+export function rowRating(row: FilterRow): number {
+  return row.stimulus?.rating ?? row.question.rating ?? 3;
+}
+
 export function matchesCriteria(row: FilterRow, c: FilterCriteria, textTerms: string[]): boolean {
   const q = row.question;
 
@@ -263,7 +268,7 @@ export function matchesCriteria(row: FilterRow, c: FilterCriteria, textTerms: st
   if (!inList(c.chapters, `${row.subjectName}||${row.chapterName}`)) return false;
   if (c.topics.length > 0 && !c.topics.includes(row.topicName)) return false;
   if (!inList(c.types, q.type)) return false;
-  if (c.ratings.length > 0 && !c.ratings.includes(Math.round(q.rating || 3))) return false;
+  if (c.ratings.length > 0 && !c.ratings.includes(Math.round(rowRating(row) || 3))) return false;
   if (c.marks.length > 0 && !c.marks.includes(q.marks)) return false;
 
   const usedList = rowBoards(row);
@@ -304,10 +309,10 @@ export function applyFilters(rows: FilterRow[], c: FilterCriteria, sort: SortMod
 
   switch (sort) {
     case 'rating-desc':
-      out.sort((a, b) => (b.question.rating || 3) - (a.question.rating || 3) || a.seq - b.seq);
+      out.sort((a, b) => (rowRating(b) || 3) - (rowRating(a) || 3) || a.seq - b.seq);
       break;
     case 'rating-asc':
-      out.sort((a, b) => (a.question.rating || 3) - (b.question.rating || 3) || a.seq - b.seq);
+      out.sort((a, b) => (rowRating(a) || 3) - (rowRating(b) || 3) || a.seq - b.seq);
       break;
     case 'marks-desc':
       out.sort((a, b) => b.question.marks - a.question.marks || a.seq - b.seq);
