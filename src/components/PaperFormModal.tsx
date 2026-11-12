@@ -2,8 +2,10 @@ import { SolutionView } from './SolutionView';
 import { useEditorOpen } from '../utils/useEditorOpen';
 import { splitStimulusImages } from '../utils/solutionParts';
 import { getQuestionsByIds, getStimuliByIds, getSelectedIdsAll } from '../db/crossDb';
+import { getBankMissingIdsForPaper, restoreQuestionToBank, notifyBankMissingChanged } from '../storage/bankMissingStore';
+import { missingIdsInGroup, restoreConfirmText, restoreSummaryMessage } from '../storage/bankMissing';
 import React, { useState, useEffect, useRef } from 'react';
-import { X, FileText, Check, ArrowUp, ArrowDown, Pencil, Eye, EyeOff, Settings2 } from 'lucide-react';
+import { X, FileText, Check, ArrowUp, ArrowDown, Pencil, Eye, EyeOff, Settings2, ArchiveRestore } from 'lucide-react';
 import { DEFAULT_PAPER_NOTE, type Paper, type PaperEdits, type Question, type Stimulus, type Category } from '../db/db';
 import {
   savePaper,
@@ -73,6 +75,28 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
   // Paper info (title, category, subject line, note, time, marks) lives only in the 3-dot menu
   const [showInfoPanel, setShowInfoPanel] = useState(false);
 
+  // ব্যাংকে-নেই প্রশ্ন (কপি থেকে দেখানো): কার্ডে ট্যাগ + ব্যাংকে-ফেরানো বাটন
+  const [bankMissingIds, setBankMissingIds] = useState<Set<string>>(new Set());
+  const [restoreGroupId, setRestoreGroupId] = useState<string | null>(null);
+  const [restoring, setRestoring] = useState(false);
+  const refreshBankMissing = async () => {
+    if (!editPaper) {
+      setBankMissingIds(new Set());
+      return;
+    }
+    try {
+      setBankMissingIds(new Set(await getBankMissingIdsForPaper(editPaper.id)));
+    } catch (e) {
+      console.warn('ব্যাংকে-নেই তালিকা পড়া যায়নি', e);
+      setBankMissingIds(new Set());
+    }
+  };
+  useEffect(() => {
+    if (!isOpen) return;
+    void refreshBankMissing();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, editPaper]);
+
   // question id -> short names of the OTHER papers that already contain it (repeat warning)
   const [usedInPapers, setUsedInPapers] = useState<Record<string, string[]>>({});
   useEffect(() => {
@@ -95,6 +119,29 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
       cancelled = true;
     };
   }, [isOpen, editPaper]);
+
+  const restoreGroup = includedGroups.find((g) => g.id === restoreGroupId) || null;
+  const restoreIds = restoreGroup ? missingIdsInGroup(restoreGroup.questions.map((q) => q.id), bankMissingIds) : [];
+
+  const handleRestoreConfirmed = async () => {
+    if (restoring || restoreIds.length === 0) {
+      setRestoreGroupId(null);
+      return;
+    }
+    setRestoring(true);
+    try {
+      const results = [];
+      for (const qid of restoreIds) results.push(await restoreQuestionToBank(qid));
+      showToast(restoreSummaryMessage(results));
+      await refreshBankMissing();
+      notifyBankMissingChanged();
+    } catch (e: any) {
+      showToast(`ব্যাংকে ফেরানো যায়নি: ${e?.message ?? 'অজানা কারণ'}`);
+    } finally {
+      setRestoring(false);
+      setRestoreGroupId(null);
+    }
+  };
 
   // Warn (never block) when the question marks do not add up to the paper's total marks
   const questionMarksSum = sumGroupMarks(includedGroups, edits);
@@ -137,7 +184,7 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
   useEditorOpen(isOpen);
   useBackClose(isOpen, () => {
     if (saving) return true;
-    if (showNewCatPrompt || editingGroupId || showExitConfirm) return true; // এগুলোর নিজস্ব হ্যান্ডলার আছে
+    if (showNewCatPrompt || editingGroupId || showExitConfirm || restoreGroupId) return true; // এগুলোর নিজস্ব হ্যান্ডলার আছে
     if (showInfoPanel) {
       setShowInfoPanel(false);
       return true;
@@ -550,6 +597,11 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
                           </span>
                         );
                       })()}
+                      {group.questions.some((q) => bankMissingIds.has(q.id)) && (
+                        <span className="px-2 py-0.5 rounded-full bg-amber-300 text-amber-950 text-[0.625rem] font-black shrink-0">
+                          ব্যাংকে নেই
+                        </span>
+                      )}
                       <div className="flex-1" />
                       {isReordering ? (
                         <div className="flex items-center gap-1">
@@ -574,6 +626,17 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
                         </div>
                       ) : (
                         <div className="flex items-center gap-1">
+                          {group.questions.some((q) => bankMissingIds.has(q.id)) && (
+                            <button
+                              type="button"
+                              aria-label="প্রশ্ন ব্যাংকে যোগ করুন"
+                              disabled={restoring}
+                              onClick={() => setRestoreGroupId(group.id)}
+                              className="w-9 h-9 rounded-lg hover:bg-white/20 active:bg-white/30 flex items-center justify-center disabled:opacity-40"
+                            >
+                              <ArchiveRestore className="w-4 h-4" />
+                            </button>
+                          )}
                           <button
                             type="button"
                             aria-label="এই প্রশ্নপত্রে প্রশ্ন সম্পাদনা করুন"
@@ -874,6 +937,17 @@ export const PaperFormModal: React.FC<PaperFormModalProps> = ({
             onClose={() => setEditingGroupId(null)}
           />
         )}
+
+        {/* ব্যাংকে-নেই প্রশ্ন ব্যাংকে ফেরানোর নিশ্চিতকরণ */}
+        <ConfirmDialog
+          isOpen={!!restoreGroup && restoreIds.length > 0}
+          title={restoreConfirmText(restoreIds.length).title}
+          message={restoreConfirmText(restoreIds.length).message}
+          confirmText="হ্যাঁ"
+          cancelText="না"
+          onConfirm={handleRestoreConfirmed}
+          onCancel={() => setRestoreGroupId(null)}
+        />
 
         {/* Unsaved changes on exit */}
         <ConfirmDialog

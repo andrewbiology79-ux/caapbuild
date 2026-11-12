@@ -423,6 +423,52 @@ export function deleteConfirmNote(paperCount: number): string | null {
   return `প্রশ্নটা ${bn(paperCount)}টি প্রশ্নপত্রে আছে। ব্যাংক থেকে মুছলেও সেখানে থেকে যাবে।`;
 }
 
+/** কতটি আলাদা প্রশ্নপত্রে দেওয়া প্রশ্নগুলোর অন্তত একটি আছে (মোছার নিশ্চিতকরণের জন্য) */
+export function paperCountUsingQuestions(papers: Array<Pick<Paper, 'id' | 'questionIds'>>, questionIds: string[]): number {
+  const wanted = new Set(questionIds.filter((x) => typeof x === 'string' && x !== ''));
+  if (wanted.size === 0) return 0;
+  let n = 0;
+  for (const p of papers) {
+    if (Array.isArray(p.questionIds) && p.questionIds.some((id) => wanted.has(id))) n++;
+  }
+  return n;
+}
+
+/** একাধিক প্রশ্ন মোছার নিশ্চিতকরণের লাইন; একটা প্রশ্ন হলে deleteConfirmNote-এর লেখাই */
+export function deleteConfirmNoteMany(paperCount: number, questionCount: number): string | null {
+  if (paperCount <= 0) return null;
+  if (questionCount <= 1) return deleteConfirmNote(paperCount);
+  return `এর কিছু প্রশ্ন ${bn(paperCount)}টি প্রশ্নপত্রে আছে। ব্যাংক থেকে মুছলেও সেখানে থেকে যাবে।`;
+}
+
+/** মূল বার্তার নিচে নোট জুড়ে দেয় (নোট না থাকলে বার্তা অপরিবর্তিত) */
+export function withDeleteNote(message: string, note: string | null): string {
+  return note ? `${message}\n\n${note}` : message;
+}
+
+/** একাধিক প্রশ্ন ফেরানোর ফল থেকে একটাই বার্তা (এক কার্ডে গ-ঘ-র মতো একাধিক প্রশ্ন থাকলে) */
+export function restoreSummaryMessage(results: RestoreResult[]): string {
+  if (results.length === 0) return 'ফেরানোর মতো প্রশ্ন নেই';
+  if (results.length === 1) return restoreResultMessage(results[0]);
+  const done = results.filter((r) => r.status !== 'failed').length;
+  const failed = results.filter((r) => r.status === 'failed');
+  if (failed.length === 0) return `${bn(done)}টি প্রশ্ন ব্যাংকে ফিরেছে`;
+  if (done === 0) return `ব্যাংকে ফেরানো যায়নি: ${failed[0].reason ?? 'অজানা কারণ'}`;
+  return `${bn(done)}টি প্রশ্ন ব্যাংকে ফিরেছে, ${bn(failed.length)}টি ফেরানো যায়নি: ${failed[0].reason ?? 'অজানা কারণ'}`;
+}
+
+/** ফেরানোর নিশ্চিতকরণের বার্তা (n = এই কার্ডের ব্যাংকে-নেই প্রশ্ন) */
+export function restoreConfirmText(n: number): { title: string; message: string } {
+  return n <= 1
+    ? { title: 'ব্যাংকে যোগ করবেন?', message: 'প্রশ্নটা প্রশ্ন ব্যাংকে যোগ করবেন? এটি আগের বিষয়/অধ্যায়/টপিকেই ফিরবে।' }
+    : { title: 'ব্যাংকে যোগ করবেন?', message: `এই কার্ডের ব্যাংকে-নেই ${bn(n)}টি প্রশ্ন প্রশ্ন ব্যাংকে যোগ করবেন? সবগুলো আগের বিষয়/অধ্যায়/টপিকেই ফিরবে।` };
+}
+
+/** কার্ডের কোন প্রশ্নগুলো ব্যাংকে নেই (কার্ডের ক্রমে) */
+export function missingIdsInGroup(groupQuestionIds: string[], missing: Set<string>): string[] {
+  return groupQuestionIds.filter((id) => missing.has(id));
+}
+
 /** Create কার্ডের চিহ্ন: "কিছু প্রশ্ন ব্যাংকে নেই (n)" - n = 0 হলে null (চিহ্ন থাকে না) */
 export function bankMissingBadgeText(n: number): string | null {
   return n > 0 ? `কিছু প্রশ্ন ব্যাংকে নেই (${bn(n)})` : null;

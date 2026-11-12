@@ -4,6 +4,8 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Header } from '../components/Header';
 import { useToast } from '../components/Toast';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { countPapersUsingQuestionIds, countPapersUnder, BANK_MISSING_CHANGED_EVENT } from '../storage/bankMissingStore';
+import { deleteConfirmNoteMany, withDeleteNote } from '../storage/bankMissing';
 import { PromptDialog } from '../components/PromptDialog';
 import { QuestionFormModal } from '../components/QuestionFormModal';
 import { ImportCollectionModal } from '../components/ImportCollectionModal';
@@ -344,6 +346,13 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
     window.addEventListener(SYNC_CHANGED_EVENT, onSynced);
     return () => window.removeEventListener(SYNC_CHANGED_EVENT, onSynced);
   }, [scope]);
+
+  // ব্যাংকে ফেরানো/কপি আনার পর তালিকা রিফ্রেশ
+  useEffect(() => {
+    const onBankChanged = () => loadDataRef.current();
+    window.addEventListener(BANK_MISSING_CHANGED_EVENT, onBankChanged);
+    return () => window.removeEventListener(BANK_MISSING_CHANGED_EVENT, onBankChanged);
+  }, []);
 
   // Chapter CQ has no topic level: every chapter owns one hidden default topic that holds its questions
   const openChapter = useCallback(
@@ -695,7 +704,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
   };
 
   // Delete all selected questions of the open type / chapter
-  const handleDeleteSelected = () => {
+  const handleDeleteSelected = async () => {
     const selected = new Set(selectedIds);
     const toDelete: string[] = [];
     for (const g of questionGroups) {
@@ -707,10 +716,11 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
       showToast('আগে \"সব নির্বাচন করুন\" বা প্রশ্নের চেকবক্সে ট্যাপ করে নির্বাচন করুন');
       return;
     }
+    const usedNote = deleteConfirmNoteMany(await countPapersUsingQuestionIds(toDelete), toDelete.length);
     setConfirmDialog({
       isOpen: true,
       title: 'নির্বাচিত প্রশ্ন মুছবেন?',
-      message: `নির্বাচিত ${toBn(toDelete.length)}টি প্রশ্ন স্থায়ীভাবে মুছে ফেলতে চান? এটি আর ফেরানো যাবে না।`,
+      message: withDeleteNote(`নির্বাচিত ${toBn(toDelete.length)}টি প্রশ্ন স্থায়ীভাবে মুছে ফেলতে চান? এটি আর ফেরানো যাবে না।`, usedNote),
       onConfirm: async () => {
         try {
           for (const id of toDelete) {
@@ -727,11 +737,13 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
   };
 
   // Delete Stimulus Group
-  const handleDeleteGroupPrompt = (grp: StimulusWithQuestions) => {
+  const handleDeleteGroupPrompt = async (grp: StimulusWithQuestions) => {
+    const groupQIds = grp.questions.map((q) => q.id);
+    const usedNote = deleteConfirmNoteMany(await countPapersUsingQuestionIds(groupQIds), groupQIds.length);
     setConfirmDialog({
       isOpen: true,
       title: 'প্রশ্ন মুছবেন?',
-      message: 'এই উদ্দীপক এবং এর সাথে যুক্ত সকল প্রশ্ন স্থায়ীভাবে মুছে ফেলতে চান?',
+      message: withDeleteNote('এই উদ্দীপক এবং এর সাথে যুক্ত সকল প্রশ্ন স্থায়ীভাবে মুছে ফেলতে চান?', usedNote),
       onConfirm: async () => {
         try {
           const qIds = grp.questions.map((q) => q.id);
@@ -840,15 +852,17 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
   };
 
   // Delete Item
-  const handleDeleteItem = (
+  const handleDeleteItem = async (
     type: 'subject' | 'chapter' | 'topic',
     id: string,
     name: string
   ) => {
+    const under = await countPapersUnder(scope, type, id);
+    const usedNote = deleteConfirmNoteMany(under.paperCount, under.questionCount);
     setConfirmDialog({
       isOpen: true,
       title: `${type === 'subject' ? 'বিষয়' : type === 'chapter' ? 'অধ্যায়' : 'টপিক'} মুছবেন?`,
-      message: `"${name}" এবং এর অন্তর্গত সকল ডাটা মুছে ফেলতে চান?`,
+      message: withDeleteNote(`"${name}" এবং এর অন্তর্গত সকল ডাটা মুছে ফেলতে চান?`, usedNote),
       onConfirm: async () => {
         if (type === 'subject') await deleteSubject(id);
         if (type === 'chapter') await deleteChapter(id);

@@ -22,6 +22,12 @@ import {
   selectCopiesForIds,
   usedQuestionIds,
   type BankPort,
+  paperCountUsingQuestions,
+  deleteConfirmNoteMany,
+  withDeleteNote,
+  restoreSummaryMessage,
+  restoreConfirmText,
+  missingIdsInGroup,
 } from '../src/storage/bankMissing';
 import { emptyPreviousCopies, bankPathOf } from '../src/storage/categoryCopies';
 
@@ -478,5 +484,77 @@ describe('selectCopiesForIds (ক্যাটেগরির data.json থেক
     const r = selectCopiesForIds([], [], []);
     expect(r.items).toEqual([]);
     expect(r.notFound).toEqual([]);
+  });
+});
+
+
+describe('মোছার নিশ্চিতকরণের নোট (১ঘ-খ-২ক)', () => {
+  const papers = [
+    { id: 'p1', questionIds: ['a', 'b'] },
+    { id: 'p2', questionIds: ['b', 'c'] },
+    { id: 'p3', questionIds: ['x'] },
+  ] as any[];
+
+  it('paperCountUsingQuestions: আলাদা প্রশ্নপত্র গোনে, একই প্রশ্নপত্র দুবার নয়', () => {
+    expect(paperCountUsingQuestions(papers, ['a'])).toBe(1);
+    expect(paperCountUsingQuestions(papers, ['b'])).toBe(2);
+    expect(paperCountUsingQuestions(papers, ['a', 'b'])).toBe(2);
+    expect(paperCountUsingQuestions(papers, ['a', 'b', 'c', 'x'])).toBe(3);
+  });
+
+  it('paperCountUsingQuestions: খালি/অজানা id ও ভাঙা প্রশ্নপত্রে 0', () => {
+    expect(paperCountUsingQuestions(papers, [])).toBe(0);
+    expect(paperCountUsingQuestions(papers, ['', 'zzz'])).toBe(0);
+    expect(paperCountUsingQuestions([{ id: 'q' }, { id: 'r', questionIds: 'oops' }] as any[], ['a'])).toBe(0);
+  });
+
+  it('deleteConfirmNoteMany: কোনো প্রশ্নপত্রে না থাকলে null', () => {
+    expect(deleteConfirmNoteMany(0, 3)).toBeNull();
+  });
+
+  it('deleteConfirmNoteMany: একটা প্রশ্ন হলে deleteConfirmNote-এর লেখা, একাধিক হলে "এর কিছু প্রশ্ন"', () => {
+    expect(deleteConfirmNoteMany(2, 1)).toBe(deleteConfirmNote(2));
+    const many = deleteConfirmNoteMany(2, 4);
+    expect(many).toContain('এর কিছু প্রশ্ন');
+    expect(many).toContain('থেকে যাবে');
+  });
+
+  it('withDeleteNote: নোট থাকলে নিচে জোড়ে, না থাকলে বার্তা অপরিবর্তিত', () => {
+    expect(withDeleteNote('বার্তা', null)).toBe('বার্তা');
+    expect(withDeleteNote('বার্তা', 'নোট')).toBe('বার্তা\n\nনোট');
+  });
+});
+
+
+describe('সম্পাদনা উইন্ডোর ফেরানো - বার্তা ও বাছাই (১ঘ-খ-২খ)', () => {
+  const ok = (id: string, created = false): any => ({ status: 'restored', questionId: id, created: { subject: created, chapter: false, topic: false, stimulus: false }, missingImages: [], warnings: [] });
+  const bad = (id: string, reason: string): any => ({ status: 'failed', questionId: id, reason, created: { subject: false, chapter: false, topic: false, stimulus: false }, missingImages: [], warnings: [] });
+
+  it('missingIdsInGroup: কার্ডের ক্রমে শুধু ব্যাংকে-নেই প্রশ্ন', () => {
+    expect(missingIdsInGroup(['a', 'b', 'c'], new Set(['c', 'a']))).toEqual(['a', 'c']);
+    expect(missingIdsInGroup(['a'], new Set())).toEqual([]);
+  });
+
+  it('restoreConfirmText: একটা প্রশ্নে একবচন, একাধিকে সংখ্যাসহ', () => {
+    expect(restoreConfirmText(1).message).toContain('প্রশ্নটা প্রশ্ন ব্যাংকে যোগ করবেন?');
+    expect(restoreConfirmText(2).message).toContain('২টি প্রশ্ন');
+  });
+
+  it('restoreSummaryMessage: একটাই ফল হলে আগের restoreResultMessage-এর লেখা', () => {
+    expect(restoreSummaryMessage([ok('a')])).toBe(restoreResultMessage(ok('a')));
+    expect(restoreSummaryMessage([])).toContain('ফেরানোর মতো প্রশ্ন নেই');
+  });
+
+  it('restoreSummaryMessage: সব সফল / সব ব্যর্থ / আংশিক', () => {
+    expect(restoreSummaryMessage([ok('a'), ok('b')])).toBe('২টি প্রশ্ন ব্যাংকে ফিরেছে');
+    expect(restoreSummaryMessage([bad('a', 'কপি নেই'), bad('b', 'অন্য')])).toBe('ব্যাংকে ফেরানো যায়নি: কপি নেই');
+    const mixed = restoreSummaryMessage([ok('a'), bad('b', 'কপি নেই')]);
+    expect(mixed).toContain('১টি প্রশ্ন ব্যাংকে ফিরেছে');
+    expect(mixed).toContain('১টি ফেরানো যায়নি');
+  });
+
+  it('restoreSummaryMessage: already-ও সফল গণ্য', () => {
+    const already: any = { status: 'already', questionId: 'b', created: { subject: false, chapter: false, topic: false, stimulus: false }, missingImages: [], warnings: [] };
+    expect(restoreSummaryMessage([ok('a'), already])).toBe('২টি প্রশ্ন ব্যাংকে ফিরেছে');
   });
 });

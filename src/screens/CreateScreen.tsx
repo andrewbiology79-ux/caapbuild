@@ -21,6 +21,8 @@ import { Capacitor } from '@capacitor/core';
 import { useNavigation } from '../utils/navigation';
 import { toBn } from '../utils/toBn';
 import { SYNC_CHANGED_EVENT } from '../storage/syncEngine';
+import { getBankMissingCounts, BANK_MISSING_CHANGED_EVENT } from '../storage/bankMissingStore';
+import { bankMissingBadgeText } from '../storage/bankMissing';
 import { useCategorySyncMenuItem } from '../utils/useCategorySyncMenuItem';
 import {
   FileText,
@@ -45,6 +47,7 @@ import {
   FileDown,
   Loader2,
   CheckCircle2,
+  AlertTriangle,
 } from 'lucide-react';
 
 /**
@@ -60,6 +63,7 @@ export const CreateScreen: React.FC = () => {
   const categorySyncItem = useCategorySyncMenuItem();
 
   const [papers, setPapers] = useState<Paper[]>([]);
+  const [bankMissingCounts, setBankMissingCounts] = useState<Map<string, number>>(new Map());
   const [selectedCount, setSelectedCount] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -102,6 +106,13 @@ export const CreateScreen: React.FC = () => {
       setCategories(cats);
       setPapers(list);
       setSelectedCount(stimCount);
+      // "কিছু প্রশ্ন ব্যাংকে নেই" চিহ্নের সংখ্যা - পড়া না গেলে চিহ্ন ছাড়াই চলে
+      try {
+        setBankMissingCounts(await getBankMissingCounts());
+      } catch (err) {
+        console.warn('ব্যাংকে-নেই সংখ্যা পড়া যায়নি:', err);
+        setBankMissingCounts(new Map());
+      }
       // forget selected / clipboard papers that no longer exist
       const existing = new Set(list.map((p) => p.id));
       setPicked((prev) => new Set([...prev].filter((id) => existing.has(id))));
@@ -127,7 +138,11 @@ export const CreateScreen: React.FC = () => {
       loadData();
     };
     window.addEventListener(SYNC_CHANGED_EVENT, onSynced);
-    return () => window.removeEventListener(SYNC_CHANGED_EVENT, onSynced);
+    window.addEventListener(BANK_MISSING_CHANGED_EVENT, onSynced);
+    return () => {
+      window.removeEventListener(SYNC_CHANGED_EVENT, onSynced);
+      window.removeEventListener(BANK_MISSING_CHANGED_EVENT, onSynced);
+    };
   }, [loadData]);
 
   // বাছাই করা ক্যাটেগরি সিঙ্কে মুছে গেলে ফিল্টার আবার "সব"-এ
@@ -555,6 +570,19 @@ export const CreateScreen: React.FC = () => {
                     <h3 className="text-sm font-bold text-[#1B1F2A] dark:text-slate-100 truncate group-hover:text-[#3B4FD8] dark:group-hover:text-indigo-400 transition-colors">
                       {paper.title}
                     </h3>
+
+                    {(() => {
+                      const missingText = bankMissingBadgeText(bankMissingCounts.get(paper.id) || 0);
+                      if (!missingText) return null;
+                      return (
+                        <div>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-[0.625rem] font-bold">
+                            <AlertTriangle className="w-3 h-3" />
+                            <span>{missingText}</span>
+                          </span>
+                        </div>
+                      );
+                    })()}
 
                     <div className="flex flex-wrap items-center gap-3 text-[0.6875rem] text-[#64748B] dark:text-slate-400">
                       <span className="flex items-center gap-1 font-medium">

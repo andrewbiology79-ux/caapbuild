@@ -8,6 +8,7 @@ import {
   copyRecordFromCopied,
   makeCopyRecord,
   orphanedCopyImageIds,
+  paperCountUsingQuestions,
   planPrune,
   questionsNeedingCopy,
   restoreCopyToBank,
@@ -76,6 +77,54 @@ export async function getBankMissingIdsForPaper(paperId: string): Promise<string
   if (have.length === 0) return [];
   const bankIds = await bankIdsAmong(have);
   return bankMissingIdsOfPaper(paper, bankIds, new Set(have));
+}
+
+/** কপি আনা/ফেরানোর পর Create ও Type/Chapter CQ তালিকা রিফ্রেশের জন্য (SYNC_CHANGED_EVENT-এর চেয়ে হালকা, আলাদা) */
+export const BANK_MISSING_CHANGED_EVENT = 'qb:bank-missing-changed';
+export function notifyBankMissingChanged(): void {
+  try {
+    if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(BANK_MISSING_CHANGED_EVENT));
+  } catch {
+    /* ইভেন্ট না গেলেও কাজ চলে */
+  }
+}
+
+/**
+ * বিষয়/অধ্যায়/টপিকের নিচের সব প্রশ্ন কতটি প্রশ্নপত্রে আছে (মোছার নিশ্চিতকরণের জন্য)। কখনো throw করে না।
+ * ফল: { paperCount, questionCount } - questionCount = নিচের প্রশ্নের সংখ্যা (নোটের "একটা নাকি একাধিক" বাছাইয়ের জন্য)।
+ */
+export async function countPapersUnder(scope: CqScope, level: 'subject' | 'chapter' | 'topic', id: string): Promise<{ paperCount: number; questionCount: number }> {
+  try {
+    const sdb = getDb(scope);
+    let topicIds: string[] = [];
+    if (level === 'topic') topicIds = [id];
+    else {
+      const chapterIds = level === 'chapter' ? [id] : (await sdb.chapters.where('subjectId').equals(id).toArray()).map((c) => c.id);
+      for (const cid of chapterIds) topicIds.push(...(await sdb.topics.where('chapterId').equals(cid).toArray()).map((t) => t.id));
+    }
+    if (topicIds.length === 0) return { paperCount: 0, questionCount: 0 };
+    const qs = await sdb.questions.where('topicId').anyOf(topicIds).primaryKeys();
+    const ids = qs.map(String);
+    return { paperCount: await countPapersUsingQuestionIds(ids), questionCount: ids.length };
+  } catch (err) {
+    console.warn('নিচের প্রশ্নের প্রশ্নপত্র-সংখ্যা পড়া যায়নি:', err);
+    return { paperCount: 0, questionCount: 0 };
+  }
+}
+
+/**
+ * দেওয়া প্রশ্নগুলোর কোনোটি কতটি প্রশ্নপত্রে আছে (প্রশ্নপত্র Type CQ ডেটাবেসে থাকে, তাই Chapter CQ উইন্ডো থেকেও এটাই ডাকা হয়)।
+ * মোছার নিশ্চিতকরণের লাইনের জন্য; কখনো throw করে না (পড়া না গেলে 0 - নোট দেখানো হয় না)।
+ */
+export async function countPapersUsingQuestionIds(questionIds: string[]): Promise<number> {
+  try {
+    const ids = questionIds.filter((x) => typeof x === 'string' && x !== '');
+    if (ids.length === 0) return 0;
+    return paperCountUsingQuestions(await db.papers.toArray(), ids);
+  } catch (err) {
+    console.warn('প্রশ্নপত্র-সংখ্যা পড়া যায়নি:', err);
+    return 0;
+  }
 }
 
 /* ------------------------------------------------------------------

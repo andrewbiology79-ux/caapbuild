@@ -19,6 +19,7 @@ import { scanScope, type ScanSummary } from './scanner';
 import { withSyncLock } from './syncLock';
 import { waitForEditorsClosed } from './editorGuard';
 import { bankMissingCare, bankMissingCareNoLock } from './categoryBankMissing';
+import { notifyBankMissingChanged } from './bankMissingStore';
 
 /**
  * Folder sync - the one place that decides WHEN things are written / read.
@@ -153,6 +154,7 @@ async function runSyncNow(opts: SyncNowOptions): Promise<SyncReport> {
     if (out.some((s) => s.deleted > 0)) {
       const care = await bankMissingCareNoLock();
       if (care.warnings.length) console.warn('Bank-missing care:', care.warnings);
+      if (care.saved.length || care.pruned > 0) notifyBankMissingChanged();
     }
     return out;
   });
@@ -200,6 +202,7 @@ export function startFolderSync(onReport: (r: SyncReport) => void, onWriteError:
       .then((ok) => (ok ? bankMissingCare() : null))
       .then((r) => {
         if (r?.warnings.length) console.warn('Bank-missing care:', r.warnings);
+        if (r && (r.saved.length || r.pruned > 0)) notifyBankMissingChanged();
       })
       .catch((e) => console.warn('Bank-missing care failed:', e));
   }, 4000);
