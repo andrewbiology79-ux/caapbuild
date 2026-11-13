@@ -26,6 +26,7 @@ import { RichText } from '../components/RichText';
 import { QuestionBoardTags } from '../components/QuestionBoardTags';
 import { KebabMenu, type MenuItem } from '../components/KebabMenu';
 import { toBn, toBnPad2 } from '../utils/toBn';
+import { legacyBoardTag } from '../utils/boards';
 import { useNavigation } from '../utils/navigation';
 import { useSyncMenuItems } from '../utils/useSyncMenuItems';
 import { getDb, type CqScope } from '../db/db';
@@ -1659,6 +1660,8 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
                 };
                 // top chips show ONLY the stimulus' own boards (গ / ঘ boards stay beside their own question)
                 (grp.stimulus?.usedInBoards || []).forEach(addBoardUsage);
+                // old-style board text, only when no board exists anywhere in the new way
+                const legacyTag = allBoards.length === 0 ? legacyBoardTag(grp.stimulus, grp.questions) : '';
 
                 grp.questions.forEach((q) => {
                   const usages = questionUsages[q.id] || [];
@@ -1779,7 +1782,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
                       ))}
 
                       {/* Board Tag Chips: right side, oldest -> newest (newest sits at the far right) */}
-                      {(allBoards.length > 0 || grp.stimulus?.boardTag) && (
+                      {(allBoards.length > 0 || legacyTag) && (
                         <div className="flex flex-wrap items-center justify-end gap-1.5 min-w-0 ml-auto">
                           {allBoards.length > 0 ? (
                             allBoards.map((b, bIdx) => (
@@ -1788,19 +1791,19 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ scope = 'typ
                                 className="px-2 py-0.5 rounded bg-white text-[#1B1F2A] text-[0.625rem] font-semibold border border-[#D5D9E2] flex items-center gap-1 shadow-2xs"
                               >
                                 <span>
-                                  {b.board}'{b.years.map((y) => toBn(String(y).slice(-2))).join(',')}
+                                  {b.board}'{b.years.map((y) => String(y).slice(-2)).join(',')}
                                 </span>
                               </span>
                             ))
                           ) : (
                             <span className="px-2 py-0.5 rounded bg-white text-[#1B1F2A] text-[0.625rem] font-semibold border border-[#D5D9E2] flex items-center gap-1 shadow-2xs">
-                              <span>{grp.stimulus?.boardTag}</span>
+                              <span>{legacyTag}</span>
                             </span>
                           )}
                         </div>
                       )}
 
-                      {allBoards.length === 0 && !grp.stimulus?.boardTag && allUsages.length === 0 && (
+                      {allBoards.length === 0 && !legacyTag && allUsages.length === 0 && (
                         <span className="text-[0.625rem] text-[#94A3B8] italic">ট্যাগ নেই</span>
                       )}
                     </div>

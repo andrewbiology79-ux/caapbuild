@@ -45,6 +45,7 @@ import { getDb } from '../db/db';
 import { openCollectionAtQuestion } from './CollectionScreen';
 import type { CqScope, QuestionType } from '../db/db';
 import { toBn } from '../utils/toBn';
+import { legacyBoardTag } from '../utils/boards';
 import { useNavigation } from '../utils/navigation';
 import {
   EMPTY_CRITERIA,
@@ -246,7 +247,9 @@ const GroupCard: React.FC<GroupCardProps> = React.memo(
       );
       return list;
     })();
-    const hasTags = boards.length > 0 || !!stimulus?.boardTag || usages.length > 0;
+    // old-style board text, only when no board exists anywhere in the new way (a board picked only on গ / ঘ stays beside it)
+    const legacyTag = boards.length === 0 ? legacyBoardTag(stimulus, rows.map((r) => r.question)) : '';
+    const hasTags = boards.length > 0 || !!legacyTag || usages.length > 0;
 
     const first = rows[0];
     const marksLabel = multi
@@ -343,7 +346,7 @@ const GroupCard: React.FC<GroupCardProps> = React.memo(
 
         {/* Board tags & paper usages */}
         <div className="bg-[#F8FAFC] border-b border-[#E2E8F0] px-3.5 py-2 flex flex-wrap items-center gap-1.5">
-          {(boards.length > 0 || stimulus?.boardTag) && (
+          {(boards.length > 0 || legacyTag) && (
             <div className="flex flex-wrap items-center justify-end gap-1.5 min-w-0 ml-auto order-last">
               {boards.length > 0 ? (
                 boards.map((b, i) => (
@@ -352,13 +355,13 @@ const GroupCard: React.FC<GroupCardProps> = React.memo(
                     className="px-2 py-0.5 rounded bg-white text-[#1B1F2A] text-[0.625rem] font-semibold border border-[#D5D9E2] flex items-center gap-1 shadow-2xs"
                   >
                     <span>
-                      {b.board}'{(b.years || []).map((y) => toBn(String(y).slice(-2))).join(',')}
+                      {b.board}'{(b.years || []).map((y) => String(y).slice(-2)).join(',')}
                     </span>
                   </span>
                 ))
               ) : (
                 <span className="px-2 py-0.5 rounded bg-white text-[#1B1F2A] text-[0.625rem] font-semibold border border-[#D5D9E2] flex items-center gap-1 shadow-2xs">
-                  <span>{stimulus?.boardTag}</span>
+                  <span>{legacyTag}</span>
                 </span>
               )}
             </div>

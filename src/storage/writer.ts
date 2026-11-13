@@ -429,14 +429,36 @@ async function placeImage(sdb: QbDatabase, scope: CqScope, id: string, topicId: 
   const meta: ImageMeta = { id, fileName: rec.fileName, w: rec.w, h: rec.h };
   if (rec.topicId === topicId) return meta;
 
-  // the picture belongs to another topic (copied / pasted question): keep a copy in this topic's media/ too
-  if (!(await pathExists(target))) {
-    const src = await imageFilePath(sdb, rec);
-    if (src && (await pathExists(src))) await copyFile(src, target);
-  } else if (!rec.topicId || !(await imageFilePath(sdb, rec))) {
+  // the picture record still points to another type (copied / pasted question, or the question was moved here)
+  const oldFile = await imageFilePath(sdb, rec); // where the record points now
+  const oldHasFile = !!oldFile && (await pathExists(oldFile));
+
+  if (!(await pathExists(target)) && oldFile && oldHasFile) {
+    await copyFile(oldFile, target);
+  }
+
+  // only go on when the picture really is in this type's media/ now
+  const here = await statPath(target);
+  if (!here || here.size === 0) return meta;
+
+  // Who owns the picture? The old type keeps it only while one of its questions / stimuli still uses it
+  // (a copied question). When the question was MOVED here (or the old file is already gone) this type owns it now:
+  // the record follows the question and the old file is removed, so it never ends up in the old type's unnecessary/.
+  const oldStillUses = rec.topicId ? await topicUsesImage(sdb, rec.topicId, id) : false;
+  if (!oldStillUses || !oldHasFile) {
     await sdb.images.put({ ...rec, topicId });
+    if (oldFile && oldHasFile && oldFile !== target) await removeFile(oldFile);
   }
   return meta;
+}
+
+/** Does any stimulus / question of this type still use the picture? */
+async function topicUsesImage(sdb: QbDatabase, topicId: string, imageId: string): Promise<boolean> {
+  const [stimuli, questions] = await Promise.all([
+    sdb.stimuli.where('topicId').equals(topicId).toArray(),
+    sdb.questions.where('topicId').equals(topicId).toArray(),
+  ]);
+  return collectImageIds(stimuli, questions).includes(imageId);
 }
 
 /** Write one type's data.json (+ its pictures into media/) */

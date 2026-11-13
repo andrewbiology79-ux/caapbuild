@@ -274,7 +274,7 @@ const BoardChips: React.FC<{ chips: BoardUsage[]; onRemove: (board: string, year
             className="inline-flex items-center gap-1 pl-1.5 pr-0.5 h-5 rounded-md bg-[#EEF2FF] text-[#2A3BB0] border border-[#D5D9E2] text-[0.625rem] font-semibold leading-none"
           >
             <span>
-              {c.board}'{toBn(String(y).slice(-2))}
+              {c.board}'{String(y).slice(-2)}
             </span>
             <button
               type="button"
@@ -970,7 +970,18 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
           if (editData && isMounted) {
             setStimulusId(editData.stimulus?.id);
             setStimulusText(editData.stimulus?.text || '');
-            setStimulusRating(editData.stimulus?.rating || 3);
+            // Old data without a stimulus rating: start from the average of the questions' ratings (what the card
+            // showed until now), so just opening + saving does not silently turn it into 3.
+            const savedStimRating = editData.stimulus?.rating;
+            const qRatings = editData.questions.map((q) => q.rating || 3);
+            const avgQRating = qRatings.length
+              ? Math.round(qRatings.reduce((sum, r) => sum + r, 0) / qRatings.length)
+              : 3;
+            setStimulusRating(
+              typeof savedStimRating === 'number' && savedStimRating >= 1 && savedStimRating <= 5
+                ? savedStimRating
+                : Math.min(5, Math.max(1, avgQRating))
+            );
             setStimulusBoards(editData.stimulus?.usedInBoards || []);
             setReference(editData.stimulus?.reference || '');
             const stimImgIds = editData.stimulus?.imageIds || [];

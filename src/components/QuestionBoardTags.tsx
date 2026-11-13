@@ -1,5 +1,4 @@
 import React from 'react';
-import { toBn } from '../utils/toBn';
 
 export interface QuestionBoardTagsProps {
   /** boards (with years) in which THIS question (গ / ঘ …) came */
@@ -21,7 +20,7 @@ export const QuestionBoardTags: React.FC<QuestionBoardTagsProps> = ({ boards }) 
           key={b.board}
           className="px-1.5 py-0.5 rounded bg-white text-[#1B1F2A] text-[0.625rem] font-semibold border border-[#D5D9E2]"
         >
-          {b.board}'{b.years.map((y) => toBn(String(y).slice(-2))).join(',')}
+          {b.board}'{b.years.map((y) => String(y).slice(-2)).join(',')}
         </span>
       ))}
     </div>
