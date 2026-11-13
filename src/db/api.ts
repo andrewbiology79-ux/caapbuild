@@ -435,6 +435,18 @@ async function deleteQuestion(questionId: string): Promise<void> {
   // অংশ ১ঘ-খ: কোনো প্রশ্নপত্রে থাকলে মোছার ঠিক আগে কপি রাখা (ব্যর্থ হলেও মোছা আটকায় না - আগের আচরণ)
   await saveCopiesBeforeDelete([questionId]);
 
+  await deleteQuestionCore(questionId);
+}
+
+/**
+ * মোছার আসল কাজ (কপি রাখা ছাড়া)। শুধু questions, images, meta, stimuli টেবিল ছোঁয়,
+ * তাই saveQuestionGroup-এর ট্রানজ্যাকশনের ভেতরে নিরাপদে ডাকা যায়।
+ * (saveCopiesBeforeDelete অন্য টেবিল/ডেটাবেস ছোঁয়, তাই সেটা ট্রানজ্যাকশনের আগে আলাদা চলে।)
+ */
+async function deleteQuestionCore(questionId: string, keepStimulus = false): Promise<void> {
+  const q = await db.questions.get(questionId);
+  if (!q) return;
+
   // 1. Remove associated solution images
   if (q.solutionImageIds && q.solutionImageIds.length > 0) {
     await deleteImages(q.solutionImageIds);
@@ -450,7 +462,9 @@ async function deleteQuestion(questionId: string): Promise<void> {
   await db.questions.delete(questionId);
 
   // 4. Check if stimulus has no more questions left; if so, cleanup stimulus
-  if (q.stimulusId) {
+  // keepStimulus: saveQuestionGroup-এ উদ্দীপক চলমান সেভের অংশ; সব পুরনো প্রশ্ন মুছে নতুন ব্লক যোগ হলে
+  // এখানে উদ্দীপক মুছে ফেললে নতুন প্রশ্ন মোছা উদ্দীপকের id ধরে এতিম হয়ে যেত
+  if (q.stimulusId && !keepStimulus) {
     const siblings = await db.questions.where('stimulusId').equals(q.stimulusId).count();
     if (siblings === 0) {
       await deleteStimulusOnly(q.stimulusId);
@@ -923,106 +937,127 @@ async function getQuestionGroupForEdit(questionId: string): Promise<QuestionGrou
 
 
 async function saveQuestionGroup(payload: SaveQuestionGroupPayload): Promise<{ stimulusId: string; questionIds: string[] }> {
-  let stimulusId = payload.stimulusId;
-
-  // 1. Save or update Stimulus
-  if (stimulusId) {
-    await db.stimuli.update(stimulusId, {
-      topicId: payload.topicId,
-      text: payload.stimulusText,
-      imageIds: payload.stimulusImageIds,
-      imageTopCount: payload.stimulusImageTopCount ?? 0,
-      boardTag: payload.boardTag,
-      usedInBoards: payload.stimulusUsedInBoards ?? [],
-      rating: payload.stimulusRating,
-      reference: payload.reference ?? '',
-    });
-  } else {
-    stimulusId = generateId();
-    await db.stimuli.add({
-      id: stimulusId,
-      topicId: payload.topicId,
-      text: payload.stimulusText,
-      imageIds: payload.stimulusImageIds,
-      imageTopCount: payload.stimulusImageTopCount ?? 0,
-      boardTag: payload.boardTag,
-      usedInBoards: payload.stimulusUsedInBoards ?? [],
-      rating: payload.stimulusRating,
-      reference: payload.reference ?? '',
-    });
-  }
-
-  // 2. Delete removed questions if any
+  // মোছা প্রশ্নের প্রশ্নপত্র-কপি ট্রানজ্যাকশনের আগে রাখা (এটা অন্য টেবিল ছোঁয়, কখনও throw করে না)
   if (payload.deletedQuestionIds && payload.deletedQuestionIds.length > 0) {
-    for (const qId of payload.deletedQuestionIds) {
-      await deleteQuestion(qId);
-    }
+    await saveCopiesBeforeDelete(payload.deletedQuestionIds);
   }
 
-  // 3. Save or update Questions
-  //    The order of payload.questions IS the order the person arranged in the editor.
-  //    The group keeps the same "slots" (order numbers) it already occupied in the topic,
-  //    so re-arranging ক/খ/গ/ঘ never shifts other questions around.
-  const existingUnderTopic = await db.questions.where('topicId').equals(payload.topicId).toArray();
-  let maxOrder = existingUnderTopic.reduce((max, item) => Math.max(max, item.order || 0), 0);
+  // পুরো সেভ একটাই ট্রানজ্যাকশনে: মাঝপথে ব্যর্থ হলে বা অ্যাপ বন্ধ হলে কিছুই আধা-সেভ থাকে না
+  return db.transaction('rw', db.stimuli, db.questions, db.images, db.meta, async () => {
+    let stimulusId = payload.stimulusId;
 
-  const slots: number[] = [];
-  for (const qData of payload.questions) {
-    if (qData.id) {
-      const old = await db.questions.get(qData.id);
-      if (old && typeof old.order === 'number') slots.push(old.order);
-    }
-  }
-  slots.sort((a, b) => a - b);
-  // New blocks go after everything else, then take whatever slot their position gives them
-  while (slots.length < payload.questions.length) {
-    maxOrder += 1;
-    slots.push(maxOrder);
-  }
-
-  const savedQuestionIds: string[] = [];
-
-  for (let i = 0; i < payload.questions.length; i++) {
-    const qData = payload.questions[i];
-    const slotOrder = slots[i];
-    if (qData.id) {
-      // Update existing question
-      await db.questions.update(qData.id, {
+    // 1. Save or update Stimulus
+    if (stimulusId) {
+      // পুরনো/ভুল stimulusId হলে আগে চুপচাপ কিছুই হতো না; এখন ত্রুটি দিয়ে পুরো সেভ বাতিল
+      const existingStimulus = await db.stimuli.get(stimulusId);
+      if (!existingStimulus) {
+        throw new Error('উদ্দীপক পাওয়া যায়নি (id: ' + stimulusId + ')');
+      }
+      await db.stimuli.update(stimulusId, {
         topicId: payload.topicId,
-        stimulusId,
-        type: qData.type,
-        marks: qData.marks,
-        questionText: qData.questionText,
-        solutionText: qData.solutionText,
-        solutionImageIds: qData.solutionImageIds,
-        answerText: qData.answerText,
-        rating: qData.rating,
-        order: slotOrder,
-        usedInBoards: qData.usedInBoards,
+        text: payload.stimulusText,
+        imageIds: payload.stimulusImageIds,
+        imageTopCount: payload.stimulusImageTopCount ?? 0,
+        boardTag: payload.boardTag,
+        usedInBoards: payload.stimulusUsedInBoards ?? [],
+        rating: payload.stimulusRating,
+        reference: payload.reference ?? '',
       });
-      savedQuestionIds.push(qData.id);
     } else {
-      // Add new question
-      const newId = generateId();
-      await db.questions.add({
-        id: newId,
+      stimulusId = generateId();
+      await db.stimuli.add({
+        id: stimulusId,
         topicId: payload.topicId,
-        stimulusId,
-        type: qData.type,
-        marks: qData.marks,
-        questionText: qData.questionText,
-        solutionText: qData.solutionText,
-        solutionImageIds: qData.solutionImageIds,
-        answerText: qData.answerText,
-        rating: qData.rating,
-        order: slotOrder,
-        usedInBoards: qData.usedInBoards,
+        text: payload.stimulusText,
+        imageIds: payload.stimulusImageIds,
+        imageTopCount: payload.stimulusImageTopCount ?? 0,
+        boardTag: payload.boardTag,
+        usedInBoards: payload.stimulusUsedInBoards ?? [],
+        rating: payload.stimulusRating,
+        reference: payload.reference ?? '',
       });
-      savedQuestionIds.push(newId);
     }
-  }
 
-  return { stimulusId, questionIds: savedQuestionIds };
+    // 1খ. যে পুরনো প্রশ্নগুলো এডিট হচ্ছে তারা ডেটাবেসে আছে কিনা: না থাকলে update চুপচাপ ০ ফেরত দিত
+    //     আর লেখা হারাতো; এখন ত্রুটি দিয়ে পুরো সেভ বাতিল
+    for (const qData of payload.questions) {
+      if (qData.id && !(await db.questions.get(qData.id))) {
+        throw new Error('প্রশ্ন পাওয়া যায়নি (id: ' + qData.id + ')');
+      }
+    }
+
+    // 2. Delete removed questions if any
+    if (payload.deletedQuestionIds && payload.deletedQuestionIds.length > 0) {
+      for (const qId of payload.deletedQuestionIds) {
+        await deleteQuestionCore(qId, true);
+      }
+    }
+
+    // 3. Save or update Questions
+    //    The order of payload.questions IS the order the person arranged in the editor.
+    //    The group keeps the same "slots" (order numbers) it already occupied in the topic,
+    //    so re-arranging ক/খ/গ/ঘ never shifts other questions around.
+    const existingUnderTopic = await db.questions.where('topicId').equals(payload.topicId).toArray();
+    let maxOrder = existingUnderTopic.reduce((max, item) => Math.max(max, item.order || 0), 0);
+
+    const slots: number[] = [];
+    for (const qData of payload.questions) {
+      if (qData.id) {
+        const old = await db.questions.get(qData.id);
+        if (old && typeof old.order === 'number') slots.push(old.order);
+      }
+    }
+    slots.sort((a, b) => a - b);
+    // New blocks go after everything else, then take whatever slot their position gives them
+    while (slots.length < payload.questions.length) {
+      maxOrder += 1;
+      slots.push(maxOrder);
+    }
+
+    const savedQuestionIds: string[] = [];
+
+    for (let i = 0; i < payload.questions.length; i++) {
+      const qData = payload.questions[i];
+      const slotOrder = slots[i];
+      if (qData.id) {
+        // Update existing question
+        await db.questions.update(qData.id, {
+          topicId: payload.topicId,
+          stimulusId,
+          type: qData.type,
+          marks: qData.marks,
+          questionText: qData.questionText,
+          solutionText: qData.solutionText,
+          solutionImageIds: qData.solutionImageIds,
+          answerText: qData.answerText,
+          rating: qData.rating,
+          order: slotOrder,
+          usedInBoards: qData.usedInBoards,
+        });
+        savedQuestionIds.push(qData.id);
+      } else {
+        // Add new question
+        const newId = generateId();
+        await db.questions.add({
+          id: newId,
+          topicId: payload.topicId,
+          stimulusId,
+          type: qData.type,
+          marks: qData.marks,
+          questionText: qData.questionText,
+          solutionText: qData.solutionText,
+          solutionImageIds: qData.solutionImageIds,
+          answerText: qData.answerText,
+          rating: qData.rating,
+          order: slotOrder,
+          usedInBoards: qData.usedInBoards,
+        });
+        savedQuestionIds.push(newId);
+      }
+    }
+
+    return { stimulusId, questionIds: savedQuestionIds };
+  });
 }
 
 

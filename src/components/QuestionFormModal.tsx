@@ -1589,7 +1589,14 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
       onClose();
     } catch (err: any) {
       console.error('Error saving question:', err);
-      showToast('সংরক্ষণ ব্যর্থ হয়েছে');
+      const msg = String(err?.message ?? '');
+      showToast(
+        msg.startsWith('উদ্দীপক পাওয়া যায়নি')
+          ? 'উদ্দীপকটি আর ডেটাবেসে নেই — ফর্ম বন্ধ করে আবার খুলুন। কিছুই সেভ হয়নি।'
+          : msg.startsWith('প্রশ্ন পাওয়া যায়নি')
+          ? 'এই প্রশ্নের একটি অংশ আর ডেটাবেসে নেই — ফর্ম বন্ধ করে আবার খুলুন। কিছুই সেভ হয়নি।'
+          : 'সংরক্ষণ ব্যর্থ হয়েছে'
+      );
     } finally {
       setLoading(false);
     }
