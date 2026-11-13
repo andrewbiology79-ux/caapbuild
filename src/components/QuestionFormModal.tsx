@@ -30,6 +30,7 @@ import {
   type QuestionBlockInput,
 } from '../db/api';
 import type { CqScope } from '../db/db';
+import { CHAPTER_DEFAULT_TOPIC_NAME } from '../storage/bankMissing';
 import {
   X,
   Plus,
@@ -638,6 +639,34 @@ const applyParts = (b: QuestionFormBlock, parts: SolutionPart[]): QuestionFormBl
   return { ...b, solutionParts: parts, solutionText: ser.text, solutionImageIds: ser.imageIds };
 };
 
+/** নতুন প্রশ্নের শুরুর দুই ব্লক (গ ও ঘ) — প্রথম খোলায় এবং প্রতিবার ফর্ম খোলার রিসেটে একই জিনিস */
+const makeInitialBlocks = (): QuestionFormBlock[] => [
+  {
+    tempId: 'initial-ga',
+    type: 'গ',
+    marks: 3,
+    questionText: '',
+    solutionText: '',
+    solutionImageIds: [],
+    solutionParts: emptyParts(),
+    answerText: '',
+    rating: 3,
+    usedInBoards: [],
+  },
+  {
+    tempId: 'initial-gha',
+    type: 'ঘ',
+    marks: 4,
+    questionText: '',
+    solutionText: '',
+    solutionImageIds: [],
+    solutionParts: emptyParts(),
+    answerText: '',
+    rating: 4,
+    usedInBoards: [],
+  },
+];
+
 export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
   isOpen,
   onClose,
@@ -646,7 +675,9 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
   editQuestionId,
   scope = 'type' as CqScope,
 }) => {
-  const { getSubjects, getChapters, getTopics, saveImageBlob, getImageBlobUrl, getQuestionGroupForEdit, saveQuestionGroup } = getApi(scope);
+  const { getSubjects, getChapters, getTopics, addTopic, saveImageBlob, getImageBlobUrl, getQuestionGroupForEdit, saveQuestionGroup } = getApi(scope);
+  // Chapter CQ-তে টপিক স্তর নেই: প্রতিটি অধ্যায়ের একটা লুকানো ডিফল্ট টপিক ("সকল প্রশ্ন") আছে
+  const isChapterScope = scope === 'chapter';
   useEditorOpen(isOpen);
   const { showToast } = useToast();
   const { registerBackHandler } = useNavigation();
@@ -783,38 +814,14 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
   };
 
   // Questions blocks state
-  const [questionBlocks, setQuestionBlocks] = useState<QuestionFormBlock[]>([
-    {
-      tempId: 'initial-ga',
-      type: 'গ',
-      marks: 3,
-      questionText: '',
-      solutionText: '',
-      solutionImageIds: [],
-      solutionParts: emptyParts(),
-      answerText: '',
-      rating: 3,
-      usedInBoards: [],
-    },
-    {
-      tempId: 'initial-gha',
-      type: 'ঘ',
-      marks: 4,
-      questionText: '',
-      solutionText: '',
-      solutionImageIds: [],
-      solutionParts: emptyParts(),
-      answerText: '',
-      rating: 4,
-      usedInBoards: [],
-    },
-  ]);
+  const [questionBlocks, setQuestionBlocks] = useState<QuestionFormBlock[]>(makeInitialBlocks);
   const [deletedQuestionIds, setDeletedQuestionIds] = useState<string[]>([]);
   const [solutionImageUrls, setSolutionImageUrls] = useState<Record<string, string>>({});
 
   // Validation errors
   const [errors, setErrors] = useState<{
     topic?: string;
+    chapter?: string;
     stimulus?: string;
     questions?: Record<string, string>;
   }>({});
@@ -948,6 +955,27 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
     setViewer(null);
     setHierarchyOpen(false);
     setDeleteBlockIndex(null);
+    // ধাপ ১: আগের প্রশ্নের বাকি সব ডেটাও মুছে ফেলা — না হলে "নতুন প্রশ্ন" আগের উদ্দীপক/ব্লক/id ধরে থাকে
+    // (এডিট মোডে নিচের লোড-effect এগুলো আবার ভরে দেয়)
+    setStimulusId(undefined);
+    setStimulusText('');
+    setStimulusImageIds([]);
+    setStimulusImageUrls({});
+    setSolutionImageUrls({});
+    setQuestionBlocks(makeInitialBlocks());
+    setDeletedQuestionIds([]);
+    setSelectedSubjectId('');
+    setSelectedChapterId('');
+    setSelectedTopicId('');
+    setFilteredChapters([]);
+    setFilteredTopics([]);
+    setErrors({});
+    setIsDirty(false);
+    setDuplicateHits(null);
+    setShowExitConfirm(false);
+    setYearPicker(null);
+    setShowAddBoard(false);
+    setReplaceTarget(null);
     historyReadyRef.current = false;
   }, [isOpen, editQuestionId]);
 
@@ -1111,6 +1139,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
     setSelectedChapterId('');
     setSelectedTopicId('');
     setFilteredTopics([]);
+    if (errors.chapter || errors.topic) setErrors((prev) => ({ ...prev, chapter: undefined, topic: undefined }));
 
     if (subjectId) {
       const chList = await getChapters(subjectId);
@@ -1125,10 +1154,16 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
     setIsDirty(true);
     setSelectedChapterId(chapterId);
     setSelectedTopicId('');
+    if (errors.chapter) setErrors((prev) => ({ ...prev, chapter: undefined }));
 
     if (chapterId) {
       const topList = await getTopics(chapterId);
       setFilteredTopics(topList);
+      // Chapter CQ: টপিক বাছাই নেই — অধ্যায়ের লুকানো টপিক নিজে বসে; না থাকলে সেভের সময় বানানো হবে
+      if (isChapterScope) {
+        const hidden = [...topList].sort((a, b) => (a.order || 0) - (b.order || 0))[0];
+        setSelectedTopicId(hidden ? hidden.id : '');
+      }
     } else {
       setFilteredTopics([]);
     }
@@ -1448,11 +1483,19 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
   const handleSave = async () => {
     const newErrors: {
       topic?: string;
+      chapter?: string;
       stimulus?: string;
       questions?: Record<string, string>;
     } = {};
 
-    if (!selectedTopicId) {
+    if (isChapterScope) {
+      // Chapter CQ: টপিক নয়, অধ্যায় বাছাই বাধ্যতামূলক (টপিক নিজে ঠিক হয়)
+      if (!selectedChapterId) {
+        newErrors.chapter = 'অধ্যায় বাছুন';
+        if (!isFull) setEditorMode('full');
+        setHierarchyOpen(true);
+      }
+    } else if (!selectedTopicId) {
       newErrors.topic = 'টপিক বাছুন';
       // The hierarchy card is hidden in Minimum mode — show it so the topic can be picked
       if (!isFull) setEditorMode('full');
@@ -1474,7 +1517,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
       newErrors.questions = questionErrors;
     }
 
-    if (newErrors.topic || newErrors.stimulus || newErrors.questions) {
+    if (newErrors.topic || newErrors.chapter || newErrors.stimulus || newErrors.questions) {
       setErrors(newErrors);
       showToast('অনুগ্রহ করে প্রয়োজনীয় ঘরগুলো পূরণ করুন');
       return;
@@ -1517,9 +1560,18 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
         };
       });
 
+      // Chapter CQ: অধ্যায়ের লুকানো টপিক না থাকলে এখনই (সেভের সময়) বানানো — বাতিল করলে অকারণে টপিক তৈরি হয় না
+      let topicIdToSave = selectedTopicId;
+      if (isChapterScope && !topicIdToSave) {
+        if (!selectedChapterId) throw new Error('chapter not selected');
+        const existingTopics = await getTopics(selectedChapterId);
+        const hidden = [...existingTopics].sort((a, b) => (a.order || 0) - (b.order || 0))[0];
+        topicIdToSave = hidden ? hidden.id : (await addTopic(selectedChapterId, CHAPTER_DEFAULT_TOPIC_NAME)).id;
+      }
+
       await saveQuestionGroup({
         stimulusId,
-        topicId: selectedTopicId,
+        topicId: topicIdToSave,
         stimulusText: stimulusText.trim(),
         stimulusImageIds,
         stimulusImageTopCount: Math.min(stimulusTopCount, stimulusImageIds.length),
@@ -1681,7 +1733,11 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
               <button
                 type="button"
                 aria-expanded={hierarchyOpen}
-                aria-label={hierarchyOpen ? 'বিষয়, অধ্যায় ও টপিক বন্ধ করুন' : 'বিষয়, অধ্যায় ও টপিক খুলুন'}
+                aria-label={
+                  hierarchyOpen
+                    ? isChapterScope ? 'বিষয় ও অধ্যায় বন্ধ করুন' : 'বিষয়, অধ্যায় ও টপিক বন্ধ করুন'
+                    : isChapterScope ? 'বিষয় ও অধ্যায় খুলুন' : 'বিষয়, অধ্যায় ও টপিক খুলুন'
+                }
                 onClick={() => setHierarchyOpen((v) => !v)}
                 style={{ minHeight: 0, height: hierarchyOpen ? 30 : 34 }}
                 className={`w-full flex items-center gap-2 text-xs font-bold text-[#2A3BB0] ${
@@ -1689,7 +1745,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                 }`}
               >
                 <Layers className="w-4 h-4 text-[#3B4FD8] shrink-0" />
-                <span className="shrink-0">বিষয়, অধ্যায় ও টপিক নির্বাচন</span>
+                <span className="shrink-0">{isChapterScope ? 'বিষয় ও অধ্যায় নির্বাচন' : 'বিষয়, অধ্যায় ও টপিক নির্বাচন'}</span>
                 <span className="flex-1" />
                 <ChevronDown
                   className={`w-4 h-4 text-[#64748B] shrink-0 transition-transform ${hierarchyOpen ? 'rotate-180' : ''}`}
@@ -1725,7 +1781,11 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                     value={selectedChapterId}
                     disabled={!selectedSubjectId}
                     onChange={(e) => handleChapterChange(e.target.value)}
-                    className="w-full min-h-[44px] px-3.5 pr-8 py-2.5 rounded-xl border border-[#D5D9E2] bg-white text-xs font-medium text-[#1B1F2A] appearance-none focus:outline-none focus:ring-2 focus:ring-[#3B4FD8] disabled:bg-[#F2F4F8] disabled:text-[#94A3B8]"
+                    className={`w-full min-h-[44px] px-3.5 pr-8 py-2.5 rounded-xl border text-xs font-medium appearance-none focus:outline-none focus:ring-2 disabled:bg-[#F2F4F8] disabled:text-[#94A3B8] ${
+                      errors.chapter
+                        ? 'border-red-500 bg-red-50/30 focus:ring-red-400 text-red-900'
+                        : 'border-[#D5D9E2] bg-white text-[#1B1F2A] focus:ring-[#3B4FD8]'
+                    }`}
                   >
                     <option value="">-- অধ্যায় নির্বাচন করুন --</option>
                     {filteredChapters.map((c) => (
@@ -1736,9 +1796,16 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                   </select>
                   <ChevronDown className="w-4 h-4 text-[#64748B] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
+                {errors.chapter && (
+                  <p className="text-xs text-red-600 font-semibold flex items-center gap-1 pt-0.5">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    <span>{errors.chapter}</span>
+                  </p>
+                )}
               </div>
 
-              {/* Topic Select */}
+              {/* Topic Select — Chapter CQ-তে টপিক স্তর নেই, তাই লুকানো */}
+              {!isChapterScope && (
               <div className="space-y-1">
                 <label className="block text-xs font-semibold text-[#1B1F2A]">টপিক *</label>
                 <div className="relative">
@@ -1768,6 +1835,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                   </p>
                 )}
               </div>
+              )}
               </>)}
             </section>
           )}
