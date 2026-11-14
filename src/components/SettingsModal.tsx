@@ -22,6 +22,7 @@ import {
   setAutoBackupEnabled,
 } from '../utils/autoBackup';
 import { useBackClose } from '../utils/useBackClose';
+import { findOrphanImages, deleteOrphanImages, type OrphanImageReport } from '../db/api';
 
 export interface SettingsModalProps {
   isOpen: boolean;
@@ -42,6 +43,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   const [backingUp, setBackingUp] = useState(false);
   /** result of the last "এখনই ব্যাকআপ নিন" tap — shown right under the button so it is never missed */
   const [backupMsg, setBackupMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // ধাপ ৫খ: জমে থাকা (এতিম) ছবির পরিষ্কার
+  const [orphanReport, setOrphanReport] = useState<OrphanImageReport | null>(null);
+  const [orphanBusy, setOrphanBusy] = useState(false);
+  const [orphanMsg, setOrphanMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -55,6 +60,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
       setImageEditorOn(isImageEditorEnabled());
       setLastBackup(getLastAutoBackupTime() || getLastAutoBackupDate());
       setBackupMsg(null);
+      setOrphanReport(null);
+      setOrphanMsg(null);
     };
     load();
   }, [isOpen]);
@@ -100,6 +107,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
       setBackupMsg({ ok: false, text: `ব্যাকআপ ব্যর্থ: ${err?.message || err}` });
     } finally {
       setBackingUp(false);
+    }
+  };
+
+  const handleScanOrphans = async () => {
+    if (orphanBusy) return;
+    setOrphanBusy(true);
+    setOrphanMsg(null);
+    try {
+      const r = await findOrphanImages();
+      setOrphanReport(r);
+      if (r.count === 0) setOrphanMsg({ ok: true, text: 'কোনো জমে থাকা ছবি নেই — সব ছবি কোনো না কোনো প্রশ্নে ব্যবহার হচ্ছে।' });
+    } catch (err: any) {
+      setOrphanReport(null);
+      setOrphanMsg({ ok: false, text: `খুঁজতে সমস্যা হয়েছে: ${err?.message || err}` });
+    } finally {
+      setOrphanBusy(false);
+    }
+  };
+
+  const handleDeleteOrphans = async () => {
+    if (orphanBusy || !orphanReport || orphanReport.count === 0) return;
+    setOrphanBusy(true);
+    setOrphanMsg(null);
+    try {
+      const n = await deleteOrphanImages();
+      setOrphanReport(null);
+      setOrphanMsg({ ok: true, text: `${toBn(n)}টি জমে থাকা ছবি মুছে ফেলা হয়েছে। এখন নতুন ব্যাকআপ নিলে সাইজ কমবে।` });
+      showToast(`${toBn(n)}টি জমে থাকা ছবি মোছা হয়েছে`);
+    } catch (err: any) {
+      setOrphanMsg({ ok: false, text: `মুছতে সমস্যা হয়েছে (কিছু ছবি মোছা হয়ে থাকতে পারে): ${err?.message || err}` });
+    } finally {
+      setOrphanBusy(false);
     }
   };
 
@@ -335,6 +374,54 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
                 }`}
               >
                 {backupMsg.text}
+              </p>
+            )}
+          </div>
+
+          {/* 7. জমে থাকা ছবির পরিষ্কার (ধাপ ৫খ) */}
+          <div className="space-y-2 pt-2 border-t border-[#F2F4F8] dark:border-slate-800">
+            <label className="text-xs font-bold text-[#1B1F2A] dark:text-slate-200 flex items-center gap-1.5">
+              <FileText className="w-4 h-4 text-[#3B4FD8]" />
+              <span>জমে থাকা ছবি পরিষ্কার</span>
+            </label>
+            <p className="text-[0.6875rem] leading-relaxed text-[#64748B] dark:text-slate-400">
+              আগে ছবি বেছে সেভ না করে বের হলে বা প্রশ্ন মোছার পর যে ছবিগুলো কোনো প্রশ্নেই আর নেই, সেগুলো ডেটাবেস ও ব্যাকআপ ফাইল ফুলিয়ে রাখে।
+              এখানে আগে শুধু খুঁজে দেখানো হয় — আপনি নিশ্চিত করলে তবেই মোছা হয়। কপি-পেস্ট করা বা কপি/কাট করে রাখা প্রশ্নের ছবি কখনও মোছা হয় না।
+              মোছার আগে "এখনই ব্যাকআপ নিন" চেপে ব্যাকআপ নিয়ে রাখুন। প্রশ্ন সম্পাদনা ফর্ম বা সিঙ্ক চলার সময় এটা করবেন না।
+            </p>
+            <button
+              type="button"
+              onClick={handleScanOrphans}
+              disabled={orphanBusy}
+              className="min-h-[44px] px-4 py-2 rounded-xl border border-[#D5D9E2] dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-[#3B4FD8] dark:text-indigo-300 disabled:opacity-50"
+            >
+              {orphanBusy && !orphanReport ? 'খোঁজা হচ্ছে...' : 'জমে থাকা ছবি খুঁজুন'}
+            </button>
+            {orphanReport && orphanReport.count > 0 && (
+              <div className="space-y-2">
+                <p role="status" className="text-[0.6875rem] font-semibold leading-relaxed text-[#1B1F2A] dark:text-slate-200">
+                  {toBn(orphanReport.count)}টি জমে থাকা ছবি পাওয়া গেছে (মোট ছবি {toBn(orphanReport.totalRows)}টির মধ্যে)।
+                  {orphanReport.blobBytes > 0 && ` ডেটাবেসে এগুলোর আকার প্রায় ${toBn(Math.max(1, Math.round(orphanReport.blobBytes / 1024)))} KB।`}
+                  {orphanReport.blobless > 0 && ` ${toBn(orphanReport.blobless)}টির ফাইল ফোল্ডারের media/-তে আছে (আকার এখানে ধরা নেই)।`}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleDeleteOrphans}
+                  disabled={orphanBusy}
+                  className="min-h-[44px] px-4 py-2 rounded-xl bg-red-600 text-white text-xs font-bold disabled:opacity-50"
+                >
+                  {orphanBusy ? 'মোছা হচ্ছে...' : `${toBn(orphanReport.count)}টি ছবি মুছে ফেলুন`}
+                </button>
+              </div>
+            )}
+            {orphanMsg && (
+              <p
+                role="status"
+                className={`text-[0.6875rem] font-semibold leading-relaxed break-words ${
+                  orphanMsg.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+                }`}
+              >
+                {orphanMsg.text}
               </p>
             )}
           </div>

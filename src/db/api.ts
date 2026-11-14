@@ -19,6 +19,7 @@ import {
 import { toBn, toEn } from '../utils/toBn';
 import { getImageObjectUrl } from '../storage/imageStore';
 import { saveCopiesBeforeDelete } from '../storage/bankMissingStore';
+import { createImageUseTracker, markClipboardUse, splitOrphansByDb } from '../utils/imageCleanup';
 
 
 export type {
@@ -419,14 +420,11 @@ async function updateQuestion(id: string, data: Partial<Omit<Question, 'id'>>): 
 
 
 /**
- * Cascading deletes: Deletes target and all nested children plus image blobs
+ * ছবি মোছার নিয়ম (ধাপ ৫গ): প্রশ্ন/উদ্দীপক/টপিকের সারি আগে মোছা হয়, ছবির id-গুলো জমানো হয়,
+ * তারপর শেষে একবার deleteUnusedImages ডাকা হয় — সেটা দেখে আর কেউ (অন্য প্রশ্ন, কপি-পেস্ট করা প্রশ্ন,
+ * অন্য ডেটাবেস, কপি/কাট ক্লিপবোর্ড) ছবি ধরে আছে কিনা; ধরে থাকলে ছবি থাকে, না ধরলে মোছে।
+ * আগে এখানে ছবি সোজা মুছে দেওয়া হতো, তাই কপি-পেস্ট করা প্রশ্নের শেয়ার করা ছবি হারাতে পারত।
  */
-async function deleteImages(imageIds: string[]): Promise<void> {
-  if (imageIds && imageIds.length > 0) {
-    await db.images.where('id').anyOf(imageIds).delete();
-  }
-}
-
 
 async function deleteQuestion(questionId: string): Promise<void> {
   const q = await db.questions.get(questionId);
@@ -443,13 +441,18 @@ async function deleteQuestion(questionId: string): Promise<void> {
  * তাই saveQuestionGroup-এর ট্রানজ্যাকশনের ভেতরে নিরাপদে ডাকা যায়।
  * (saveCopiesBeforeDelete অন্য টেবিল/ডেটাবেস ছোঁয়, তাই সেটা ট্রানজ্যাকশনের আগে আলাদা চলে।)
  */
-async function deleteQuestionCore(questionId: string, keepStimulus = false): Promise<void> {
+async function deleteQuestionCore(
+  questionId: string,
+  keepStimulus = false,
+  imageSink?: string[]
+): Promise<void> {
   const q = await db.questions.get(questionId);
   if (!q) return;
 
-  // 1. Remove associated solution images
+  // মোছা সারির ছবিগুলো জমানো; imageSink দেওয়া থাকলে (ট্রানজ্যাকশনের ভেতরে) ছবি মোছা ট্রানজ্যাকশনের পরে ডাকের দায়িত্ব
+  const released: string[] = imageSink ?? [];
   if (q.solutionImageIds && q.solutionImageIds.length > 0) {
-    await deleteImages(q.solutionImageIds);
+    released.push(...q.solutionImageIds);
   }
 
   // 2. Remove question from selection if present
@@ -467,17 +470,21 @@ async function deleteQuestionCore(questionId: string, keepStimulus = false): Pro
   if (q.stimulusId && !keepStimulus) {
     const siblings = await db.questions.where('stimulusId').equals(q.stimulusId).count();
     if (siblings === 0) {
-      await deleteStimulusOnly(q.stimulusId);
+      await deleteStimulusOnly(q.stimulusId, released);
     }
   }
+
+  // 5. সারি মোছা হয়ে গেছে — এখন কেউ ছবি ধরে না থাকলে ছবি মোছা (কখনও throw করে না)
+  if (!imageSink) await deleteUnusedImages(released);
 }
 
 
-async function deleteStimulusOnly(stimulusId: string): Promise<void> {
+/** উদ্দীপকের সারি মোছে; তার ছবির id imageSink-এ জমা করে (ছবি মোছা ডাকার দায়িত্ব) */
+async function deleteStimulusOnly(stimulusId: string, imageSink: string[]): Promise<void> {
   const stim = await db.stimuli.get(stimulusId);
   if (stim) {
     if (stim.imageIds && stim.imageIds.length > 0) {
-      await deleteImages(stim.imageIds);
+      imageSink.push(...stim.imageIds);
     }
     await db.stimuli.delete(stimulusId);
   }
@@ -487,31 +494,33 @@ async function deleteStimulusOnly(stimulusId: string): Promise<void> {
 async function deleteStimulus(stimulusId: string): Promise<void> {
   const questions = await db.questions.where('stimulusId').equals(stimulusId).toArray();
   await saveCopiesBeforeDelete(questions.map((q) => q.id)); // অংশ ১ঘ-খ
+  const released: string[] = [];
   for (const q of questions) {
-    if (q.solutionImageIds) {
-      await deleteImages(q.solutionImageIds);
-    }
+    if (q.solutionImageIds) released.push(...q.solutionImageIds);
     await db.questions.delete(q.id);
   }
-  await deleteStimulusOnly(stimulusId);
+  await deleteStimulusOnly(stimulusId, released);
+  await deleteUnusedImages(released);
 }
 
 
 async function deleteTopic(topicId: string): Promise<void> {
   const questions = await db.questions.where('topicId').equals(topicId).toArray();
   await saveCopiesBeforeDelete(questions.map((q) => q.id)); // অংশ ১ঘ-খ (deleteChapter/deleteSubject এই পথেই আসে)
+  const released: string[] = [];
   for (const q of questions) {
-    if (q.solutionImageIds) await deleteImages(q.solutionImageIds);
+    if (q.solutionImageIds) released.push(...q.solutionImageIds);
     await db.questions.delete(q.id);
   }
 
   const stimuli = await db.stimuli.where('topicId').equals(topicId).toArray();
   for (const s of stimuli) {
-    if (s.imageIds) await deleteImages(s.imageIds);
+    if (s.imageIds) released.push(...s.imageIds);
     await db.stimuli.delete(s.id);
   }
 
   await db.topics.delete(topicId);
+  await deleteUnusedImages(released);
 }
 
 
@@ -870,6 +879,13 @@ async function deleteStimulusGroup(
   questionIds: string[]
 ): Promise<void> {
   await saveCopiesBeforeDelete(questionIds); // অংশ ১ঘ-খ: transaction-এর আগে (কপির টেবিল আলাদা)
+  // ধাপ ৫গ: আগে এই পথে ছবি কখনও মোছা হতো না (এতিম হয়ে জমত); এখন সারি মোছার পর কেউ না ধরলে মোছা হয়
+  const released: string[] = [];
+  const stimRow = stimulusId ? await db.stimuli.get(stimulusId) : undefined;
+  if (stimRow?.imageIds) released.push(...stimRow.imageIds);
+  for (const qRow of await db.questions.bulkGet(questionIds)) {
+    if (qRow?.solutionImageIds) released.push(...qRow.solutionImageIds);
+  }
   await db.transaction('rw', [db.stimuli, db.questions, db.meta], async () => {
     if (stimulusId) {
       await db.stimuli.delete(stimulusId);
@@ -882,6 +898,7 @@ async function deleteStimulusGroup(
     const updated = current.filter((id) => !questionIds.includes(id));
     await db.meta.put({ key: META_SELECTED_KEY, value: updated });
   });
+  await deleteUnusedImages(released);
 }
 
 /* -------------------------------------------------------------
@@ -904,6 +921,41 @@ async function saveImageBlob(blob: Blob, fileName: string): Promise<string> {
     blob,
   });
   return id;
+}
+
+
+/**
+ * কোনো উদ্দীপক/প্রশ্ন আর ধরে না এমন ছবি মোছে (ধাপ ৫ — জমে থাকা ছবি)। ফেরত দেয় কতটা মোছা হলো।
+ * - শুধু দেওয়া প্রার্থী id-গুলো দেখে; অন্য কোনো ছবি ছোঁয় না।
+ * - কপি-পেস্ট করা প্রশ্ন একই ছবির id ব্যবহার করে, তাই এই ডেটাবেসের পাশাপাশি অন্য ডেটাবেসের (Type/Chapter)
+ *   কোনো উদ্দীপক/প্রশ্ন ধরলেও ছবি থাকে। অনিশ্চিত হলে রাখা হয়, মোছা হয় না।
+ * - ছবির লেখা (hook) মোছার সময় ফোল্ডারের media/ ফাইলও মুছে ফেলে, যেমন প্রশ্ন মোছার সময় হয়।
+ * - কখনও throw করে না (ফর্ম বন্ধ করা আটকাবে না); ব্যর্থ হলে ০ ফেরে।
+ */
+async function deleteUnusedImages(imageIds: string[]): Promise<number> {
+  try {
+    const tracker = createImageUseTracker(imageIds || []);
+    if (tracker.size === 0) return 0;
+    const other: QbDatabase = db === chapterDb ? typeDatabase : chapterDb;
+    for (const d of [db, other]) {
+      await d.stimuli.each((st) => tracker.addStimulus(st));
+      await d.questions.each((q) => tracker.addQuestion(q));
+      // কপি/কাট করা প্রশ্ন বা গ্রুপ ক্লিপবোর্ডে (meta) থাকে এবং একই ছবির id ধরে —
+      // মূলটা মুছে পরে পেস্ট করলে ছবি হারাত, তাই ক্লিপবোর্ডও "ধরে আছে" গোনা হয়
+      for (const key of [META_CLIPBOARD_KEY, META_GROUP_CLIPBOARD_KEY]) {
+        const rec = await d.meta.get(key);
+        markClipboardUse(tracker, rec?.value);
+      }
+      if (tracker.allUsed()) return 0;
+    }
+    const unused = tracker.unused();
+    if (unused.length === 0) return 0;
+    await db.images.where('id').anyOf(unused).delete();
+    return unused.length;
+  } catch (err) {
+    console.warn('deleteUnusedImages failed (ছবি রেখে দেওয়া হলো):', err);
+    return 0;
+  }
 }
 
 
@@ -943,7 +995,9 @@ async function saveQuestionGroup(payload: SaveQuestionGroupPayload): Promise<{ s
   }
 
   // পুরো সেভ একটাই ট্রানজ্যাকশনে: মাঝপথে ব্যর্থ হলে বা অ্যাপ বন্ধ হলে কিছুই আধা-সেভ থাকে না
-  return db.transaction('rw', db.stimuli, db.questions, db.images, db.meta, async () => {
+  // মোছা ব্লকের ছবি ট্রানজ্যাকশনের ভেতরে মোছা হয় না (অন্য ডেটাবেস ও ক্লিপবোর্ড দেখতে হয়); কমিটের পরে একবারে
+  const releasedImages: string[] = [];
+  const result = await db.transaction('rw', db.stimuli, db.questions, db.images, db.meta, async () => {
     let stimulusId = payload.stimulusId;
 
     // 1. Save or update Stimulus
@@ -989,7 +1043,7 @@ async function saveQuestionGroup(payload: SaveQuestionGroupPayload): Promise<{ s
     // 2. Delete removed questions if any
     if (payload.deletedQuestionIds && payload.deletedQuestionIds.length > 0) {
       for (const qId of payload.deletedQuestionIds) {
-        await deleteQuestionCore(qId, true);
+        await deleteQuestionCore(qId, true, releasedImages);
       }
     }
 
@@ -1058,6 +1112,8 @@ async function saveQuestionGroup(payload: SaveQuestionGroupPayload): Promise<{ s
 
     return { stimulusId, questionIds: savedQuestionIds };
   });
+  await deleteUnusedImages(releasedImages);
+  return result;
 }
 
 
@@ -1588,6 +1644,7 @@ async function seedInitialDataIfNeeded(): Promise<boolean> {
     deleteStimulusGroup,
     getImageBlobUrl,
     saveImageBlob,
+    deleteUnusedImages,
     getQuestionGroupForEdit,
     saveQuestionGroup,
     getQuestionPaperUsage,
@@ -1631,6 +1688,88 @@ export type QbApi = ReturnType<typeof createQbApi>;
 export const typeApi: QbApi = createQbApi(db);
 /** Chapter CQ — its own separate IndexedDB database */
 export const chapterApi: QbApi = createQbApi(chapterDb);
+
+/* -------------------------------------------------------------
+ * ধাপ ৫খ — আগে জমে থাকা (এতিম) ছবির একবারের পরিষ্কার
+ * Type CQ ও Chapter CQ দুই ডেটাবেস একসাথে দেখা হয়: কোনো ছবির সারি তখনই এতিম
+ * যখন দুই ডেটাবেসের কোনো উদ্দীপক/প্রশ্ন/কপি-কাট ক্লিপবোর্ডই তার id ধরে না।
+ * ----------------------------------------------------------- */
+
+export interface OrphanImageReport {
+  /** ডেটাবেস অনুযায়ী এতিম ছবির সারির id */
+  type: string[];
+  chapter: string[];
+  count: number;
+  /** ডেটাবেসে blob হিসেবে থাকা এতিম ছবির মোট আকার (বাইট); ফোল্ডার-সিঙ্কে ফাইল media/-তে থাকলে এখানে ধরা পড়ে না */
+  blobBytes: number;
+  /** blob ডেটাবেসে নেই (ফাইল ফোল্ডারে) এমন এতিম ছবির সংখ্যা */
+  blobless: number;
+  /** পুরো ডেটাবেসে ছবির সারি */
+  totalRows: number;
+}
+
+export async function findOrphanImages(): Promise<OrphanImageReport> {
+  const dbs: Record<'type' | 'chapter', QbDatabase> = { type: typeDatabase, chapter: chapterDb };
+  const rowIds: Record<string, string[]> = {};
+  const candidates = new Set<string>();
+  let totalRows = 0;
+  for (const key of ['type', 'chapter'] as const) {
+    const keys = (await dbs[key].images.toCollection().primaryKeys()) as string[];
+    rowIds[key] = keys;
+    totalRows += keys.length;
+    keys.forEach((id) => candidates.add(id));
+  }
+  const tracker = createImageUseTracker(candidates);
+  for (const d of [dbs.type, dbs.chapter]) {
+    await d.stimuli.each((st) => tracker.addStimulus(st));
+    await d.questions.each((q) => tracker.addQuestion(q));
+    for (const key of [META_CLIPBOARD_KEY, META_GROUP_CLIPBOARD_KEY]) {
+      const rec = await d.meta.get(key);
+      markClipboardUse(tracker, rec?.value);
+    }
+  }
+  const orphans = splitOrphansByDb(rowIds, tracker.unused());
+  let blobBytes = 0;
+  let blobless = 0;
+  for (const key of ['type', 'chapter'] as const) {
+    const rows = await dbs[key].images.bulkGet(orphans[key] || []);
+    for (const r of rows) {
+      if (!r) continue;
+      const size = (r.blob as Blob | undefined)?.size;
+      if (typeof size === 'number') blobBytes += size;
+      else blobless += 1;
+    }
+  }
+  return {
+    type: orphans.type || [],
+    chapter: orphans.chapter || [],
+    count: (orphans.type?.length || 0) + (orphans.chapter?.length || 0),
+    blobBytes,
+    blobless,
+    totalRows,
+  };
+}
+
+/**
+ * এতিম ছবি মোছে। দেওয়া তালিকা বিশ্বাস না করে মোছার ঠিক আগে আবার নতুন করে খুঁজে নেয়
+ * (দেখানো আর মোছার মাঝে কিছু বদলালে ভুল ছবি মুছবে না)। ফেরত দেয় কতটা সারি মোছা হলো।
+ * ছবির সারি মুছলে ফোল্ডারের media/ ফাইলও হুক দিয়ে মোছে (প্রশ্ন মোছার সময় যেমন হয়)।
+ */
+export async function deleteOrphanImages(): Promise<number> {
+  const report = await findOrphanImages();
+  let deleted = 0;
+  const dbs: Record<'type' | 'chapter', QbDatabase> = { type: typeDatabase, chapter: chapterDb };
+  for (const key of ['type', 'chapter'] as const) {
+    const ids = report[key];
+    for (let i = 0; i < ids.length; i += 100) {
+      const chunk = ids.slice(i, i + 100);
+      await dbs[key].images.bulkDelete(chunk);
+      deleted += chunk.length;
+    }
+  }
+  return deleted;
+}
+
 
 export function getApi(scope: CqScope): QbApi {
   return scope === 'chapter' ? chapterApi : typeApi;
@@ -1682,6 +1821,7 @@ export const {
   deleteStimulusGroup,
   getImageBlobUrl,
   saveImageBlob,
+  deleteUnusedImages,
   getQuestionGroupForEdit,
   saveQuestionGroup,
   getQuestionPaperUsage,

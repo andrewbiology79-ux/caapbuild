@@ -21,6 +21,14 @@ import { isImageEditorEnabled } from '../utils/imageEdit';
 import { exportImageFromUrl } from '../utils/imageExport';
 import { loadCustomBoards, saveCustomBoards, customBoardToOption, type CustomBoard } from '../utils/boards';
 import {
+  firstErrorTargetId,
+  FORM_ERR_CHAPTER_ID,
+  FORM_ERR_TOPIC_ID,
+  FORM_ERR_STIMULUS_ID,
+  formErrBlockTextId,
+} from '../utils/formErrorTarget';
+import { imageCleanupCandidates, type FormCloseMode } from '../utils/imageCleanup';
+import {
   getApi,
   type Subject,
   type Chapter,
@@ -675,7 +683,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
   editQuestionId,
   scope = 'type' as CqScope,
 }) => {
-  const { getSubjects, getChapters, getTopics, addTopic, saveImageBlob, getImageBlobUrl, getQuestionGroupForEdit, saveQuestionGroup } = getApi(scope);
+  const { getSubjects, getChapters, getTopics, addTopic, saveImageBlob, deleteUnusedImages, getImageBlobUrl, getQuestionGroupForEdit, saveQuestionGroup } = getApi(scope);
   // Chapter CQ-তে টপিক স্তর নেই: প্রতিটি অধ্যায়ের একটা লুকানো ডিফল্ট টপিক ("সকল প্রশ্ন") আছে
   const isChapterScope = scope === 'chapter';
   useEditorOpen(isOpen);
@@ -826,6 +834,40 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
     questions?: Record<string, string>;
   }>({});
 
+  // সেভে ত্রুটি হলে প্রথম ত্রুটির ঘরে নিজে পাতা যাওয়া (ধাপ ৪) — শুধু স্ক্রল, ফোকাস/কিবোর্ড নয়।
+  // tick বাড়ালে effect চলে — একই ত্রুটি নিয়ে আবার ✔ চাপলেও আবার স্ক্রল হয়।
+  const errorScrollTargetRef = useRef<string | null>(null);
+  const [errorScrollTick, setErrorScrollTick] = useState(0);
+  useEffect(() => {
+    const targetId = errorScrollTargetRef.current;
+    if (!targetId) return;
+    errorScrollTargetRef.current = null;
+    document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [errorScrollTick]);
+
+  // ধাপ ৫ — জমে থাকা ছবি: ছবি বাছামাত্র db.images-এ লেখা হয়, তাই বাতিল/বদলে এতিম ছবি থেকে যেত।
+  //  sessionImageIdsRef : এই ফর্ম-সেশনে নতুন বাছা ছবির id
+  //  loadedImageIdsRef  : এডিটে ফর্ম খোলার সময় প্রশ্নে থাকা ছবির id (বদল/বাদ দিলে পুরনোটা এতিম হয়)
+  // বন্ধের সময় প্রার্থী ছবি api.deleteUnusedImages-এ যায়; কোনো প্রশ্ন/উদ্দীপক ধরে থাকলে সেটা মোছে না।
+  const sessionImageIdsRef = useRef<Set<string>>(new Set());
+  const loadedImageIdsRef = useRef<Set<string>>(new Set());
+  const cleanupFormImages = async (mode: FormCloseMode) => {
+    const candidates = imageCleanupCandidates(mode, sessionImageIdsRef.current, loadedImageIdsRef.current);
+    sessionImageIdsRef.current = new Set();
+    loadedImageIdsRef.current = new Set();
+    if (candidates.length === 0) return;
+    await deleteUnusedImages(candidates); // কখনও throw করে না
+  };
+  // সব সময় সর্বশেষ cleanupFormImages ধরার জন্য (unmount/রিসেটের effect পুরনো render-এর scope ধরে না থাকে)
+  const cleanupImagesRef = useRef(cleanupFormImages);
+  cleanupImagesRef.current = cleanupFormImages;
+  // ফর্ম সেভ/বাতিলের পথ ছাড়া সরে গেলে (unmount) নতুন বাছা ছবি রেখে যায় না
+  useEffect(() => {
+    return () => {
+      void cleanupImagesRef.current('discarded');
+    };
+  }, []);
+
   const stimulusFileInputRef = useRef<HTMLInputElement>(null);
 
   // ---- Undo / Redo (snapshots of everything typed or changed in the form) ----
@@ -933,6 +975,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
         setShowExitConfirm(true);
         return true;
       }
+      void cleanupFormImages('discarded');
       onClose();
       return true;
     });
@@ -943,6 +986,8 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
   // Every time the form opens: Minimum mode, closed previews
   useEffect(() => {
     if (!isOpen) return;
+    // ধাপ ৫: আগের বার সেভ/বাতিলের পথ ছাড়া বন্ধ হয়ে থাকলে পড়ে থাকা নতুন-বাছা ছবি এখনই পরিষ্কার (ব্যবহার হলে মোছে না)
+    void cleanupImagesRef.current('discarded');
     setEditorMode('minimum');
     setStimulusPreviewOpen(false);
     setSolutionPreviewOpen({});
@@ -970,6 +1015,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
     setFilteredChapters([]);
     setFilteredTopics([]);
     setErrors({});
+    errorScrollTargetRef.current = null;
     setIsDirty(false);
     setDuplicateHits(null);
     setShowExitConfirm(false);
@@ -1013,6 +1059,11 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
             setStimulusBoards(editData.stimulus?.usedInBoards || []);
             setReference(editData.stimulus?.reference || '');
             const stimImgIds = editData.stimulus?.imageIds || [];
+            // ধাপ ৫: খোলার সময় থাকা ছবিগুলো মনে রাখা (সেভে বদল/বাদ পড়লে পুরনোটা এতিম হলে মোছার জন্য)
+            loadedImageIdsRef.current = new Set([
+              ...stimImgIds,
+              ...editData.questions.flatMap((q) => q.solutionImageIds || []),
+            ]);
             setStimulusImageIds(stimImgIds);
             setStimulusTopCount(Math.min(stimImgIds.length, editData.stimulus?.imageTopCount || 0));
 
@@ -1204,6 +1255,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
       try {
         const { blob, fileName } = await compressImageToWebP(files[i], 800, 0.8);
         const imageId = await saveImageBlob(blob, fileName);
+        sessionImageIdsRef.current.add(imageId);
         const previewUrl = URL.createObjectURL(blob);
         added.push(imageId);
         setStimulusImageUrls((prev) => ({ ...prev, [imageId]: previewUrl }));
@@ -1241,6 +1293,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
       }
       const { blob, fileName } = await compressImageToWebP(file, 800, 0.8);
       const newId = await saveImageBlob(blob, fileName);
+      sessionImageIdsRef.current.add(newId);
       const previewUrl = URL.createObjectURL(blob);
       setIsDirty(true);
       if (target.kind === 'stimulus') {
@@ -1332,6 +1385,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
       try {
         const { blob, fileName } = await compressImageToWebP(file, 800, 0.8);
         const imageId = await saveImageBlob(blob, fileName);
+        sessionImageIdsRef.current.add(imageId);
         const previewUrl = URL.createObjectURL(blob);
         newParts.push({ kind: 'image', id: imageId });
         setSolutionImageUrls((prev) => ({ ...prev, [imageId]: previewUrl }));
@@ -1520,6 +1574,12 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
     if (newErrors.topic || newErrors.chapter || newErrors.stimulus || newErrors.questions) {
       setErrors(newErrors);
       showToast('অনুগ্রহ করে প্রয়োজনীয় ঘরগুলো পূরণ করুন');
+      // প্রথম ত্রুটির ঘরে পাতা (মোড/হায়ারার্কি কার্ড খোলা হলে সেটা আঁকা হওয়ার পর effect স্ক্রল করে)
+      errorScrollTargetRef.current = firstErrorTargetId(
+        newErrors,
+        questionBlocks.map((q) => q.tempId)
+      );
+      setErrorScrollTick((t) => t + 1);
       return;
     }
 
@@ -1585,6 +1645,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
 
       showToast('প্রশ্ন সেভ হয়েছে');
       setIsDirty(false);
+      await cleanupFormImages('saved'); // ধাপ ৫: বদল/বাতিল হওয়া ছবি মুছে ফেলা (কেউ ধরে থাকলে মোছে না)
       onSaved();
       onClose();
     } catch (err: any) {
@@ -1607,6 +1668,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
     if (isDirty) {
       setShowExitConfirm(true);
     } else {
+      void cleanupFormImages('discarded');
       onClose();
     }
   };
@@ -1785,6 +1847,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                 <label className="block text-xs font-semibold text-[#1B1F2A]">অধ্যায়</label>
                 <div className="relative">
                   <select
+                    id={FORM_ERR_CHAPTER_ID}
                     value={selectedChapterId}
                     disabled={!selectedSubjectId}
                     onChange={(e) => handleChapterChange(e.target.value)}
@@ -1817,6 +1880,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                 <label className="block text-xs font-semibold text-[#1B1F2A]">টপিক *</label>
                 <div className="relative">
                   <select
+                    id={FORM_ERR_TOPIC_ID}
                     value={selectedTopicId}
                     disabled={!selectedChapterId}
                     onChange={(e) => handleTopicChange(e.target.value)}
@@ -1848,7 +1912,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
           )}
 
           {/* Section 2: Stimulus (উদ্দীপক) — controls row, board chips, text, picture "+", reference */}
-          <section className="bg-white rounded-2xl p-4 border border-[#D5D9E2] shadow-xs space-y-2.5">
+          <section id={FORM_ERR_STIMULUS_ID} className="bg-white rounded-2xl p-4 border border-[#D5D9E2] shadow-xs space-y-2.5">
             <div className="flex items-center justify-between gap-2">
               <span className="flex items-center gap-1.5 text-xs font-bold text-[#2A3BB0] min-w-0">
                 <HelpCircle className="w-4 h-4 text-[#3B4FD8] shrink-0" />
@@ -2096,7 +2160,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
                   </div>
 
                   {/* Question text — no title / hint text; board chips (newest on the right) sit right above the box */}
-                  <div className="space-y-1.5">
+                  <div id={formErrBlockTextId(block.tempId)} className="space-y-1.5">
                     {blockBoardChips}
                     <LatexEditor
                       value={block.questionText}
@@ -2386,6 +2450,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
           onConfirm={() => {
             setShowExitConfirm(false);
             setIsDirty(false);
+            void cleanupFormImages('discarded');
             onClose();
           }}
           onCancel={() => setShowExitConfirm(false)}
