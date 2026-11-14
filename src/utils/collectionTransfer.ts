@@ -605,7 +605,7 @@ export async function exportFullBackup(scope: CqScope = 'type'): Promise<boolean
       stimuli,
       questions,
       papers,
-      meta,
+      meta: meta.filter((m: any) => !String(m?.key ?? '').startsWith('multi_question_clipboard')),
       images: exportedImages,
     };
 
@@ -782,7 +782,9 @@ async function dumpDb(scope: CqScope): Promise<DbDump> {
       exportedImages.push({ id: img.id, fileName: img.fileName, data: await blobToBase64(img.blob) });
     }
   }
-  return { subjects, chapters, topics, stimuli, questions, papers, categories, meta, images: exportedImages };
+  // কপি-ক্লিপবোর্ড (ছবির ডেটাসহ) ব্যাকআপে যায় না — অস্থায়ী জিনিস, আর ব্যাকআপ ফোলায়
+  const metaForBackup = meta.filter((m: any) => !String(m?.key ?? '').startsWith('multi_question_clipboard'));
+  return { subjects, chapters, topics, stimuli, questions, papers, categories, meta: metaForBackup, images: exportedImages };
 }
 
 /** Build the whole-app backup (file name + JSON text) without saving it anywhere */

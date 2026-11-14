@@ -937,20 +937,55 @@ async function deleteUnusedImages(imageIds: string[]): Promise<number> {
     const tracker = createImageUseTracker(imageIds || []);
     if (tracker.size === 0) return 0;
     const other: QbDatabase = db === chapterDb ? typeDatabase : chapterDb;
-    for (const d of [db, other]) {
-      await d.stimuli.each((st) => tracker.addStimulus(st));
-      await d.questions.each((q) => tracker.addQuestion(q));
-      // কপি/কাট করা প্রশ্ন বা গ্রুপ ক্লিপবোর্ডে (meta) থাকে এবং একই ছবির id ধরে —
-      // মূলটা মুছে পরে পেস্ট করলে ছবি হারাত, তাই ক্লিপবোর্ডও "ধরে আছে" গোনা হয়
-      for (const key of [META_CLIPBOARD_KEY, META_GROUP_CLIPBOARD_KEY]) {
-        const rec = await d.meta.get(key);
-        markClipboardUse(tracker, rec?.value);
+    // কোন ছবি কোন টপিক ধরে আছে (আগে কপি হয়ে একই ছবি শেয়ার করা পুরনো ডেটার জন্য — নিচে মালিকানা সরাতে লাগে)
+    const wanted = new Set(imageIds);
+    const usersByImage = new Map<string, Set<string>>();
+    const noteUse = (ids: string[] | undefined | null, scope: 'type' | 'chapter', topicId: string | undefined) => {
+      if (!ids || !topicId) return;
+      for (const id of ids) {
+        if (!wanted.has(id)) continue;
+        let set = usersByImage.get(id);
+        if (!set) usersByImage.set(id, (set = new Set()));
+        set.add(`${scope}|${topicId}`);
       }
-      if (tracker.allUsed()) return 0;
+    };
+    for (const d of [db, other]) {
+      const scope = d === chapterDb ? 'chapter' : 'type';
+      await d.stimuli.each((st) => {
+        tracker.addStimulus(st);
+        noteUse(st.imageIds, scope, st.topicId);
+      });
+      await d.questions.each((q) => {
+        tracker.addQuestion(q);
+        noteUse(q.solutionImageIds, scope, q.topicId);
+      });
+      // শুধু কাট করা (এখনও পেস্ট না হওয়া) প্রশ্ন ক্লিপবোর্ডে ছবি ধরে রাখে — পেস্টে একই প্রশ্ন একই id-তে ফিরে আসে।
+      // কপি করা প্রশ্নের ছবির ডেটা ক্লিপবোর্ডে নিজেই থাকে (crossDb.setMultiClipboard), তাই মূল মুছলে ছবিও মোছা যায়।
+      const mode = await d.meta.get('multi_question_clipboard_mode');
+      if (mode?.value === 'cut') {
+        const rec = await d.meta.get('multi_question_clipboard');
+        if (Array.isArray(rec?.value)) for (const g of rec.value) markClipboardUse(tracker, g);
+      }
     }
     const unused = tracker.unused();
-    if (unused.length === 0) return 0;
-    await db.images.where('id').anyOf(unused).delete();
+    if (unused.length > 0) await db.images.where('id').anyOf(unused).delete();
+
+    // যে ছবি এখনও কেউ ধরে আছে (পুরনো শেয়ার করা ছবি) তার ফাইল আগের মালিক-টপিকের media/-তে পড়ে না থাকে:
+    // ব্যবহারকারী টপিকগুলো লেখার জন্য চিহ্নিত করা; লেখার সময় ফাইল সেখানে যায় ও পুরনো ফাইল সরে (writer.placeImage)
+    const unusedSet = new Set(unused);
+    const dirty = new Set<string>();
+    for (const [id, users] of usersByImage) if (!unusedSet.has(id)) users.forEach((u) => dirty.add(u));
+    if (dirty.size > 0) {
+      try {
+        const { markTopicDirty } = await import('../storage/writer');
+        for (const u of dirty) {
+          const [scope, topicId] = u.split('|');
+          markTopicDirty(scope as 'type' | 'chapter', topicId);
+        }
+      } catch {
+        /* ফোল্ডার লেখক না পাওয়া গেলে কিছু করার নেই — পরের সিঙ্কে ঠিক হবে */
+      }
+    }
     return unused.length;
   } catch (err) {
     console.warn('deleteUnusedImages failed (ছবি রেখে দেওয়া হলো):', err);

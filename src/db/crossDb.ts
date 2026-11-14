@@ -3,6 +3,8 @@ import { typeApi, chapterApi, generateId } from './api';
 import { getImageBlob } from '../storage/imageStore';
 import { fillMissingQuestions, fillMissingStimuli } from '../storage/bankMissing';
 import { loadCopies } from '../storage/bankMissingStore';
+import { imageIdsOfGroup, remapStimulusImages, remapQuestionImages } from '../utils/imageClone';
+import { createImageUseTracker } from '../utils/imageCleanup';
 
 /**
  * Papers can contain questions from BOTH collections (Type CQ + Chapter CQ).
@@ -91,6 +93,7 @@ export interface MultiClipGroup {
 
 const MULTI_CLIPBOARD_KEY = 'multi_question_clipboard';
 const MULTI_CLIPBOARD_MODE_KEY = 'multi_question_clipboard_mode';
+const MULTI_CLIPBOARD_IMAGES_KEY = 'multi_question_clipboard_images';
 
 export type MultiClipMode = 'copy' | 'cut';
 
@@ -102,8 +105,42 @@ export type MultiClipMode = 'copy' | 'cut';
 export async function setMultiClipboard(groups: MultiClipGroup[], mode: MultiClipMode = 'copy'): Promise<void> {
   // only one clipboard is active at a time
   await Promise.all([typeApi.clearGroupClipboard(), chapterApi.clearGroupClipboard()]);
+
+  // COPY: ছবির ডেটা এখনই ক্লিপবোর্ডে নেওয়া হয়। এতে কপির পর মূল প্রশ্ন/ছবি মুছে ফেললেও পেস্ট কাজ করে,
+  // আর পেস্টের সময় প্রতিটা কপি নতুন id-র নিজের ছবি পায় (দুই প্রশ্ন একই ছবি ধরে না)।
+  // CUT: ছবি নেওয়ার দরকার নেই — প্রশ্ন নিজে (একই id-তে) সরে যায়।
+  let images: ClipImages | null = null;
+  if (mode === 'copy') {
+    images = {};
+    for (const g of groups) {
+      const sdb = getDb(g.source);
+      for (const id of imageIdsOfGroup(g.stimulus, g.questions)) {
+        if (images[id]) continue;
+        const blob = await getImageBlob(id, sdb);
+        if (!blob) continue;
+        const rec = (await sdb.images.get(id)) ?? (await (g.source === 'chapter' ? db : chapterDb).images.get(id));
+        images[id] = { blob, fileName: rec?.fileName || `${id}.webp`, w: rec?.w, h: rec?.h };
+      }
+    }
+  }
+
   await db.meta.put({ key: MULTI_CLIPBOARD_KEY, value: JSON.parse(JSON.stringify(groups)) });
   await db.meta.put({ key: MULTI_CLIPBOARD_MODE_KEY, value: mode });
+  await db.meta.put({ key: MULTI_CLIPBOARD_IMAGES_KEY, value: images });
+}
+
+interface ClipImage {
+  blob: Blob;
+  fileName: string;
+  w?: number;
+  h?: number;
+}
+type ClipImages = Record<string, ClipImage>;
+
+async function getMultiClipboardImages(): Promise<ClipImages> {
+  const rec = await db.meta.get(MULTI_CLIPBOARD_IMAGES_KEY);
+  const v = rec?.value as ClipImages | null | undefined;
+  return v && typeof v === 'object' ? v : {};
 }
 
 export async function getMultiClipboardMode(): Promise<MultiClipMode> {
@@ -120,6 +157,7 @@ export async function getMultiClipboard(): Promise<MultiClipGroup[]> {
 export async function clearMultiClipboard(): Promise<void> {
   await db.meta.put({ key: MULTI_CLIPBOARD_KEY, value: null });
   await db.meta.put({ key: MULTI_CLIPBOARD_MODE_KEY, value: 'copy' });
+  await db.meta.put({ key: MULTI_CLIPBOARD_IMAGES_KEY, value: null });
 }
 
 export function countMultiClipboard(groups: MultiClipGroup[]): number {
@@ -164,25 +202,25 @@ export async function pasteMultiClipboard(
     insertOrder = position === 'before' ? targetOrder : targetOrder + 1;
   }
 
-  // --- images used by the pasted questions that the target database does not have yet ---
-  for (const g of groups) {
-    if (g.source === scope) continue;
-    const sdb = getDb(g.source);
-    const ids = new Set<string>();
-    (g.stimulus?.imageIds || []).forEach((id) => ids.add(id));
-    g.questions.forEach((q) => (q.solutionImageIds || []).forEach((id) => ids.add(id)));
-    for (const id of ids) {
-      if (await tdb.images.get(id)) continue;
-      const img = await sdb.images.get(id);
-      if (!img) continue;
-      // the picture is a file in the source folder: copy its data; the target topic's media/ folder gets its own file when it is written
-      const blob = await getImageBlob(id, sdb);
-      if (blob) await tdb.images.put({ id: img.id, fileName: img.fileName, blob, w: img.w, h: img.h });
+  const mode = await getMultiClipboardMode();
+
+  // --- CUT: অন্য ডেটাবেস থেকে আসা প্রশ্নের ছবি (একই id-তে) এই ডেটাবেসে আনা; টপিকের media/ ফোল্ডারে নিজের ফাইল লেখার সময় তৈরি হয় ---
+  if (mode === 'cut') {
+    for (const g of groups) {
+      if (g.source === scope) continue;
+      const sdb = getDb(g.source);
+      for (const id of imageIdsOfGroup(g.stimulus, g.questions)) {
+        if (await tdb.images.get(id)) continue;
+        const img = await sdb.images.get(id);
+        if (!img) continue;
+        const blob = await getImageBlob(id, sdb);
+        if (blob) await tdb.images.put({ id: img.id, fileName: img.fileName, blob, w: img.w, h: img.h });
+      }
     }
   }
 
   // ---------- CUT: move the original questions (ids stay the same, so papers keep working) ----------
-  if ((await getMultiClipboardMode()) === 'cut') {
+  if (mode === 'cut') {
     const cutIds = new Set<string>();
     groups.forEach((g) => g.questions.forEach((q) => cutIds.add(q.id)));
 
@@ -229,25 +267,48 @@ export async function pasteMultiClipboard(
       }
     }
 
+    // অন্য ডেটাবেস থেকে কাট: মূল ডেটাবেসের ছবির সারি ও ফোল্ডারের ফাইল মোছা (ছবি এখন এই ডেটাবেসের)
+    for (const g of groups) {
+      if (g.source !== scope) await releaseSourceImages(getDb(g.source), imageIdsOfGroup(g.stimulus, g.questions));
+    }
+
     await clearMultiClipboard(); // a cut can only be pasted once
     return total;
   }
 
-  await tdb.transaction('rw', [tdb.questions, tdb.stimuli], async () => {
+  // COPY: প্রতিটা কপি নতুন প্রশ্ন-id + নতুন ছবির id পায়; ছবির ডেটা ক্লিপবোর্ডে রাখা ছিল (মূল মুছে গেলেও চলে)
+  const clipImages = await getMultiClipboardImages();
+  let missingImages = 0;
+
+  await tdb.transaction('rw', [tdb.questions, tdb.stimuli, tdb.images], async () => {
     for (const q of topicQuestions) {
       if (q.order >= insertOrder) await tdb.questions.update(q.id, { order: q.order + total });
     }
 
     let order = insertOrder;
     for (const g of groups) {
+      // এই গ্রুপের জন্য আলাদা পুরনো-id → নতুন-id তালিকা (দুই গ্রুপ একই নতুন ছবি ধরে না)
+      const idMap = new Map<string, string>();
+      for (const oldId of imageIdsOfGroup(g.stimulus, g.questions)) {
+        const c = clipImages[oldId];
+        if (!c || !(c.blob instanceof Blob)) {
+          missingImages++;
+          continue;
+        }
+        const newId = generateId();
+        // topicId ছাড়া blob-সহ ছবি = "নতুন ছবি, এখনো ফোল্ডারে লেখা হয়নি"; টপিক লেখার সময় media/-তে যায়
+        await tdb.images.add({ id: newId, fileName: c.fileName, blob: c.blob, w: c.w, h: c.h });
+        idMap.set(oldId, newId);
+      }
+
       let newStimulusId: string | undefined;
       if (g.stimulus) {
         newStimulusId = generateId();
-        await tdb.stimuli.add({ ...g.stimulus, id: newStimulusId, topicId: targetTopicId });
+        await tdb.stimuli.add({ ...remapStimulusImages(g.stimulus, idMap), id: newStimulusId, topicId: targetTopicId });
       }
       for (const q of g.questions) {
         await tdb.questions.add({
-          ...q,
+          ...remapQuestionImages(q, idMap),
           id: generateId(),
           topicId: targetTopicId,
           stimulusId: newStimulusId,
@@ -257,5 +318,24 @@ export async function pasteMultiClipboard(
     }
   });
 
+  if (missingImages > 0) console.warn(`পেস্ট: ${missingImages}টি ছবির ডেটা ক্লিপবোর্ডে পাওয়া যায়নি, বাদ দেওয়া হয়েছে`);
   return total;
+}
+
+
+/**
+ * কাটে অন্য ডেটাবেসে সরে যাওয়া প্রশ্নের ছবি মূল ডেটাবেস থেকে মোছা (সারি + hook-এর মাধ্যমে ফোল্ডারের ফাইল)।
+ * মূল ডেটাবেসের বাকি কোনো উদ্দীপক/প্রশ্ন এখনও ধরে থাকলে ছবি থাকে। কখনও throw করে না।
+ */
+async function releaseSourceImages(sdb: ReturnType<typeof getDb>, ids: string[]): Promise<void> {
+  try {
+    const tracker = createImageUseTracker(ids);
+    if (tracker.size === 0) return;
+    await sdb.stimuli.each((st) => tracker.addStimulus(st));
+    await sdb.questions.each((q) => tracker.addQuestion(q));
+    const unused = tracker.unused();
+    if (unused.length > 0) await sdb.images.where('id').anyOf(unused).delete();
+  } catch (err) {
+    console.warn('releaseSourceImages failed (ছবি রেখে দেওয়া হলো):', err);
+  }
 }
