@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useToast } from './Toast';
 import { isNativeApp } from '../storage/nativeStore';
 import {
@@ -9,6 +9,7 @@ import {
   type SyncReport,
 } from '../storage/syncEngine';
 import { SyncPreviewDialog } from './SyncPreviewDialog';
+import { ConfirmDialog } from './ConfirmDialog';
 import { CategorySyncDialog } from './CategorySyncDialog';
 import { syncController, useSyncDialogState, presentAutoSync } from '../storage/syncDialogStore';
 import { categorySyncController, useCategoryDialogState } from '../storage/categorySyncStore';
@@ -34,13 +35,21 @@ export const SyncRunner: React.FC = () => {
   const triedRef = useRef(false);
   const dialogState = useSyncDialogState();
   const categoryState = useCategoryDialogState();
+  // ধাপ ৪ (সমস্যা ৩): ফোল্ডার না পাওয়া অনেক আইটেম মোছার জিজ্ঞাসা - ব্রাউজারের window.confirm-এর বদলে নিজস্ব ডায়ালগ
+  const [massAsk, setMassAsk] = useState<{ count: number; total: number; resolve: (ok: boolean) => void } | null>(null);
 
   useEffect(() => {
     if (!isNativeApp()) return;
 
     setMassDeleteConfirm(
       (count, total) =>
-        window.confirm(`স্টোরেজ ফোল্ডারে ${total}টির মধ্যে ${count}টি ফোল্ডার পাওয়া যাচ্ছে না।\n\nএগুলো অ্যাপ থেকেও মুছে ফেলবেন?`)
+        new Promise<boolean>((resolve) => {
+          // আগের জিজ্ঞাসা খোলা থাকলে সেটা "না" ধরে বন্ধ
+          setMassAsk((prev) => {
+            prev?.resolve(false);
+            return { count, total, resolve };
+          });
+        })
     );
 
     const begin = () => {
@@ -80,13 +89,37 @@ export const SyncRunner: React.FC = () => {
       stopRef.current?.();
       stopRef.current = null;
       setMassDeleteConfirm(null);
+      setMassAsk((prev) => {
+        prev?.resolve(false);
+        return null;
+      });
     };
   }, [showToast]);
 
   // ধাপ ৪: মেনু থেকে শুরু করা সিঙ্কের উইন্ডো (সব স্ক্রিনের ওপরে, একটাই)।
   // ১গ-২খ: ক্যাটেগরি সিঙ্কের উইন্ডোও এখানে; দুটো একসাথে খোলা যায় না (দুই নিয়ন্ত্রক একে অন্যকে আটকায়)।
+  const answerMass = (ok: boolean) => {
+    massAsk?.resolve(ok);
+    setMassAsk(null);
+  };
+
   return (
     <>
+      <ConfirmDialog
+        isOpen={massAsk !== null}
+        title="ফোল্ডার পাওয়া যাচ্ছে না"
+        message={
+          massAsk
+            ? `স্টোরেজ ফোল্ডারে ${massAsk.total}টির মধ্যে ${massAsk.count}টি ফোল্ডার পাওয়া যাচ্ছে না।\n\nএগুলো অ্যাপ থেকেও মুছে ফেলবেন?`
+            : ''
+        }
+        confirmText="অ্যাপ থেকেও মুছুন"
+        cancelText="বাতিল"
+        isDestructive
+        autoFocusCancel
+        onConfirm={() => answerMass(true)}
+        onCancel={() => answerMass(false)}
+      />
       <SyncPreviewDialog
         state={dialogState}
         onConfirm={syncController.confirm}

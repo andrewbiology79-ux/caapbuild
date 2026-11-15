@@ -42,7 +42,7 @@ export interface ScanSummary {
 
 export interface ScanOptions {
   /** called when more than half of the items look deleted - return true to really delete them */
-  confirmMassDelete?: (count: number, total: number) => boolean;
+  confirmMassDelete?: (count: number, total: number) => boolean | Promise<boolean>;
 }
 
 let declinedSignature = '';
@@ -127,7 +127,7 @@ export async function scanScope(scope: CqScope, opts: ScanOptions = {}): Promise
       if (sig === declinedSignature) {
         deletedRows = [];
       } else {
-        const ok = opts.confirmMassDelete ? opts.confirmMassDelete(deletedRows.length, found.total) : false;
+        const ok = opts.confirmMassDelete ? await opts.confirmMassDelete(deletedRows.length, found.total) : false;
         if (!ok) {
           declinedSignature = sig;
           summary.warnings.push('অনেকগুলো ফোল্ডার পাওয়া যাচ্ছে না - কিছু মোছা হয়নি');

@@ -9,6 +9,8 @@ export interface ConfirmDialogProps {
   confirmText?: string;
   cancelText?: string;
   isDestructive?: boolean;
+  /** ধাপ ৪: বিপজ্জনক কাজে ডিফল্ট ফোকাস "বাতিল" বাটনে */
+  autoFocusCancel?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -20,6 +22,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   confirmText = 'হ্যাঁ',
   cancelText = 'না',
   isDestructive = false,
+  autoFocusCancel = false,
   onConfirm,
   onCancel,
 }) => {
@@ -71,6 +74,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         <div className="grid grid-cols-2 gap-3 pt-2">
           <button
             type="button"
+            autoFocus={autoFocusCancel}
             onClick={onCancel}
             className="w-full min-h-[44px] px-4 py-2.5 rounded-xl border border-[#D5D9E2] text-sm font-medium text-[#1B1F2A] bg-white hover:bg-[#F2F4F8] active:bg-[#E5E9F0] transition-colors focus:outline-none focus:ring-2 focus:ring-[#3B4FD8]"
           >

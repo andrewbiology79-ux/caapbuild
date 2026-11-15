@@ -76,8 +76,9 @@ export function isSyncPaused(): boolean {
   return pauseCount > 0;
 }
 
-let confirmMassDelete: ((count: number, total: number) => boolean) | null = null;
-export function setMassDeleteConfirm(fn: ((count: number, total: number) => boolean) | null): void {
+let confirmMassDelete: ((count: number, total: number) => boolean | Promise<boolean>) | null = null;
+/** ধাপ ৪ (সমস্যা ৩): নিজস্ব ডায়ালগ দেখানোর জন্য async-ও চলে (ব্যবহারকারীর উত্তরের অপেক্ষায়) */
+export function setMassDeleteConfirm(fn: ((count: number, total: number) => boolean | Promise<boolean>) | null): void {
   confirmMassDelete = fn;
 }
 
