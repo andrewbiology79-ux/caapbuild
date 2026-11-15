@@ -54,7 +54,7 @@ describe.each(SCOPES)('অ্যাপ থেকে ফোল্ডারে স
     expect(pre.empty).toBe(false);
     expect(fs.listFiles(scopeRoot(scope))).toEqual([]); // প্রিভিউ কিছু লেখে না
 
-    await defaultSyncDeps.run('app-to-folder', pre, () => {});
+    await defaultSyncDeps.run('app-to-folder', pre, () => {}, () => {});
 
     const d = getDb(scope);
     for (const t of bank.topics) {
@@ -72,7 +72,7 @@ describe.each(SCOPES)('অ্যাপ থেকে ফোল্ডারে স
   it('শুধু এই উইন্ডোর স্কোপ লেখা হয়: অন্য স্কোপের ফোল্ডার ছোঁয়া হয় না', async () => {
     await setup();
     const pre = await previewAppToFolder(undefined, scope);
-    await defaultSyncDeps.run('app-to-folder', pre, () => {});
+    await defaultSyncDeps.run('app-to-folder', pre, () => {}, () => {});
     expect(fs.listFiles(scopeRoot(scope)).length).toBeGreaterThan(0);
     expect(fs.listFiles(scopeRoot(other))).toEqual([]);
   });
@@ -80,14 +80,14 @@ describe.each(SCOPES)('অ্যাপ থেকে ফোল্ডারে স
   it('ফোল্ডারের data.json হাতে মুছে ফেললে প্রিভিউ বদল দেখায়, সিঙ্কে ফিরে আসে', async () => {
     const banks = await setup();
     const bank = banks[scope];
-    await defaultSyncDeps.run('app-to-folder', await previewAppToFolder(undefined, scope), () => {});
+    await defaultSyncDeps.run('app-to-folder', await previewAppToFolder(undefined, scope), () => {}, () => {});
     const file = `${topicDir(scope, bank, bank.topics[0].id)}/${DATA_FILE}`;
     expect(fs.fileText(file)).toBeTruthy();
     fs.externalDelete(file);
 
     const pre = await previewAppToFolder(undefined, scope);
     expect(pre.empty).toBe(false);
-    await defaultSyncDeps.run('app-to-folder', pre, () => {});
+    await defaultSyncDeps.run('app-to-folder', pre, () => {}, () => {});
     expect(fs.fileJson(file)?.topic.id).toBe(bank.topics[0].id);
   });
 
@@ -95,11 +95,11 @@ describe.each(SCOPES)('অ্যাপ থেকে ফোল্ডারে স
     await setup();
     const pre = await previewAppToFolder(undefined, scope);
     fs.setFailRule((op, p) => op === 'writeTextSafe' && p.endsWith(`/${DATA_FILE}`));
-    await expect(defaultSyncDeps.run('app-to-folder', pre, () => {})).rejects.toThrow();
+    await expect(defaultSyncDeps.run('app-to-folder', pre, () => {}, () => {})).rejects.toThrow();
     expect(isSyncPaused()).toBe(false);
     fs.setFailRule(null);
     // ব্যর্থতার পর আবার চালালে ঠিক হয়
-    await defaultSyncDeps.run('app-to-folder', await previewAppToFolder(undefined, scope), () => {});
+    await defaultSyncDeps.run('app-to-folder', await previewAppToFolder(undefined, scope), () => {}, () => {});
     expect(fs.listFiles(scopeRoot(scope)).some((f) => f.endsWith(`/${DATA_FILE}`))).toBe(true);
   });
 });

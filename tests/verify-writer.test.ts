@@ -138,8 +138,8 @@ describe.each(SCOPES)('media/ ছবি ও .nomedia (%s)', (scope) => {
     for (const img of bank.images) {
       const rec = await d.images.get(img.id);
       expect(rec).toBeTruthy();
-      expect(rec.blob).toBeUndefined();
-      expect(rec.topicId).toBe(img.topicId);
+      expect(rec!.blob).toBeUndefined();
+      expect(rec!.topicId).toBe(img.topicId);
     }
   });
 });
@@ -276,7 +276,7 @@ describe.each(SCOPES)('প্রশ্ন অন্য টপিকে সরা
     const oldFile = `${mediaDirOf(dirOf(scope, bank, topicA))}/${imageFileName(img.id)}`;
     expect(fs.fileBase64(newFile)).toBe(img.base64);
     expect(fs.fileBase64(oldFile)).toBeUndefined();
-    expect((await d.images.get(img.id)).topicId).toBe(topicB);
+    expect((await d.images.get(img.id))!.topicId).toBe(topicB);
     expect(fs.fileJson(`${dirOf(scope, bank, topicB)}/${DATA_FILE}`).questions.some((x: any) => x.id === q.id)).toBe(true);
     expect(fs.fileJson(`${dirOf(scope, bank, topicA)}/${DATA_FILE}`).questions.some((x: any) => x.id === q.id)).toBe(false);
   });
@@ -291,7 +291,7 @@ describe.each(SCOPES)('প্রশ্ন অন্য টপিকে সরা
     await flushAllWrites(true);
     expect(fs.fileBase64(`${mediaDirOf(dirOf(scope, bank, topicA))}/${imageFileName(img.id)}`)).toBe(img.base64);
     expect(fs.fileBase64(`${mediaDirOf(dirOf(scope, bank, topicB))}/${imageFileName(img.id)}`)).toBe(img.base64);
-    expect((await d.images.get(img.id)).topicId).toBe(topicA); // মালিক বদলায়নি
+    expect((await d.images.get(img.id))!.topicId).toBe(topicA); // মালিক বদলায়নি
   });
 });
 
