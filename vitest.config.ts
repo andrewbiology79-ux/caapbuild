@@ -15,6 +15,8 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    // যাচাই-টেস্ট আলাদা ধাপে চলে (vitest.verify.config.ts) — ফেল করলেও APK বিল্ড আটকায় না
+    exclude: ['**/node_modules/**', 'tests/verify-*.test.ts'],
     setupFiles: ['tests/setup.ts'],
   },
 });

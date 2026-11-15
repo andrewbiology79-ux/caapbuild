@@ -37,6 +37,35 @@ jobs:
       - name: Run automated tests
         run: npm test
 
+      # যাচাই-পরিকল্পনা: নতুন যাচাই-টেস্ট (tests/verify-*.test.ts) আলাদা ধাপে চলে। ফেল করলেও APK বিল্ড আটকায় না;
+      # ফল Actions-এর সারাংশে ও ডাউনলোডযোগ্য রিপোর্টে। (ওপরের `npm test` যেমন ছিল তেমনই — সেটা ফেল করলে বিল্ড থামে)
+      - name: Run verification tests (non-blocking)
+        id: verify_tests
+        continue-on-error: true
+        run: |
+          mkdir -p verify-report
+          set +e
+          npx vitest run -c vitest.verify.config.ts --reporter=default --reporter=json --outputFile.json=verify-report/verify-result.json 2>&1 | tee verify-report/verify-log.txt
+          CODE=${PIPESTATUS[0]}
+          {
+            echo "## যাচাই-টেস্ট (verify-*.test.ts)"
+            if [ "$CODE" = "0" ]; then echo "✅ সব পাস"; else echo "❌ কিছু ফেল (exit $CODE) — verify-report আর্টিফ্যাক্টে লগ আছে; APK বিল্ড তবু চলেছে"; fi
+            echo
+            echo '```'
+            tail -n 40 verify-report/verify-log.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $CODE
+
+      - name: Upload verification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-report-${{ github.run_number }}
+          path: verify-report
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Build Web Application
         run: npm run build
         env:
