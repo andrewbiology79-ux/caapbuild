@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { createSaveGuard } from '../utils/saveGuard';
 import { useEditorOpen } from '../utils/useEditorOpen';
 import { LatexEditor } from './LatexEditor';
 import { RichText } from './RichText';
@@ -1533,8 +1534,20 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
     }
   };
 
+  // ডবল-সেভ ঠেকানো: সেভ শুরুর মুহূর্তেই (ডুপ্লিকেট-চেকের await-এর আগে) তালা; বিস্তারিত utils/saveGuard.ts
+  const saveGuardRef = useRef(createSaveGuard());
+
   // Save Validation & Action
   const handleSave = async () => {
+    if (!saveGuardRef.current.tryEnter()) return; // আগের সেভ এখনও চলছে — দ্বিতীয় ট্যাপ বাদ
+    try {
+      await handleSaveLocked();
+    } finally {
+      saveGuardRef.current.leave();
+    }
+  };
+
+  const handleSaveLocked = async () => {
     const newErrors: {
       topic?: string;
       chapter?: string;
@@ -1598,10 +1611,12 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
       console.warn('Duplicate check failed, saving without it:', dupErr);
     }
 
-    await performSave();
+    await performSave(true);
   };
 
-  const performSave = async () => {
+  // holdsLock: handleSave আগেই তালা নিয়ে ডাকলে true; ডুপ্লিকেট-ডায়ালগের "তবু সংরক্ষণ করো" সরাসরি ডাকে — তখন এখানেই তালা নেওয়া হয়
+  const performSave = async (holdsLock = false) => {
+    if (!holdsLock && !saveGuardRef.current.tryEnter()) return;
     setLoading(true);
     try {
       // Synchronize usedInBoards with chips for each question
@@ -1660,6 +1675,7 @@ export const QuestionFormModal: React.FC<QuestionFormModalProps> = ({
       );
     } finally {
       setLoading(false);
+      if (!holdsLock) saveGuardRef.current.leave();
     }
   };
 
