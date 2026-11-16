@@ -1,10 +1,9 @@
 QUESTION BANK ANDROID APP COMPLETE PROJECT DEVELOPMENT & DELIVERY PLAN
 ============================================================
 
-Document version: 1.2 (reviewed architecture update)
+Document version: 1.3 (CI diagnostic and build-foundation update)
 Planning baseline: 16 November 2026
-Project status: Database design and initial Android build harness prepared;
-single-database architecture confirmed; full application development pending.
+Project status: Single-database architecture confirmed; canonical SQL and initial Room harness prepared; CI diagnostic capture is active. The first observed CI run reached KAPT and failed on Kotlin metadata parser compatibility. Package v0.2.3 contains a targeted dependency-alignment attempt; Android build verification remains pending.
 
 ============================================================ 1. PROJECT
 OBJECTIVE ============================================================
@@ -1010,20 +1009,128 @@ Consequences:
    ownership requires a separate reviewed architecture decision and a
    migration plan.
 
-FIRST UPDATED ZIP BASELINE
+============================================================
+15. PROJECT STATUS UPDATE — VERSION 1.3
+============================================================
 
-The first updated Android package is version 0.2.0 (database foundation).
-It retains the existing 35 Room entities and adds an idempotent runtime
-installer for the two FTS5 virtual tables, all 17 canonical triggers, and
-the canonical system paper-category seed. It adds automated contract
-checks for the canonical inventory of 35 ordinary tables, 2 FTS5 virtual
-tables, 17 triggers, and 48 CHECK clauses.
+Planning update date: 16 November 2026
+Package baseline: QuestionBank Android v0.2.3
+Previous package: v0.2.2 KAPT metadata compatibility attempt
 
-This package is still a build foundation, not a completed app. It does
-not yet provide the complete DAO/repository layer, certified field-level
-Room parity, migration suite, complete Editor UI, image operation
-journal workflow, paper builder UI, backup/restore implementation, or a
-verified APK. No authoritative Android Gradle/Room compile result is
-claimed until CI succeeds and its logs are retained.
+15.1 New CI evidence reviewed
 
-END OF VERSION 1.2 UPDATE
+The uploaded GitHub Actions diagnostic report identifies:
+- Workflow run number: 6.
+- Commit: 478388d46ef740ba74a9fb29c9445c27d6072c07.
+- Java runtime: 17.0.21.
+- Gradle task failure: `:app:kaptDebugKotlin`.
+- Gradle process exit code: 1.
+- Root diagnostic: Kotlin metadata version 2.4.0 was encountered, while
+  the metadata reader selected on the annotation processor classpath
+  reported a maximum supported version of 2.3.0.
+- The stack trace enters Room's Kotlin metadata processing path
+  (`KmClassContainer` / `KotlinClassMetadata.readStrict`).
+
+This evidence points to annotation-processor metadata-reader
+compatibility. It is not evidence of an Android SDK license failure in
+that run. The JNI stripping warning and Gradle deprecation warning were
+not the fatal error shown in the supplied log.
+
+15.2 Package v0.2.2 change and v0.2.3 packaging update
+
+Package v0.2.2 introduced the targeted dependency-alignment attempt:
+`kapt("org.jetbrains.kotlin:kotlin-metadata-jvm:2.4.21")`.
+
+Package v0.2.3:
+- Carries forward that KAPT processor-classpath dependency.
+- Updates the Android `versionName` to
+  `0.2.3-database-foundation` so package and app version metadata agree.
+- Includes this project plan as `PROJECT_PLAN_v1_3_UPDATED.txt`.
+- Preserves the GitHub Actions workflow that captures the complete
+  Gradle log and uploads diagnostics even when the build fails.
+- Does not change the accepted one-physical-database architecture.
+- Does not claim that the KAPT compatibility issue is resolved.
+
+The dependency override is a testable compatibility hypothesis, not a
+verified fix. The local packaging environment did not run Gradle and
+cannot establish the resolved KAPT dependency graph or Android build
+result.
+
+15.3 Current phase status
+
+PHASE 0 — REQUIREMENTS AND PROJECT CONTROL:
+Status: IN REVIEW / BASELINE ESTABLISHED
+Evidence: canonical schema inventory and architecture rules are
+documented; the 146-item behavior traceability work and remaining
+decision records still need completion.
+
+PHASE 1 — ANDROID BUILD FOUNDATION:
+Status: IN PROGRESS / BLOCKED ON CI VERIFICATION
+Evidence: Android project harness, Gradle configuration and diagnostic
+workflow are present. CI run 6 failed at `:app:kaptDebugKotlin`.
+Exit criteria are not met until a clean CI run completes tests and
+debug APK assembly and publishes the expected APK artifact.
+
+PHASE 2 — DATABASE FOUNDATION AND ROOM PARITY:
+Status: PARTIAL FOUNDATION ONLY
+Evidence: 35 ordinary Room entity files, canonical SQL, database object
+installation code, and a canonical SQL contract test are present in
+the harness. The Database class and DAO surface are not yet the complete
+application data layer. Full Room-generated schema parity, all DAO
+accessors, migrations and comprehensive runtime verification remain
+open.
+
+PHASES 3–17:
+Status: NOT STARTED unless explicitly evidenced by a later test report
+or implementation review. Presence of a design note or scaffold file
+does not count as feature completion.
+
+15.4 Immediate next execution gate
+
+1. Extract package v0.2.3 and push its project contents to the intended
+   GitHub repository.
+2. Run the `Android Test and APK Build` workflow.
+3. Download the `QuestionBank-ci-report` artifact regardless of result.
+4. On failure, inspect `gradle-build.log`, `gradle-exit-code.txt`, and
+   generated Gradle/JUnit reports. Verify whether the same metadata
+   parser error remains and inspect the resolved KAPT processor
+   dependency graph before making another dependency change.
+5. On success, verify that `testDebugUnitTest` and `assembleDebug`
+   both completed and that `QuestionBank-debug-apk` contains
+   `app-debug.apk`.
+6. Only then mark Phase 1's build gate as passed. A green workflow is
+   necessary but does not prove the full application's feature
+   completeness or Room schema parity.
+
+If the direct metadata dependency does not resolve the parser mismatch,
+evaluate the Room/Kotlin processor compatibility matrix and consider a
+controlled KSP migration. Do not stack additional unverified dependency
+overrides.
+
+15.5 Package verification boundaries
+
+The v0.2.3 ZIP may be checked for archive integrity, expected files,
+source-level configuration and preservation of CI workflow contents.
+These checks do not substitute for:
+- Gradle dependency resolution.
+- Kotlin/KAPT annotation processing.
+- Android compilation.
+- Unit-test execution.
+- APK assembly or installation.
+- Device/runtime database tests.
+
+All status changes must cite a concrete CI report, test result, or code
+review. Never mark a phase PASSED merely because source files exist.
+
+15.6 Change log
+
+- v1.0: Initial complete project development and delivery plan.
+- v1.1: Source-review corrections for canonical SQL table inventory,
+  Room entity scope, trigger coverage and CHECK enforcement.
+- v1.2: Accepted ADR-001: one physical SQLite database with logically
+  separated Type_CQ and Chapter_CQ workflows.
+- v1.3: Added CI run 6 failure diagnosis, KAPT metadata compatibility
+  attempt status, package v0.2.3 version alignment, explicit phase
+  statuses and the next CI verification gate.
+
+END OF VERSION 1.3 UPDATE

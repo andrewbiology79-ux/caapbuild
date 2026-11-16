@@ -1,13 +1,15 @@
-Question Bank Android build foundation — version 0.2.0
+Question Bank Android build foundation — package version 0.2.3
 
-This ZIP is an initial implementation update to the Android/Room build harness, not a completed Question Bank application.
+This ZIP is an incremental Android/Room build-harness package, not a completed Question Bank application.
 
 Database architecture: one physical QuestionBank.db file. Type_CQ, Chapter_CQ, and paper workflows remain logically separated by table families and repository boundaries.
 
-Runtime database objects: Room registers the 35 ordinary application entities. The Room callback installs both FTS5 virtual tables, all 17 canonical triggers, and the idempotent system paper-category seed. The 10 FTS shadow tables are SQLite-managed and are not Room entities.
+Runtime database objects in the current harness: 35 ordinary application entities are registered. The Room callback installs both FTS5 virtual tables, all 17 canonical triggers, and the idempotent system paper-category seed. The 10 FTS shadow tables are SQLite-managed and are not Room entities.
 
-Canonical SQL inventory checks: 35 ordinary tables, 2 FTS5 virtual tables, 17 triggers, and 48 CHECK clauses.
+Canonical SQL inventory: 35 ordinary tables, 2 FTS5 virtual tables, 17 triggers, and 48 CHECK clauses.
 
-Build evidence: no authoritative Android Gradle/Room KAPT compile result or device test was obtained while preparing this ZIP. Run the GitHub Actions workflow or `gradle --no-daemon :app:testDebugUnitTest` and retain the logs. Do not describe this package as build-verified until CI succeeds.
+Build diagnosis: supplied GitHub Actions run 6 failed at :app:kaptDebugKotlin. The log reports Kotlin metadata version 2.4.0 but a metadata reader maximum of 2.3.0. Package v0.2.2 added kotlin-metadata-jvm 2.4.21 to the KAPT processor classpath. Package v0.2.3 carries this unverified compatibility attempt and aligns Android versionName to 0.2.3-database-foundation.
 
-CI diagnostics: the GitHub Actions workflow captures the complete Gradle log with --stacktrace --info and always uploads a QuestionBank-ci-report artifact, including after build failure. See CI_REPORT_README.md for download instructions. This report-upload change does not itself establish a successful build.
+CI diagnostics: the GitHub Actions workflow captures the complete Gradle log with --stacktrace --info and always uploads a QuestionBank-ci-report artifact, including after build failure. See CI_REPORT_README.md.
+
+Verification status: archive integrity and source-level edits are checked. No Android Gradle build was run in this environment. Run GitHub Actions. Do not describe the package as build-verified until the workflow passes tests and debug APK assembly and the expected APK artifact is present.
