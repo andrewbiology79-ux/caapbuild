@@ -1,9 +1,9 @@
 QUESTION BANK ANDROID APP COMPLETE PROJECT DEVELOPMENT & DELIVERY PLAN
 ============================================================
 
-Document version: 1.4 (KSP migration and CI diagnostic update)
+Document version: 1.6 (independent review fixes: CHECK emulation, Bengali FTS tokenizer, repository hygiene)
 Planning baseline: 16 November 2026
-Project status: Single-database architecture confirmed; canonical SQL and initial Room harness prepared; CI diagnostic capture is active. The first observed CI run reached KAPT and failed on Kotlin metadata parser compatibility. Package v0.2.4 migrates Room processing from KAPT to KSP after CI run 7 reported an empty Room entity list; Android build verification remains pending.
+Project status: Single-database architecture confirmed; canonical SQL and Room build harness prepared; CI diagnostic capture is active. History: CI run 6 failed in KAPT (Kotlin metadata); run 7 reported empty entities; run 8 (KSP) exposed missing ::class literals, corrected in v0.2.5. Package v0.2.6 applies the independent review fixes (CHECK-emulation triggers, Bengali FTS tokenizer, FTS update trigger, schema JSON no longer git-ignored, duplicate SQL copy removed). No Gradle build has passed yet; Android build verification remains pending (see section 18).
 
 ============================================================ 1. PROJECT
 OBJECTIVE ============================================================
@@ -1256,3 +1256,233 @@ until the next CI run succeeds.
   requirements.
 
 END OF VERSION 1.4 UPDATE
+
+
+============================================================
+17. CI RUN 8 REVIEW — ROOM ENTITY CLASS-LITERAL CORRECTION
+============================================================
+
+Planning update date: 16 November 2026
+Package baseline: QuestionBank Android v0.2.5
+Previous package: v0.2.4 KSP Room processing migration
+
+17.1 CI run 8 evidence
+
+The newly uploaded GitHub Actions report identifies:
+- Workflow: Android Test and APK Build.
+- Run number: 8.
+- Run ID: 43882225061.
+- Commit: 9a00d957b571a3beb9f5bb2539e2e334b4940b02.
+- Java runtime: 17.0.21.
+- Gradle process exit code: 1.
+- Failed Gradle task: `:app:kspDebugKotlin`.
+
+KSP starts successfully and loads the Room KSP provider:
+`androidx.room.RoomKspProcessor$Provider`.
+
+The reported processor diagnostics are:
+- `QuestionBankDatabase.kt:53`: `@Database annotation must specify
+  list of entities`.
+- `RoomSmokeDao.kt`: tables `type_cq_subjects` and
+  `chapter_cq_subjects` do not exist in Room's model.
+- The DAO query results then cannot be mapped to `kotlin.Long`.
+
+The preceding KAPT metadata parser exception is not reported in this
+run. The current failure is now inside Room's database model construction
+under KSP.
+
+17.2 Confirmed source defect
+
+Inspection of the v0.2.4 source archive shows that the `@Database`
+annotation lists 35 entity identifiers as bare names, for example:
+
+`entities = [TypeCqSubjectsEntity, ...]`
+
+Kotlin annotation arguments for Room entity declarations must be
+Kotlin class literals. The corrected form is:
+
+`entities = [TypeCqSubjectsEntity::class, ...]`
+
+This was a concrete source defect, not a KSP version incompatibility.
+The Room KSP provider loaded and reported that it could not find the
+entity class list because the entries were not class literals.
+
+17.3 Package v0.2.5 changes
+
+Package v0.2.5:
+- Retains Kotlin 2.4.21, KSP 2.3.12 and Room 2.8.5.
+- Retains KSP processing and removes no further build plugins.
+- Changes all 35 entries in `QuestionBankDatabase.kt` to `EntityName::class`.
+- Replaces the wildcard entity package import with explicit imports
+  for the 35 entity classes.
+- Adds a package/source verification assertion confirming that all
+  35 expected entity class literals appear in the database annotation
+  in canonical order.
+- Sets Android `versionName` to
+  `0.2.5-room-entity-class-literals`.
+- Preserves the GitHub Actions diagnostic workflow.
+- Does not alter the canonical SQL, entity definitions, table names,
+  database version, or the one-physical-database architecture.
+
+17.4 Updated phase status
+
+PHASE 1 — ANDROID BUILD FOUNDATION:
+Status: IN PROGRESS / BLOCKED ON CI VERIFICATION.
+Run 8 confirms the KSP Room provider loads, but Room rejected the
+entity declaration. Package v0.2.5 corrects the source annotation.
+The build gate is not passed until the next CI run completes unit tests
+and debug APK assembly.
+
+PHASE 2 — DATABASE FOUNDATION AND ROOM PARITY:
+Status: PARTIAL FOUNDATION ONLY.
+35 entity source files are retained and are now referenced through
+explicit class literals in `@Database`. Room-generated schema,
+generated database implementation, canonical SQL parity, migration
+coverage and runtime verification remain unverified.
+
+17.5 Next CI verification gate
+
+1. Extract v0.2.5 and push the project to the intended GitHub repository.
+2. Run `Android Test and APK Build`.
+3. Confirm `:app:kspDebugKotlin` completes and Room no longer emits
+   the `@Database annotation must specify list of entities` error.
+4. Confirm Room recognizes both subject tables and validates the smoke
+   DAO queries.
+5. Confirm Room generates its database implementation and schema.
+6. Confirm `testDebugUnitTest` and `assembleDebug` both succeed.
+7. Confirm the `QuestionBank-debug-apk` artifact contains
+   `app-debug.apk`.
+8. Mark Phase 1 passed only after all required build outputs are verified.
+
+The v0.2.5 ZIP is source-reviewed and statically checked only. No Gradle
+build was run in the packaging environment. The entity class-literal
+correction is not considered CI-verified until the next workflow run
+succeeds.
+
+17.6 Change log addition
+
+- v1.5: Recorded CI run 8, identified the missing `::class` literals
+  in all 35 Room `@Database` entity entries, corrected the source and
+  added explicit imports and source-level validation.
+
+END OF VERSION 1.5 UPDATE
+
+
+============================================================
+18. INDEPENDENT REVIEW AND PACKAGE v0.2.6
+============================================================
+
+Planning update date: 17 November 2026
+Package baseline: QuestionBank Android v0.2.6
+Previous package: v0.2.5 Room entity class-literal correction
+
+18.1 Review method and limits
+
+An independent review of v0.2.5 (report: Fix_txt_file_by_clude.txt) was
+re-checked against the source archive. Confirmed by direct inspection:
+CHECK clauses absent from every Room Entity, no Gradle wrapper, schema JSON
+git-ignored, duplicate SQL copy, FTS update trigger ignoring question_id,
+redundant unique index on type_cq_question_category_links, trigger tests
+that only check names, and Bengali word splitting in the default FTS5
+tokenizer (reproduced with SQLite 3.45.1).
+Not verified: any Gradle/Kotlin compilation, Room-generated database
+behaviour, BundledSQLiteDriver behaviour, and the compatibility of AGP
+8.13.2 + Kotlin 2.4.21 + Room 2.8.5 + androidx.sqlite 2.7.1.
+
+18.2 Corrections to earlier statements in this plan
+
+- Sections 2, 11 and 12 state that the harness callback installs only the
+  6 FTS triggers and omits 11 business triggers. This is stale: since the
+  v0.2.x Kotlin installer, CanonicalDatabaseObjects installs all 17
+  canonical triggers plus the 2 FTS tables and the system category seed.
+- The statement that CHECK clauses are enforced "through supported schema
+  definitions" is not possible: Room @Entity cannot declare CHECK. Room
+  creates tables itself, so the 48 CHECK clauses were absent from the real
+  database in v0.2.5.
+
+18.3 Package v0.2.6 changes
+
+1. CHECK enforcement (decision): the 48 canonical CHECK clauses are kept in
+   the canonical SQL and re-created in the Room database by 46 generated
+   BEFORE INSERT / BEFORE UPDATE triggers (2 per table, 23 tables) in
+   CheckEmulationTriggers.kt. Semantics match CHECK: a row is rejected only
+   when an expression is false; NULL passes. Offline fuzz comparison
+   (about 124,000 insert/update operations, SQLite 3.45.1) showed 0 differences
+   from the real CHECK constraints. Repository-level validation is still
+   required in addition; database enforcement is the last line of defence.
+   Runtime trigger count: 17 canonical + 46 CHECK-emulation = 63.
+2. Bengali FTS (decision): both FTS5 tables use
+   unicode61 with tokenchars containing the Bengali vowel signs, virama,
+   anusvara, visarga, candrabindu and nukta, so words are no longer split
+   at vowel signs. Prefix queries (for example "pori*") still work.
+   Substring search is not supported; trigram remains an alternative.
+   Existing devices keep old FTS tables (IF NOT EXISTS); acceptable because
+   the app is unpublished. Any later tokenizer change needs drop, recreate
+   and full reindex in a migration.
+3. FTS update triggers now fire on UPDATE OF question_id, question_text,
+   short_answer for both FTS tables.
+4. .gitignore no longer excludes app/schemas; Room schema JSON must be
+   committed after the first successful build.
+5. Redundant unique index removed from TypeCqQuestionCategoryLinksEntity.
+6. The duplicate SQL copy under app/src/test/resources was removed; unit
+   tests read the single canonical file in database/ via test sourceSets.
+7. Tests: trigger-count assertion updated to 17 + 46; new tests for CHECK
+   emulation (CHECK-stripped schema plus installer) and Bengali FTS.
+8. Android versionName: 0.2.6-check-triggers-fts-tokenizer.
+
+18.4 Updated phase status
+
+PHASE 1 - ANDROID BUILD FOUNDATION: IN PROGRESS / BLOCKED ON CI
+VERIFICATION. The v0.2.6 Kotlin and test code is uncompiled. The Gradle
+wrapper is still missing.
+PHASE 2 - DATABASE FOUNDATION AND ROOM PARITY: PARTIAL FOUNDATION ONLY.
+CHECK emulation and Bengali tokenizer are implemented but not verified on
+the Room-created database or with BundledSQLiteDriver. Room-schema versus
+canonical-SQL parity, migration tests and an androidTest remain open.
+
+18.5 Open work items from the review (priority order)
+
+1. Add Gradle wrapper: run `gradle wrapper --gradle-version 8.14.3`, commit
+   gradlew, gradlew.bat, gradle/wrapper/*; switch the workflow to ./gradlew.
+2. Run CI; if it fails, use the first "e:" error in gradle-build.log.
+   Suspects if dependency resolution fails: forced androidx.sqlite 2.7.1
+   against Room 2.8.5, or the KSP/Kotlin/AGP combination.
+3. After the first green build commit app/schemas/.../1.json and upload
+   app/schemas/** as a CI artifact.
+4. Add androidTest: Room in-memory database with BundledSQLiteDriver and the
+   callback; valid insert; invalid inserts (CHECK emulation); Bengali FTS
+   search; PRAGMA foreign_keys and journal_mode checks.
+5. Add a schema parity test (Room schema JSON versus canonical SQL).
+6. Set WAL and foreign-key policy explicitly in the database builder.
+7. Canonical-object versioning: keep IF NOT EXISTS but define DROP + CREATE
+   in migrations when a trigger body changes, or store
+   canonical_objects_version in app_metadata.
+8. Measure FTS delete/update cost on realistic data; if slow, key FTS rows
+   by rowid.
+9. Index names: Room generates index_<table>_<cols>; do not rely on the
+   SQL idx_*/uq_* names in code or scripts.
+10. Launcher icon: transparent foreground in all densities or vector.
+11. Increase versionCode for every release.
+12. Workflow: add concurrency (cancel-in-progress) and decide Gradle cache
+    provider.
+13. Documentation clean-up: README_BN.md (still v0.2.0/KAPT),
+    KAPT_METADATA_COMPATIBILITY.md (historical), missing notes referenced
+    by VERSION_NOTES_0.2.3, ZIP/folder naming mismatch.
+14. Seed data (board_catalog, question types) stays planned under built-in
+    board seed versioning; not a defect.
+
+18.6 Next CI verification gate
+
+1. Push v0.2.6 to GitHub and run "Android Test and APK Build".
+2. Confirm :app:kspDebugKotlin and the Kotlin compile of the new files pass.
+3. Confirm testDebugUnitTest passes, including the two new tests.
+4. Confirm assembleDebug and the QuestionBank-debug-apk artifact.
+5. Only then mark Phase 1 passed.
+
+18.7 Change log addition
+
+- v1.6: Recorded the independent review, corrected stale trigger and CHECK
+  statements, documented the CHECK-emulation and Bengali-tokenizer
+  decisions, listed open work items and the next CI gate.
+
+END OF VERSION 1.6 UPDATE

@@ -1,17 +1,20 @@
-Question Bank Android build foundation — package version 0.2.4
+Question Bank Android build foundation — package version 0.2.5
 
 This ZIP is an incremental Android/Room build-harness package, not a completed Question Bank application.
 
 Database architecture: one physical QuestionBank.db file. Type_CQ, Chapter_CQ, and paper workflows remain logically separated by table families and repository boundaries.
 
-Room entities: 35 ordinary Kotlin entity source files are present and referenced by the non-empty @Database entities list in QuestionBankDatabase.kt. The actual Room-generated schema and runtime parity have not yet been verified.
+Room entities: 35 ordinary Kotlin entity classes are retained. QuestionBankDatabase.kt now explicitly imports and lists each entity using Kotlin class literals (`EntityName::class`), correcting the CI run 8 error where bare class names caused Room to see no entities.
 
 Canonical SQL inventory: 35 ordinary application tables, 2 FTS5 virtual tables, 17 triggers, and 48 CHECK clauses. The 10 FTS shadow tables are SQLite-managed and are not Room entities.
 
-CI history: run 6 failed at :app:kaptDebugKotlin because a metadata reader supported only through 2.3.0 while encountering Kotlin metadata 2.4.0. Run 7 no longer reported that metadata exception after the v0.2.2 dependency override; it instead reported that Room's KAPT processor received an empty entity list, followed by missing-table query errors and invalid generated empty-array expressions.
+CI history:
+- Run 6: KAPT failed because its metadata reader supported through 2.3.0 but encountered Kotlin metadata 2.4.0.
+- Run 7: the metadata exception was no longer reported; Room KAPT instead reported an empty entity list.
+- Run 8: KSP loaded the Room processor, but Room reported `@Database annotation must specify list of entities`. Source review found the 35 entity names were missing `::class` class literals. The missing-table DAO errors were consequential.
 
-Package v0.2.4 migrates Room processing from KAPT to KSP 2.3.12, removes the direct Kotlin metadata override, moves Room compiler to the ksp configuration, and sets Android versionName to 0.2.4-ksp-room-processing. This migration is not yet CI-verified.
+Package v0.2.5 retains KSP 2.3.12 / Kotlin 2.4.21 / Room 2.8.5 and corrects the database annotation. Android versionName is 0.2.5-room-entity-class-literals.
 
 CI diagnostics: the GitHub Actions workflow captures complete Gradle output and uploads a QuestionBank-ci-report artifact even after build failure. See CI_REPORT_README.md.
 
-Verification status: ZIP integrity and source-level configuration are checked. No Android Gradle build was run in this environment. Do not mark the build foundation as passed until CI successfully generates Room implementation/schema, passes testDebugUnitTest and assembles app-debug.apk.
+Verification status: ZIP integrity and source-level entity-list assertions are checked. No Android Gradle build was run in this environment. Do not mark the build foundation as passed until CI successfully runs Room KSP generation, passes testDebugUnitTest and assembles app-debug.apk.

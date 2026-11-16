@@ -69,8 +69,8 @@ CREATE INDEX IF NOT EXISTS idx_paper_items_paper_order ON paper_question_items(p
 CREATE TABLE IF NOT EXISTS paper_item_overrides ( item_id TEXT PRIMARY KEY NOT NULL, question_text_override TEXT, stimulus_text_override TEXT, short_answer_override TEXT, solution_json_override TEXT, marks_override REAL, updated_at INTEGER NOT NULL, FOREIGN KEY(item_id) REFERENCES paper_question_items(item_id) ON UPDATE CASCADE ON DELETE CASCADE );
 CREATE TABLE IF NOT EXISTS paper_images ( paper_image_id TEXT PRIMARY KEY NOT NULL, relative_path TEXT NOT NULL UNIQUE CHECK (length(relative_path) > 0 AND substr(relative_path,1,1) <> '/' AND instr(relative_path,'..') = 0 AND instr(relative_path,char(92)) = 0), mime_type TEXT NOT NULL CHECK (length(trim(mime_type)) > 0), width INTEGER NOT NULL CHECK (width > 0), height INTEGER NOT NULL CHECK (height > 0), byte_size INTEGER NOT NULL CHECK (byte_size >= 0), sha256 TEXT NOT NULL CHECK (length(sha256) = 64 AND sha256 NOT GLOB '*[^0-9a-f]*'), created_at INTEGER NOT NULL );
 CREATE TABLE IF NOT EXISTS paper_item_images ( item_id TEXT NOT NULL, paper_image_id TEXT NOT NULL, position INTEGER NOT NULL, placement TEXT NOT NULL CHECK (placement IN ('STIMULUS_TOP','STIMULUS_BOTTOM','SOLUTION')), PRIMARY KEY(item_id, paper_image_id), UNIQUE(item_id, position), FOREIGN KEY(item_id) REFERENCES paper_question_items(item_id) ON UPDATE CASCADE ON DELETE CASCADE, FOREIGN KEY(paper_image_id) REFERENCES paper_images(paper_image_id) ON UPDATE CASCADE ON DELETE RESTRICT );
-CREATE VIRTUAL TABLE IF NOT EXISTS type_cq_question_fts USING fts5(question_id UNINDEXED, question_text, short_answer);
-CREATE VIRTUAL TABLE IF NOT EXISTS chapter_cq_question_fts USING fts5(question_id UNINDEXED, question_text, short_answer);
+CREATE VIRTUAL TABLE IF NOT EXISTS type_cq_question_fts USING fts5(question_id UNINDEXED, question_text, short_answer, tokenize = "unicode61 tokenchars 'ািীুূৃেৈোৌংঃঁ়্'");
+CREATE VIRTUAL TABLE IF NOT EXISTS chapter_cq_question_fts USING fts5(question_id UNINDEXED, question_text, short_answer, tokenize = "unicode61 tokenchars 'ািীুূৃেৈোৌংঃঁ়্'");
 INSERT OR IGNORE INTO paper_categories (paper_category_id, name, description, color, icon, sort_order, is_system, created_at, updated_at) VALUES ('system_uncategorized', 'অশ্রেণিবদ্ধ', 'সিস্টেমের ডিফল্ট ক্যাটাগরি', '', '', 0, 1, 0, 0);
 CREATE TRIGGER IF NOT EXISTS trg_paper_item_source_required_insert
 BEFORE INSERT ON paper_question_items
@@ -124,7 +124,7 @@ BEGIN SELECT RAISE(ABORT, 'System paper category cannot be deleted'); END;
 CREATE TRIGGER IF NOT EXISTS trg_type_question_fts_insert AFTER INSERT ON type_cq_questions BEGIN
  INSERT INTO type_cq_question_fts(question_id, question_text, short_answer) VALUES (NEW.question_id, NEW.question_text, NEW.short_answer);
 END;
-CREATE TRIGGER IF NOT EXISTS trg_type_question_fts_update AFTER UPDATE OF question_text, short_answer ON type_cq_questions BEGIN
+CREATE TRIGGER IF NOT EXISTS trg_type_question_fts_update AFTER UPDATE OF question_id, question_text, short_answer ON type_cq_questions BEGIN
  DELETE FROM type_cq_question_fts WHERE question_id=OLD.question_id;
  INSERT INTO type_cq_question_fts(question_id, question_text, short_answer) VALUES (NEW.question_id, NEW.question_text, NEW.short_answer);
 END;
@@ -134,7 +134,7 @@ END;
 CREATE TRIGGER IF NOT EXISTS trg_chapter_question_fts_insert AFTER INSERT ON chapter_cq_questions BEGIN
  INSERT INTO chapter_cq_question_fts(question_id, question_text, short_answer) VALUES (NEW.question_id, NEW.question_text, NEW.short_answer);
 END;
-CREATE TRIGGER IF NOT EXISTS trg_chapter_question_fts_update AFTER UPDATE OF question_text, short_answer ON chapter_cq_questions BEGIN
+CREATE TRIGGER IF NOT EXISTS trg_chapter_question_fts_update AFTER UPDATE OF question_id, question_text, short_answer ON chapter_cq_questions BEGIN
  DELETE FROM chapter_cq_question_fts WHERE question_id=OLD.question_id;
  INSERT INTO chapter_cq_question_fts(question_id, question_text, short_answer) VALUES (NEW.question_id, NEW.question_text, NEW.short_answer);
 END;

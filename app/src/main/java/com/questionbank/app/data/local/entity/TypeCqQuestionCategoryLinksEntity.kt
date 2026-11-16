@@ -6,8 +6,7 @@ import androidx.room.*
         ForeignKey(entity = TypeCqQuestionCategoriesEntity::class, parentColumns = ["category_id"], childColumns = ["category_id"], onUpdate = ForeignKey.CASCADE, onDelete = ForeignKey.RESTRICT),
         ForeignKey(entity = TypeCqQuestionsEntity::class, parentColumns = ["question_id"], childColumns = ["question_id"], onUpdate = ForeignKey.CASCADE, onDelete = ForeignKey.CASCADE)
     ], indices = [
-        Index(value = ["category_id", "question_id"], unique = false),
-        Index(value = ["question_id", "category_id"], unique = true)
+        Index(value = ["category_id", "question_id"], unique = false)
     ])
 data class TypeCqQuestionCategoryLinksEntity(
     @ColumnInfo(name = "question_id")

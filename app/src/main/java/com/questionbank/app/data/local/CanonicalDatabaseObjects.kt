@@ -3,12 +3,12 @@ package com.questionbank.app.data.local
 /**
  * Idempotent non-entity database objects copied from the canonical SQLite schema v1.1.
  * Room creates the 35 ordinary tables; this list installs both FTS5 virtual tables,
- * all 17 canonical triggers, and the canonical system paper-category seed.
+ * all 17 canonical triggers, 46 CHECK-emulation triggers (see CheckEmulationTriggers), and the canonical system paper-category seed.
  */
 internal object CanonicalDatabaseObjects {
-    val statements: List<String> = listOf(
-        """CREATE VIRTUAL TABLE IF NOT EXISTS type_cq_question_fts USING fts5(question_id UNINDEXED, question_text, short_answer)""",
-        """CREATE VIRTUAL TABLE IF NOT EXISTS chapter_cq_question_fts USING fts5(question_id UNINDEXED, question_text, short_answer)""",
+    private val baseStatements: List<String> = listOf(
+        """CREATE VIRTUAL TABLE IF NOT EXISTS type_cq_question_fts USING fts5(question_id UNINDEXED, question_text, short_answer, tokenize = "unicode61 tokenchars 'ািীুূৃেৈোৌংঃঁ়্'")""",
+        """CREATE VIRTUAL TABLE IF NOT EXISTS chapter_cq_question_fts USING fts5(question_id UNINDEXED, question_text, short_answer, tokenize = "unicode61 tokenchars 'ািীুূৃেৈোৌংঃঁ়্'")""",
         """CREATE TRIGGER IF NOT EXISTS trg_paper_item_source_required_insert
 BEFORE INSERT ON paper_question_items
 WHEN NEW.type_cq_question_id IS NULL AND NEW.chapter_cq_question_id IS NULL
@@ -61,7 +61,7 @@ BEGIN SELECT RAISE(ABORT, 'System paper category cannot be deleted'); END""",
         """CREATE TRIGGER IF NOT EXISTS trg_type_question_fts_insert AFTER INSERT ON type_cq_questions BEGIN
  INSERT INTO type_cq_question_fts(question_id, question_text, short_answer) VALUES (NEW.question_id, NEW.question_text, NEW.short_answer);
 END""",
-        """CREATE TRIGGER IF NOT EXISTS trg_type_question_fts_update AFTER UPDATE OF question_text, short_answer ON type_cq_questions BEGIN
+        """CREATE TRIGGER IF NOT EXISTS trg_type_question_fts_update AFTER UPDATE OF question_id, question_text, short_answer ON type_cq_questions BEGIN
  DELETE FROM type_cq_question_fts WHERE question_id=OLD.question_id;
  INSERT INTO type_cq_question_fts(question_id, question_text, short_answer) VALUES (NEW.question_id, NEW.question_text, NEW.short_answer);
 END""",
@@ -71,7 +71,7 @@ END""",
         """CREATE TRIGGER IF NOT EXISTS trg_chapter_question_fts_insert AFTER INSERT ON chapter_cq_questions BEGIN
  INSERT INTO chapter_cq_question_fts(question_id, question_text, short_answer) VALUES (NEW.question_id, NEW.question_text, NEW.short_answer);
 END""",
-        """CREATE TRIGGER IF NOT EXISTS trg_chapter_question_fts_update AFTER UPDATE OF question_text, short_answer ON chapter_cq_questions BEGIN
+        """CREATE TRIGGER IF NOT EXISTS trg_chapter_question_fts_update AFTER UPDATE OF question_id, question_text, short_answer ON chapter_cq_questions BEGIN
  DELETE FROM chapter_cq_question_fts WHERE question_id=OLD.question_id;
  INSERT INTO chapter_cq_question_fts(question_id, question_text, short_answer) VALUES (NEW.question_id, NEW.question_text, NEW.short_answer);
 END""",
@@ -80,4 +80,7 @@ END""",
 END""",
         """INSERT OR IGNORE INTO paper_categories (paper_category_id, name, description, color, icon, sort_order, is_system, created_at, updated_at) VALUES ('system_uncategorized', 'অশ্রেণিবদ্ধ', 'সিস্টেমের ডিফল্ট ক্যাটাগরি', '', '', 0, 1, 0, 0)"""
     )
+
+    /** Base objects plus triggers that re-create the canonical CHECK constraints Room cannot declare. */
+    val statements: List<String> = baseStatements + CheckEmulationTriggers.statements
 }

@@ -63,7 +63,7 @@ class CanonicalSqlContractTest {
             connection.createStatement().use { st ->
                 st.executeQuery("SELECT COUNT(*) FROM sqlite_master WHERE type='trigger'").use { rs ->
                     assertTrue(rs.next())
-                    assertEquals(17, rs.getInt(1))
+                    assertEquals(17 + 46, rs.getInt(1))
                 }
                 st.executeQuery("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('type_cq_question_fts','chapter_cq_question_fts')").use { rs ->
                     assertTrue(rs.next())
@@ -110,6 +110,78 @@ class CanonicalSqlContractTest {
                     assertEquals(1, rs.getInt(1))
                 }
             }
+        }
+    }
+
+    @Test
+    fun checkEmulationTriggersReplaceDroppedCheckConstraints() {
+        // Room creates tables WITHOUT CHECK clauses, so strip them from the canonical SQL and
+        // verify the emulation triggers still reject invalid rows and accept valid ones.
+        val sql = javaClass.classLoader!!.getResource("QuestionBank_SQLite_Schema_v1_1.sql")!!.readText()
+        DriverManager.getConnection("jdbc:sqlite::memory:").use { connection ->
+            splitSql(stripChecks(sql))
+                .filterNot { it.startsWith("CREATE VIRTUAL TABLE", ignoreCase = true) ||
+                    it.startsWith("CREATE TRIGGER", ignoreCase = true) ||
+                    it.startsWith("INSERT OR IGNORE INTO paper_categories", ignoreCase = true) }
+                .forEach { statement -> connection.createStatement().use { it.execute(statement) } }
+            CanonicalDatabaseObjects.statements.forEach { statement ->
+                connection.createStatement().use { it.execute(statement) }
+            }
+            val sha = "a".repeat(64)
+            val validImage = "INSERT INTO paper_images(paper_image_id,relative_path,mime_type,width,height,byte_size,sha256,created_at) VALUES('p1','a/b.png','image/png',1,1,0,'$sha',1)"
+            connection.createStatement().use { it.execute(validImage) }
+            val invalid = listOf(
+                "INSERT INTO paper_images(paper_image_id,relative_path,mime_type,width,height,byte_size,sha256,created_at) VALUES('p2','../x.png','image/png',1,1,0,'$sha',1)",
+                "INSERT INTO paper_images(paper_image_id,relative_path,mime_type,width,height,byte_size,sha256,created_at) VALUES('p3','/abs.png','image/png',1,1,0,'$sha',1)",
+                "INSERT INTO paper_images(paper_image_id,relative_path,mime_type,width,height,byte_size,sha256,created_at) VALUES('p4','c.png','image/png',0,1,0,'$sha',1)",
+                "INSERT INTO paper_images(paper_image_id,relative_path,mime_type,width,height,byte_size,sha256,created_at) VALUES('p5','d.png','image/png',1,1,0,'short',1)",
+                "UPDATE paper_images SET width = 0 WHERE paper_image_id = 'p1'"
+            )
+            invalid.forEach { statement ->
+                val message = runCatching { connection.createStatement().use { it.execute(statement) } }
+                    .exceptionOrNull()?.message.orEmpty()
+                assertTrue("Expected CHECK emulation failure for: $statement (got: $message)", message.contains("CHECK failed"))
+            }
+        }
+    }
+
+    @Test
+    fun banglaFtsKeepsVowelSignsInsideWords() {
+        val sql = javaClass.classLoader!!.getResource("QuestionBank_SQLite_Schema_v1_1.sql")!!.readText()
+        DriverManager.getConnection("jdbc:sqlite::memory:").use { connection ->
+            connection.createStatement().use { st ->
+                val ftsDdl = Regex("CREATE VIRTUAL TABLE IF NOT EXISTS type_cq_question_fts[^;]*").find(sql)!!.value
+                st.execute(ftsDdl)
+                st.execute("INSERT INTO type_cq_question_fts(question_id, question_text, short_answer) VALUES('q1','বাংলাদেশ সরকার পরীক্ষা','')")
+                fun hits(q: String) = st.executeQuery("SELECT COUNT(*) FROM type_cq_question_fts WHERE type_cq_question_fts MATCH '$q'").use { rs -> rs.next(); rs.getInt(1) }
+                assertEquals(1, hits("পরীক্ষা"))
+                assertEquals(1, hits("সরকার"))
+                assertEquals(0, hits("পর"))
+                assertEquals(0, hits("বাংলাদ"))
+            }
+        }
+    }
+
+    private fun stripChecks(source: String): String {
+        var s = source
+        val start = Regex("(,\\s*)?\\bCHECK\\s*\\(", RegexOption.IGNORE_CASE)
+        while (true) {
+            val m = start.find(s) ?: return s
+            var j = m.range.last + 1
+            var depth = 1
+            while (depth > 0) {
+                val c = s[j]
+                if (c == '\'') {
+                    j++
+                    while (s[j] != '\'') j++
+                } else if (c == '(') {
+                    depth++
+                } else if (c == ')') {
+                    depth--
+                }
+                j++
+            }
+            s = s.removeRange(m.range.first, j)
         }
     }
 
