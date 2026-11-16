@@ -1,9 +1,9 @@
 QUESTION BANK ANDROID APP COMPLETE PROJECT DEVELOPMENT & DELIVERY PLAN
 ============================================================
 
-Document version: 1.3 (CI diagnostic and build-foundation update)
+Document version: 1.4 (KSP migration and CI diagnostic update)
 Planning baseline: 16 November 2026
-Project status: Single-database architecture confirmed; canonical SQL and initial Room harness prepared; CI diagnostic capture is active. The first observed CI run reached KAPT and failed on Kotlin metadata parser compatibility. Package v0.2.3 contains a targeted dependency-alignment attempt; Android build verification remains pending.
+Project status: Single-database architecture confirmed; canonical SQL and initial Room harness prepared; CI diagnostic capture is active. The first observed CI run reached KAPT and failed on Kotlin metadata parser compatibility. Package v0.2.4 migrates Room processing from KAPT to KSP after CI run 7 reported an empty Room entity list; Android build verification remains pending.
 
 ============================================================ 1. PROJECT
 OBJECTIVE ============================================================
@@ -1134,3 +1134,125 @@ review. Never mark a phase PASSED merely because source files exist.
   statuses and the next CI verification gate.
 
 END OF VERSION 1.3 UPDATE
+
+
+============================================================
+16. CI RUN 7 REVIEW AND ROOM KSP MIGRATION — VERSION 1.4
+============================================================
+
+Planning update date: 16 November 2026
+Package baseline: QuestionBank Android v0.2.4
+Previous package: v0.2.3 KAPT metadata compatibility attempt
+
+16.1 CI run 7 evidence
+
+The newly supplied GitHub Actions report identifies:
+- Workflow: Android Test and APK Build.
+- Run number: 7.
+- Run ID: 43878376322.
+- Commit: e6eda03de43688fcc7688b59975c0ef1d519534b.
+- Java runtime: 17.0.21.
+- Gradle process exit code: 1.
+- Failed Gradle task: `:app:kaptDebugKotlin`.
+
+The prior Kotlin metadata parser exception (metadata 2.4.0 versus
+reader maximum 2.3.0) is not present in this run's fatal diagnostics.
+Gradle downloaded `kotlin-metadata-jvm:2.4.21`, and Room proceeded to
+annotation processing.
+
+The new reported Room diagnostics are:
+- `QuestionBankDatabase`: `@Database annotation must specify list of
+  entities`.
+- `RoomSmokeDao`: no such table `type_cq_subjects`.
+- `RoomSmokeDao`: no such table `chapter_cq_subjects`.
+- Room-generated `QuestionBankDatabase_Impl.java`: invalid empty-array
+  expressions reported as `illegal start of expression`.
+
+Source review of package v0.2.3 confirms:
+- 35 Kotlin entity source files are present.
+- `QuestionBankDatabase.kt` contains a non-empty `entities = [...]`
+  declaration referencing those entity classes.
+- `RoomSmokeDao.kt` queries the two subject tables named above.
+
+The uploaded CI artifact did not include the actual generated KAPT stub
+source file. Therefore, the precise internal reason why the KAPT
+processor received an empty entity list cannot be confirmed from the
+available log alone. Treat the empty-list diagnostic as the observed
+failure, not as proof that the Kotlin database source omitted entities.
+
+16.2 Processor migration decision
+
+Decision: migrate the Room compiler from KAPT to KSP.
+
+Rationale:
+- This project contains Kotlin source and Kotlin Room entity classes.
+- Room 2.8.5's official setup guidance directs Kotlin-source projects
+  to use KSP.
+- KSP processes Kotlin symbols directly and avoids the KAPT stub
+  generation path implicated by the current diagnostic pattern.
+- Kotlin's KSP setup documentation currently demonstrates Kotlin
+  2.4.21 with KSP plugin 2.3.12.
+
+This is an implementation correction to the annotation-processing
+path. It does not change the database schema, table families, entity
+definitions, Room version, or accepted one-physical-database
+architecture.
+
+16.3 Package v0.2.4 changes
+
+Package v0.2.4:
+- Replaces `org.jetbrains.kotlin.kapt` with
+  `com.google.devtools.ksp` version `2.3.12`.
+- Moves Room compiler from `kapt(...)` to `ksp(...)`.
+- Removes the `kotlin-metadata-jvm:2.4.21` KAPT classpath override.
+- Moves Room schema and incremental processor options into the KSP
+  configuration block.
+- Sets Android `versionName` to
+  `0.2.4-ksp-room-processing`.
+- Preserves Room runtime version 2.8.5 and the existing 35 entities.
+- Preserves the GitHub Actions diagnostic artifact workflow.
+- Does not alter the single `QuestionBank.db` architecture or
+  canonical SQL.
+
+16.4 Updated phase status
+
+PHASE 1 — ANDROID BUILD FOUNDATION:
+Status: IN PROGRESS / BLOCKED ON CI VERIFICATION.
+Run 7 shows that the previous metadata exception no longer appears,
+but the Room KAPT processing task failed with an empty entity list.
+Package v0.2.4 changes the processor path to KSP. Phase 1 remains
+unpassed until CI completes tests and APK assembly.
+
+PHASE 2 — DATABASE FOUNDATION AND ROOM PARITY:
+Status: PARTIAL FOUNDATION ONLY.
+The 35 entity source files and non-empty database entity declaration
+are present. Successful Room code generation, complete generated
+schema parity, migrations, DAO completeness and runtime database
+verification remain open.
+
+16.5 Next CI verification gate
+
+1. Extract package v0.2.4 and push its project contents to the intended
+   GitHub repository.
+2. Run `Android Test and APK Build`.
+3. Inspect `QuestionBank-ci-report`, including the complete Gradle log.
+4. Confirm the build executes KSP Room processing tasks and that Room
+   no longer reports an empty entity list.
+5. Confirm Room generates the database implementation and schema.
+6. Confirm `testDebugUnitTest` and `assembleDebug` complete.
+7. Confirm the `QuestionBank-debug-apk` artifact contains
+   `app-debug.apk`.
+8. Only then mark Phase 1's build gate passed.
+
+The archive is source-reviewed only. No Gradle build was run while
+preparing v0.2.4. KSP migration is therefore an unverified correction
+until the next CI run succeeds.
+
+16.6 Change log addition
+
+- v1.4: Added CI run 7 findings, distinguished the resolved metadata
+  parser diagnostic from the new Room empty-entities failure, recorded
+  the KSP migration decision, and updated package/build verification
+  requirements.
+
+END OF VERSION 1.4 UPDATE
