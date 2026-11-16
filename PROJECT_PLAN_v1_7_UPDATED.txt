@@ -1,7 +1,7 @@
 QUESTION BANK ANDROID APP COMPLETE PROJECT DEVELOPMENT & DELIVERY PLAN
 ============================================================
 
-Document version: 1.6 (independent review fixes: CHECK emulation, Bengali FTS tokenizer, repository hygiene)
+Document version: 1.7 (CI run 9 duplicate Room index fix)
 Planning baseline: 16 November 2026
 Project status: Single-database architecture confirmed; canonical SQL and Room build harness prepared; CI diagnostic capture is active. History: CI run 6 failed in KAPT (Kotlin metadata); run 7 reported empty entities; run 8 (KSP) exposed missing ::class literals, corrected in v0.2.5. Package v0.2.6 applies the independent review fixes (CHECK-emulation triggers, Bengali FTS tokenizer, FTS update trigger, schema JSON no longer git-ignored, duplicate SQL copy removed). No Gradle build has passed yet; Android build verification remains pending (see section 18).
 
@@ -1486,3 +1486,45 @@ canonical-SQL parity, migration tests and an androidTest remain open.
   decisions, listed open work items and the next CI gate.
 
 END OF VERSION 1.6 UPDATE
+
+
+============================================================
+19. CI RUN 9 REVIEW - DUPLICATE ROOM INDEX CORRECTION
+============================================================
+
+Planning update date: 17 November 2026
+Package baseline: QuestionBank Android v0.2.7
+Previous package: v0.2.6
+
+19.1 CI run 9 evidence (gradle-build.log)
+
+- Failed task: :app:kspDebugKotlin (KSP PROCESSING_ERROR); build failed in 27 s.
+- Room reported two errors: multiple indices named
+  index_chapter_cq_solution_parts_question_id_position
+  (ChapterCqSolutionPartsEntity.kt:12) and
+  index_type_cq_solution_parts_question_id_position
+  (TypeCqSolutionPartsEntity.kt:12).
+- Progress: Room now recognises the entities (the run 8 error is gone).
+
+19.2 Cause and fix (v0.2.7)
+
+Both entities declared Index(question_id, position) twice, once non-unique
+and once unique, which Room names identically. Only the unique index is kept
+(it also serves ordered lookups). An automated scan of all 35 entities found
+no other duplicate Room index names. The canonical SQL is unchanged and still
+holds the redundant idx_*_solution_parts_order index; this is a documented,
+harmless difference for the future schema parity test. versionName:
+0.2.7-room-duplicate-index-fix.
+
+19.3 Status
+
+PHASE 1: IN PROGRESS / BLOCKED ON CI VERIFICATION. Later errors may still
+appear after KSP (Kotlin compile of the v0.2.6 code, unit tests, APK).
+PHASE 2: PARTIAL FOUNDATION ONLY (unchanged).
+
+19.4 Change log addition
+
+- v1.7: Recorded CI run 9 and the duplicate Room index correction.
+
+END OF VERSION 1.7 UPDATE
+

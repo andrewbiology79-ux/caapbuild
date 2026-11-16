@@ -6,7 +6,6 @@ import androidx.room.*
         ForeignKey(entity = TypeCqImagesEntity::class, parentColumns = ["image_id"], childColumns = ["image_id"], onUpdate = ForeignKey.CASCADE, onDelete = ForeignKey.RESTRICT),
         ForeignKey(entity = TypeCqQuestionsEntity::class, parentColumns = ["question_id"], childColumns = ["question_id"], onUpdate = ForeignKey.CASCADE, onDelete = ForeignKey.CASCADE)
     ], indices = [
-        Index(value = ["question_id", "position"], unique = false),
         Index(value = ["question_id", "position"], unique = true)
     ])
 data class TypeCqSolutionPartsEntity(

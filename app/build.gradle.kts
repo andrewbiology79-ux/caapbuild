@@ -13,7 +13,7 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        versionName = "0.2.6-check-triggers-fts-tokenizer"
+        versionName = "0.2.7-room-duplicate-index-fix"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
