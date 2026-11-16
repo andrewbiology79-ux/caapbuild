@@ -1,0 +1,1 @@
+প্রাথমিক scaffold তৈরি হয়েছে। এই পরিবেশে Android SDK/Gradle network access নেই, তাই GitHub Actions-এ প্রথম push-এর আগে প্রকৃত Gradle compile result পাওয়া যায়নি। প্রথম GitHub Actions run-ই authoritative Room compile + SQLite test result দেবে।
