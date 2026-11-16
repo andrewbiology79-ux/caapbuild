@@ -1,5 +1,6 @@
 package com.questionbank.app
 
+import com.questionbank.app.data.local.CanonicalDatabaseObjects
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse

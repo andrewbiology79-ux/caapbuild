@@ -1,7 +1,7 @@
 QUESTION BANK ANDROID APP COMPLETE PROJECT DEVELOPMENT & DELIVERY PLAN
 ============================================================
 
-Document version: 1.7 (CI run 9 duplicate Room index fix)
+Document version: 1.8 (CI run 10 unit-test import fix)
 Planning baseline: 16 November 2026
 Project status: Single-database architecture confirmed; canonical SQL and Room build harness prepared; CI diagnostic capture is active. History: CI run 6 failed in KAPT (Kotlin metadata); run 7 reported empty entities; run 8 (KSP) exposed missing ::class literals, corrected in v0.2.5. Package v0.2.6 applies the independent review fixes (CHECK-emulation triggers, Bengali FTS tokenizer, FTS update trigger, schema JSON no longer git-ignored, duplicate SQL copy removed). No Gradle build has passed yet; Android build verification remains pending (see section 18).
 
@@ -1527,4 +1527,58 @@ PHASE 2: PARTIAL FOUNDATION ONLY (unchanged).
 - v1.7: Recorded CI run 9 and the duplicate Room index correction.
 
 END OF VERSION 1.7 UPDATE
+
+
+============================================================
+20. CI RUN 10 REVIEW - UNIT TEST IMPORT CORRECTION
+============================================================
+
+Planning update date: 17 November 2026
+Package baseline: QuestionBank Android v0.2.8
+Previous package: v0.2.7
+
+20.1 CI run 10 evidence (gradle-build_1.log)
+
+- KSP (:app:kspDebugKotlin) and main-source compilation now succeed;
+  the v0.2.7 duplicate-index correction worked and Room generated its model.
+- Failed task: :app:compileDebugUnitTestKotlin. Errors:
+  "Unresolved reference 'CanonicalDatabaseObjects'" in
+  CanonicalSqlContractTest.kt (lines 41, 43, 59, 127) plus follow-on
+  type-inference errors.
+- Build failed in 44 s.
+
+20.2 Cause and fix (v0.2.8)
+
+The test lives in package com.questionbank.app while
+CanonicalDatabaseObjects is in com.questionbank.app.data.local; the import
+was missing (present since v0.2.5, never compiled until now). v0.2.8 adds the
+import. versionName: 0.2.8-test-import-fix.
+
+20.3 New non-blocking finding: Room foreign-key index warnings
+
+Room warns that 11 foreign-key columns are not covered by an index
+(possible full-table scans when a parent row is modified):
+ChapterCqQuestionBoards.board_code, ChapterCqQuestionCategoryLinks.category_id,
+ChapterCqSolutionParts.image_id, ChapterCqStimulusBoards.board_code,
+ChapterCqStimulusImages.image_id, PaperItemImages.paper_image_id,
+PaperQuestionItems (chapter_cq_question_id, type_cq_question_id, section_id),
+PaperSections.paper_id, TypeCqSolutionParts.image_id,
+TypeCqStimulusImages.image_id.
+These are warnings only. Decision needed: add the indexes to the canonical
+SQL and entities together (keeping SQL/Room parity), or accept the cost.
+Recommended to decide before real data volume; recorded as an open item.
+
+20.4 Status
+
+PHASE 1: IN PROGRESS / BLOCKED ON CI VERIFICATION. Next gate: run
+testDebugUnitTest (the two new tests and the existing ones have never
+executed), then assembleDebug.
+PHASE 2: PARTIAL FOUNDATION ONLY (unchanged).
+
+20.5 Change log addition
+
+- v1.8: Recorded CI run 10, the missing test import, and the FK-index
+  warnings.
+
+END OF VERSION 1.8 UPDATE
 
