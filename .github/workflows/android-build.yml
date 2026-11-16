@@ -88,6 +88,7 @@ jobs:
             build-report/**
             app/build/reports/**
             app/build/test-results/**
+            app/schemas/**
           if-no-files-found: warn
           retention-days: 30
 

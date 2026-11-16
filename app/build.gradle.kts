@@ -13,7 +13,7 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        versionName = "0.2.8-test-import-fix"
+        versionName = "0.2.9-ci-green-schema-artifact"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
