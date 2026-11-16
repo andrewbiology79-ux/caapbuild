@@ -1,0 +1,1029 @@
+QUESTION BANK ANDROID APP COMPLETE PROJECT DEVELOPMENT & DELIVERY PLAN
+============================================================
+
+Document version: 1.2 (reviewed architecture update)
+Planning baseline: 16 November 2026
+Project status: Database design and initial Android build harness prepared;
+single-database architecture confirmed; full application development pending.
+
+============================================================ 1. PROJECT
+OBJECTIVE ============================================================
+
+Build a complete, reliable, offline-first Android Question Bank
+application.
+
+The application will support:
+
+-   Independent Type_CQ and Chapter_CQ systems.
+-   Subject, chapter, topic and question-type hierarchy management.
+-   Stimulus-based question groups.
+-   Minimum Editor and Full Editor using one shared data model.
+-   Question cards and question management.
+-   Board and examination-year tagging.
+-   Category management.
+-   Ordered text/image solutions and mathematical content.
+-   Image import, processing, integrity checking and lifecycle
+    management.
+-   Full-text search, filters and duplicate detection.
+-   Question paper creation and immutable source snapshots.
+-   Backup and restore.
+-   Database migration and crash recovery.
+-   Production Android builds and release testing.
+
+The final application must be functional, persistent, recoverable,
+testable and suitable for real-world use.
+
+This plan uses the uploaded Room Database Implementation Blueprint as
+the architectural baseline. It does not treat the existing ZIP build
+harness as a completed application.
+
+============================================================ 2. CURRENT
+PROJECT BASELINE
+============================================================
+
+Known project materials:
+
+1.  Canonical SQLite Schema v1.1.
+2.  Room Entity/DAO Design Draft v1.
+3.  Room Database Implementation Blueprint v1.
+4.  Android build-harness ZIP.
+5.  Feature-to-Schema Audit Matrix containing 146 numbered Editor
+    behaviors.
+
+Verified database baseline after direct inspection of the canonical SQL,
+the Entity/DAO draft and the build-harness ZIP:
+
+-   The canonical SQL declares 35 ordinary application tables.
+-   The canonical SQL declares 2 FTS5 virtual tables.
+-   SQLite creates 10 FTS5 shadow tables internally. These are not
+    application tables and must not be mapped as Room Entities.
+-   The resulting SQLite table catalogue contains 47 entries:
+    35 ordinary tables + 2 FTS virtual tables + 10 FTS shadow tables.
+-   The canonical SQL defines 17 triggers and 48 CHECK clauses.
+-   The build harness contains 35 Room Entity files and registers 35
+    entities. Its Database class currently exposes only a smoke-test DAO.
+-   The build-harness callback creates the 2 FTS virtual tables and
+    installs 6 FTS synchronization triggers. It does not currently
+    install the other 11 canonical business-integrity triggers.
+-   The Entity/DAO design draft contains 45 Entity declarations. Ten of
+    those declarations map FTS shadow tables and must not be used as
+    ordinary Room Entities. The remaining 35 correspond to the ordinary
+    application tables.
+
+The implementation blueprint's statement that there are 45 standard
+SQLite tables conflicts with the canonical SQL. The canonical SQL must be
+the authority for the table inventory. Correct the blueprint and publish
+one reconciled inventory before implementation.
+
+Type_CQ and Chapter_CQ have separate repository boundaries.
+-   UI must not call DAO methods directly.
+-   Minimum Editor and Full Editor share the same EditorDraft and save
+    use case.
+-   Editor persistence must be transactional.
+-   File operations must be coordinated with database metadata through
+    an operation journal.
+-   All 146 numbered Editor behaviors must be traced to implementation
+    and acceptance criteria.
+
+Important distinction: The ZIP is a compatibility/build harness, not a
+completed Android application. It has 35 Entity files, but its Database
+class exposes only a smoke-test DAO. It is not evidence that the complete
+DAO layer, repositories, UI features, migrations, media workflows or
+release requirements are implemented. Its BUILD_STATUS file records
+that no authoritative Gradle compile result was obtained.
+
+A local SQLite execution of the canonical SQL returned integrity_check
+= ok and no foreign_key_check violations. This is a useful SQL baseline,
+not an Android build result and not proof of Room parity.
+
+Before development proceeds, correct the blueprint's 45-standard-table
+claim and publish a canonical inventory containing exactly 35 ordinary
+tables, 2 FTS virtual tables, 10 SQLite-managed FTS shadow tables,
+17 triggers and 48 CHECK clauses. Map only the 35 ordinary application
+tables as Room Entities. Do not map FTS virtual or shadow tables as
+ordinary Room Entities. Compare the canonical SQL, Room Entity mappings,
+Room-generated schema and custom SQL objects directly.
+
+============================================================ 3.
+ARCHITECTURAL RULES — MUST NOT BE VIOLATED
+============================================================
+
+3.1 Application layering
+
+UI -> ViewModel -> UseCase -> Repository -> DAO -> Room / SQLite
+
+-   Activity, Fragment and Compose UI must not access DAOs directly.
+-   ViewModels expose observable state and accept UI events.
+-   UseCases coordinate domain operations.
+-   Repositories enforce business rules and scope boundaries.
+-   DAOs contain database operations and explicit SQL queries.
+
+3.2 Scope separation
+
+Type_CQ and Chapter_CQ must have separate:
+
+-   Entity packages where their schemas differ.
+-   DAO packages.
+-   Repository interfaces and implementations.
+-   Domain models where their hierarchy differs.
+-   Validation rules.
+-   Save and load operations.
+-   Tests.
+
+Shared infrastructure should be limited to genuinely shared concepts
+such as board catalog, app metadata, media coordination, operation
+journal and paper management.
+
+Chapter_CQ must not accidentally access Type_CQ-specific Topic or
+QuestionType tables. Type_CQ must not accidentally write Chapter_CQ
+data.
+
+3.3 Editor model
+
+Minimum Editor and Full Editor must use the same EditorDraft and save
+use case.
+
+Changing editor mode must never: - Clear hidden fields. - Replace
+existing values with defaults. - Drop images or relationships. - Remove
+solution parts. - Change question identifiers. - Lose unsaved changes.
+
+3.4 Database rules
+
+-   Explicit ORDER BY for all user-visible ordered collections.
+-   Flow for observable lists and suspend functions for one-shot
+    operations.
+-   Use typed projections and explicit JOIN queries where appropriate.
+-   Use Room transactions for relational multi-step saves.
+-   Never use destructive migration as a production fallback.
+-   Export and version-control Room schema JSON.
+-   Preserve canonical foreign-key and integrity rules.
+-   Define one timestamp unit and use it consistently.
+-   Keep file-system operations outside long-running Room transactions.
+
+3.5 Data safety
+
+-   No silent data loss.
+-   No silent omission of missing or corrupt images.
+-   No deletion of source questions that invalidates paper snapshots.
+-   No destructive backup/restore operation while an editor save is
+    active.
+-   No release until migration, restore and recovery tests pass.
+
+============================================================ 4. PROJECT
+MODULE AND PACKAGE STRUCTURE
+============================================================
+
+Recommended structure:
+
+app/ data/ local/ QuestionBankDatabase.kt entity/ shared/ typecq/
+chaptercq/ paper/ dao/ shared/ typecq/ chaptercq/ paper/ migration/
+callback/ repository/ TypeCqRepositoryImpl.kt ChapterCqRepositoryImpl.kt
+PaperRepositoryImpl.kt CategoryRepositoryImpl.kt MediaRepositoryImpl.kt
+
+domain/ model/ repository/ usecase/ validation/
+
+feature/ home/ hierarchy/ editor/ common/ minimum/ full/ state/
+validation/ questioncards/ category/ board/ search/ paper/ settings/
+
+media/ ImagePipeline.kt ImageIntegrityChecker.kt
+ImageReferenceResolver.kt OrphanMediaCollector.kt
+
+backup/ BackupWorker.kt RestoreWorker.kt BackupManifest.kt
+
+externaldb/ ExternalEditCoordinator.kt
+
+core/ common/ database/ navigation/ ui/ testing/
+
+Use dependency injection consistently. Hilt or another established
+dependency-injection approach may be selected, but the project must use
+one coherent approach rather than mixing service locators and ad hoc
+construction.
+
+============================================================ 5. COMPLETE
+DEVELOPMENT PHASES
+============================================================
+
+PHASE 0 — REQUIREMENTS AND PROJECT CONTROL Priority: Critical
+
+Objectives: - Establish a single authoritative project specification. -
+Reconcile all uploaded design documents. - Freeze terminology and
+feature scope. - Prevent implementation from silently changing database
+behavior.
+
+Tasks: 1. Inventory all project files and versions. 2. Identify the
+canonical SQLite schema. 3. Identify the latest Entity/DAO draft. 4.
+Identify all 146 Editor behavior requirements. 5. Correct the
+implementation blueprint's table-count discrepancy using the canonical
+SQL. 6. Reconcile 35 ordinary tables, 2 FTS virtual tables, 10 FTS
+shadow tables, 17 triggers and 48 CHECK clauses. 7. Remove the 10 FTS
+shadow-table declarations from the Room Entity mapping plan. 8. Compare
+the 35 ordinary-table mappings with the 35 harness Entity files. 9.
+Compare all canonical triggers with the build-harness callback and add
+the missing 11 business-integrity triggers. 10. Reconcile indexes,
+foreign keys, defaults, nullability and CHECK enforcement. 11. Create a
+decision log for unresolved issues. 12. Create a feature-to-implementation
+traceability matrix. 13. Define app navigation and screen inventory.
+14. Define minimum supported Android version and target SDK policy.
+15. Freeze naming conventions and package conventions.
+
+Deliverables: - Project Requirements Specification v1. - Architecture
+Decision Record (ADR) log. - Canonical database inventory. - 146-item
+traceability spreadsheet. - Screen and navigation inventory. - Risk
+register.
+
+Exit criteria: - No unresolved ambiguity about Type_CQ versus
+Chapter_CQ. - Every feature has an owner layer and acceptance
+criterion. - Schema differences are documented and approved.
+
+PHASE 1 — ANDROID BUILD FOUNDATION Priority: Critical
+
+Objectives: - Turn the existing build harness into a reproducible
+Android project foundation.
+
+Tasks: 1. Open the ZIP in a clean Android Studio environment. 2. Verify
+Gradle wrapper and plugin configuration. 3. Freeze Kotlin, Android
+Gradle Plugin, Gradle, Room, KSP, Java and SDK compatibility. 4. Confirm
+minSdk and targetSdk. 5. Establish debug and release build variants. 6.
+Configure dependency management. 7. Configure dependency injection. 8.
+Configure Kotlin coroutines and Flow. 9. Configure navigation and
+Material UI foundation. 10. Configure unit-test and instrumentation-test
+infrastructure. 11. Configure CI build workflow. 12. Ensure CI reports
+compile and test results. 13. Preserve build artifacts and Room schema
+exports.
+
+Deliverables: - Reproducible Android Studio project. - Successful clean
+debug build. - Successful CI build. - Unit and instrumentation test
+configuration. - Version-controlled dependency and build configuration.
+
+Exit criteria: - Clean checkout builds without manual undocumented
+steps. - CI build is green and its Gradle compile/test logs are retained.
+- The first successful CI run is treated as the authoritative build
+result; do not describe the current harness as compiled until that run
+passes. - No unresolved compiler or dependency errors.
+
+PHASE 2 — DATABASE FOUNDATION AND ROOM PARITY Priority: Critical
+
+Objectives: - Implement and verify the canonical database using Room.
+
+Tasks: 1. Reconcile all standard SQLite tables against the Room mapping
+inventory. 2. Confirm which tables are normal application tables and
+which are FTS virtual or internal shadow tables. 3. Implement all
+required Room Entities. 4. Implement complete DAO accessors in the
+database class. 5. Implement primary keys and composite keys. 6.
+Implement foreign keys and their delete/update actions. 7. Implement
+unique indexes and normal indexes. 8. Verify default SQL expressions and
+nullability. 9. Preserve CHECK constraints through supported schema
+definitions or equivalent database enforcement. 10. Install canonical
+triggers. 11. Install FTS5 virtual tables and synchronization triggers.
+12. Configure database callbacks. 13. Enable and test foreign-key
+enforcement. 14. Configure and device-test WAL policy. 15. Enable Room
+schema export. 16. Store schema JSON in version control. 17. Compare
+Room-generated schema with canonical SQL. 18. Add schema parity checks
+to CI. 19. Add database integrity tests. 20. Add migration tests before
+changing schema versions. 21. Test PRAGMA integrity_check and
+foreign_key_check on created and migrated databases. 22. Verify FTS
+initial population/rebuild as well as insert, update and delete
+synchronization. 23. Verify all 17 canonical triggers and all 48 CHECK
+constraints with positive and negative test cases.
+
+Important review points: - The canonical SQL declares 35 ordinary
+application tables and 2 FTS5 virtual tables; SQLite creates 10 FTS5
+shadow tables internally. - The Entity/DAO draft's 45 declarations include
+10 FTS shadow-table declarations; do not register those as Room Entities.
+- The build harness's 35 Entity files align with the 35 ordinary tables,
+but its Database class currently exposes only a smoke-test DAO. - The
+canonical SQL defines 17 triggers. The harness callback installs only
+the 6 FTS triggers; implement and test the other 11 canonical business
+triggers as well. - The canonical SQL contains 48 CHECK clauses. Ensure
+all are enforced in the actual database; UI validation alone is not a
+replacement for database integrity enforcement.
+
+Deliverables: - Complete Room Entity set. - Complete DAO accessor
+inventory. - Room database class. - FTS setup and callbacks. - Canonical
+trigger installation. - Schema JSON. - SQL-to-Room parity report. -
+Database unit and instrumentation tests.
+
+Exit criteria: - All expected application tables exist. - Foreign keys
+and indexes match the approved schema. - Required constraints and
+triggers are enforced. - FTS insert/update/delete tests pass. - Room
+schema export is reviewed and committed. - No destructive migration
+fallback is present.
+
+PHASE 3 — DATABASE MIGRATION AND INITIAL DATA Priority: Critical
+
+Objectives: - Make database creation, upgrade and seed data safe.
+
+Tasks: 1. Define database version policy. 2. Separate database schema
+version from application version. 3. Determine whether an existing v1
+database must upgrade to the v1.1 schema. 4. Write explicit Room
+Migration objects for every supported upgrade path. 5. Rebuild tables
+where necessary. 6. Copy data in correct foreign-key order. 7. Migrate
+board catalog data safely. 8. Recreate triggers and indexes. 9. Rebuild
+FTS indexes. 10. Verify row counts and relationship consistency. 11.
+Test migration with realistic populated databases. 12. Test interrupted
+migration and recovery. 13. Define built-in board seed versioning. 14.
+Define custom board archive and rename rules. 15. Define timestamp unit
+and timezone convention.
+
+Deliverables: - Migration design. - Migration implementation. -
+Versioned seed data. - Migration test fixtures. - Data integrity report.
+
+Exit criteria: - Existing data survives supported migrations. - No
+migration path silently drops user data. - Foreign-key and FTS checks
+pass after migration.
+
+PHASE 4 — DOMAIN MODELS, DAO AND REPOSITORY LAYER Priority: Critical
+
+Objectives: - Implement the full data-access and business-operation
+layer.
+
+Shared DAOs: - BoardCatalogDao. - AppMetadataDao. -
+OperationJournalDao. - PaperCategoryDao. - PaperDao. -
+PaperSectionDao. - PaperQuestionItemDao. - PaperImageDao. - Shared media
+metadata DAOs.
+
+Type_CQ DAOs: - SubjectDao. - ChapterDao. - TopicDao. -
+QuestionTypeDao. - StimulusDao. - QuestionDao. - Board-link DAOs. -
+Category-link DAOs. - Stimulus-image DAOs. - Solution-part DAOs.
+
+Chapter_CQ DAOs: - SubjectDao or appropriately scoped subject access. -
+ChapterDao. - StimulusDao. - QuestionDao. - Board-link DAOs. -
+Category-link DAOs. - Stimulus-image DAOs. - Solution-part DAOs.
+
+Repository implementations: - TypeCqRepositoryImpl. -
+ChapterCqRepositoryImpl. - PaperRepositoryImpl. -
+CategoryRepositoryImpl. - MediaRepositoryImpl.
+
+UseCases: - SaveTypeCqEditor. - SaveChapterCqEditor. -
+LoadEditorDraft. - ValidateEditorDraft. - AssignQuestionCategories. -
+ReplaceBoardYearLinks. - ReorderSolutionParts. - BuildPaperSnapshot. -
+CheckDuplicateQuestion.
+
+Additional tasks: 1. Implement all observable queries using Flow. 2.
+Implement one-shot queries using suspend. 3. Add explicit ordering to
+every ordered query. 4. Implement transaction-safe relation replacement.
+5. Implement typed editor projections. 6. Implement question-card
+projections. 7. Enforce scope boundaries. 8. Add repository tests for
+invalid references. 9. Add category archive/reassignment workflow. 10.
+Add custom board policies.
+
+Deliverables: - Complete DAO layer. - Repository interfaces and
+implementations. - Domain models. - UseCases. - Repository tests.
+
+Exit criteria: - No UI-to-DAO calls. - Type_CQ and Chapter_CQ isolation
+tests pass. - All ordering and relationship rules are enforced.
+
+PHASE 5 — HIERARCHY AND REFERENCE DATA UI Priority: High
+
+Objectives: - Build the navigation and management foundation required by
+the editor.
+
+Features: 1. Subject list and management. 2. Chapter list and
+management. 3. Topic list and management for Type_CQ. 4. Question Type
+selection and management. 5. Dependent dropdown refresh. 6. Create and
+edit hierarchy items. 7. Opening-path display. 8. Active and archived
+board selection. 9. Board/year tagging. 10. Category management. 11.
+Category reassignment before deletion. 12. Empty, loading and error
+states.
+
+Deliverables: - Hierarchy screens. - Reference-data management
+screens. - Board selection components. - Category management screens. -
+UI tests.
+
+Exit criteria: - All valid hierarchy paths work. - Changing a parent
+refreshes dependent selections safely. - Invalid references cannot be
+saved.
+
+PHASE 6 — EDITOR STATE ENGINE Priority: Critical
+
+Objectives: - Build a reliable shared EditorDraft and ViewModel state
+machine before implementing the full UI.
+
+EditorDraft fields: - scope: TYPE_CQ / CHAPTER_CQ. -
+existingStimulusId. - existingQuestionIds. - hierarchy identifiers. -
+stimulus text. - ordered stimulus images. - stimulus board/year links. -
+stimulus rating. - reference text. - ordered question blocks. - stable
+question identifiers. - subquestion labels. - raw marks input. -
+question text. - short answer. - question rating. - question board/year
+links. - category identifiers. - ordered solution parts. - deleted
+question identifiers. - editor mode: MINIMUM / FULL. - dirty,
+validation, duplicate-warning and saving states.
+
+Tasks: 1. Implement immutable or safely controlled draft state. 2.
+Implement UI events. 3. Implement validation state. 4. Implement
+dirty-state tracking. 5. Implement field-level errors. 6. Implement
+scroll-to-error behavior. 7. Implement Save state and duplicate-tap
+protection. 8. Implement Back and unsaved-change confirmation. 9. Decide
+Undo/Redo architecture. 10. Decide durable draft recovery policy. 11.
+Implement editor reset and reload. 12. Preserve hidden fields during
+mode switching. 13. Test state restoration and process-death behavior.
+
+Recommended decisions: - Use an in-memory command/state history for
+ordinary Undo/Redo. - Use durable draft storage if unsaved drafts must
+survive process death. - Keep editor mode as UI state rather than
+question data. - Keep raw marks input as String until validation and
+conversion. - Preserve decimal marks without integer truncation.
+
+Deliverables: - EditorDraft. - EditorState. - EditorEvent. -
+EditorViewModel. - Validation engine. - Undo/Redo policy. - Draft
+recovery policy. - State-machine tests.
+
+Exit criteria: - Mode switching loses no data. - Validation errors are
+deterministic. - Repeated Save events cannot create duplicates. - Draft
+recovery meets the approved requirement.
+
+PHASE 7 — MINIMUM EDITOR Priority: Critical
+
+Objectives: - Deliver the first usable question-entry workflow.
+
+Features: 1. Editor header. 2. Close and Back handling. 3. Dirty
+indicator. 4. Essential hierarchy selection. 5. Stimulus text. 6.
+Essential image controls. 7. Question blocks. 8. Subquestion labels. 9.
+Marks. 10. Question text. 11. Short answer. 12. Essential board/year
+selection. 13. Essential category selection. 14. Save. 15. Validation
+messages. 16. Unsaved-change confirmation. 17. Loading and error states.
+
+Tasks: - Build responsive layouts. - Connect UI to ViewModel events. -
+Implement keyboard behavior. - Implement focus management. - Implement
+save and reload. - Implement create and edit flows.
+
+Deliverables: - Functional Minimum Editor for Type_CQ. - Functional
+Minimum Editor for Chapter_CQ. - UI automation tests.
+
+Exit criteria: - A new question group can be created, saved, closed and
+reloaded correctly in both scopes.
+
+PHASE 8 — FULL EDITOR Priority: High
+
+Objectives: - Implement the complete editing experience without
+introducing a second data model.
+
+Features: 1. All Minimum Editor controls. 2. Full stimulus metadata. 3.
+Stimulus ratings. 4. Reference text. 5. Top/bottom image placement. 6.
+Image ordering and replacement. 7. Full question metadata. 8. Multiple
+board/year tags. 9. Multiple categories. 10. Ordered solution parts. 11.
+Text and image solution blocks. 12. Mathematical input toolbar. 13.
+Legacy solution-marker import. 14. Add, remove and reorder question
+blocks. 15. Full preview. 16. Undo/Redo. 17. Full validation. 18. Save
+and reload.
+
+Deliverables: - Full Editor for Type_CQ. - Full Editor for Chapter_CQ. -
+Ordered solution editor. - Preview components. - UI and state tests.
+
+Exit criteria: - Every field survives mode switching, save, application
+restart and reload. - All ordered content retains its exact order.
+
+PHASE 9 — ATOMIC EDITOR PERSISTENCE Priority: Critical
+
+Objectives: - Make multi-table question-group saves reliable.
+
+Tasks: 1. Create immutable EditorSaveCommand. 2. Validate scope and
+hierarchy IDs. 3. Lock Save state in ViewModel. 4. Execute relational
+writes inside Room withTransaction. 5. Insert or update stimulus. 6.
+Insert or update question blocks. 7. Remove explicitly deleted question
+records. 8. Replace ordered solution parts. 9. Replace stimulus and
+question board/year links. 10. Replace category links. 11. Verify
+relationship consistency. 12. Commit transaction. 13. Emit success only
+after commit. 14. Roll back all relational changes on failure. 15. Add
+duplicate-save and forced-failure tests.
+
+Deliverables: - Atomic save implementation. - Transaction tests. - Save
+failure handling. - Duplicate prevention tests.
+
+Exit criteria: - No partial relational save. - No duplicate group after
+rapid repeated Save. - Existing question IDs remain stable during edits.
+
+PHASE 10 — IMAGE AND MEDIA PIPELINE Priority: High
+
+Objectives: - Build reliable image storage and ordered image/solution
+relationships.
+
+Features: 1. Android image picker. 2. Camera capture if included in
+approved scope. 3. Crop. 4. Rotate. 5. Compression. 6. Decode and
+readback verification. 7. SHA-256 integrity verification. 8. Stable
+image identifiers. 9. TOP/BOTTOM stimulus placement. 10. Image reorder.
+11. Replace image. 12. Remove image. 13. Image viewer. 14. Export. 15.
+Missing-image state. 16. Corrupt-image state. 17. Memory-safe image
+loading. 18. Orphan-media collection.
+
+Operation sequence: 1. Write to temporary storage. 2. Decode and verify
+the file. 3. Calculate SHA-256. 4. Create PENDING operation journal
+entry. 5. Move file atomically to final location. 6. Commit database
+metadata and ownership links. 7. Mark operation COMMITTED. 8. Recover
+interrupted operations after process restart.
+
+Tasks: - Implement ImagePipeline. - Implement ImageIntegrityChecker. -
+Implement ImageReferenceResolver. - Implement OrphanMediaCollector. -
+Implement recovery worker. - Prevent deletion while assets are
+referenced. - Define paper snapshot image ownership. - Test low-memory
+and process-death cases.
+
+Deliverables: - Complete media subsystem. - Journal recovery. - Image
+lifecycle tests. - Image integrity report.
+
+Exit criteria: - No silent missing-image behavior. - Failed imports
+leave no broken ownership records. - Referenced files are not deleted. -
+Interrupted operations are recoverable.
+
+PHASE 11 — QUESTION CARDS AND QUESTION MANAGEMENT Priority: High
+
+Objectives: - Provide the primary browsing and management experience.
+
+Features: 1. Question cards. 2. Stimulus-group display. 3. Subquestion
+previews. 4. Hierarchy information. 5. Board/year chips. 6. Rating
+display. 7. Category chips. 8. Image indicators. 9. Solution indicators.
+10. Open editor. 11. Edit question. 12. Delete question with appropriate
+confirmation. 13. Group-level and question-level operations. 14. Sorting
+and pagination where necessary. 15. Empty and loading states.
+
+Tasks: - Build card projections. - Implement list observation. -
+Implement sorting and filtering. - Add Paging 3 if collection size
+justifies it. - Test partial edits and deletes against legacy behavior.
+
+Deliverables: - Question card screen. - Question detail screen. -
+Question management actions. - UI tests.
+
+Exit criteria: - Cards display accurate data. - Sorting and ordering are
+deterministic. - Editing a card opens the correct scope and record.
+
+PHASE 12 — SEARCH, FILTERS AND DUPLICATE DETECTION Priority: High
+
+Objectives: - Provide fast and accurate discovery of questions.
+
+Features: 1. FTS5 full-text search. 2. Bengali text search. 3. English
+text search. 4. Normalized search input. 5. Subject filter. 6. Chapter
+filter. 7. Topic filter for Type_CQ. 8. Question Type filter for
+Type_CQ. 9. Category filter. 10. Board filter. 11. Examination-year
+filter. 12. Rating filter. 13. Scope filter. 14. Sorting. 15. Duplicate
+warning. 16. Search result highlighting where appropriate.
+
+Tasks: - Define Unicode normalization policy. - Test punctuation and
+whitespace handling. - Test Bengali and English tokenization. - Verify
+insert/update/delete synchronization. - Test FTS rebuild after
+migration. - Define fallback behavior if a supported SQLite
+configuration cannot provide FTS5. - Implement duplicate candidate
+comparison. - Avoid treating a text-similarity warning as proof that two
+questions are identical.
+
+Deliverables: - Search repository methods. - Search UI. - Filter UI. -
+FTS tests. - Duplicate detection tests.
+
+Exit criteria: - Search reflects the latest saved content. - Old search
+terms disappear after updates. - Deleted records are not returned. -
+Filters combine correctly.
+
+PHASE 13 — PAPER BUILDER Priority: High
+
+Objectives: - Allow users to create question papers from both question
+scopes.
+
+Features: 1. Paper creation. 2. Paper title and metadata. 3. Paper
+category. 4. Ordered sections. 5. Add source question from Type_CQ. 6.
+Add source question from Chapter_CQ. 7. Snapshot question content. 8.
+Snapshot solution and media references as required. 9. Per-paper item
+overrides. 10. Reorder sections. 11. Reorder questions. 12. Marks and
+totals. 13. Validate paper. 14. Preview paper. 15. Export/print if
+approved. 16. Preserve paper content after source-question deletion.
+
+Important design decisions: - Paper source is polymorphic and must be
+resolved through separate scope-specific queries or DTOs. - Snapshot
+JSON must have a schemaVersion. - Snapshot migration and validation
+codecs are required. - Define whether paper images are copied assets or
+independently retained references. - Source deletion must not make a
+saved paper unreadable.
+
+Deliverables: - Paper data layer. - Paper editor. - Paper preview. -
+Snapshot codec. - Paper integrity tests.
+
+Exit criteria: - Papers can be created from both scopes. - Section and
+item ordering survives reload. - Source edits or deletion do not
+unexpectedly rewrite existing snapshots. - Paper snapshots remain
+readable after application upgrades.
+
+PHASE 14 — BACKUP AND RESTORE Priority: Critical
+
+Objectives: - Protect user data and provide reliable transfer/recovery.
+
+Features: 1. Manual backup. 2. Automatic backup policy if approved. 3.
+Backup manifest. 4. Database backup. 5. Media backup. 6. Schema/version
+metadata. 7. Integrity hashes. 8. Restore preview. 9. Restore
+validation. 10. Safe restore. 11. Conflict handling. 12. Interrupted
+restore recovery.
+
+Tasks: - Define backup format. - Define manifest schema. - Include
+application and database version. - Include media inventory and
+hashes. - Verify archive contents before restore. - Prevent editor
+writes during destructive restore. - Restore into a staging location
+first. - Verify integrity before switching to restored data. - Preserve
+or roll back the prior database if restore fails. - Test incomplete
+archives and corrupted media.
+
+Deliverables: - BackupWorker. - RestoreWorker. - BackupManifest. -
+Backup/restore UI. - Recovery tests.
+
+Exit criteria: - Backup can be verified. - Restore does not partially
+overwrite the active dataset. - Database and media remain consistent. -
+Failed restore leaves the previous valid data recoverable.
+
+PHASE 15 — SETTINGS, ACCESSIBILITY AND POLISH Priority: Medium
+
+Features: 1. Editor preferences. 2. Image settings. 3. Default editor
+mode. 4. Search preferences. 5. Theme settings if approved. 6.
+Responsive layouts. 7. Keyboard navigation. 8. Touch targets. 9.
+Screen-reader labels. 10. Focus order. 11. Dialog and snackbar behavior.
+12. Error-state presentation. 13. Performance and memory improvements.
+
+Tasks: - Define app_metadata keys and defaults. - Avoid arbitrary
+database columns for preferences. - Test on small and large screens. -
+Test keyboard and touch interactions. - Test accessibility semantics. -
+Profile image loading and large question lists.
+
+Deliverables: - Settings screen. - Accessibility report. - UI polish
+report. - Performance report.
+
+PHASE 16 — SYSTEM INTEGRATION AND REGRESSION Priority: Critical
+
+Objectives: - Verify the complete application as one integrated system.
+
+Tasks: 1. Run all unit tests. 2. Run all Room tests. 3. Run all
+migration tests. 4. Run all repository tests. 5. Run all editor tests.
+6. Run all media tests. 7. Run all search tests. 8. Run all paper tests.
+9. Run backup/restore tests. 10. Run UI automation tests. 11. Run
+process-death recovery tests. 12. Run low-memory tests. 13. Run
+large-dataset tests. 14. Run cross-scope isolation tests. 15. Run the
+complete 146-item Editor audit. 16. Verify every requirement maps to a
+test or explicit UI-only criterion. 17. Verify no critical unresolved
+issue remains.
+
+Deliverables: - Full regression report. - 146-item traceability
+completion report. - Defect list and resolution record. - Release
+candidate build.
+
+Exit criteria: - All critical and high-priority tests pass. - No known
+data-loss defect. - No known cross-scope data corruption. - No
+unresolved critical migration issue.
+
+PHASE 17 — RELEASE AND DELIVERY Priority: Critical
+
+Objectives: - Deliver a reproducible, signed and documented Android
+application.
+
+Tasks: 1. Freeze release version. 2. Review permissions. 3. Review
+application ID and signing configuration. 4. Configure release build. 5.
+Remove debug-only behavior. 6. Verify release database configuration. 7.
+Run release APK installation test. 8. Test upgrade from previous
+supported version. 9. Test backup and restore on release build. 10.
+Generate checksums. 11. Prepare release notes. 12. Prepare user guide.
+13. Prepare developer documentation. 14. Archive source and release
+artifacts.
+
+Deliverables: - Signed release APK. - AAB if distribution requires it. -
+Release notes. - Installation guide. - User guide. - Developer handover
+document. - Test report. - Versioned source and schema artifacts.
+
+Exit criteria: - Release APK installs and runs. - Database and media
+tests pass on release build. - Signing and versioning are verified. -
+All release deliverables are archived.
+
+============================================================ 6. MASTER
+FEATURE CHECKLIST
+============================================================
+
+DATABASE [ ] Canonical schema reviewed [ ] Table inventory reconciled [
+] Room Entities completed [ ] DAO accessors completed [ ] Foreign keys
+verified [ ] Indexes verified [ ] CHECK constraints verified [ ]
+Triggers verified [ ] FTS5 configured [ ] Schema JSON exported [ ]
+SQL/Room parity checked [ ] Migration implemented [ ] Migration tests
+passed
+
+ARCHITECTURE [ ] Type_CQ repository separated [ ] Chapter_CQ repository
+separated [ ] Shared infrastructure defined [ ] UseCases implemented [ ]
+Dependency injection configured [ ] UI does not call DAO directly [ ]
+Scope isolation tests passed
+
+HIERARCHY [ ] Subject management [ ] Chapter management [ ] Topic
+management [ ] Question Type management [ ] Dependent selection refresh
+[ ] Board catalog [ ] Custom board policy [ ] Category management
+
+EDITOR [ ] EditorDraft [ ] ViewModel state machine [ ] Minimum Editor [
+] Full Editor [ ] Mode-switch preservation [ ] Create and edit [ ]
+Question block add/remove [ ] Question block reorder [ ] Decimal marks [
+] Stimulus fields [ ] Reference text [ ] Rating [ ] Board/year links [ ]
+Category links [ ] Ordered solutions [ ] Mathematical input [ ]
+Undo/Redo [ ] Draft recovery [ ] Validation [ ] Unsaved-change handling
+[ ] Atomic save
+
+MEDIA [ ] Image picker [ ] Image import [ ] Image verification [ ]
+SHA-256 [ ] Crop/rotate [ ] Compression [ ] TOP/BOTTOM placement [ ]
+Reordering [ ] Replacement [ ] Removal [ ] Image viewer [ ] Export [ ]
+Missing-image state [ ] Corrupt-image state [ ] Operation journal [ ]
+Crash recovery [ ] Orphan cleanup
+
+QUESTION MANAGEMENT [ ] Question cards [ ] Question detail [ ] Edit [ ]
+Delete [ ] Group operations [ ] Sorting [ ] Pagination if needed
+
+SEARCH [ ] FTS5 [ ] Bengali search [ ] English search [ ] Normalization
+[ ] Hierarchy filters [ ] Category filters [ ] Board/year filters [ ]
+Rating filters [ ] Duplicate detection [ ] Update/delete synchronization
+
+PAPER [ ] Paper creation [ ] Paper categories [ ] Sections [ ] Type_CQ
+source questions [ ] Chapter_CQ source questions [ ] Snapshots [ ]
+Snapshot versioning [ ] Item overrides [ ] Reordering [ ] Marks and
+totals [ ] Preview [ ] Source-deletion independence [ ] Image lifecycle
+
+BACKUP AND RESTORE [ ] Backup format [ ] Manifest [ ] Database backup [
+] Media backup [ ] Integrity checks [ ] Restore preview [ ] Safe restore
+[ ] Interrupted restore recovery
+
+RELEASE [ ] Unit tests [ ] Room tests [ ] Migration tests [ ] Repository
+tests [ ] UI tests [ ] Media tests [ ] Search tests [ ] Paper tests [ ]
+Backup/restore tests [ ] 146-item audit [ ] Release signing [ ] APK
+installation [ ] Upgrade testing [ ] User documentation [ ] Developer
+documentation
+
+============================================================ 7. PROJECT
+ACCEPTANCE CRITERIA
+============================================================
+
+The project is complete only when all of the following are true:
+
+1.  The Android application builds reproducibly from a clean checkout.
+2.  The approved canonical database is implemented and verified.
+3.  Room schema parity is reviewed.
+4.  Database integrity rules are enforced.
+5.  Type_CQ and Chapter_CQ work independently.
+6.  Minimum Editor and Full Editor use the same draft model.
+7.  All required editor behaviors work.
+8.  Save, update and delete operations are transaction-safe.
+9.  Images remain consistent with database ownership records.
+10. Search and filters return current results.
+11. Question cards show correct data.
+12. Paper snapshots survive source-question deletion.
+13. Backup and restore preserve database and media integrity.
+14. Migrations preserve existing user data.
+15. All 146 numbered Editor behaviors have traceability.
+16. Critical regression tests pass.
+17. Release APK is signed and installation-tested.
+18. User and developer documentation is complete.
+
+A source file existing is not proof that a feature works. A passing test
+or documented, approved UI-only acceptance criterion is required.
+
+============================================================ 8. RISKS
+AND MITIGATION
+============================================================
+
+RISK 1: Room schema differs from canonical SQL. Mitigation: Automated
+schema comparison and database tests before feature development.
+
+RISK 2: Missing constraints or triggers allow inconsistent data.
+Mitigation: Preserve database-level enforcement and test invalid writes.
+
+RISK 3: Type_CQ and Chapter_CQ become coupled. Mitigation: Separate
+repositories, DAOs, domain models and scope tests.
+
+RISK 4: Editor mode switching loses hidden data. Mitigation: One
+EditorDraft and shared save operation; round-trip tests.
+
+RISK 5: Image file and database become inconsistent after a crash.
+Mitigation: Operation journal, temporary files, atomic rename and
+recovery.
+
+RISK 6: Migration destroys existing questions. Mitigation: Explicit
+migrations, realistic fixtures and backup verification.
+
+RISK 7: Paper becomes unreadable after source deletion. Mitigation:
+Versioned snapshots and independent asset-lifecycle policy.
+
+RISK 8: FTS results become stale. Mitigation: Trigger lifecycle tests
+and index rebuild after migration.
+
+RISK 9: Large datasets cause slow cards or search. Mitigation: Query
+profiling, indexes, pagination and performance tests.
+
+RISK 10: Feature scope expands without traceability. Mitigation:
+Maintain the 146-item audit and formal change log.
+
+============================================================ 9. PROJECT
+MANAGEMENT AND DEVELOPMENT ORDER
+============================================================
+
+Recommended execution order:
+
+1.  Requirements and architecture freeze.
+2.  Android build foundation.
+3.  Database parity and constraints.
+4.  Migration and seed data.
+5.  DAO and repository layer.
+6.  Hierarchy UI.
+7.  Editor state engine.
+8.  Minimum Editor.
+9.  Full Editor.
+10. Atomic persistence.
+11. Image pipeline.
+12. Question cards.
+13. Search and filters.
+14. Paper builder.
+15. Backup and restore.
+16. Settings and accessibility.
+17. Full regression.
+18. Release.
+
+Do not begin the complete editor UI while the database contract remains
+unstable.
+
+Each phase must have: - A defined owner. - A task list. - A
+deliverable. - Tests. - Exit criteria. - A recorded status.
+
+Recommended status values: NOT STARTED IN PROGRESS BLOCKED IN REVIEW
+TESTING PASSED COMPLETED
+
+============================================================ 10.
+REQUIRED PROJECT DOCUMENTS
+============================================================
+
+Maintain these documents throughout development:
+
+1.  Project_Requirements_Specification.md
+2.  Architecture_Decision_Records.md
+3.  Canonical_Database_Inventory.md
+4.  Room_Schema_Parity_Report.md
+5.  Database_Migration_Plan.md
+6.  DAO_Repository_Contract.md
+7.  Editor_State_Design.md
+8.  Image_Lifecycle_Design.md
+9.  Paper_Snapshot_Design.md
+10. Backup_Restore_Design.md
+11. Feature_Traceability_Matrix.xlsx
+12. Acceptance_Test_Plan.xlsx
+13. Test_Execution_Report.md
+14. Risk_Register.md
+15. Release_Checklist.md
+16. User_Guide.md
+17. Developer_Handover.md
+
+============================================================ 11. FINAL
+DELIVERY PACKAGE
+============================================================
+
+The final delivery should include:
+
+A. Android application - Complete Android Studio project. - Source
+code. - Debug APK. - Signed release APK. - AAB if required.
+
+B. Database - Canonical SQL. - Room Entities and DAOs. - Schema JSON. -
+Migration files. - Seed data. - Schema parity report.
+
+C. Testing - Unit tests. - Room tests. - Migration tests. - Repository
+tests. - UI tests. - Media tests. - Search tests. - Paper tests. -
+Backup/restore tests. - 146-item feature audit report.
+
+D. Documentation - Architecture documentation. - Database
+documentation. - Installation guide. - User guide. - Developer guide. -
+Release notes.
+
+E. Integrity - Release checksums. - Version information. - Build
+report. - Known limitations, if any.
+
+============================================================ 12. SOURCE REVIEW CORRECTIONS — VERSION 1.1
+============================================================
+
+The following corrections are mandatory before implementation begins:
+
+1. Canonical table inventory:
+   - 35 ordinary application tables.
+   - 2 FTS5 virtual tables.
+   - 10 FTS5 shadow tables generated by SQLite.
+   - 47 total table entries in sqlite_master when the FTS objects exist.
+   The phrase "45 standard SQLite tables" in the implementation
+   blueprint is inconsistent with the canonical SQL and must be corrected.
+
+2. Room Entity inventory:
+   - The Entity/DAO draft contains 45 Entity declarations.
+   - Ten declarations represent FTS shadow tables and must be removed
+     from the Room Entity registration design.
+   - The 35 ordinary application tables are the Room Entity mapping
+     target, subject to field-by-field parity review.
+
+3. Trigger coverage:
+   - Canonical SQL: 17 triggers.
+   - Build-harness callback: 6 FTS triggers.
+   - Missing from the callback: 11 non-FTS business-integrity triggers:
+     trg_chapter_question_chapter_match_insert,
+     trg_chapter_question_chapter_match_update,
+     trg_chapter_stimulus_chapter_parent_update,
+     trg_paper_item_section_match_insert,
+     trg_paper_item_section_match_update,
+     trg_paper_item_source_required_insert,
+     trg_paper_section_parent_update,
+     trg_system_paper_category_no_delete,
+     trg_type_question_topic_match_insert,
+     trg_type_question_topic_match_update,
+     trg_type_stimulus_topic_parent_update.
+   All 17 must be installed through an approved, idempotent database
+   initialization/migration strategy and tested.
+
+4. CHECK enforcement:
+   - Canonical SQL contains 48 CHECK clauses.
+   - Every clause must be accounted for in a parity matrix and enforced
+     by the database, not merely by UI validation.
+
+5. Build evidence:
+   - The ZIP is a scaffold/build harness, not a completed app.
+   - Its Database class exposes only a smoke-test DAO.
+   - BUILD_STATUS reports that no authoritative Gradle compile result
+     was available when the ZIP was authored.
+   - A clean CI build and test run is a Phase 1 exit requirement.
+
+6. SQL validation evidence:
+   - Direct SQLite execution of the canonical SQL returned integrity_check
+     = ok and no foreign_key_check violations in the inspected baseline.
+   - This does not prove Room parity, Android compilation, migration
+     correctness or runtime behavior.
+
+7. Remaining design decisions:
+   - Undo/Redo coverage and history policy.
+   - Whether unsaved drafts must survive process death.
+   - Paper snapshot image ownership and retention.
+   - Custom board archive/rename behavior.
+   - Timestamp unit and timezone policy.
+   - External edit/backup/restore mutual exclusion.
+   These must be recorded as decisions with acceptance tests, not silently
+   assumed by implementation.
+
+============================================================ 13. FINAL
+PROJECT RULE
+============================================================
+
+The Question Bank project must be developed as a complete, integrated
+application, not as a collection of isolated code files.
+
+The database is the foundation. The repository layer protects the
+domain. The EditorDraft protects editing state. The operation journal
+protects media consistency. The paper snapshot protects historical
+content. The migration and backup systems protect user data. The
+acceptance tests protect the final product.
+
+No phase is complete until its deliverables exist and its exit criteria
+pass.
+
+FINAL TARGET: A fully functional, offline-first, maintainable, tested
+and release-ready Question Bank Android application supporting both
+Type_CQ and Chapter_CQ, with complete editing, media, search,
+paper-building and data-protection workflows.
+
+END OF DOCUMENT
+
+
+============================================================ 14. ARCHITECTURE DECISION UPDATE — VERSION 1.2
+============================================================
+
+ADR-001 — ONE PHYSICAL SQLITE DATABASE
+Status: ACCEPTED
+Decision date: 16 November 2026
+
+The application will use one physical SQLite database file named
+`QuestionBank.db`. Do not split Type_CQ, Chapter_CQ, or category data into
+separate database files.
+
+Logical separation remains mandatory:
+- Type_CQ and Chapter_CQ retain separate table families, DAO boundaries,
+  repository boundaries, and use cases.
+- Paper-building tables remain in the same database because paper items
+  can reference either question source.
+- The shared board catalog and operation journal remain in the same
+  database as specified by the canonical schema.
+- Category tables remain exactly as defined in canonical schema v1.1:
+  `type_cq_question_categories`, `chapter_cq_question_categories`, and
+  `paper_categories`. This decision selects one physical database; it
+  does not merge category semantics or alter the canonical schema.
+
+Consequences:
+1. Cross-domain references and paper-source relationships remain within
+   one SQLite database boundary.
+2. Related relational writes can use one database transaction.
+3. Backup, restore, migration, and integrity checks use one database
+   boundary.
+4. Type_CQ and Chapter_CQ separation is enforced through domain, DAO,
+   repository, and UI boundaries rather than separate database files.
+5. Any future proposal to merge category tables or redesign category
+   ownership requires a separate reviewed architecture decision and a
+   migration plan.
+
+FIRST UPDATED ZIP BASELINE
+
+The first updated Android package is version 0.2.0 (database foundation).
+It retains the existing 35 Room entities and adds an idempotent runtime
+installer for the two FTS5 virtual tables, all 17 canonical triggers, and
+the canonical system paper-category seed. It adds automated contract
+checks for the canonical inventory of 35 ordinary tables, 2 FTS5 virtual
+tables, 17 triggers, and 48 CHECK clauses.
+
+This package is still a build foundation, not a completed app. It does
+not yet provide the complete DAO/repository layer, certified field-level
+Room parity, migration suite, complete Editor UI, image operation
+journal workflow, paper builder UI, backup/restore implementation, or a
+verified APK. No authoritative Android Gradle/Room compile result is
+claimed until CI succeeds and its logs are retained.
+
+END OF VERSION 1.2 UPDATE

@@ -54,27 +54,24 @@ abstract class QuestionBankDatabase : RoomDatabase() {
     abstract fun smokeDao(): RoomSmokeDao
 
     companion object {
-        /** FTS5 is deliberately managed outside @Entity because FTS virtual/shadow tables are not normal Room entities. */
-        val FTS_CALLBACK = object : RoomDatabase.Callback() {
-            override fun onCreate(connection: SQLiteConnection) = createFtsObjects(connection)
-            override fun onOpen(connection: SQLiteConnection) = createFtsObjects(connection)
+        /**
+         * Room owns the 35 ordinary application tables. FTS virtual tables and
+         * canonical triggers are installed separately because FTS shadow tables
+         * are SQLite-managed objects and must not be Room @Entity declarations.
+         */
+        val CANONICAL_OBJECTS_CALLBACK = object : RoomDatabase.Callback() {
+            override fun onCreate(connection: SQLiteConnection) = installCanonicalObjects(connection)
+            override fun onOpen(connection: SQLiteConnection) = installCanonicalObjects(connection)
         }
 
-        private fun createFtsObjects(connection: SQLiteConnection) {
-            connection.execSQL("CREATE VIRTUAL TABLE IF NOT EXISTS type_cq_question_fts USING fts5(question_id UNINDEXED, question_text, short_answer)")
-            connection.execSQL("CREATE VIRTUAL TABLE IF NOT EXISTS chapter_cq_question_fts USING fts5(question_id UNINDEXED, question_text, short_answer)")
-            connection.execSQL("CREATE TRIGGER IF NOT EXISTS trg_type_question_fts_insert AFTER INSERT ON type_cq_questions BEGIN INSERT INTO type_cq_question_fts(question_id, question_text, short_answer) VALUES (NEW.question_id, NEW.question_text, NEW.short_answer); END")
-            connection.execSQL("CREATE TRIGGER IF NOT EXISTS trg_type_question_fts_update AFTER UPDATE OF question_text, short_answer ON type_cq_questions BEGIN DELETE FROM type_cq_question_fts WHERE question_id=OLD.question_id; INSERT INTO type_cq_question_fts(question_id, question_text, short_answer) VALUES (NEW.question_id, NEW.question_text, NEW.short_answer); END")
-            connection.execSQL("CREATE TRIGGER IF NOT EXISTS trg_type_question_fts_delete AFTER DELETE ON type_cq_questions BEGIN DELETE FROM type_cq_question_fts WHERE question_id=OLD.question_id; END")
-            connection.execSQL("CREATE TRIGGER IF NOT EXISTS trg_chapter_question_fts_insert AFTER INSERT ON chapter_cq_questions BEGIN INSERT INTO chapter_cq_question_fts(question_id, question_text, short_answer) VALUES (NEW.question_id, NEW.question_text, NEW.short_answer); END")
-            connection.execSQL("CREATE TRIGGER IF NOT EXISTS trg_chapter_question_fts_update AFTER UPDATE OF question_text, short_answer ON chapter_cq_questions BEGIN DELETE FROM chapter_cq_question_fts WHERE question_id=OLD.question_id; INSERT INTO chapter_cq_question_fts(question_id, question_text, short_answer) VALUES (NEW.question_id, NEW.question_text, NEW.short_answer); END")
-            connection.execSQL("CREATE TRIGGER IF NOT EXISTS trg_chapter_question_fts_delete AFTER DELETE ON chapter_cq_questions BEGIN DELETE FROM chapter_cq_question_fts WHERE question_id=OLD.question_id; END")
+        private fun installCanonicalObjects(connection: SQLiteConnection) {
+            CanonicalDatabaseObjects.statements.forEach { statement -> connection.execSQL(statement) }
         }
 
         fun create(context: Context): QuestionBankDatabase =
             Room.databaseBuilder(context, QuestionBankDatabase::class.java, "QuestionBank.db")
                 .setDriver(BundledSQLiteDriver())
-                .addCallback(FTS_CALLBACK)
+                .addCallback(CANONICAL_OBJECTS_CALLBACK)
                 .build()
     }
 }
