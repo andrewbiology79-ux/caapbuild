@@ -24,7 +24,11 @@ jobs:
           java-version: "17"
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          # The legacy SDK 'tools' package is no longer available.
+          # setup-android installs command-line tools itself; request platform-tools only.
+          packages: platform-tools
 
       - name: Install Gradle 8.14.3
         uses: gradle/actions/setup-gradle@v6
