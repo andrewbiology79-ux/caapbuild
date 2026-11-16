@@ -7,3 +7,9 @@
 - Added architecture and parity-status documentation.
 
 Not included: completed editor UI, full DAO/repository layer, complete schema parity certification, migrations, media pipeline, paper builder UI, backup/restore, or a verified APK.
+
+## CI report enhancement (0.2.1)
+- GitHub Actions now saves the full Gradle console output to `build-report/gradle-build.log`.
+- A diagnostic summary is generated even when the build fails.
+- `QuestionBank-ci-report` is uploaded on every run and includes available Gradle/JUnit reports.
+- The debug APK remains a separate artifact and is uploaded only after success.

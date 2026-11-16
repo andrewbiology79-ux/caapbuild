@@ -26,8 +26,6 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
-          # The legacy SDK 'tools' package is no longer available.
-          # setup-android installs command-line tools itself; request platform-tools only.
           packages: platform-tools
 
       - name: Install Gradle 8.14.3
@@ -36,10 +34,65 @@ jobs:
           gradle-version: "8.14.3"
           add-job-summary: "never"
 
-      - name: Run tests and build debug APK
-        run: gradle --no-daemon testDebugUnitTest assembleDebug
+      # Keep the complete Gradle output even when KAPT, tests, or APK assembly fails.
+      - name: Run tests and build debug APK (capture full log)
+        id: build
+        shell: bash
+        run: |
+          mkdir -p build-report
+          set +e
+          gradle --no-daemon testDebugUnitTest assembleDebug --stacktrace --info 2>&1 | tee build-report/gradle-build.log
+          build_exit_code=${PIPESTATUS[0]}
+          echo "exit_code=${build_exit_code}" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$build_exit_code" > build-report/gradle-exit-code.txt
+          exit "$build_exit_code"
+
+      # This runs after both success and failure and creates a human-readable report.
+      - name: Generate CI diagnostic report
+        if: always()
+        shell: bash
+        env:
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          BUILD_EXIT_CODE: ${{ steps.build.outputs.exit_code }}
+        run: |
+          mkdir -p build-report
+          {
+            echo "# Question Bank — GitHub Actions Build Report"
+            echo
+            echo "- Workflow: $GITHUB_WORKFLOW"
+            echo "- Run number: $GITHUB_RUN_NUMBER"
+            echo "- Run ID: $GITHUB_RUN_ID"
+            echo "- Commit: $GITHUB_SHA"
+            echo "- Branch/ref: $GITHUB_REF"
+            echo "- Runner: $RUNNER_OS"
+            echo "- Java: $(java -version 2>&1 | head -n 1)"
+            echo "- Build step outcome: ${BUILD_OUTCOME:-not-run}"
+            echo "- Gradle exit code: ${BUILD_EXIT_CODE:-not-recorded}"
+            echo
+            echo "## Diagnostic files"
+            echo "- gradle-build.log: complete Gradle output, including stack traces and processor diagnostics"
+            echo "- gradle-exit-code.txt: Gradle process exit code, when the build command started"
+            echo "- app/build/reports/: Gradle and test reports, when generated"
+            echo "- app/build/test-results/: JUnit XML test results, when generated"
+            echo
+            echo "Download the QuestionBank-ci-report artifact from this workflow run's Artifacts section."
+          } > build-report/CI_REPORT.md
+
+      # Always upload diagnostics so a failed build still provides a downloadable report.
+      - name: Upload CI diagnostic report and test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: QuestionBank-ci-report
+          path: |
+            build-report/**
+            app/build/reports/**
+            app/build/test-results/**
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Upload installable debug APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: QuestionBank-debug-apk

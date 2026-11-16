@@ -9,3 +9,5 @@ Runtime database objects: Room registers the 35 ordinary application entities. T
 Canonical SQL inventory checks: 35 ordinary tables, 2 FTS5 virtual tables, 17 triggers, and 48 CHECK clauses.
 
 Build evidence: no authoritative Android Gradle/Room KAPT compile result or device test was obtained while preparing this ZIP. Run the GitHub Actions workflow or `gradle --no-daemon :app:testDebugUnitTest` and retain the logs. Do not describe this package as build-verified until CI succeeds.
+
+CI diagnostics: the GitHub Actions workflow captures the complete Gradle log with --stacktrace --info and always uploads a QuestionBank-ci-report artifact, including after build failure. See CI_REPORT_README.md for download instructions. This report-upload change does not itself establish a successful build.
