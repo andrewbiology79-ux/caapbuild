@@ -13,7 +13,7 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        versionName = "0.2.12-schema-json-committed"
+        versionName = "0.2.13-schema-parity-test"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -47,4 +47,5 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.xerial:sqlite-jdbc:3.50.2.0")
+    testImplementation("com.google.code.gson:gson:2.11.0")
 }

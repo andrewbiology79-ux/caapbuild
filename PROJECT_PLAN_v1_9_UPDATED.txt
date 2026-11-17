@@ -1762,3 +1762,45 @@ schema parity test (Room 1.json vs canonical SQL), FK index decision, WAL policy
 - v1.12: Schema JSON committed; run 14 is the first verified non-cached run.
 
 END OF VERSION 1.12 UPDATE
+
+
+============================================================
+25. PACKAGE v0.2.13 - SCHEMA PARITY TEST
+============================================================
+
+Planning update date: 17 November 2026
+Package baseline: QuestionBank Android v0.2.13
+
+25.1 Reported
+- v0.2.12 CI build reported successful by the user (no new log supplied).
+
+25.2 Added in v0.2.13
+- RoomSchemaParityTest.kt (2 tests) comparing app/schemas/.../1.json with the canonical SQL
+  schema: tables, columns, affinity, NOT NULL, primary keys, foreign keys, indexes.
+- Test dependency: Gson 2.11.0.
+- STATUS: written but NOT yet compiled or run in CI. Expected next run: 7 tests.
+
+25.3 Offline findings (Python sqlite3 prototype of the same comparison)
+- Tables: 35 in SQL, 35 in Room. Columns, affinities, NOT NULL, primary keys, foreign keys: all match.
+- Indexes: all match except two redundant plain indexes in canonical SQL:
+  idx_type_cq_solution_parts_order and idx_chapter_cq_solution_parts_order duplicate
+  UNIQUE(question_id, position). Room entities intentionally omit them. The test treats a
+  non-unique index that duplicates a unique one as an accepted difference.
+- Decision pending: remove the two redundant indexes from the canonical SQL, or keep them.
+
+25.4 Status
+PHASE 1: DONE except documenting the dependency/version freeze.
+PHASE 2: PARTIAL FOUNDATION. Schema parity test written (pending CI confirmation).
+Open: androidTest on real Room DB, FK index decision, WAL policy, 48 CHECK clauses vs 46
+emulation triggers, DAO layer, repositories.
+
+25.5 Next steps (in order)
+1. Run CI with v0.2.13; confirm 7 tests pass (fix compile errors if any).
+2. Decide redundant solution_parts indexes, FK indexes, WAL policy; reconcile CHECK count.
+3. Add androidTest (separate emulator workflow).
+4. Begin DAO layer.
+
+25.6 Change log addition
+- v1.13: Schema parity test added; redundant-index finding.
+
+END OF VERSION 1.13 UPDATE
