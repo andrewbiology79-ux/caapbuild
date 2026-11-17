@@ -1,20 +1,11 @@
-Question Bank Android build foundation — package version 0.2.5
+Question Bank Android build foundation - package version 0.2.10
 
 This ZIP is an incremental Android/Room build-harness package, not a completed Question Bank application.
 
-Database architecture: one physical QuestionBank.db file. Type_CQ, Chapter_CQ, and paper workflows remain logically separated by table families and repository boundaries.
+CI status (as reported by the user, CI run 11, package v0.2.8/v0.2.9): Room KSP generation, 5 unit tests and debug APK assembly succeeded. The APK has not been installed or inspected on a device.
 
-Room entities: 35 ordinary Kotlin entity classes are retained. QuestionBankDatabase.kt now explicitly imports and lists each entity using Kotlin class literals (`EntityName::class`), correcting the CI run 8 error where bare class names caused Room to see no entities.
+Database architecture: one physical QuestionBank.db file; 35 ordinary Room entities, 2 FTS5 virtual tables, 17 canonical triggers (11 business + 6 FTS) and 46 CHECK-emulation triggers installed by the database callback. Canonical SQL declares 48 CHECK clauses; the gap between 48 and 46 is not yet reconciled.
 
-Canonical SQL inventory: 35 ordinary application tables, 2 FTS5 virtual tables, 17 triggers, and 48 CHECK clauses. The 10 FTS shadow tables are SQLite-managed and are not Room entities.
+Still open (see PROJECT_PLAN section 21.5): commit Gradle wrapper (v0.2.10 CI generates it), commit Room schema JSON, androidTest on the real Room database, schema parity test, foreign-key index decision, WAL policy, DAO layer and repositories.
 
-CI history:
-- Run 6: KAPT failed because its metadata reader supported through 2.3.0 but encountered Kotlin metadata 2.4.0.
-- Run 7: the metadata exception was no longer reported; Room KAPT instead reported an empty entity list.
-- Run 8: KSP loaded the Room processor, but Room reported `@Database annotation must specify list of entities`. Source review found the 35 entity names were missing `::class` class literals. The missing-table DAO errors were consequential.
-
-Package v0.2.5 retains KSP 2.3.12 / Kotlin 2.4.21 / Room 2.8.5 and corrects the database annotation. Android versionName is 0.2.5-room-entity-class-literals.
-
-CI diagnostics: the GitHub Actions workflow captures complete Gradle output and uploads a QuestionBank-ci-report artifact even after build failure. See CI_REPORT_README.md.
-
-Verification status: ZIP integrity and source-level entity-list assertions are checked. No Android Gradle build was run in this environment. Do not mark the build foundation as passed until CI successfully runs Room KSP generation, passes testDebugUnitTest and assembles app-debug.apk.
+Unit tests run against JDBC SQLite, not the Room-created database.

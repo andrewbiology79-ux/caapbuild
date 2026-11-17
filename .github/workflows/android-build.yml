@@ -34,6 +34,29 @@ jobs:
           gradle-version: "8.14.3"
           add-job-summary: "never"
 
+      # One-time helper: if the repository has no Gradle wrapper yet, generate it and
+      # upload it as an artifact so it can be downloaded and committed (gradlew,
+      # gradlew.bat, gradle/wrapper/*). Skipped automatically once the wrapper is committed.
+      - name: Generate Gradle wrapper (only when missing)
+        id: wrapper
+        if: hashFiles('gradlew') == ''
+        continue-on-error: true
+        shell: bash
+        run: |
+          gradle wrapper --gradle-version 8.14.3 --distribution-type bin --no-daemon
+          ls -la gradlew gradlew.bat gradle/wrapper
+
+      - name: Upload generated Gradle wrapper
+        if: steps.wrapper.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: QuestionBank-gradle-wrapper
+          path: |
+            gradlew
+            gradlew.bat
+            gradle/wrapper/**
+          retention-days: 30
+
       # Keep the complete Gradle output even when KAPT, tests, or APK assembly fails.
       - name: Run tests and build debug APK (capture full log)
         id: build
@@ -41,7 +64,9 @@ jobs:
         run: |
           mkdir -p build-report
           set +e
-          gradle --no-daemon testDebugUnitTest assembleDebug --stacktrace --info 2>&1 | tee build-report/gradle-build.log
+          if [ -f gradlew ]; then GRADLE_CMD="sh ./gradlew"; else GRADLE_CMD="gradle"; fi
+          echo "Using: $GRADLE_CMD" | tee build-report/gradle-build.log
+          $GRADLE_CMD --no-daemon testDebugUnitTest assembleDebug --stacktrace --info 2>&1 | tee -a build-report/gradle-build.log
           build_exit_code=${PIPESTATUS[0]}
           echo "exit_code=${build_exit_code}" >> "$GITHUB_OUTPUT"
           printf '%s\n' "$build_exit_code" > build-report/gradle-exit-code.txt

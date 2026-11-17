@@ -1656,3 +1656,33 @@ committed to version control. No source code was changed.
 
 END OF VERSION 1.9 UPDATE
 
+
+
+============================================================
+22. PACKAGE v0.2.10 - GRADLE WRAPPER HELPER AND STATUS CLEAN-UP
+============================================================
+
+Planning update date: 17 November 2026
+Package baseline: QuestionBank Android v0.2.10 (no application source changes)
+
+22.1 Changes
+- Workflow generates the Gradle wrapper in CI when gradlew is missing and uploads it
+  as artifact QuestionBank-gradle-wrapper. The build uses ./gradlew once it is committed.
+- BUILD_STATUS.txt refreshed (it still described v0.2.5).
+- Verification review of this package: gradlew and committed schema JSON are absent;
+  no androidTest directory; Database exposes only smokeDao().
+
+22.2 Corrections to earlier text
+- Sections 2 and 5 (Phase 2) say the callback installs only 6 FTS triggers. Current code
+  installs all 17 canonical triggers plus 46 CHECK-emulation triggers.
+- Open question: 48 CHECK clauses in canonical SQL vs 46 emulation triggers - reconcile.
+
+22.3 Status
+PHASE 1: CI build gate passed. Open: wrapper committed, schema JSON committed,
+dependency/version freeze documented.
+PHASE 2: PARTIAL FOUNDATION ONLY (unchanged).
+
+22.4 Change log addition
+- v1.10: Wrapper helper, status clean-up, review findings.
+
+END OF VERSION 1.10 UPDATE
