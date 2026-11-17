@@ -1,4 +1,4 @@
-Question Bank Android build foundation - package version 0.2.16
+Question Bank Android build foundation - package version 0.2.17 (plan v1.19)
 
 This ZIP is an incremental Android/Room build-harness package, not a completed Question Bank application.
 MainActivity is still a placeholder TextView; no feature of the Master Checklist is implemented.
@@ -20,3 +20,7 @@ DI/navigation/UI foundation; release variant; DAO layer and repositories.
 v0.2.16: first emulator run (v0.2.15) failed BEFORE any test ran: Gradle could not resolve the extra
 kotlinx-coroutines-android:1.10.2 androidTest dependency (runtime classpath pinned to 1.8.1). Dependency removed
 (coroutines come transitively from Room). androidTest Kotlin sources have still never been compiled; next run will show.
+
+v0.2.17: CI run on v0.2.16: main build SUCCESSFUL (exit 0, unit tests + APK). Non-blocking androidTest compile step reported
+2 errors in ScaleBenchmarkTest (mixed-type arrayOf inferred an intersection type). Fixed with arrayOf<Any?>.
+No other androidTest compile error was reported (Room driver APIs resolved). Emulator run still pending.

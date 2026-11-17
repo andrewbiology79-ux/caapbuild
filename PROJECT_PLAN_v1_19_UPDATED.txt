@@ -1,7 +1,7 @@
 QUESTION BANK ANDROID APP COMPLETE PROJECT DEVELOPMENT & DELIVERY PLAN
 ============================================================
 
-Document version: 1.18 (androidTest and benchmark written, findings F-1 and F-2; see section 30)
+Document version: 1.19 (problem and solution log added as section 31)
 Planning baseline: 16 November 2026
 Project status: Single-database architecture confirmed; canonical SQL and Room build harness prepared. CI run 11 (package v0.2.8) passed: KSP/Room generation, unit tests (5 of 5) and debug APK assembly. The package is still a build harness, not a complete application; Room-database runtime behaviour (CHECK emulation, Bengali FTS on the real database) is not yet device-tested.
 
@@ -2050,3 +2050,108 @@ END OF VERSION 1.18 UPDATE
 The first instrumented run (v0.2.15, 20000 rows) failed at dependency resolution before compiling any test
 (extra kotlinx-coroutines-android 1.10.2 vs pinned 1.8.1). Removed in v0.2.16. No runtime or benchmark result exists yet;
 section 30.3 status is unchanged: runtime tests and benchmark written, NOT run.
+
+30.7 Addendum (package v0.2.17): CI after v0.2.16
+Normal workflow green (unit tests + APK). The non-blocking androidTest compile step found 2 type-inference errors in
+ScaleBenchmarkTest (fixed). Room 2.8 driver API calls compiled. Emulator run (runtime tests + benchmark) still pending.
+
+
+============================================================
+31. PROBLEM AND SOLUTION LOG - VERSION 1.19
+============================================================
+
+Purpose: one place that records every real problem met so far, its root cause, the fix, and whether the fix is
+confirmed. Failed attempts are kept on purpose: they stop the same dead end from being tried again.
+Status words: CONFIRMED = a CI run or test proved it; OPEN = decision or work still pending; UNCONFIRMED = fix written, not yet proven.
+New entries are added at the end of this section with the next number (P-nn). Never delete an entry.
+
+31.1 Build and CI problems
+
+P-01  CI run 6 (v0.2.1) - KAPT failed: "Provided Metadata instance has version 2.4.0, while maximum supported version is 2.3.0".
+      Cause: Room's KAPT processor could not read Kotlin 2.4 metadata.
+      Attempt (v0.2.2/0.2.3): added kotlin-metadata-jvm 2.4.21 to the kapt classpath. RESULT: did not fix the root problem (run 7 failed differently).
+      Final fix (v0.2.4): replaced KAPT with KSP 2.3.12 (room-compiler moved to ksp). Status: CONFIRMED.
+      Lesson: when a processor and the compiler disagree on versions, prefer the maintained path (KSP) over patching the old one.
+
+P-02  CI run 8 (v0.2.4) - Room error: @Database did not provide a list of entities.
+      Cause: QuestionBankDatabase.kt listed entity names without ::class.
+      Fix (v0.2.5): all 35 entries written as EntityName::class, explicit imports. Status: CONFIRMED.
+
+P-03  CI run 9 (v0.2.5) - Room error: multiple indices with name index_<table>_question_id_position (2 entities).
+      Cause: each solution-parts entity declared the same index twice (unique and non-unique).
+      Fix (v0.2.7): kept the unique one only. Status: CONFIRMED.
+
+P-04  CI run 10 (v0.2.7) - compileDebugUnitTestKotlin: Unresolved reference CanonicalDatabaseObjects.
+      Cause: missing import in CanonicalSqlContractTest; test code had never been compiled before.
+      Fix (v0.2.8): import added. Status: CONFIRMED. Result: first green build (run 11, v0.2.9).
+      Lesson: code that was never compiled hides simple errors; compile early and often.
+
+P-05  Run 13 (v0.2.10) - build was green but kspDebugKotlin, compileDebugKotlin and testDebugUnitTest came FROM-CACHE:
+      schema JSON was not re-exported and tests did not really run.
+      Fix (v0.2.11): workflow uses --no-build-cache; wrapper (gradlew) committed. Status: CONFIRMED (run 14 executed everything).
+      Lesson: a green build is only evidence if the tasks really executed.
+
+P-06  Missing Gradle wrapper.
+      Fix (v0.2.10-0.2.11): CI generated the wrapper once as an artifact, then it was committed. Status: CONFIRMED (run 13/14).
+
+P-07  Room schema JSON could not be committed (ignored by .gitignore, not uploaded by CI).
+      Fix: removed /app/schemas from .gitignore (v0.2.6); CI uploads app/schemas/** (v0.2.9); 1.json committed (v0.2.12). Status: CONFIRMED.
+
+P-08  Instrumented run on v0.2.15 (20000 rows) - Gradle failed in 20 s at checkDebugAndroidTestAarMetadata; no test ran, benchmark log empty.
+      Cause: my extra androidTest dependency kotlinx-coroutines-android 1.10.2 conflicted with the app's strictly pinned 1.8.1.
+      Fix (v0.2.16): dependency removed (coroutines arrive via Room). Status: CONFIRMED (the next CI compiled past this point).
+
+P-09  CI on v0.2.16 - non-blocking androidTest compile step reported 2 errors in ScaleBenchmarkTest (lines 110 and 119): arrayOf of mixed
+      String/Double/Int inferred an intersection type for a reified parameter.
+      Fix (v0.2.17): arrayOf<Any?>(...). Status: UNCONFIRMED until the next CI run shows a clean androidtest-compile.log.
+      Note: the main build stayed green because that step is non-blocking (this was the intended design).
+
+31.2 Database design problems
+
+P-10  Room @Entity cannot declare SQL CHECK constraints, so the 48 canonical CHECK clauses were missing in the real database.
+      Fix (v0.2.6): 46 BEFORE INSERT/UPDATE triggers (23 tables x 2) generated from the canonical SQL; NULL semantics match CHECK.
+      Offline fuzz (about 124,000 operations): 0 differences. Counts 48 CHECK vs 46 triggers reconciled. Status: CONFIRMED at JDBC level;
+      runtime on the real Room database UNCONFIRMED (RoomRuntimeTest not run yet).
+
+P-11  Bengali full-text search: default tokenizer split words at vowel signs and hasanta.
+      Fix (v0.2.6): unicode61 with tokenchars for Bengali vowel signs, hasanta, chandrabindu, visarga, anusvara, nukta; FTS update trigger fires on the right columns.
+      Offline prototype: conjunct words and prefixes searchable. Status: CONFIRMED offline; device confirmation UNCONFIRMED.
+
+P-12  Redundant indexes and uncovered foreign keys (scale risk, several hundred thousand questions).
+      Fix (v0.2.14): removed 2 duplicate indexes; added 12 indexes so every foreign key is covered; Room entities and strict parity test match;
+      WAL set explicitly. Status: CONFIRMED (run 18: 48 indices, 39 foreign keys, 7/7 tests). WAL actually active on device: UNCONFIRMED.
+
+P-13  Schema drift risk between canonical SQL and Room entities.
+      Fix (v0.2.13-0.2.14): RoomSchemaParityTest compares tables, columns, keys, foreign keys and indexes (strict). Status: CONFIRMED.
+
+P-14  F-1 FTS delete/update scans the whole FTS table (question_id is an UNINDEXED FTS column).
+      Evidence (offline prototype only): 18.3 ms per row at 50,000 rows vs 0.019 ms by rowid; cost grows linearly with row count.
+      Status: OPEN. Plan: confirm with ScaleBenchmarkTest on the emulator, then decide ADR-003 (recommended: integer surrogate column used as FTS rowid;
+      database is still version 1 and unreleased, so no migration is needed). Canonical schema is not changed before that decision.
+
+P-15  F-2 Unicode normalization: precomposed and decomposed forms of the letter য় (and similar letters) do not match each other in search.
+      Status: OPEN. Plan: normalize text on write and on query (NFC plus folding), Phase 12.
+
+31.3 Planning and documentation problems
+
+P-16  Phase 1 was recorded as DONE although DI, navigation/UI foundation, release variant, instrumentation run and version-freeze document were open.
+      Fix (v1.17/v1.18): status re-baselined to "build gate passed, foundation incomplete". Status: CONFIRMED (documented).
+
+P-17  Plan header said version 1.9 while the content was 1.16; the ZIP carried a plan file with an old name; BUILD_STATUS.txt was stale.
+      Fix: header and file name follow the version; BUILD_STATUS.txt is refreshed with every package. Status: CONFIRMED.
+
+P-18  Phase 0 deliverables (146-item traceability sheet, screen inventory, requirements spec, risk register) not produced before Phase 2 work.
+      Status: OPEN. Scheduled in parallel, kept light (section 29.2, step C).
+
+31.4 Working rules learned (apply from now on)
+1. A fix is marked CONFIRMED only after a CI run or test proves it; otherwise it is written as UNCONFIRMED.
+2. A green build counts only if the key tasks really executed (no FROM-CACHE for ksp, compile, tests).
+3. New code that has never been compiled is introduced together with a compile check in CI.
+4. Failed attempts stay in the log with their result.
+5. Every package refreshes BUILD_STATUS.txt, the version notes, and this log.
+6. Scale decisions (several hundred thousand questions with solutions and images) are measured, not assumed.
+
+31.5 Change log addition
+- v1.19: Problem and solution log (P-01 to P-18) and working rules added.
+
+END OF VERSION 1.19 UPDATE

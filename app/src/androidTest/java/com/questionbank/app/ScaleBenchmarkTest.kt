@@ -107,7 +107,7 @@ class ScaleBenchmarkTest {
                                 for (k in 0 until n) {
                                     val i = start + k
                                     st.reset()
-                                    bindAll(st, arrayOf("q$i", "t${i % topics + 1}", labels[i % 4], (i % 4 + 1).toDouble(), sentence(rnd, 14, i % 1000 == 0), sentence(rnd, 5), i))
+                                    bindAll(st, arrayOf<Any?>("q$i", "t${i % topics + 1}", labels[i % 4], (i % 4 + 1).toDouble(), sentence(rnd, 14, i % 1000 == 0), sentence(rnd, 5), i))
                                     st.step()
                                 }
                             }
@@ -116,7 +116,7 @@ class ScaleBenchmarkTest {
                                     val i = start + k
                                     for (p in 1..2) {
                                         st.reset()
-                                        bindAll(st, arrayOf("p${i}_$p", "q$i", p, sentence(rnd, 25)))
+                                        bindAll(st, arrayOf<Any?>("p${i}_$p", "q$i", p, sentence(rnd, 25)))
                                         st.step()
                                     }
                                 }
