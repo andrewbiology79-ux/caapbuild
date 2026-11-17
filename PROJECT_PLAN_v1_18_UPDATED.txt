@@ -2043,3 +2043,10 @@ PHASES 3-17: NOT STARTED.
 - v1.18: androidTest and benchmark written; findings F-1 (FTS delete cost) and F-2 (Unicode normalization); status unchanged except as above.
 
 END OF VERSION 1.18 UPDATE
+
+------------------------------------------------------------
+30.6 Addendum (package v0.2.16): first emulator run result
+------------------------------------------------------------
+The first instrumented run (v0.2.15, 20000 rows) failed at dependency resolution before compiling any test
+(extra kotlinx-coroutines-android 1.10.2 vs pinned 1.8.1). Removed in v0.2.16. No runtime or benchmark result exists yet;
+section 30.3 status is unchanged: runtime tests and benchmark written, NOT run.
