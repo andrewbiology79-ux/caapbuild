@@ -19,8 +19,9 @@ Changes:
    NOTE: not compiled locally. If the build fails on this line, send the CI report.
 5. versionName 0.2.14-fk-indexes-wal. Database version stays 1 (no released app yet, so no migration).
 
-IMPORTANT: app/schemas/.../1.json in this package is the OLD export (v0.2.12). Room regenerates it
-during the CI build, and the parity test reads the regenerated file. After the CI run, download
-QuestionBank-ci-report and replace app/schemas/.../1.json in the repository with the new one.
+CI run 18 (package v0.2.14): BUILD SUCCESSFUL in 35s, exit code 0, non-cached (ksp, compile, tests ran),
+7/7 tests passed (CanonicalSqlContractTest 5, RoomSchemaParityTest 2, strict). The explicit WAL line compiled.
+app/schemas/.../1.json in this package is the NEW export from run 18:
+identityHash fb40664660a91120f2169864ac13203e, 35 entities, 48 indices (was 36), 39 foreign keys.
 
 Offline check (Python sqlite3 prototype): strict index comparison 0 differences; uncovered foreign keys 0.

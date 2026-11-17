@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "dc6ce2b13fcffb4fd74692f2390af33e",
+    "identityHash": "fb40664660a91120f2169864ac13203e",
     "entities": [
       {
         "tableName": "app_metadata",
@@ -331,6 +331,16 @@
             ],
             "orders": [],
             "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_chapter_cq_question_boards_question_id_board_code_year` ON `${TABLE_NAME}` (`question_id`, `board_code`, `year`)"
+          },
+          {
+            "name": "index_chapter_cq_question_boards_board_code_year",
+            "unique": false,
+            "columnNames": [
+              "board_code",
+              "year"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_chapter_cq_question_boards_board_code_year` ON `${TABLE_NAME}` (`board_code`, `year`)"
           }
         ],
         "foreignKeys": [
@@ -470,6 +480,18 @@
             "category_id"
           ]
         },
+        "indices": [
+          {
+            "name": "index_chapter_cq_question_category_links_category_id_question_id",
+            "unique": false,
+            "columnNames": [
+              "category_id",
+              "question_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_chapter_cq_question_category_links_category_id_question_id` ON `${TABLE_NAME}` (`category_id`, `question_id`)"
+          }
+        ],
         "foreignKeys": [
           {
             "table": "chapter_cq_question_categories",
@@ -681,6 +703,15 @@
             ],
             "orders": [],
             "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_chapter_cq_solution_parts_question_id_position` ON `${TABLE_NAME}` (`question_id`, `position`)"
+          },
+          {
+            "name": "index_chapter_cq_solution_parts_image_id",
+            "unique": false,
+            "columnNames": [
+              "image_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_chapter_cq_solution_parts_image_id` ON `${TABLE_NAME}` (`image_id`)"
           }
         ],
         "foreignKeys": [
@@ -841,6 +872,16 @@
             ],
             "orders": [],
             "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_chapter_cq_stimulus_boards_stimulus_id_board_code_year` ON `${TABLE_NAME}` (`stimulus_id`, `board_code`, `year`)"
+          },
+          {
+            "name": "index_chapter_cq_stimulus_boards_board_code_year",
+            "unique": false,
+            "columnNames": [
+              "board_code",
+              "year"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_chapter_cq_stimulus_boards_board_code_year` ON `${TABLE_NAME}` (`board_code`, `year`)"
           }
         ],
         "foreignKeys": [
@@ -914,6 +955,15 @@
             ],
             "orders": [],
             "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_chapter_cq_stimulus_images_stimulus_id_position` ON `${TABLE_NAME}` (`stimulus_id`, `position`)"
+          },
+          {
+            "name": "index_chapter_cq_stimulus_images_image_id",
+            "unique": false,
+            "columnNames": [
+              "image_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_chapter_cq_stimulus_images_image_id` ON `${TABLE_NAME}` (`image_id`)"
           }
         ],
         "foreignKeys": [
@@ -1260,6 +1310,15 @@
             ],
             "orders": [],
             "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_paper_item_images_item_id_position` ON `${TABLE_NAME}` (`item_id`, `position`)"
+          },
+          {
+            "name": "index_paper_item_images_paper_image_id",
+            "unique": false,
+            "columnNames": [
+              "paper_image_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_paper_item_images_paper_image_id` ON `${TABLE_NAME}` (`paper_image_id`)"
           }
         ],
         "foreignKeys": [
@@ -1421,6 +1480,33 @@
             ],
             "orders": [],
             "createSql": "CREATE INDEX IF NOT EXISTS `index_paper_question_items_paper_id_sort_order` ON `${TABLE_NAME}` (`paper_id`, `sort_order`)"
+          },
+          {
+            "name": "index_paper_question_items_chapter_cq_question_id",
+            "unique": false,
+            "columnNames": [
+              "chapter_cq_question_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_paper_question_items_chapter_cq_question_id` ON `${TABLE_NAME}` (`chapter_cq_question_id`)"
+          },
+          {
+            "name": "index_paper_question_items_type_cq_question_id",
+            "unique": false,
+            "columnNames": [
+              "type_cq_question_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_paper_question_items_type_cq_question_id` ON `${TABLE_NAME}` (`type_cq_question_id`)"
+          },
+          {
+            "name": "index_paper_question_items_section_id",
+            "unique": false,
+            "columnNames": [
+              "section_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_paper_question_items_section_id` ON `${TABLE_NAME}` (`section_id`)"
           }
         ],
         "foreignKeys": [
@@ -1507,6 +1593,17 @@
             "section_id"
           ]
         },
+        "indices": [
+          {
+            "name": "index_paper_sections_paper_id",
+            "unique": false,
+            "columnNames": [
+              "paper_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_paper_sections_paper_id` ON `${TABLE_NAME}` (`paper_id`)"
+          }
+        ],
         "foreignKeys": [
           {
             "table": "papers",
@@ -2336,6 +2433,15 @@
             ],
             "orders": [],
             "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_type_cq_solution_parts_question_id_position` ON `${TABLE_NAME}` (`question_id`, `position`)"
+          },
+          {
+            "name": "index_type_cq_solution_parts_image_id",
+            "unique": false,
+            "columnNames": [
+              "image_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_type_cq_solution_parts_image_id` ON `${TABLE_NAME}` (`image_id`)"
           }
         ],
         "foreignKeys": [
@@ -2590,6 +2696,15 @@
             ],
             "orders": [],
             "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_type_cq_stimulus_images_stimulus_id_position` ON `${TABLE_NAME}` (`stimulus_id`, `position`)"
+          },
+          {
+            "name": "index_type_cq_stimulus_images_image_id",
+            "unique": false,
+            "columnNames": [
+              "image_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_type_cq_stimulus_images_image_id` ON `${TABLE_NAME}` (`image_id`)"
           }
         ],
         "foreignKeys": [
@@ -2748,7 +2863,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'dc6ce2b13fcffb4fd74692f2390af33e')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'fb40664660a91120f2169864ac13203e')"
     ]
   }
 }

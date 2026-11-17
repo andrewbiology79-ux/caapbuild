@@ -10,4 +10,4 @@ Gradle wrapper and Room schema JSON (1.json) are committed. RoomSchemaParityTest
 
 Unit tests run against JDBC SQLite, not the Room-created database.
 
-v0.2.14 (not yet run in CI): all foreign keys now have covering indexes, two redundant indexes removed, explicit WAL journal mode, strict schema parity test. Committed 1.json is the old v0.2.12 export until replaced from the next CI report.
+v0.2.14 (CI run 18 passed, 7/7 tests, new 1.json committed): all foreign keys now have covering indexes, two redundant indexes removed, explicit WAL journal mode, strict schema parity test.

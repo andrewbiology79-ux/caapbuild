@@ -1889,3 +1889,40 @@ Open: androidTest on real Room DB, scale benchmark, DAO layer, repositories.
 - v1.15: Scale decisions, FK indexes, WAL, CHECK count reconciled.
 
 END OF VERSION 1.15 UPDATE
+
+
+============================================================
+28. CI RUN 18 - FK INDEXES, WAL AND STRICT PARITY VERIFIED
+============================================================
+
+Planning update date: 17 November 2026
+Package baseline: QuestionBank Android v0.2.14 (code unchanged; 1.json replaced)
+
+28.1 CI run 18 result (log, test XML and new schema export supplied)
+- BUILD SUCCESSFUL in 35s, Gradle exit code 0, "Using: sh ./gradlew", non-cached.
+- kspDebugKotlin, compileDebugKotlin, testDebugUnitTest and assembleDebug executed.
+- 7 tests, 0 failures: CanonicalSqlContractTest 5/5, RoomSchemaParityTest 2/2 (now strict).
+- The explicit setJournalMode(WRITE_AHEAD_LOGGING) line compiled.
+- Correction to section 27: its "pending CI confirmation" items are now confirmed.
+
+28.2 New Room schema export (committed as 1.json)
+- identityHash fb40664660a91120f2169864ac13203e; version 1; 35 entities; 48 indices
+  (36 + 12 new FK-covering indexes); 39 foreign keys.
+- Room schema and canonical SQL now match exactly on tables, columns, keys and indexes.
+
+28.3 Status
+PHASE 1: DONE except documenting the dependency/version freeze.
+PHASE 2: PARTIAL FOUNDATION. Schema parity, FK indexes, WAL: DONE (verified on JDBC SQLite
+and by Room compile). NOT yet verified on a real Room database at runtime.
+Open: androidTest on real Room DB (WAL actually active, triggers, FTS, CHECK emulation),
+scale benchmark (import speed, FTS size, DB file size), DAO layer, repositories.
+
+28.4 Next steps (in order)
+1. Add androidTest (separate emulator workflow) incl. PRAGMA journal_mode check.
+2. Add benchmark plan/test for several hundred thousand rows.
+3. Begin DAO layer.
+
+28.5 Change log addition
+- v1.16: CI run 18 verified; new 1.json; Phase 2 foundations complete except runtime tests.
+
+END OF VERSION 1.16 UPDATE
