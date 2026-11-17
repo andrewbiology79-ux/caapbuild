@@ -8,7 +8,10 @@ import androidx.room.*
         ForeignKey(entity = PaperSectionsEntity::class, parentColumns = ["section_id"], childColumns = ["section_id"], onUpdate = ForeignKey.CASCADE, onDelete = ForeignKey.SET_NULL),
         ForeignKey(entity = PapersEntity::class, parentColumns = ["paper_id"], childColumns = ["paper_id"], onUpdate = ForeignKey.CASCADE, onDelete = ForeignKey.CASCADE)
     ], indices = [
-        Index(value = ["paper_id", "sort_order"], unique = false)
+        Index(value = ["paper_id", "sort_order"], unique = false),
+        Index(value = ["chapter_cq_question_id"], unique = false),
+        Index(value = ["type_cq_question_id"], unique = false),
+        Index(value = ["section_id"], unique = false)
     ])
 data class PaperQuestionItemsEntity(
     @ColumnInfo(name = "item_id")

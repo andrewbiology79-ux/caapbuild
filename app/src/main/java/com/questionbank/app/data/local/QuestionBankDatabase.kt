@@ -105,6 +105,7 @@ abstract class QuestionBankDatabase : RoomDatabase() {
         fun create(context: Context): QuestionBankDatabase =
             Room.databaseBuilder(context, QuestionBankDatabase::class.java, "QuestionBank.db")
                 .setDriver(BundledSQLiteDriver())
+                .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
                 .addCallback(CANONICAL_OBJECTS_CALLBACK)
                 .build()
     }

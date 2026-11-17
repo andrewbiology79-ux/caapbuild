@@ -7,7 +7,7 @@ import androidx.room.*
         ForeignKey(entity = ChapterCqStimuliEntity::class, parentColumns = ["stimulus_id"], childColumns = ["stimulus_id"], onUpdate = ForeignKey.CASCADE, onDelete = ForeignKey.CASCADE)
     ], indices = [
         Index(value = ["stimulus_id", "position"], unique = true),
-        
+        Index(value = ["image_id"], unique = false)
     ])
 data class ChapterCqStimulusImagesEntity(
     @ColumnInfo(name = "stimulus_id")

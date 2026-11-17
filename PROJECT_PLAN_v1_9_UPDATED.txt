@@ -1840,3 +1840,52 @@ Open: decision on two redundant solution_parts indexes, FK index decision, WAL p
 - v1.14: CI run 16 verified schema parity test.
 
 END OF VERSION 1.14 UPDATE
+
+
+============================================================
+27. PACKAGE v0.2.14 - SCALE DECISIONS (HUNDREDS OF THOUSANDS OF QUESTIONS)
+============================================================
+
+Planning update date: 17 November 2026
+Package baseline: QuestionBank Android v0.2.14
+
+27.1 Requirement stated by the owner
+- Several hundred thousand questions, each with solutions and images. The owner delegated the
+  open design decisions (redundant indexes, FK indexes, WAL) to the assistant.
+
+27.2 Decisions
+- CHECK 48 vs 46 is NOT a discrepancy: 23 tables carry 48 CHECK clauses; the emulation uses
+  2 triggers (insert, update) per table = 46. Removed from the open list.
+- Redundant plain indexes on *_solution_parts removed from the canonical SQL.
+- FK indexes: the earlier count of 11 uncovered foreign keys was wrong; there were 12. All 12 now
+  have covering indexes, because at this scale deleting or updating a parent row (question, image,
+  paper, section) must not scan whole child tables. Cost: slower bulk import and larger file;
+  bulk import must run in a single transaction.
+- WAL: journal mode set explicitly to WRITE_AHEAD_LOGGING. Backup/export must checkpoint first
+  (PRAGMA wal_checkpoint(TRUNCATE)) or copy the -wal and -shm files together with the .db file.
+- Images stay as files referenced by relative_path (never BLOBs in the database).
+- Database version stays 1 until a first release; after any released install, every schema change
+  needs a Room migration and a new schema JSON.
+
+27.3 Risks to measure before building features (add as a benchmark test/android test)
+- Import speed of several hundred thousand questions with 46 CHECK-emulation triggers and
+  FTS triggers active (consider batching and measuring).
+- FTS5 index size and Bangla search speed at 300,000+ rows.
+- Database file size and backup/export time with WAL.
+- Image folder size and sync/backup strategy (folder with relative_path).
+
+27.4 Status
+PHASE 1: DONE except documenting the dependency/version freeze.
+PHASE 2: PARTIAL FOUNDATION. Decisions above applied in v0.2.14 (pending CI confirmation).
+Open: androidTest on real Room DB, scale benchmark, DAO layer, repositories.
+
+27.5 Next steps (in order)
+1. Run CI with v0.2.14; confirm 7/7 tests and that the WAL line compiles.
+2. Replace app/schemas/.../1.json with the new export from the CI report.
+3. Add androidTest and a scale/benchmark plan.
+4. Begin DAO layer.
+
+27.6 Change log addition
+- v1.15: Scale decisions, FK indexes, WAL, CHECK count reconciled.
+
+END OF VERSION 1.15 UPDATE

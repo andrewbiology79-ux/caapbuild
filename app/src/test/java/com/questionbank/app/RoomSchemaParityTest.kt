@@ -11,15 +11,12 @@ import java.sql.DriverManager
 import java.sql.ResultSet
 
 /**
- * Compares the committed Room schema export (1.json) with the canonical SQL schema.
+ * Compares the Room schema export (1.json) with the canonical SQL schema.
  *
  * Compared per table: columns (name, SQLite affinity, NOT NULL), primary key, foreign keys
  * (columns, referenced columns, parent table, ON DELETE) and indexes (columns, uniqueness).
  *
- * Known, accepted difference: the canonical SQL also declares a plain index on
- * (question_id, position) for the two *_solution_parts tables although UNIQUE(question_id, position)
- * already provides it. The Room entities intentionally declare only the unique index, so a
- * non-unique SQL index that duplicates a unique index on the same columns is ignored here.
+ * Comparison is strict: every index in the canonical SQL must exist in Room and vice versa.
  *
  * Not compared: CHECK clauses (covered by emulation triggers and their own tests), triggers and
  * FTS tables (installed by the database callback, not Room entities).
@@ -100,11 +97,8 @@ class RoomSchemaParityTest {
                     val columns = connection.rows("PRAGMA index_info(\"${row.name}\")") { it.getString("name") ?: "?" }
                     columns to row.unique
                 }
-                val uniqueColumnSets = sqlIndexes.filter { it.second }.map { it.first }.toSet()
                 val normalizedSql = sqlIndexes
-                    .filterNot { !it.second && it.first in uniqueColumnSets }
                     .map { describeIndex(it.first, it.second) }
-                    .distinct()
                     .sorted()
                 val roomIndexes = entity.array("indices").map {
                     val unique = if (it.has("unique")) it.get("unique").asBoolean else false

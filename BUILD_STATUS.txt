@@ -1,4 +1,4 @@
-Question Bank Android build foundation - package version 0.2.13
+Question Bank Android build foundation - package version 0.2.14
 
 This ZIP is an incremental Android/Room build-harness package, not a completed Question Bank application.
 
@@ -9,3 +9,5 @@ Database architecture: one physical QuestionBank.db file; 35 ordinary Room entit
 Gradle wrapper and Room schema JSON (1.json) are committed. RoomSchemaParityTest added in v0.2.13 and passed in CI run 16 (7/7 tests). Still open (see PROJECT_PLAN sections 21.5 and 25): androidTest on the real Room database, foreign-key index decision, WAL policy, DAO layer and repositories.
 
 Unit tests run against JDBC SQLite, not the Room-created database.
+
+v0.2.14 (not yet run in CI): all foreign keys now have covering indexes, two redundant indexes removed, explicit WAL journal mode, strict schema parity test. Committed 1.json is the old v0.2.12 export until replaced from the next CI report.

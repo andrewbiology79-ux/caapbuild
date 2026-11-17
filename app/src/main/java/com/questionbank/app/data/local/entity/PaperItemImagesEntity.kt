@@ -7,7 +7,7 @@ import androidx.room.*
         ForeignKey(entity = PaperQuestionItemsEntity::class, parentColumns = ["item_id"], childColumns = ["item_id"], onUpdate = ForeignKey.CASCADE, onDelete = ForeignKey.CASCADE)
     ], indices = [
         Index(value = ["item_id", "position"], unique = true),
-        
+        Index(value = ["paper_image_id"], unique = false)
     ])
 data class PaperItemImagesEntity(
     @ColumnInfo(name = "item_id")

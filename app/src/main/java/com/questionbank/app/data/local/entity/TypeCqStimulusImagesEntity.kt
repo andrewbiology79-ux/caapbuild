@@ -8,7 +8,7 @@ import androidx.room.*
     ], indices = [
         Index(value = ["stimulus_id", "placement", "position"], unique = false),
         Index(value = ["stimulus_id", "position"], unique = true),
-        
+        Index(value = ["image_id"], unique = false)
     ])
 data class TypeCqStimulusImagesEntity(
     @ColumnInfo(name = "stimulus_id")

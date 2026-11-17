@@ -6,7 +6,8 @@ import androidx.room.*
         ForeignKey(entity = BoardCatalogEntity::class, parentColumns = ["code"], childColumns = ["board_code"], onUpdate = ForeignKey.CASCADE, onDelete = ForeignKey.RESTRICT),
         ForeignKey(entity = ChapterCqStimuliEntity::class, parentColumns = ["stimulus_id"], childColumns = ["stimulus_id"], onUpdate = ForeignKey.CASCADE, onDelete = ForeignKey.CASCADE)
     ], indices = [
-        Index(value = ["stimulus_id", "board_code", "year"], unique = true)
+        Index(value = ["stimulus_id", "board_code", "year"], unique = true),
+        Index(value = ["board_code", "year"], unique = false)
     ])
 data class ChapterCqStimulusBoardsEntity(
     @ColumnInfo(name = "id")
