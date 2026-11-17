@@ -1,7 +1,7 @@
 # Architecture Decision Records (Question Bank)
 
 Status words: ACCEPTED = decided; CONFIRMED = proven by CI or device run. Source of truth for ADR-001 and the
-full history is PROJECT_PLAN_v1_22_UPDATED.txt.
+full history is PROJECT_PLAN_v1_23_UPDATED.txt.
 
 ## ADR-001 - One physical SQLite database
 ACCEPTED (plan v1.2), runtime-verified on emulator (foreign keys, WAL, triggers, FTS).
@@ -9,7 +9,7 @@ One `QuestionBank.db`; Type_CQ and Chapter_CQ keep separate table families and s
 
 ## ADR-002 - UI toolkit and dependency injection
 ACCEPTED in plan v1.21 (proposal by the assistant). OWNER CONFIRMED on 18 November 2026 (owner delegated the choice to the assistant and accepted the recommendation).
-Dependencies and first screen: v0.2.20 (written, awaiting CI).
+Dependencies and first screen: v0.2.20 (APK built by CI, installed on a phone by the owner; Bengali text correct).
 
 Decision
 1. UI toolkit: Jetpack Compose with Material 3, single Activity, Navigation Compose.
@@ -40,3 +40,16 @@ ACCEPTED in v1.20, CONFIRMED in v1.21.
 `fts_id INTEGER NOT NULL UNIQUE` on both question tables, app-assigned by `FtsIdAllocator`, used as the FTS5 rowid.
 NFC normalization (`BanglaText.normalize`) on write and on every search query.
 Measured at 300,000 rows (emulator API 34): edit 127.7 ms -> 0.19-0.20 ms per row, delete 117.7 ms -> 0.58-0.70 ms per row.
+
+## ADR-004 - Identifiers, timestamps and hierarchy names (Step D, v0.2.21)
+ACCEPTED 18 November 2026 (assistant proposal; owner may overrule before more data is entered).
+1. Primary keys of subjects, chapters, topics (and later questions) are random UUID v4 text, generated in the repository.
+   Reason: the columns are TEXT, backups and imports can merge without clashes, no central counter is needed.
+2. `created_at` / `updated_at` are epoch milliseconds, UTC.
+3. Names go through `HierarchyName.clean` (NFC, white space collapsed, trimmed, at most 200 characters) before any write.
+4. Uniqueness: subject names are unique in the whole Type_CQ scope (database unique index). Chapter names are unique inside one
+   subject and topic names inside one chapter; this is checked in the repository, not by an index. For one user on one phone
+   that is enough. If imports or sync ever write concurrently, add a unique index through a schema migration.
+5. `sort_order` is assigned as MAX+1 inside the same INSERT statement, so ordering is atomic. Lists are ordered by
+   sort_order, then name, then id.
+6. No delete or rename in v0.2.21 (foreign keys use RESTRICT); both belong to the Phase 5 hierarchy management work.

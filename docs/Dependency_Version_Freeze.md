@@ -1,8 +1,8 @@
-# Dependency and version freeze (v0.2.20)
+# Dependency and version freeze (v0.2.21)
 
 Facts below are copied from the build files and workflows in this package. A version listed here is known to build
-only if it was part of a green CI run (last green run for the database/build lines: run 27, package v0.2.19).
-Lines marked UNCONFIRMED were added in v0.2.20 and are not proven until the next CI run is green. Do not upgrade any line without a CI run.
+only if it was part of a green CI run (last CI report seen: run 27, package v0.2.19; the v0.2.20 debug APK was built by CI and installed by the owner, which implies a successful build step, but its report was not supplied).
+Lines marked UNCONFIRMED were added after that and are not proven until a CI report shows them green. Do not upgrade any line without a CI run.
 
 | Item | Version | Where |
 |---|---|---|
@@ -13,11 +13,12 @@ Lines marked UNCONFIRMED were added in v0.2.20 and are not proven until the next
 | Room (runtime, ktx, compiler) | 2.8.5 | app/build.gradle.kts |
 | androidx.sqlite:sqlite-bundled | 2.7.1 | app/build.gradle.kts |
 | Compose Compiler Gradle plugin (org.jetbrains.kotlin.plugin.compose) | 2.4.21 (same as Kotlin) | build.gradle.kts - UNCONFIRMED |
-| Compose UI / Foundation / UI tooling (preview and debug) | 1.11.4 | app/build.gradle.kts - UNCONFIRMED |
-| Compose Material 3 | 1.4.0 | app/build.gradle.kts - UNCONFIRMED |
-| androidx.activity:activity-compose | 1.12.3 | app/build.gradle.kts - UNCONFIRMED |
-| androidx.navigation:navigation-compose | 2.9.8 | app/build.gradle.kts - UNCONFIRMED |
-| androidx.paging:paging-compose | 3.4.2 | app/build.gradle.kts - UNCONFIRMED |
+| Compose UI / Foundation / UI tooling (preview and debug) | 1.11.4 | app/build.gradle.kts - built by CI in v0.2.20 (APK installed) |
+| Compose Material 3 | 1.4.0 | app/build.gradle.kts - built by CI in v0.2.20 |
+| androidx.activity:activity-compose | 1.12.3 | app/build.gradle.kts - built by CI in v0.2.20 |
+| androidx.navigation:navigation-compose | 2.9.8 | app/build.gradle.kts - built by CI in v0.2.20 |
+| androidx.paging:paging-compose | 3.4.2 | app/build.gradle.kts - built by CI in v0.2.20 (not used by any screen yet) |
+| androidx.lifecycle:lifecycle-viewmodel-compose | 2.10.0 | app/build.gradle.kts - UNCONFIRMED (new in v0.2.21; 2.11.0 is the newest stable but was not chosen because its compileSdk requirement was not checked) |
 | JDK | 17 (Temurin) | workflows, compileOptions, jvmTarget |
 | compileSdk / targetSdk / minSdk | 36 / 36 / 26 | app/build.gradle.kts |
 | JUnit | 4.13.2 | unit tests |

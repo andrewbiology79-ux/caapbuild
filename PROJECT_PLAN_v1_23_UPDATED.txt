@@ -1,7 +1,7 @@
 QUESTION BANK ANDROID APP COMPLETE PROJECT DEVELOPMENT & DELIVERY PLAN
 ============================================================
 
-Document version: 1.22 (v0.2.19 confirmed, ADR-002 owner-confirmed, package v0.2.20 added as section 34)
+Document version: 1.23 (v0.2.20 installed on a phone, ADR-004, package v0.2.21 added as section 35)
 Planning baseline: 16 November 2026
 Project status: Single-database architecture confirmed; canonical SQL and Room build harness prepared. CI run 11 (package v0.2.8) passed: KSP/Room generation, unit tests (5 of 5) and debug APK assembly. The package is still a build harness, not a complete application; Room-database runtime behaviour (CHECK emulation, Bengali FTS on the real database) is not yet device-tested.
 
@@ -2395,3 +2395,50 @@ P-25  No on-device check yet: the APK has never been installed. Status: OPEN; af
 - v1.22: v0.2.19 confirmed by CI run 27 and an emulator run, ADR-002 owner-confirmed, Compose version constraint (P-24), package v0.2.20, problems P-24 and P-25.
 
 END OF VERSION 1.22 UPDATE
+
+
+============================================================
+35. v0.2.20 INSTALLED, ADR-004 AND PACKAGE v0.2.21 (STEP D STARTED) - VERSION 1.23
+============================================================
+
+Planning update date: 18 November 2026
+
+35.1 Evidence for package v0.2.20
+- The owner installed the CI-built debug APK on a phone: it installs, the home screen opens and the Bengali text displays correctly.
+  P-25 is CLOSED for the home screen. The workflow uploads the APK only after a successful build step, so the Compose, Navigation and
+  Paging dependencies at the pinned versions are taken as building. The CI report for v0.2.20 was not supplied: unit-test count,
+  schema hash and release-assemble.log for that package are not on record (P-26).
+
+35.2 Step D, part 1: Type_CQ hierarchy (package v0.2.21, written, NOT compiled, NOT run - UNCONFIRMED)
+- Subject -> chapter -> topic: three DAOs, TypeCqHierarchyRepository (interface in domain/, implementation in data/repository/),
+  one shared ViewModel and list screen, three navigation routes, home entry button. Create and list only.
+- ADR-004: UUID v4 text ids, epoch-millisecond UTC timestamps, name cleaning (NFC + white space + 200 characters), sort_order assigned
+  by MAX+1 inside one INSERT statement, subject names unique by database index, chapter and topic names unique per parent by repository check.
+- Bengali acceptance item (plan 32.4): the hierarchy name entry point calls BanglaText.normalize (through HierarchyName.clean).
+  Remaining entry points: question text, short answer, search box, import, restore.
+- No schema change: database version 1, identityHash must remain 786b471dfa14c9ae4739bb81479bab25.
+- Tests: 6 new JVM tests (HierarchyNameTest), 7 new emulator tests (TypeCqHierarchyRepositoryTest). New dependency lifecycle-viewmodel-compose 2.10.0.
+
+35.3 Status
+PHASE 1: BUILD GATE PASSED, FOUNDATION INCOMPLETE. Compose/Navigation foundation: BUILT BY CI AND RUNNING ON A PHONE (v0.2.20). Open: signing.
+PHASE 2: DONE.
+PHASE 4: STARTED (hierarchy DAOs and repository only; unconfirmed).
+PHASE 5: STARTED (create/list for subjects, chapters, topics; no rename, delete, reorder, question types, boards or categories).
+PHASES 3, 6-17: NOT STARTED. Step D: in progress.
+
+35.4 Problem log additions
+P-25  CLOSED (home screen and Bengali text verified on a phone).
+P-26  CI report for v0.2.20 not supplied. Status: OPEN, low priority; the report of v0.2.21 will cover it.
+P-27  Chapter and topic name uniqueness is not enforced by an index. Status: OPEN, accepted for a single-user app (ADR-004 item 4).
+P-28  lifecycle-viewmodel-compose 2.10.0 chosen without checking its compileSdk requirement; 2.11.0 exists. Status: OPEN until CI confirms.
+
+35.5 Next steps (in order)
+1. Push v0.2.21 and send the CI report. Expect BUILD SUCCESSFUL, 17 unit tests, identityHash unchanged.
+2. Optional but valuable: run the manual emulator workflow with 20000 rows; expect 19 tests (11 + 7 + 1) green.
+3. On the phone: add subject, chapter, topic; close the app completely; reopen; the data must remain.
+4. Then v0.2.22: question-type seed list, Type_CQ minimum editor (text only) with atomic save, question list with keyset paging, search.
+
+35.6 Change log addition
+- v1.23: v0.2.20 phone verification, ADR-004, package v0.2.21, problems P-26 to P-28.
+
+END OF VERSION 1.23 UPDATE

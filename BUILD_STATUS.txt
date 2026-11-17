@@ -1,17 +1,14 @@
-Question Bank Android build foundation - package version 0.2.20 (plan v1.22)
+Question Bank Android build foundation - package version 0.2.21 (plan v1.23)
 
-This ZIP is an incremental Android/Room build-harness package, not a completed Question Bank application.
-The only screen is a placeholder home screen; no feature of the Master Checklist is implemented.
+This ZIP is an incremental Android/Room package, not a completed Question Bank application.
+Working on a phone (owner report): home screen, Bengali text. Working in code, not yet confirmed: Type_CQ subject/chapter/topic lists.
 
-VERIFIED (package v0.2.19):
-- CI run 27: BUILD SUCCESSFUL (exit 0), 11 of 11 unit tests, debug APK and unsigned release variant assembled.
-- Room schema 1.json from CI is identical to the committed file (identityHash 786b471dfa14c9ae4739bb81479bab25).
-- Emulator API 34, 300,000 rows: 11 of 11 tests, exit 0. Edit 0.17 ms and delete 0.54 ms per row. Manual DI (AppContainer) compiles.
-- The APK has not been installed or inspected on a device.
+VERIFIED
+- v0.2.19: CI run 27 green (11 of 11 unit tests, release variant), emulator 300,000 rows 11 of 11.
+- v0.2.20: the CI-built debug APK installed and the home screen shows Bengali text correctly (CI report not supplied).
 
-NEW in v0.2.20 (written, NOT compiled, NOT run - UNCONFIRMED): Compose compiler plugin, Compose 1.11.4, Material 3 1.4.0,
-Navigation Compose 2.9.8, Paging Compose 3.4.2, activity-compose 1.12.3, ComponentActivity + one home screen.
-ADR-002 confirmed by the owner. Compose 1.12+ is NOT used: it needs AGP 9.2 and compileSdk 37 (see docs/).
+NEW in v0.2.21 (written, NOT compiled, NOT run - UNCONFIRMED): three DAOs, TypeCqHierarchyRepository, hierarchy screens,
+17 unit tests (6 new), 7 new emulator tests, lifecycle-viewmodel-compose 2.10.0, ADR-004. No database change.
 
-Open: CI confirmation of v0.2.20, Phase 0 documents (traceability sheet, requirements, risk register), DAO layer and repositories,
-keyset paging (P-20), rank-search cost (P-19), release signing, AGP 9 / compileSdk 37 upgrade (later, separate step).
+Open: CI confirmation of v0.2.21, question types, minimum editor, keyset paging (P-20), rank-search cost (P-19), Phase 0 documents,
+release signing, AGP 9 / compileSdk 37 upgrade (later, separate step).

@@ -7,6 +7,9 @@ import androidx.room.RoomDatabase
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.execSQL
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import com.questionbank.app.data.local.dao.TypeCqChapterDao
+import com.questionbank.app.data.local.dao.TypeCqSubjectDao
+import com.questionbank.app.data.local.dao.TypeCqTopicDao
 import com.questionbank.app.data.local.entity.AppMetadataEntity
 import com.questionbank.app.data.local.entity.BoardCatalogEntity
 import com.questionbank.app.data.local.entity.ChapterCqChaptersEntity
@@ -86,6 +89,9 @@ import com.questionbank.app.data.local.entity.TypeCqTopicsEntity
 )
 abstract class QuestionBankDatabase : RoomDatabase() {
     abstract fun smokeDao(): RoomSmokeDao
+    abstract fun typeCqSubjectDao(): TypeCqSubjectDao
+    abstract fun typeCqChapterDao(): TypeCqChapterDao
+    abstract fun typeCqTopicDao(): TypeCqTopicDao
 
     companion object {
         /**

@@ -2,6 +2,8 @@ package com.questionbank.app
 
 import android.content.Context
 import com.questionbank.app.data.local.QuestionBankDatabase
+import com.questionbank.app.data.repository.TypeCqHierarchyRepositoryImpl
+import com.questionbank.app.domain.hierarchy.TypeCqHierarchyRepository
 
 /**
  * Manual dependency container (ADR-002: no DI framework for now).
@@ -12,4 +14,12 @@ import com.questionbank.app.data.local.QuestionBankDatabase
  */
 class AppContainer(private val appContext: Context) {
     val database: QuestionBankDatabase by lazy { QuestionBankDatabase.create(appContext) }
+
+    val typeCqHierarchy: TypeCqHierarchyRepository by lazy {
+        TypeCqHierarchyRepositoryImpl(
+            subjects = database.typeCqSubjectDao(),
+            chapters = database.typeCqChapterDao(),
+            topics = database.typeCqTopicDao(),
+        )
+    }
 }

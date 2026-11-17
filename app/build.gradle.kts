@@ -14,7 +14,7 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        versionName = "0.2.20-compose-home"
+        versionName = "0.2.21-type-cq-hierarchy"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -69,6 +69,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.12.3")
     implementation("androidx.navigation:navigation-compose:2.9.8")
     implementation("androidx.paging:paging-compose:3.4.2")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.xerial:sqlite-jdbc:3.50.2.0")
