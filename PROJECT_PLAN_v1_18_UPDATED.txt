@@ -1,7 +1,7 @@
 QUESTION BANK ANDROID APP COMPLETE PROJECT DEVELOPMENT & DELIVERY PLAN
 ============================================================
 
-Document version: 1.9 (CI run 11 green build recorded)
+Document version: 1.18 (androidTest and benchmark written, findings F-1 and F-2; see section 30)
 Planning baseline: 16 November 2026
 Project status: Single-database architecture confirmed; canonical SQL and Room build harness prepared. CI run 11 (package v0.2.8) passed: KSP/Room generation, unit tests (5 of 5) and debug APK assembly. The package is still a build harness, not a complete application; Room-database runtime behaviour (CHECK emulation, Bengali FTS on the real database) is not yet device-tested.
 
@@ -1926,3 +1926,120 @@ scale benchmark (import speed, FTS size, DB file size), DAO layer, repositories.
 - v1.16: CI run 18 verified; new 1.json; Phase 2 foundations complete except runtime tests.
 
 END OF VERSION 1.16 UPDATE
+
+
+============================================================
+29. EXECUTION ORDER CHANGE AND STATUS CORRECTION - VERSION 1.17
+============================================================
+
+Planning update date: 17 November 2026
+Package baseline: QuestionBank Android v0.2.14 (no code change in this update)
+
+29.1 Status corrections (honest re-baseline)
+- PHASE 1 was recorded as "DONE except dependency freeze". That is overstated. Still open:
+  release build variant (task 5), dependency injection (task 7), navigation and Material/Compose
+  UI foundation (task 9), instrumentation-test infrastructure (task 10), dependency/version
+  freeze document (task 3). Corrected status: PHASE 1 - BUILD GATE PASSED, FOUNDATION INCOMPLETE.
+- PHASE 0 deliverables still open: 146-item traceability sheet, screen/navigation inventory,
+  Project Requirements Specification, ADR log file, Risk Register file.
+- The app itself is still a build harness (MainActivity shows a TextView). No Master Checklist
+  feature (editor, media, search, paper, backup) is implemented.
+- Housekeeping: header version, in-ZIP plan file name and BUILD_STATUS.txt were out of date.
+  BUILD_STATUS.txt must be refreshed with each package.
+
+29.2 Decision: hybrid execution order (supersedes section 9 order for phases 4-9 only)
+Reason: the owner plans several hundred thousand questions with solutions and images. The main
+risks are scale and real-device behaviour (Risks 8 and 9), which layer-by-layer work would expose
+too late. A thin vertical slice finds integration problems early.
+
+New order:
+ Step A  Finish Phase 2: androidTest on the real Room database (WAL active, triggers, FTS,
+         CHECK emulation); scale benchmark (import of 300,000+ questions with all triggers
+         active, FTS5 index size, Bangla search correctness and speed, DB file size,
+         checkpoint/backup time).
+ Step B  Finish Phase 1: UI toolkit decision (recorded as an ADR), DI, navigation, release
+         variant, instrumentation workflow, dependency/version freeze document.
+ Step C  Finish Phase 0 deliverables in parallel, kept light: 146-item traceability sheet,
+         screen inventory, requirements specification, risk register.
+ Step D  Vertical slice for Type_CQ only: subject/chapter hierarchy -> create question
+         (minimum editor, text only) -> atomic save -> question list with Paging 3 -> search.
+         Built through the DAO/Repository/UseCase layers defined in Phase 4, not around them.
+ Step E  Repeat the slice for Chapter_CQ, then continue with the remaining phases
+         (full editor, media, paper builder, backup/restore, settings, regression, release).
+
+Rules kept unchanged: UI never calls DAOs directly; Type_CQ and Chapter_CQ keep separate
+repositories; one physical database; every feature maps to a numbered item in the 146 audit.
+
+29.3 Additions accepted into scope
+- Paging 3 for every question list and search result from the first slice (was "if needed").
+- Image storage: relative_path files only, with hash-prefix sub-folders and thumbnails to
+  avoid huge flat folders.
+- Backup format: streaming archive (no whole-file loading in memory); WAL checkpoint before copy.
+- Benchmark results are recorded in Test_Execution_Report.md and may change the trigger and
+  FTS strategy before any feature work depends on it.
+
+29.4 Gate for Step D
+Step D starts only when Step A shows acceptable import speed and Bangla FTS correctness
+on a real emulator or device, and Step B is merged with a green CI run.
+
+29.5 Next steps (in order)
+1. Add androidTest workflow and Room runtime tests (incl. PRAGMA journal_mode).
+2. Add scale benchmark test; run it; record numbers.
+3. Decide UI toolkit and DI; record ADR-002.
+4. Start traceability sheet.
+
+29.6 Change log addition
+- v1.17: Status re-baselined; hybrid execution order; scale-driven scope additions.
+
+END OF VERSION 1.17 UPDATE
+
+
+============================================================
+30. PACKAGE v0.2.15 - ANDROIDTEST AND SCALE BENCHMARK (STEP A STARTED) - VERSION 1.18
+============================================================
+
+Planning update date: 17 November 2026
+Package baseline: QuestionBank Android v0.2.15 (no main-source change)
+
+30.1 What was done (execution of section 29, step A)
+- Section 29 (v1.17) was verified present in the plan: status corrections, hybrid execution order, scale-driven
+  scope additions (Paging 3, image sharding and thumbnails, streaming backup, benchmark gate).
+- Added app/src/androidTest: TestDb helper, RoomRuntimeTest (8 tests), ScaleBenchmarkTest.
+- Added manual workflow android-instrumented.yml (emulator) and a non-blocking androidTest compile step in the normal workflow.
+- STATUS: written, NOT compiled, NOT run. The APIs used (Room 2.8 driver connections) were written without a compiler;
+  the first run may need small fixes. Do not mark Phase 2 runtime verification as done until the emulator run passes.
+
+30.2 Offline prototype findings (Python sqlite3, same SQL; not a device result)
+- F-1 (design risk, High): FTS sync triggers delete and update FTS rows with
+  `DELETE FROM *_question_fts WHERE question_id = ...`, but question_id is an UNINDEXED FTS column, so every edit and delete
+  scans the whole FTS table. Measured 18.3 ms per row at 50,000 rows versus 0.019 ms when deleting by rowid; the cost grows
+  linearly with row count. At 300,000 rows a single edit would cost on the order of 100 ms on a desktop CPU and more on a phone;
+  bulk delete or bulk edit would be very slow. To be confirmed by ScaleBenchmarkTest (section 5 of the test) on the emulator.
+  Options (decide after the benchmark; ADR-003; the canonical schema is not changed until then):
+    a) Add an integer surrogate column (for example fts_id INTEGER UNIQUE, app-assigned) to the question tables and use it as the FTS rowid.
+    b) Use the implicit rowid of the question tables as the FTS rowid (simple, but SQLite may renumber implicit rowids on VACUUM for tables
+       without an INTEGER PRIMARY KEY; only safe if VACUUM is never run and if restore keeps rowids - not recommended).
+    c) Make question_id an indexed FTS column and delete with an exact-column MATCH (IDs must tokenize as one token).
+  Recommendation: (a). Database version is still 1 and nothing is released, so no migration is needed.
+- F-2 (search correctness, Medium): a word stored with precomposed য় (U+09DF) is not found by the decomposed query
+  (U+09AF U+09BC) and the reverse. Fix: normalize text on write and on query (NFC plus folding of য়, ড়, ঢ়). Maps to Phase 12 "Normalization".
+- Bangla tokenization with the current tokenizer (unicode61 plus tokenchars for vowel signs, hasanta, chandrabindu): whole-word and prefix
+  searches for conjunct words worked in the prototype. Device confirmation pending (RoomRuntimeTest.banglaWordsAndPrefixesAreSearchable).
+
+30.3 Status
+PHASE 1: BUILD GATE PASSED, FOUNDATION INCOMPLETE (DI, navigation/UI, release variant, instrumentation run, version-freeze document).
+PHASE 2: PARTIAL FOUNDATION. Schema parity, FK indexes, WAL: verified at compile/JDBC level.
+         Runtime tests and benchmark: WRITTEN, NOT RUN.
+PHASES 3-17: NOT STARTED.
+
+30.4 Next steps (in order)
+1. Push v0.2.15; confirm the normal workflow is still green and read build-report/androidtest-compile.log.
+2. Run workflow "Android Instrumented Tests and Scale Benchmark" with benchmark_rows=20000; send QuestionBank-instrumented-report.
+3. Repeat with 300000 rows; record the numbers in Test_Execution_Report.md.
+4. Decide F-1 (ADR-003) and F-2, apply to canonical SQL, Room entities, triggers and parity test, regenerate 1.json.
+5. Record the UI toolkit and DI decision (ADR-002); then Step B of section 29.2.
+
+30.5 Change log addition
+- v1.18: androidTest and benchmark written; findings F-1 (FTS delete cost) and F-2 (Unicode normalization); status unchanged except as above.
+
+END OF VERSION 1.18 UPDATE

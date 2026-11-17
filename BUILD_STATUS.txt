@@ -1,13 +1,18 @@
-Question Bank Android build foundation - package version 0.2.14
+Question Bank Android build foundation - package version 0.2.15
 
 This ZIP is an incremental Android/Room build-harness package, not a completed Question Bank application.
+MainActivity is still a placeholder TextView; no feature of the Master Checklist is implemented.
 
-CI status (CI run 16, package v0.2.13, real non-cached run, 7 tests): Room KSP generation, 5 unit tests and debug APK assembly succeeded. The APK has not been installed or inspected on a device.
+Verified in CI (run 18, package v0.2.14, non-cached): Room KSP generation, 7 unit tests (CanonicalSqlContractTest 5,
+RoomSchemaParityTest 2, strict), debug APK assembly. 35 Room entities, 48 indices, 39 foreign keys, explicit WAL.
+The APK has not been installed or inspected on a device.
 
-Database architecture: one physical QuestionBank.db file; 35 ordinary Room entities, 2 FTS5 virtual tables, 17 canonical triggers (11 business + 6 FTS) and 46 CHECK-emulation triggers installed by the database callback. Canonical SQL declares 48 CHECK clauses; the gap between 48 and 46 is not yet reconciled.
+Database architecture: one physical QuestionBank.db file; 35 ordinary Room entities, 2 FTS5 virtual tables,
+17 canonical triggers (11 business + 6 FTS) and 46 CHECK-emulation triggers (23 tables x 2) installed by the callback.
+48 CHECK clauses vs 46 triggers is reconciled (not a discrepancy).
 
-Gradle wrapper and Room schema JSON (1.json) are committed. RoomSchemaParityTest added in v0.2.13 and passed in CI run 16 (7/7 tests). Still open (see PROJECT_PLAN sections 21.5 and 25): androidTest on the real Room database, foreign-key index decision, WAL policy, DAO layer and repositories.
+New in v0.2.15 (written, NOT yet compiled or run): androidTest suite on the real Room database, scale benchmark,
+manual emulator workflow, non-blocking androidTest compile step. See VERSION_NOTES_0.2.15.md and plan section 30.
 
-Unit tests run against JDBC SQLite, not the Room-created database.
-
-v0.2.14 (CI run 18 passed, 7/7 tests, new 1.json committed): all foreign keys now have covering indexes, two redundant indexes removed, explicit WAL journal mode, strict schema parity test.
+Open: run the instrumented workflow; decision on FTS delete cost (F-1) and Unicode normalization (F-2);
+DI/navigation/UI foundation; release variant; DAO layer and repositories.
