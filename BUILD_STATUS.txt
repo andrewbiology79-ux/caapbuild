@@ -1,23 +1,17 @@
-Question Bank Android build foundation - package version 0.2.20 (plan v1.22 addendum)
+Question Bank Android build foundation - package version 0.2.20 (plan v1.22)
 
-This is an incremental foundation package, not a completed Question Bank application. The Compose home screen is a UI shell; question CRUD, DAO/repositories, search UI, media, paper builder and backup/restore are not implemented.
+This ZIP is an incremental Android/Room build-harness package, not a completed Question Bank application.
+The only screen is a placeholder home screen; no feature of the Master Checklist is implemented.
 
-VERIFIED BASELINE (v0.2.19 source / supplied reports):
-- GitHub CI run 27, commit 1bbddf3a8f460859acfe593226ff3e2b36808adf: Gradle exit 0; 11/11 unit tests; KSP and debug build successful.
-- Release assembleRelease successful (unsigned, not minified); libsqliteJni.so was packaged unstripped.
-- Emulator API 34, x86_64, 300,000 rows: 11/11 instrumented tests passed.
-- F-1/F-2 confirmed. Edit 0.17 ms and delete 0.54 ms per row; Bengali NFC precomposed/decomposed search both found.
-- Import 300,000 rows: 51.181 s (5,862 rows/s); database 584,012 KB; WAL peak 34,098 KB; checkpoint 3 ms; FTS optimize 559 ms.
-- Search common LIMIT 50 0.8 ms; prefix 4.0 ms; topic join 6.3 ms; rank 131.7 ms; deep OFFSET 150,000 505.4 ms.
+VERIFIED (package v0.2.19):
+- CI run 27: BUILD SUCCESSFUL (exit 0), 11 of 11 unit tests, debug APK and unsigned release variant assembled.
+- Room schema 1.json from CI is identical to the committed file (identityHash 786b471dfa14c9ae4739bb81479bab25).
+- Emulator API 34, 300,000 rows: 11 of 11 tests, exit 0. Edit 0.17 ms and delete 0.54 ms per row. Manual DI (AppContainer) compiles.
+- The APK has not been installed or inspected on a device.
 
-NEW IN v0.2.20 (NOT COMPILED OR RUN IN THIS ENVIRONMENT):
-- Jetpack Compose + Material 3 home screen in a single ComponentActivity.
-- Navigation Compose NavHost (home route only).
-- Paging 3 runtime and Compose dependencies added; no PagingSource/DAO integration yet.
-- Kotlin Compose compiler plugin added, matching Kotlin 2.4.21.
-- Gradle wrapper and both workflows updated to 8.14.4.
-- Instrumented report now records commit, workflow run, app version, emulator identity/API, Java and Gradle versions.
+NEW in v0.2.20 (written, NOT compiled, NOT run - UNCONFIRMED): Compose compiler plugin, Compose 1.11.4, Material 3 1.4.0,
+Navigation Compose 2.9.8, Paging Compose 3.4.2, activity-compose 1.12.3, ComponentActivity + one home screen.
+ADR-002 confirmed by the owner. Compose 1.12+ is NOT used: it needs AGP 9.2 and compileSdk 37 (see docs/).
 
-IMPORTANT: Local build could not run because this environment cannot resolve services.gradle.org to download Gradle 8.14.4. Do not treat v0.2.20 as build-verified. Push to GitHub and inspect CI, androidTest-compile.log and release-assemble.log before accepting it.
-
-OPEN: Verify v0.2.20 dependencies/UI in CI; implement schema parity defaults/ON UPDATE checks; expand trigger/CHECK runtime coverage; then begin Type_CQ DAO -> Repository -> UseCase -> ViewModel -> Compose vertical slice.
+Open: CI confirmation of v0.2.20, Phase 0 documents (traceability sheet, requirements, risk register), DAO layer and repositories,
+keyset paging (P-20), rank-search cost (P-19), release signing, AGP 9 / compileSdk 37 upgrade (later, separate step).

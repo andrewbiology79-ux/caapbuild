@@ -1,32 +1,40 @@
-# Dependency and version freeze (v0.2.20; CI confirmation pending)
+# Dependency and version freeze (v0.2.20)
 
 Facts below are copied from the build files and workflows in this package. A version listed here is known to build
-only if it was part of a green CI run (the last one: run 24, package v0.2.18). Do not upgrade any line without a CI run.
+only if it was part of a green CI run (last green run for the database/build lines: run 27, package v0.2.19).
+Lines marked UNCONFIRMED were added in v0.2.20 and are not proven until the next CI run is green. Do not upgrade any line without a CI run.
 
 | Item | Version | Where |
 |---|---|---|
-| Gradle | 8.14.4 (wrapper and CI; pending CI confirmation) | gradle/wrapper, workflows |
+| Gradle | 8.14.3 (wrapper and CI) | gradle/wrapper, workflows |
 | Android Gradle Plugin | 8.13.2 | build.gradle.kts |
 | Kotlin | 2.4.21 | build.gradle.kts |
 | KSP | 2.3.12 | build.gradle.kts |
 | Room (runtime, ktx, compiler) | 2.8.5 | app/build.gradle.kts |
 | androidx.sqlite:sqlite-bundled | 2.7.1 | app/build.gradle.kts |
+| Compose Compiler Gradle plugin (org.jetbrains.kotlin.plugin.compose) | 2.4.21 (same as Kotlin) | build.gradle.kts - UNCONFIRMED |
+| Compose UI / Foundation / UI tooling (preview and debug) | 1.11.4 | app/build.gradle.kts - UNCONFIRMED |
+| Compose Material 3 | 1.4.0 | app/build.gradle.kts - UNCONFIRMED |
+| androidx.activity:activity-compose | 1.12.3 | app/build.gradle.kts - UNCONFIRMED |
+| androidx.navigation:navigation-compose | 2.9.8 | app/build.gradle.kts - UNCONFIRMED |
+| androidx.paging:paging-compose | 3.4.2 | app/build.gradle.kts - UNCONFIRMED |
 | JDK | 17 (Temurin) | workflows, compileOptions, jvmTarget |
 | compileSdk / targetSdk / minSdk | 36 / 36 / 26 | app/build.gradle.kts |
 | JUnit | 4.13.2 | unit tests |
 | sqlite-jdbc (unit tests only) | 3.50.2.0 | unit tests |
 | Gson (unit tests only) | 2.11.0 | unit tests |
 | androidx.test core / runner / ext:junit | 1.6.1 / 1.6.2 / 1.2.1 | androidTest |
-| Compose BOM | 2026.09.00 (pending CI confirmation) | app/build.gradle.kts |
-| Kotlin Compose compiler plugin | 2.4.21 (must match Kotlin plugin) | build.gradle.kts |
-| Activity Compose | 1.13.0 (pending CI confirmation) | app/build.gradle.kts |
-| Navigation Compose | 2.10.1 (pending CI confirmation) | app/build.gradle.kts |
-| Paging runtime + Compose | 3.5.3 (pending CI confirmation) | app/build.gradle.kts |
 | Emulator for instrumented runs | API 34, x86_64, google_apis | android-instrumented.yml |
 | GitHub Actions used | checkout v4, setup-java v4, setup-android v4, setup-gradle v6, upload-artifact v4, android-emulator-runner v2 | workflows |
 
-Gradle was raised to 8.14.4 in v0.2.20 to clear the deprecation warning noted by the Kotlin plugin. This change is pending CI confirmation.
+Known warning: Kotlin Gradle plugin reports Gradle 8.14.3 as deprecated; Gradle 8.14.4 or newer is needed for Kotlin 2.5.0.
+Not a failure today. Changing the Gradle version is a separate, CI-verified step.
 
-Compose, Navigation Compose, Paging 3 and Material 3 are now added in v0.2.20. All new versions remain provisional until CI compiles them.
+Why these Compose versions (checked on developer.android.com, 18 November 2026): Compose 1.12.0 and later need
+compileSdk 37 and AGP 9.2.0+, so the newest stable line (1.12.1) cannot be used with AGP 8.13.2 / compileSdk 36.
+Compose 1.11.4 is the last stable patch of the older line. Paging 3.4.2 and Navigation 2.9.8 were chosen as older stable
+lines so that they do not pull Compose 1.12 in transitively. The Compose BOM is not used; each artifact is pinned.
+If CI reports a minCompileSdk or AGP-version error, the first fix is to lower the library that asks for it, not to raise
+compileSdk. Upgrading to AGP 9 / compileSdk 37 / Compose 1.12+ is a separate CI-verified step.
 
 Release variant: `release` exists, unsigned, not minified. Signing and R8 are Phase 17 work.

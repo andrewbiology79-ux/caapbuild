@@ -14,13 +14,13 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        versionName = "0.2.20-compose-navigation-foundation"
+        versionName = "0.2.20-compose-home"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         release {
-            // Unsigned, not minified. Signing and R8 are decided in Phase 17.
+            // Unsigned, not minified yet (v0.2.19). Signing and R8 are decided in Phase 17.
             isMinifyEnabled = false
         }
     }
@@ -52,20 +52,23 @@ ksp {
 
 dependencies {
     val roomVersion = "2.8.5"
-    val composeBom = platform("androidx.compose:compose-bom:2026.09.00")
-    implementation(composeBom)
-    implementation("androidx.activity:activity-compose:1.13.0")
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.navigation:navigation-compose:2.10.1")
-    implementation("androidx.paging:paging-runtime-ktx:3.5.3")
-    implementation("androidx.paging:paging-compose:3.5.3")
-    debugImplementation("androidx.compose.ui:ui-tooling")
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
     implementation("androidx.sqlite:sqlite-bundled:2.7.1")
     ksp("androidx.room:room-compiler:$roomVersion")
+
+    // v0.2.20 (ADR-002): Compose UI, Navigation Compose, Paging 3. Versions are pinned one by one, not through the
+    // Compose BOM, because Compose 1.12+ needs compileSdk 37 and AGP 9.2; this project stays on AGP 8.13.2 / compileSdk 36.
+    // See docs/Dependency_Version_Freeze.md before changing any line.
+    val composeVersion = "1.11.4"
+    implementation("androidx.compose.ui:ui:$composeVersion")
+    implementation("androidx.compose.foundation:foundation:$composeVersion")
+    implementation("androidx.compose.material3:material3:1.4.0")
+    implementation("androidx.compose.ui:ui-tooling-preview:$composeVersion")
+    debugImplementation("androidx.compose.ui:ui-tooling:$composeVersion")
+    implementation("androidx.activity:activity-compose:1.12.3")
+    implementation("androidx.navigation:navigation-compose:2.9.8")
+    implementation("androidx.paging:paging-compose:3.4.2")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.xerial:sqlite-jdbc:3.50.2.0")

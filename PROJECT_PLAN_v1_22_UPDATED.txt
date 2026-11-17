@@ -1,7 +1,7 @@
 QUESTION BANK ANDROID APP COMPLETE PROJECT DEVELOPMENT & DELIVERY PLAN
 ============================================================
 
-Document version: 1.21 (F-1/F-2 confirmed, ADR-002, package v0.2.19 added as section 33)
+Document version: 1.22 (v0.2.19 confirmed, ADR-002 owner-confirmed, package v0.2.20 added as section 34)
 Planning baseline: 16 November 2026
 Project status: Single-database architecture confirmed; canonical SQL and Room build harness prepared. CI run 11 (package v0.2.8) passed: KSP/Room generation, unit tests (5 of 5) and debug APK assembly. The package is still a build harness, not a complete application; Room-database runtime behaviour (CHECK emulation, Bengali FTS on the real database) is not yet device-tested.
 
@@ -2333,3 +2333,65 @@ P-23  Gradle 8.14.3 is flagged deprecated by the Kotlin plugin (needs 8.14.4+ fo
 - v1.21: F-1 and F-2 confirmed (CI run 24 + two emulator runs), ADR-002, package v0.2.19, problems P-21 to P-23, P-14 and P-15 closed.
 
 END OF VERSION 1.21 UPDATE
+
+
+============================================================
+34. PACKAGE v0.2.19 CONFIRMED, ADR-002 CONFIRMED AND PACKAGE v0.2.20 - VERSION 1.22
+============================================================
+
+Planning update date: 18 November 2026
+
+34.1 Evidence for package v0.2.19
+- CI run 27 (normal workflow): Gradle exit 0, BUILD SUCCESSFUL, unit tests 11 of 11 (BanglaTextTest 4, CanonicalSqlContractTest 5,
+  RoomSchemaParityTest 2), kspDebugKotlin executed, androidTest sources compile, release variant assembled
+  (BUILD SUCCESSFUL in 1 m 8 s). The new AppContainer and QuestionBankApp therefore compile in debug and release.
+- app/schemas/.../1.json exported by run 27 is byte-identical to the committed file (identityHash 786b471dfa14c9ae4739bb81479bab25).
+- Emulator (API 34, 300,000 rows): RoomRuntimeTest 11 of 11, 0 failures, Gradle exit 0. The report does not state the commit it ran on;
+  it is taken to be v0.2.19 (same day, minutes after run 27).
+- Benchmark: import 51.2 s (5,862 rows/s); edit 0.17 ms and delete 0.54 ms per row; common-word search 0.8 ms; rank-ordered
+  search 131.7 ms; prefix search 4.0 ms; search + topic join 6.3 ms; first page by topic 0.6 ms; deep OFFSET 150,000: 505 ms;
+  FTS rows = question rows (299,800 = 299,800); checkpoint 3 ms; FTS optimize 559 ms; database 584,012 KB.
+- Import was faster than the two v0.2.18 runs (85-102 s). P-21 (import slower after the fts_id change) is therefore very likely run-to-run
+  noise on shared runners; downgrade to "not reproduced", still not closed formally.
+- Deep OFFSET varied 159 / 252 / 505 ms across runs: it is unstable and reinforces P-20 (keyset paging is mandatory in the DAO layer).
+
+34.2 ADR-002 owner decision
+The owner delegated the choice to the assistant on 18 November 2026. ADR-002 stays as written (Compose + Material 3, single Activity,
+Navigation Compose, Paging 3 with keyset queries, manual constructor DI) and is marked owner-confirmed in docs/.
+
+34.3 New constraint found (P-24)
+Compose 1.12.0 and later require compileSdk 37 and AGP 9.2.0 or newer (developer.android.com release notes, checked 18 November 2026);
+Compose 1.13 moves to compileSdk 37.1. The project is on AGP 8.13.2 / compileSdk 36 with a green build, so v0.2.20 uses the Compose 1.11.4 line,
+Material 3 1.4.0, Navigation Compose 2.9.8 and Paging 3.4.2 (older stable lines, chosen so that nothing pulls Compose 1.12 in transitively),
+pinned one by one without the BOM. Moving to AGP 9 / compileSdk 37 / Compose 1.12+ is a separate CI-verified step, to be scheduled before Phase 17.
+
+34.4 Package v0.2.20 (written, NOT compiled, NOT run - UNCONFIRMED)
+1. Compose compiler Gradle plugin 2.4.21; buildFeatures compose = true; dependencies as in docs/Dependency_Version_Freeze.md.
+2. MainActivity -> ComponentActivity with Compose; ui/theme, ui/navigation (route "home"), ui/home (placeholder home screen).
+3. ADR-002 and the freeze document updated; BUILD_STATUS.txt, README_BN.md, VERSION_NOTES_0.2.20.md refreshed.
+No database change (version stays 1). The 11 unit tests are unchanged. No Compose UI test yet.
+
+34.5 Status
+PHASE 1: BUILD GATE PASSED, FOUNDATION INCOMPLETE. Done: instrumentation workflow, ADR-002 (confirmed), freeze document, manual DI (CONFIRMED by run 27),
+         release variant (CONFIRMED, unsigned). Written but unconfirmed: Compose + Navigation foundation (v0.2.20). Open: signing, on-device install check.
+PHASE 2: runtime verification DONE. DAO layer and repositories remain (Phase 4 work).
+PHASES 3-17: NOT STARTED. Step A: CLOSED. Step B: in progress (v0.2.20 awaiting CI).
+
+34.6 Problem log additions
+P-21  Import slowdown after fts_id change: not reproduced in the latest run (51 s). Status: OPEN, very likely noise; close after one more run.
+P-22  20,000-row run never supplied. Status: OPEN, optional.
+P-23  Gradle 8.14.3 flagged deprecated by the Kotlin plugin. Status: OPEN, not urgent; folds into the AGP 9 upgrade step.
+P-24  Compose 1.12+ needs AGP 9.2 and compileSdk 37. Status: OPEN, handled by pinning Compose 1.11.4 (v0.2.20); upgrade is a later separate step.
+P-25  No on-device check yet: the APK has never been installed. Status: OPEN; after v0.2.20 is green, install once and confirm that Bengali text shows correctly.
+
+34.7 Next steps (in order)
+1. Push v0.2.20. Read CI: expect BUILD SUCCESSFUL, 11 unit tests, KSP executed, plus release-assemble.log. If a library asks for a newer compileSdk or AGP,
+   send the CI report; the fix is to lower that library, not to raise compileSdk. Send the CI report either way.
+2. If green: install the debug APK once and check the home screen (Bengali text).
+3. Then Step C (light Phase 0 documents) and Step D (Type_CQ vertical slice: hierarchy -> minimum editor, text only -> atomic save -> list with keyset paging -> search),
+   built through DAO/Repository/UseCase layers.
+
+34.8 Change log addition
+- v1.22: v0.2.19 confirmed by CI run 27 and an emulator run, ADR-002 owner-confirmed, Compose version constraint (P-24), package v0.2.20, problems P-24 and P-25.
+
+END OF VERSION 1.22 UPDATE

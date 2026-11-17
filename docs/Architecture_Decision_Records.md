@@ -1,14 +1,15 @@
 # Architecture Decision Records (Question Bank)
 
 Status words: ACCEPTED = decided; CONFIRMED = proven by CI or device run. Source of truth for ADR-001 and the
-full history is PROJECT_PLAN_v1_21_UPDATED.txt.
+full history is PROJECT_PLAN_v1_22_UPDATED.txt.
 
 ## ADR-001 - One physical SQLite database
 ACCEPTED (plan v1.2), runtime-verified on emulator (foreign keys, WAL, triggers, FTS).
 One `QuestionBank.db`; Type_CQ and Chapter_CQ keep separate table families and separate repositories.
 
 ## ADR-002 - UI toolkit and dependency injection
-ACCEPTED in plan v1.21 (proposal by the assistant; the owner may overrule it before the first UI code is written).
+ACCEPTED in plan v1.21 (proposal by the assistant). OWNER CONFIRMED on 18 November 2026 (owner delegated the choice to the assistant and accepted the recommendation).
+Dependencies and first screen: v0.2.20 (written, awaiting CI).
 
 Decision
 1. UI toolkit: Jetpack Compose with Material 3, single Activity, Navigation Compose.
@@ -27,8 +28,11 @@ Why
   replace `AppContainer` without touching repositories.
 
 Consequences
-- Compose and Navigation dependencies are NOT in v0.2.19. They are added in v0.2.20 together with the first screen,
-  with exact versions chosen then and verified by CI (working rules 1 and 3).
+- Compose, Navigation Compose and Paging dependencies are added in v0.2.20 together with the first screen, with exact
+  versions verified by CI (working rules 1 and 3).
+- Version constraint found on 18 November 2026: Compose 1.12.0 and later require compileSdk 37 and AGP 9.2.0 or newer.
+  This project is on AGP 8.13.2 / compileSdk 36, so v0.2.20 uses the Compose 1.11.4 line. Moving to Compose 1.12+
+  is a separate, CI-verified step (AGP 9 + compileSdk 37 + Gradle upgrade), not part of the UI work.
 - Revisit Hilt if the container grows past roughly 15 to 20 wired classes or if ViewModel scoping becomes awkward.
 
 ## ADR-003 - FTS rowid keying (F-1) and Unicode normalization (F-2)
