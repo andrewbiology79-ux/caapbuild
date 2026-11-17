@@ -1804,3 +1804,39 @@ emulation triggers, DAO layer, repositories.
 - v1.13: Schema parity test added; redundant-index finding.
 
 END OF VERSION 1.13 UPDATE
+
+
+============================================================
+26. CI RUN 16 - SCHEMA PARITY TEST VERIFIED
+============================================================
+
+Planning update date: 17 November 2026
+Package baseline: QuestionBank Android v0.2.13 (unchanged code)
+
+26.1 CI run 16 result (log and test XML supplied)
+- BUILD SUCCESSFUL in 51s, Gradle exit code 0, Java 17.0.21, "Using: sh ./gradlew", non-cached.
+- compileDebugUnitTestKotlin, testDebugUnitTest and assembleDebug executed.
+- CanonicalSqlContractTest: 5 tests, 0 failures. RoomSchemaParityTest: 2 tests, 0 failures.
+- Total 7 tests, 0 failures, 0 errors, 0 skipped (timestamp 2026-11-17).
+- Correction to section 25.2: the parity test is now compiled and run in CI.
+
+26.2 Meaning
+- Room schema (1.json) and canonical SQL agree on tables, columns, affinities, NOT NULL,
+  primary keys, foreign keys and indexes, except the two accepted redundant plain indexes
+  on *_solution_parts. Verified on JDBC SQLite, still not on the real Room database.
+
+26.3 Status
+PHASE 1: DONE except documenting the dependency/version freeze.
+PHASE 2: PARTIAL FOUNDATION. Schema parity DONE.
+Open: decision on two redundant solution_parts indexes, FK index decision, WAL policy,
+48 CHECK clauses vs 46 emulation triggers, androidTest on real Room DB, DAO layer, repositories.
+
+26.4 Next steps (in order)
+1. Decide redundant indexes, FK indexes, WAL policy; reconcile CHECK count.
+2. Add androidTest (separate emulator workflow).
+3. Begin DAO layer.
+
+26.5 Change log addition
+- v1.14: CI run 16 verified schema parity test.
+
+END OF VERSION 1.14 UPDATE

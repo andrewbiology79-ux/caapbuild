@@ -2,10 +2,10 @@ Question Bank Android build foundation - package version 0.2.13
 
 This ZIP is an incremental Android/Room build-harness package, not a completed Question Bank application.
 
-CI status (CI run 14, package v0.2.11, real non-cached run): Room KSP generation, 5 unit tests and debug APK assembly succeeded. The APK has not been installed or inspected on a device.
+CI status (CI run 16, package v0.2.13, real non-cached run, 7 tests): Room KSP generation, 5 unit tests and debug APK assembly succeeded. The APK has not been installed or inspected on a device.
 
 Database architecture: one physical QuestionBank.db file; 35 ordinary Room entities, 2 FTS5 virtual tables, 17 canonical triggers (11 business + 6 FTS) and 46 CHECK-emulation triggers installed by the database callback. Canonical SQL declares 48 CHECK clauses; the gap between 48 and 46 is not yet reconciled.
 
-Gradle wrapper and Room schema JSON (1.json) are committed. RoomSchemaParityTest added in v0.2.13 (not yet run in CI). Still open (see PROJECT_PLAN sections 21.5 and 25): androidTest on the real Room database, foreign-key index decision, WAL policy, DAO layer and repositories.
+Gradle wrapper and Room schema JSON (1.json) are committed. RoomSchemaParityTest added in v0.2.13 and passed in CI run 16 (7/7 tests). Still open (see PROJECT_PLAN sections 21.5 and 25): androidTest on the real Room database, foreign-key index decision, WAL policy, DAO layer and repositories.
 
 Unit tests run against JDBC SQLite, not the Room-created database.

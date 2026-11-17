@@ -16,6 +16,8 @@ Added (not yet run in CI): app/src/test/java/com/questionbank/app/RoomSchemaPari
 Dependency: testImplementation com.google.code.gson:gson:2.11.0 (JSON parsing; org.json is stubbed in Android unit tests).
 versionName 0.2.13-schema-parity-test. No main-source changes.
 
+CI run 16 (package v0.2.13): BUILD SUCCESSFUL in 51s, exit code 0, "Using: sh ./gradlew", non-cached.
+CanonicalSqlContractTest 5/5 and RoomSchemaParityTest 2/2 passed (7 tests, 0 failures, 0 errors, 0 skipped).
+
 Prototype result: the same comparison logic run offline with Python sqlite3 found 0 differences
-after the redundant-index rule. The Kotlin test itself has NOT been compiled or run yet.
-Expected next CI result: 7 tests (5 existing + 2 new). If it fails, send the CI report.
+after the redundant-index rule. The Kotlin test was compiled and run successfully in CI run 16.
