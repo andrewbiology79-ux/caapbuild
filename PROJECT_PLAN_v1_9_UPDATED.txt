@@ -1722,3 +1722,43 @@ schema parity test, FK index decision, WAL policy, DAO layer.
 - v1.11: Wrapper committed, run 13 findings (build cache hid schema export and test execution).
 
 END OF VERSION 1.11 UPDATE
+
+
+============================================================
+24. PACKAGE v0.2.12 - ROOM SCHEMA JSON COMMITTED
+============================================================
+
+Planning update date: 17 November 2026
+Package baseline: QuestionBank Android v0.2.12 (no application source changes)
+
+24.1 CI run 14 result (package v0.2.11, built with --no-build-cache)
+- BUILD SUCCESSFUL in 43s, Gradle exit code 0, Java 17.0.21, "Using: sh ./gradlew".
+- kspDebugKotlin, compileDebugKotlin and testDebugUnitTest executed for real (no FROM-CACHE).
+- testDebugUnitTest: 5 tests, 0 failures, 0 errors, 0 skipped (timestamp 2026-11-17).
+- This is the first fully verified run: the earlier "CI green" claims (run 11) were
+  reported by the user without logs, and run 13 reused cached results.
+
+24.2 Room schema export (1.json)
+- Exported by Room KSP and downloaded from the CI report artifact.
+- formatVersion 1, database version 1, identityHash dc6ce2b13fcffb4fd74692f2390af33e.
+- 35 entities, 36 indices, 39 foreign keys. FTS5 tables are not Room entities
+  (they are created by the database callback), so they do not appear in 1.json.
+- Committed at app/schemas/com.questionbank.app.data.local.QuestionBankDatabase/1.json.
+
+24.3 Status
+PHASE 1: DONE except documenting the dependency/version freeze.
+  Done: build pipeline, Gradle wrapper, schema JSON, real test execution.
+PHASE 2: PARTIAL FOUNDATION ONLY (unchanged). Open: androidTest on real Room DB,
+schema parity test (Room 1.json vs canonical SQL), FK index decision, WAL policy,
+48 CHECK clauses vs 46 emulation triggers reconciliation, DAO layer, repositories.
+
+24.4 Next steps (in order)
+1. Add androidTest running the canonical objects on the real Room database.
+2. Add schema parity test using 1.json.
+3. Decide FK indexes and WAL policy; reconcile CHECK count.
+4. Begin DAO layer.
+
+24.5 Change log addition
+- v1.12: Schema JSON committed; run 14 is the first verified non-cached run.
+
+END OF VERSION 1.12 UPDATE
