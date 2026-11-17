@@ -1,7 +1,7 @@
 # Architecture Decision Records (Question Bank)
 
 Status words: ACCEPTED = decided; CONFIRMED = proven by CI or device run. Source of truth for ADR-001 and the
-full history is PROJECT_PLAN_v1_23_UPDATED.txt.
+full history is PROJECT_PLAN_v1_24_UPDATED.txt.
 
 ## ADR-001 - One physical SQLite database
 ACCEPTED (plan v1.2), runtime-verified on emulator (foreign keys, WAL, triggers, FTS).
@@ -47,6 +47,7 @@ ACCEPTED 18 November 2026 (assistant proposal; owner may overrule before more da
    Reason: the columns are TEXT, backups and imports can merge without clashes, no central counter is needed.
 2. `created_at` / `updated_at` are epoch milliseconds, UTC.
 3. Names go through `HierarchyName.clean` (NFC, white space collapsed, trimmed, at most 200 characters) before any write.
+   Implemented as a plain character loop, not a regex: Android rejects the `(?U)` regex flag (v0.2.21 failure, fixed in v0.2.22).
 4. Uniqueness: subject names are unique in the whole Type_CQ scope (database unique index). Chapter names are unique inside one
    subject and topic names inside one chapter; this is checked in the repository, not by an index. For one user on one phone
    that is enough. If imports or sync ever write concurrently, add a unique index through a schema migration.

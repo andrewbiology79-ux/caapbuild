@@ -1,14 +1,15 @@
-Question Bank Android build foundation - package version 0.2.21 (plan v1.23)
+Question Bank Android build foundation - package version 0.2.22 (plan v1.24)
 
 This ZIP is an incremental Android/Room package, not a completed Question Bank application.
-Working on a phone (owner report): home screen, Bengali text. Working in code, not yet confirmed: Type_CQ subject/chapter/topic lists.
 
 VERIFIED
-- v0.2.19: CI run 27 green (11 of 11 unit tests, release variant), emulator 300,000 rows 11 of 11.
-- v0.2.20: the CI-built debug APK installed and the home screen shows Bengali text correctly (CI report not supplied).
+- v0.2.19: CI run 27 green (11 unit tests, release variant); emulator 300,000 rows green.
+- v0.2.20: CI-built debug APK installed on a phone; home screen and Bengali text correct.
+- v0.2.21 (emulator run, 20,000 rows): app and DAOs compile; 10 existing runtime tests and the benchmark pass; the 7 new hierarchy tests failed
+  because HierarchyName used a regex flag Android does not support. Fixed in v0.2.22.
 
-NEW in v0.2.21 (written, NOT compiled, NOT run - UNCONFIRMED): three DAOs, TypeCqHierarchyRepository, hierarchy screens,
-17 unit tests (6 new), 7 new emulator tests, lifecycle-viewmodel-compose 2.10.0, ADR-004. No database change.
+NEW in v0.2.22 (written, NOT compiled, NOT run - UNCONFIRMED): HierarchyName without regex; 2 new emulator tests.
+Do not install the v0.2.21 APK (adding a subject would crash).
 
-Open: CI confirmation of v0.2.21, question types, minimum editor, keyset paging (P-20), rank-search cost (P-19), Phase 0 documents,
-release signing, AGP 9 / compileSdk 37 upgrade (later, separate step).
+Open: confirm v0.2.22 (CI + emulator + phone), question types, minimum editor, keyset paging (P-20), rank-search cost (P-19, 10 ms at 20,000 rows),
+Phase 0 documents, release signing, AGP 9 / compileSdk 37 upgrade (later, separate step).

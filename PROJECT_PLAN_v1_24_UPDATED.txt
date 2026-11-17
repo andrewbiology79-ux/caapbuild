@@ -1,7 +1,7 @@
 QUESTION BANK ANDROID APP COMPLETE PROJECT DEVELOPMENT & DELIVERY PLAN
 ============================================================
 
-Document version: 1.23 (v0.2.20 installed on a phone, ADR-004, package v0.2.21 added as section 35)
+Document version: 1.24 (v0.2.21 emulator run: Android regex defect found, package v0.2.22 added as section 36)
 Planning baseline: 16 November 2026
 Project status: Single-database architecture confirmed; canonical SQL and Room build harness prepared. CI run 11 (package v0.2.8) passed: KSP/Room generation, unit tests (5 of 5) and debug APK assembly. The package is still a build harness, not a complete application; Room-database runtime behaviour (CHECK emulation, Bengali FTS on the real database) is not yet device-tested.
 
@@ -2442,3 +2442,51 @@ P-28  lifecycle-viewmodel-compose 2.10.0 chosen without checking its compileSdk 
 - v1.23: v0.2.20 phone verification, ADR-004, package v0.2.21, problems P-26 to P-28.
 
 END OF VERSION 1.23 UPDATE
+
+
+============================================================
+36. v0.2.21 EMULATOR RESULT, DEFECT F-3 AND PACKAGE v0.2.22 - VERSION 1.24
+============================================================
+
+Planning update date: 18 November 2026
+
+36.1 Evidence (instrumented report, benchmarkRows=20000, emulator API 34, package v0.2.21)
+- Gradle exit 1. The app, the three new DAOs, the repository and all androidTest sources compiled (Room accepted the INSERT ... SELECT queries;
+  lifecycle-viewmodel-compose 2.10.0 resolved, P-28 effectively closed for compile).
+- 10 RoomRuntimeTest tests and ScaleBenchmarkTest passed. 7 TypeCqHierarchyRepositoryTest tests failed. The result XML labels the suite
+  RoomRuntimeTest with tests=18, failures=7: the 18 are 10 + 1 + 7, so the expected total in section 35.5 (19) was wrong; it is 18.
+- 20,000-row baseline (closes P-22): edit 0.11 ms and delete 0.11 ms per row, common-word search 1.1 ms, rank-ordered search 9.9 ms,
+  prefix 0.8 ms, topic join 6.3 ms, deep OFFSET at 10,000: 4.7 ms, FTS rows = question rows (19,800 = 19,800), checkpoint 5 ms, database 38.8 MB.
+
+36.2 Finding F-3 (confirmed from logcat)
+HierarchyName used Regex("(?U)\\s+"). Android's regex engine throws PatternSyntaxException for the (?U) flag, so the HierarchyName class could not load and
+every add-subject/chapter/topic call failed. The JVM unit tests (HierarchyNameTest) passed because a desktop JDK accepts the flag; the normal CI therefore could not detect it.
+Lesson (rule added): behaviour that depends on the Java/Android runtime (regex, Normalizer is fine, text, locale, file system) must have an
+instrumented test; a green JVM test is not evidence for Android. The v0.2.21 APK would have crashed on the first add: it must not be used.
+
+36.3 Package v0.2.22 (written, NOT compiled, NOT run - UNCONFIRMED)
+- HierarchyName.clean as a plain loop over Char.isWhitespace(); same rules; documented in ADR-004.
+- New HierarchyNameAndroidTest (2 emulator tests). No schema change.
+
+36.4 Status
+PHASE 4/5: hierarchy create/list implemented; repository behaviour still unconfirmed because its tests did not get past F-3.
+Step D: in progress. Everything else as in section 35.3.
+
+36.5 Problem log additions
+F-3   Android regex flag crash in HierarchyName. Status: FIX WRITTEN (v0.2.22), unconfirmed.
+P-22  CLOSED (20,000-row baseline recorded).
+P-28  Compile part CLOSED; runtime part unconfirmed.
+P-29  Process gap: the normal CI runs JVM tests only; Android-runtime defects appear only in the manual emulator workflow. Status: OPEN.
+      Decision: run the emulator workflow (20,000 rows) before every phone install of a package that adds runtime logic. Consider a
+      non-blocking emulator job on every push later.
+
+36.6 Next steps (in order)
+1. Push v0.2.22; send the normal CI report (expect 17 of 17, schema hash 786b471d...).
+2. Run the emulator workflow (20,000 rows); expect 20 tests green (10 + 1 + 7 + 2). Send the report.
+3. Only then install on the phone: add subject, chapter, topic; close the app completely; reopen; data must remain.
+4. Then v0.2.23: question-type seed list, Type_CQ minimum editor (text only), atomic save, question list with keyset paging, search.
+
+36.7 Change log addition
+- v1.24: v0.2.21 emulator result, defect F-3, package v0.2.22, problem P-29, corrected test count.
+
+END OF VERSION 1.24 UPDATE
