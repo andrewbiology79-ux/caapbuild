@@ -66,7 +66,7 @@ jobs:
           set +e
           if [ -f gradlew ]; then GRADLE_CMD="sh ./gradlew"; else GRADLE_CMD="gradle"; fi
           echo "Using: $GRADLE_CMD" | tee build-report/gradle-build.log
-          $GRADLE_CMD --no-daemon testDebugUnitTest assembleDebug --stacktrace --info 2>&1 | tee -a build-report/gradle-build.log
+          $GRADLE_CMD --no-daemon --no-build-cache testDebugUnitTest assembleDebug --stacktrace --info 2>&1 | tee -a build-report/gradle-build.log
           build_exit_code=${PIPESTATUS[0]}
           echo "exit_code=${build_exit_code}" >> "$GITHUB_OUTPUT"
           printf '%s\n' "$build_exit_code" > build-report/gradle-exit-code.txt

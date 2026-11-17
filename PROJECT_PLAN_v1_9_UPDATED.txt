@@ -1686,3 +1686,39 @@ PHASE 2: PARTIAL FOUNDATION ONLY (unchanged).
 - v1.10: Wrapper helper, status clean-up, review findings.
 
 END OF VERSION 1.10 UPDATE
+
+
+============================================================
+23. PACKAGE v0.2.11 - GRADLE WRAPPER COMMITTED
+============================================================
+
+Planning update date: 17 November 2026
+Package baseline: QuestionBank Android v0.2.11 (no application source changes)
+
+23.1 CI run 13 result (package v0.2.10, reported by the user's artifacts)
+- BUILD SUCCESSFUL, Gradle exit code 0, Java 17.0.21, "Using: sh ./gradlew",
+  Gradle 8.14.3 downloaded by the wrapper. The wrapper helper from section 22 worked.
+- Gradle log shows kspDebugKotlin, compileDebugKotlin and testDebugUnitTest as FROM-CACHE.
+  Consequences: (a) Room did not re-export the schema, so no 1.json was in the report;
+  (b) the 5 tests were restored from cache, not executed in run 13.
+
+23.2 Changes in v0.2.11
+- gradlew, gradlew.bat, gradle/wrapper/gradle-wrapper.jar and .properties added to the package.
+- Workflow adds --no-build-cache to the Gradle command.
+- versionName 0.2.11-wrapper-committed; BUILD_STATUS.txt and VERSION_NOTES_0.2.11.md updated.
+
+23.3 Status
+PHASE 1: Gradle wrapper item DONE. Remaining: commit Room schema JSON (1.json) after the
+next --no-build-cache run; document dependency/version freeze.
+PHASE 2: PARTIAL FOUNDATION ONLY (unchanged). Open: androidTest on real Room DB,
+schema parity test, FK index decision, WAL policy, DAO layer.
+
+23.4 Next steps (in order)
+1. Run CI with v0.2.11; confirm testDebugUnitTest is executed (not FROM-CACHE).
+2. Download QuestionBank-ci-report; commit app/schemas/.../1.json.
+3. Add androidTest and schema parity test.
+
+23.5 Change log addition
+- v1.11: Wrapper committed, run 13 findings (build cache hid schema export and test execution).
+
+END OF VERSION 1.11 UPDATE

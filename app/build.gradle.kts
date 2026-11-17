@@ -13,7 +13,7 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        versionName = "0.2.10-gradle-wrapper-helper"
+        versionName = "0.2.11-wrapper-committed"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
