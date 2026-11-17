@@ -34,3 +34,5 @@ v0.2.18: F-1 fix (fts_id as FTS rowid) and F-2 fix (NFC normalization) written, 
 v0.2.19: ADR-002 accepted (Compose + Hilt + Navigation Compose, staged). Hilt 2.60 via KSP, @HiltAndroidApp, DatabaseModule,
 @AndroidEntryPoint MainActivity written, NOT compiled, NOT run. UNCONFIRMED. Still open for Step B: Compose + Navigation (v0.2.20),
 release variant, final version-freeze document. v0.2.18 reported CONFIRMED by the owner (CI run successful, emulator run passed; figures not yet recorded here). Step A is therefore done and the first Step D gate condition is met; the second (Step B merged with green CI) is still open.
+
+v0.2.19.1: CI run 25 (v0.2.19) FAILED at configuration: Hilt plugin 2.60 requires AGP 9.0+, project has AGP 8.13.2. Fix: Hilt 2.58 (last AGP 8 compatible). Written, NOT compiled, NOT run. UNCONFIRMED. See VERSION_NOTES_0.2.19.1.md.

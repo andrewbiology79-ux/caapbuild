@@ -1,5 +1,7 @@
 # Version 0.2.19 - Hilt (Step B, part 1) and ADR-002
 
+SUPERSEDED by 0.2.19.1: CI run 25 failed at configuration because Hilt plugin 2.60 requires AGP 9.0+ (project uses 8.13.2). See VERSION_NOTES_0.2.19.1.md.
+
 STATUS: written, NOT compiled, NOT run. UNCONFIRMED.
 Based on v0.2.18, which the owner reports as confirmed (CI successful, emulator run passed). Benchmark figures for v0.2.18 are not recorded in this package yet.
 
