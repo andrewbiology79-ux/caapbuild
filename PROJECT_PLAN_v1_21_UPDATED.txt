@@ -1,7 +1,7 @@
 QUESTION BANK ANDROID APP COMPLETE PROJECT DEVELOPMENT & DELIVERY PLAN
 ============================================================
 
-Document version: 1.21 (ADR-002 accepted, Step B started with Hilt in v0.2.19, section 33)
+Document version: 1.21 (F-1/F-2 confirmed, ADR-002, package v0.2.19 added as section 33)
 Planning baseline: 16 November 2026
 Project status: Single-database architecture confirmed; canonical SQL and Room build harness prepared. CI run 11 (package v0.2.8) passed: KSP/Room generation, unit tests (5 of 5) and debug APK assembly. The package is still a build harness, not a complete application; Room-database runtime behaviour (CHECK emulation, Bengali FTS on the real database) is not yet device-tested.
 
@@ -2137,11 +2137,13 @@ P-14  F-1 FTS delete/update scans the whole FTS table (question_id is an UNINDEX
       Status: OPEN. Plan: confirm with ScaleBenchmarkTest on the emulator, then decide ADR-003 (recommended: integer surrogate column used as FTS rowid;
       database is still version 1 and unreleased, so no migration is needed). Canonical schema is not changed before that decision.
       UPDATE v1.20: CONFIRMED by measurement at 300,000 rows (section 32). Fix in v0.2.18 is UNCONFIRMED until CI and the emulator run pass.
+      UPDATE v1.21: FIX CONFIRMED (CI run 24 and two emulator runs; section 33). Edit 0.19-0.20 ms, delete 0.58-0.70 ms per row at 300,000 rows. Status: CLOSED.
 
 
 P-15  F-2 Unicode normalization: precomposed and decomposed forms of the letter য় (and similar letters) do not match each other in search.
       Status: OPEN. Plan: normalize text on write and on query (NFC plus folding), Phase 12.
       UPDATE v1.20: STILL OPEN on v0.2.17 (decomposed query found 0 rows). Fix in v0.2.18 (NFC on write and query) is UNCONFIRMED.
+      UPDATE v1.21: FIX CONFIRMED (RoomRuntimeTest.banglaNormalizationMakesBothSpellingsSearchable passed; benchmark log: precomposed=1 decomposed=1). Status: CLOSED for the DB layer. Remaining: every text entry point must call BanglaText.normalize (Phase 12 acceptance item).
 
 
 31.3 Planning and documentation problems
@@ -2253,32 +2255,81 @@ END OF VERSION 1.20 UPDATE
 
 
 ============================================================
-33. ADR-002 AND PACKAGE v0.2.19 (STEP B, PART 1) - VERSION 1.21
+33. STEP A CLOSED, ADR-002 AND PACKAGE v0.2.19 - VERSION 1.21
 ============================================================
 
-33.1 ADR-002 ACCEPTED (owner decision, 17 November 2026)
-UI: Jetpack Compose (Material 3). DI: Hilt via KSP (no KAPT). Navigation: Navigation Compose. Full text: docs/ADR-002_UI_Toolkit_and_DI.md.
+Planning update date: 17 November 2026
 
-33.2 Confirmation of v0.2.18 (owner report, 17 November 2026)
-The owner reports that v0.2.18 passed: the normal CI run was successful and the emulator run passed.
-P-14 (F-1) and P-15 (F-2) are therefore recorded CONFIRMED on the owner's report. The measured figures (edit/delete ms per row at
-20,000 and 300,000 rows, test counts) were not supplied and are NOT recorded here; add them from the CI report when available.
-Section 32.8 steps 1-3 are done. The first Step D gate condition (29.4, Step A) is met; the second (Step B merged with green CI) is open.
+33.1 Evidence for package v0.2.18
+- CI run 24 (normal workflow): Gradle exit 0, BUILD SUCCESSFUL in 39 s, kspDebugKotlin executed (not from cache),
+  unit tests 11 of 11 (BanglaTextTest 4, CanonicalSqlContractTest 5, RoomSchemaParityTest 2, strict parity).
+- Emulator (sdk_gphone64_x86_64, API 34, GitHub Actions), 300,000 rows, two runs of the same 11-test suite:
+  11 of 11 passed, 0 failures, Gradle exit 0 in both. The 20,000-row run asked for in section 32.8 was not supplied.
+- Room schema export from run 24: identityHash 786b471dfa14c9ae4739bb81479bab25, 35 entities, 50 indices (was 48:
+  the two unique fts_id indices), 39 foreign keys. Committed in v0.2.19.
 
-33.3 Package v0.2.19 (written, NOT compiled, NOT run - UNCONFIRMED)
-Hilt 2.60 (KSP), androidx.activity 1.10.1, QuestionBankApp, DatabaseModule, MainActivity as Hilt entry point, DEPENDENCY_FREEZE.md draft.
-Stages: v0.2.19 Hilt; v0.2.20 Compose + Navigation; v0.2.21 release variant + freeze document.
+33.2 Measured results at 300,000 rows (v0.2.17 baseline vs v0.2.18; runs A and B are the two emulator runs)
+Metric                          v0.2.17        v0.2.18 run A   v0.2.18 run B
+Import total                    74.9 s         101.9 s         85.2 s
+Import average rows/s           4,004          2,945           3,519
+Database size                   589 MB         584,012 KB      584,012 KB
+Edit per row                    127.72 ms      0.19 ms         0.20 ms
+Delete per row                  117.73 ms      0.58 ms         0.70 ms
+Search common word, LIMIT 50    0.7 ms         1.0 ms          0.8 ms
+Search common, ORDER BY rank    109.4 ms       171.3 ms        145.9 ms
+Search prefix, LIMIT 50         3.7 ms         6.6 ms          4.5 ms
+Search + topic join, LIMIT 50   25.8 ms        14.7 ms         12.0 ms
+Topic first page                0.7 ms         1.2 ms          0.9 ms
+Global deep OFFSET 150,000      275.2 ms       159.4 ms        252.0 ms
+Consistency                     -              299,800 = 299,800  299,800 = 299,800
+Caveats as in section 32.1 (x86 emulator on a shared CI runner). Run-to-run differences of 20-40 percent
+(import speed, rank search, deep OFFSET) are normal noise here; only the large effects are conclusions.
 
-33.4 Status
-PHASE 1: BUILD GATE PASSED, FOUNDATION INCOMPLETE (Hilt written, unconfirmed; Compose, navigation, release variant, freeze open).
-PHASE 2: DONE (v0.2.18 confirmed by owner report; figures pending). PHASES 3-17: NOT STARTED.
+33.3 Findings
+- F-1 CONFIRMED FIXED: edit about 640 times faster, delete about 170-200 times faster. The target (well under 1 ms per row) is met.
+  Deleting 10,000 questions now takes roughly 6-7 seconds instead of about 20 minutes. Delete is still 5-6 times slower than a bare
+  FTS delete by rowid (0.117 ms) because it also cascades solution parts and fires the triggers.
+- F-2 CONFIRMED FIXED for the database layer.
+- Import is slower than v0.2.17 in both runs (2,945 and 3,519 vs 4,004 rows/s). Probable cause: the extra unique fts_id index and
+  the larger FTS insert path. NOT proven; the runs also differ from each other by 20 percent. Import time of about 85-100 s for
+  300,000 rows is acceptable for a one-time bulk import; no action now. Re-check if bulk import becomes a user-facing workflow.
+- N-1 (rank search 146-171 ms) and N-2 (deep OFFSET 159-252 ms) remain open design notes (P-19, P-20): keep rank sorting
+  optional or bounded, and use keyset paging.
 
-33.5 Problem log additions
-P-21  Hilt 2.60 versus Kotlin 2.4.21 metadata/KSP compatibility. Status: OPEN (unverified; see DEPENDENCY_FREEZE.md).
-P-22  New dependencies may shift the resolved kotlinx-coroutines version (v0.2.15 conflict at 1.8.1). Status: OPEN (unverified).
+33.4 ADR-002 decision (UI toolkit and DI) - ACCEPTED, proposed by the assistant, owner may overrule
+- Jetpack Compose with Material 3, single Activity, Navigation Compose; Paging 3 with keyset queries.
+- Manual constructor injection via AppContainer; no Hilt/Dagger/Koin for now. Reasons and consequences are in
+  docs/Architecture_Decision_Records.md. Compose and Navigation are NOT yet in the build; they arrive in v0.2.20 with one screen
+  and CI verification.
 
-33.6 Next steps (in order)
-1. Push v0.2.19 and read CI (any failure is Hilt-only). 2. If green: build v0.2.20 (Compose + Navigation).
-3. Record the v0.2.18 benchmark figures in Test_Execution_Report.md / section 32 when available.
+33.5 Package v0.2.19 (written, NOT compiled, NOT run - UNCONFIRMED for items 3 and 4)
+1. Schema 1.json from CI run 24 committed.
+2. docs/Architecture_Decision_Records.md and docs/Dependency_Version_Freeze.md (Step B: ADR and freeze document).
+3. AppContainer + QuestionBankApp (manual DI), manifest android:name.
+4. Release build type (unsigned, not minified) and non-blocking CI step "Assemble release variant" (build-report/release-assemble.log).
+5. BUILD_STATUS.txt, README_BN.md (was still v0.2.0), version notes, this plan.
+
+33.6 Status
+PHASE 1: BUILD GATE PASSED, FOUNDATION INCOMPLETE. Done: instrumentation workflow, ADR-002, freeze document.
+         Written but unconfirmed: DI (manual), release variant. Open: navigation and Compose UI foundation, signing.
+PHASE 2: runtime verification DONE and CONFIRMED on emulator for v0.2.18 (CHECK emulation, FK, WAL, FTS sync and rowid keying,
+         Bengali words, prefixes and NFC variants, 300,000-row baseline). DAO layer and repositories remain (Phase 4 work).
+PHASES 3-17: NOT STARTED.
+Step A of section 29.2: CLOSED. Step B: in progress.
+
+33.7 Problem log additions
+P-14  CLOSED (fix confirmed). P-15  CLOSED for the DB layer.
+P-21  Import 15-30 percent slower than v0.2.17 after the fts_id change (2,945 and 3,519 vs 4,004 rows/s). Status: OPEN, low priority, cause unproven.
+P-22  The 20,000-row instrumented run was never supplied (only 300,000). Status: OPEN, optional; useful as a small baseline.
+P-23  Gradle 8.14.3 is flagged deprecated by the Kotlin plugin (needs 8.14.4+ for Kotlin 2.5.0). Status: OPEN, not urgent.
+
+33.8 Next steps (in order)
+1. Push v0.2.19. Read CI: expect BUILD SUCCESSFUL, 11 unit tests, KSP executed, plus release-assemble.log. Compare 1.json with the committed one
+   (no change expected). Send the CI report.
+2. If green: v0.2.20 = Compose + Navigation Compose + Paging 3 dependencies, one home screen, versions added to the freeze document.
+3. Then Step C (light Phase 0 documents) and Step D (Type_CQ vertical slice) per section 29.2, gate 29.4 is satisfied for Step A.
+
+33.9 Change log addition
+- v1.21: F-1 and F-2 confirmed (CI run 24 + two emulator runs), ADR-002, package v0.2.19, problems P-21 to P-23, P-14 and P-15 closed.
 
 END OF VERSION 1.21 UPDATE

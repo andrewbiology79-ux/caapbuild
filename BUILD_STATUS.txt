@@ -3,36 +3,15 @@ Question Bank Android build foundation - package version 0.2.19 (plan v1.21)
 This ZIP is an incremental Android/Room build-harness package, not a completed Question Bank application.
 MainActivity is still a placeholder TextView; no feature of the Master Checklist is implemented.
 
-Verified in CI (run 18, package v0.2.14, non-cached): Room KSP generation, 7 unit tests (CanonicalSqlContractTest 5,
-RoomSchemaParityTest 2, strict), debug APK assembly. 35 Room entities, 48 indices, 39 foreign keys, explicit WAL.
-The APK has not been installed or inspected on a device.
+VERIFIED (package v0.2.18):
+- CI run 24: BUILD SUCCESSFUL (exit 0), KSP executed, 11 of 11 unit tests, debug APK assembled.
+- Emulator API 34, 300,000 rows (two runs): 11 of 11 tests, exit 0. F-1 and F-2 are CONFIRMED.
+  Edit 0.19-0.20 ms and delete 0.58-0.70 ms per row (v0.2.17: 127.7 and 117.7 ms). Bengali NFC search finds both spellings.
+- 35 Room entities, 50 indices, 39 foreign keys, explicit WAL, schema identityHash 786b471dfa14c9ae4739bb81479bab25.
+- The APK has not been installed or inspected on a device.
 
-Database architecture: one physical QuestionBank.db file; 35 ordinary Room entities, 2 FTS5 virtual tables,
-17 canonical triggers (11 business + 6 FTS) and 46 CHECK-emulation triggers (23 tables x 2) installed by the callback.
-48 CHECK clauses vs 46 triggers is reconciled (not a discrepancy).
+NEW in v0.2.19 (written, NOT compiled, NOT run - UNCONFIRMED): AppContainer + QuestionBankApp (manual DI),
+release build type (unsigned), non-blocking release-assemble CI step. ADR-002 recorded (docs/).
 
-New in v0.2.15 (written, NOT yet compiled or run): androidTest suite on the real Room database, scale benchmark,
-manual emulator workflow, non-blocking androidTest compile step. See VERSION_NOTES_0.2.15.md and plan section 30.
-
-Open: run the instrumented workflow; decision on FTS delete cost (F-1) and Unicode normalization (F-2);
-DI/navigation/UI foundation; release variant; DAO layer and repositories.
-
-v0.2.16: first emulator run (v0.2.15) failed BEFORE any test ran: Gradle could not resolve the extra
-kotlinx-coroutines-android:1.10.2 androidTest dependency (runtime classpath pinned to 1.8.1). Dependency removed
-(coroutines come transitively from Room). androidTest Kotlin sources have still never been compiled; next run will show.
-
-v0.2.17: CI run on v0.2.16: main build SUCCESSFUL (exit 0, unit tests + APK). Non-blocking androidTest compile step reported
-2 errors in ScaleBenchmarkTest (mixed-type arrayOf inferred an intersection type). Fixed with arrayOf<Any?>.
-No other androidTest compile error was reported (Room driver APIs resolved). Emulator run still pending.
-
-v0.2.17 RESULT (emulator, API 34): instrumented run green, 9 of 9 (8 runtime tests + scale benchmark), exit code 0;
-unit tests 7 of 7. Benchmark at 300,000 rows: import 75 s (4,004 rows/s), DB 589 MB, edit 127.7 ms, delete 117.7 ms per row
-(F-1 confirmed), rank search 109 ms, deep OFFSET 275 ms. F-2 confirmed open (decomposed query found 0).
-
-v0.2.18: F-1 fix (fts_id as FTS rowid) and F-2 fix (NFC normalization) written, NOT compiled, NOT run. UNCONFIRMED.
-
-v0.2.19: ADR-002 accepted (Compose + Hilt + Navigation Compose, staged). Hilt 2.60 via KSP, @HiltAndroidApp, DatabaseModule,
-@AndroidEntryPoint MainActivity written, NOT compiled, NOT run. UNCONFIRMED. Still open for Step B: Compose + Navigation (v0.2.20),
-release variant, final version-freeze document. v0.2.18 reported CONFIRMED by the owner (CI run successful, emulator run passed; figures not yet recorded here). Step A is therefore done and the first Step D gate condition is met; the second (Step B merged with green CI) is still open.
-
-v0.2.19.1: CI run 25 (v0.2.19) FAILED at configuration: Hilt plugin 2.60 requires AGP 9.0+, project has AGP 8.13.2. Fix: Hilt 2.58 (last AGP 8 compatible). Written, NOT compiled, NOT run. UNCONFIRMED. See VERSION_NOTES_0.2.19.1.md.
+Open: Compose/Navigation foundation (v0.2.20), Paging 3, DAO layer and repositories, release signing,
+rank-search cost (P-19), keyset paging (P-20), Phase 0 documents (traceability sheet, requirements, risk register).

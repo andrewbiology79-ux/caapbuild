@@ -1,8 +1,13 @@
 package com.questionbank.app
 
 import android.app.Application
-import dagger.hilt.android.HiltAndroidApp
 
-/** Hilt entry point for the whole application (ADR-002). No other initialisation belongs here yet. */
-@HiltAndroidApp
-class QuestionBankApp : Application()
+class QuestionBankApp : Application() {
+    lateinit var container: AppContainer
+        private set
+
+    override fun onCreate() {
+        super.onCreate()
+        container = AppContainer(this)
+    }
+}

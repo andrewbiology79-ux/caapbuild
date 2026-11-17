@@ -2,7 +2,6 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
-    id("com.google.dagger.hilt.android")
 }
 
 android {
@@ -14,8 +13,15 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        versionName = "0.2.19.1-hilt"
+        versionName = "0.2.19-adr002-release-variant"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            // Unsigned, not minified yet (v0.2.19). Signing and R8 are decided in Phase 17.
+            isMinifyEnabled = false
+        }
     }
 
     sourceSets {
@@ -45,14 +51,6 @@ dependencies {
     implementation("androidx.room:room-ktx:$roomVersion")
     implementation("androidx.sqlite:sqlite-bundled:2.7.1")
     ksp("androidx.room:room-compiler:$roomVersion")
-
-    // v0.2.19 (ADR-002): Hilt via KSP only (no KAPT). Compose and Navigation come in v0.2.20.
-    // v0.2.19.1: 2.58 is the last Dagger release whose Hilt Gradle plugin works with AGP 8.x.
-    // Dagger 2.59+ requires AGP 9.0+ and Gradle 9.1+ (CI run 25). Must equal the plugin version in the root build.gradle.kts.
-    val hiltVersion = "2.58"
-    implementation("com.google.dagger:hilt-android:$hiltVersion")
-    ksp("com.google.dagger:hilt-compiler:$hiltVersion")
-    implementation("androidx.activity:activity:1.10.1") // ComponentActivity, required by @AndroidEntryPoint
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.xerial:sqlite-jdbc:3.50.2.0")

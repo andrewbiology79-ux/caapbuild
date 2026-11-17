@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "fb40664660a91120f2169864ac13203e",
+    "identityHash": "786b471dfa14c9ae4739bb81479bab25",
     "entities": [
       {
         "tableName": "app_metadata",
@@ -519,12 +519,18 @@
       },
       {
         "tableName": "chapter_cq_questions",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`question_id` TEXT NOT NULL, `stimulus_id` TEXT, `chapter_id` TEXT NOT NULL, `subquestion_label` TEXT NOT NULL, `marks` REAL NOT NULL, `question_text` TEXT NOT NULL DEFAULT '', `short_answer` TEXT NOT NULL DEFAULT '', `rating` INTEGER, `sort_order` INTEGER NOT NULL DEFAULT 0, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`question_id`), FOREIGN KEY(`chapter_id`) REFERENCES `chapter_cq_chapters`(`chapter_id`) ON UPDATE CASCADE ON DELETE RESTRICT , FOREIGN KEY(`stimulus_id`) REFERENCES `chapter_cq_stimuli`(`stimulus_id`) ON UPDATE CASCADE ON DELETE RESTRICT )",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`question_id` TEXT NOT NULL, `fts_id` INTEGER NOT NULL, `stimulus_id` TEXT, `chapter_id` TEXT NOT NULL, `subquestion_label` TEXT NOT NULL, `marks` REAL NOT NULL, `question_text` TEXT NOT NULL DEFAULT '', `short_answer` TEXT NOT NULL DEFAULT '', `rating` INTEGER, `sort_order` INTEGER NOT NULL DEFAULT 0, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`question_id`), FOREIGN KEY(`chapter_id`) REFERENCES `chapter_cq_chapters`(`chapter_id`) ON UPDATE CASCADE ON DELETE RESTRICT , FOREIGN KEY(`stimulus_id`) REFERENCES `chapter_cq_stimuli`(`stimulus_id`) ON UPDATE CASCADE ON DELETE RESTRICT )",
         "fields": [
           {
             "fieldPath": "questionId",
             "columnName": "question_id",
             "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ftsId",
+            "columnName": "fts_id",
+            "affinity": "INTEGER",
             "notNull": true
           },
           {
@@ -596,6 +602,15 @@
           ]
         },
         "indices": [
+          {
+            "name": "index_chapter_cq_questions_fts_id",
+            "unique": true,
+            "columnNames": [
+              "fts_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_chapter_cq_questions_fts_id` ON `${TABLE_NAME}` (`fts_id`)"
+          },
           {
             "name": "index_chapter_cq_questions_stimulus_id_sort_order",
             "unique": false,
@@ -2222,12 +2237,18 @@
       },
       {
         "tableName": "type_cq_questions",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`question_id` TEXT NOT NULL, `stimulus_id` TEXT, `topic_id` TEXT NOT NULL, `question_type_id` TEXT NOT NULL, `subquestion_label` TEXT NOT NULL, `marks` REAL NOT NULL, `question_text` TEXT NOT NULL DEFAULT '', `short_answer` TEXT NOT NULL DEFAULT '', `rating` INTEGER, `sort_order` INTEGER NOT NULL DEFAULT 0, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`question_id`), FOREIGN KEY(`question_type_id`) REFERENCES `type_cq_question_types`(`question_type_id`) ON UPDATE CASCADE ON DELETE RESTRICT , FOREIGN KEY(`topic_id`) REFERENCES `type_cq_topics`(`topic_id`) ON UPDATE CASCADE ON DELETE RESTRICT , FOREIGN KEY(`stimulus_id`) REFERENCES `type_cq_stimuli`(`stimulus_id`) ON UPDATE CASCADE ON DELETE RESTRICT )",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`question_id` TEXT NOT NULL, `fts_id` INTEGER NOT NULL, `stimulus_id` TEXT, `topic_id` TEXT NOT NULL, `question_type_id` TEXT NOT NULL, `subquestion_label` TEXT NOT NULL, `marks` REAL NOT NULL, `question_text` TEXT NOT NULL DEFAULT '', `short_answer` TEXT NOT NULL DEFAULT '', `rating` INTEGER, `sort_order` INTEGER NOT NULL DEFAULT 0, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`question_id`), FOREIGN KEY(`question_type_id`) REFERENCES `type_cq_question_types`(`question_type_id`) ON UPDATE CASCADE ON DELETE RESTRICT , FOREIGN KEY(`topic_id`) REFERENCES `type_cq_topics`(`topic_id`) ON UPDATE CASCADE ON DELETE RESTRICT , FOREIGN KEY(`stimulus_id`) REFERENCES `type_cq_stimuli`(`stimulus_id`) ON UPDATE CASCADE ON DELETE RESTRICT )",
         "fields": [
           {
             "fieldPath": "questionId",
             "columnName": "question_id",
             "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ftsId",
+            "columnName": "fts_id",
+            "affinity": "INTEGER",
             "notNull": true
           },
           {
@@ -2305,6 +2326,15 @@
           ]
         },
         "indices": [
+          {
+            "name": "index_type_cq_questions_fts_id",
+            "unique": true,
+            "columnNames": [
+              "fts_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_type_cq_questions_fts_id` ON `${TABLE_NAME}` (`fts_id`)"
+          },
           {
             "name": "index_type_cq_questions_question_type_id_sort_order",
             "unique": false,
@@ -2863,7 +2893,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'fb40664660a91120f2169864ac13203e')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '786b471dfa14c9ae4739bb81479bab25')"
     ]
   }
 }
