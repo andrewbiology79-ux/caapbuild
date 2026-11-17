@@ -1,4 +1,4 @@
-Question Bank Android build foundation - package version 0.2.18 (plan v1.20)
+Question Bank Android build foundation - package version 0.2.19 (plan v1.21)
 
 This ZIP is an incremental Android/Room build-harness package, not a completed Question Bank application.
 MainActivity is still a placeholder TextView; no feature of the Master Checklist is implemented.
@@ -30,3 +30,7 @@ unit tests 7 of 7. Benchmark at 300,000 rows: import 75 s (4,004 rows/s), DB 589
 (F-1 confirmed), rank search 109 ms, deep OFFSET 275 ms. F-2 confirmed open (decomposed query found 0).
 
 v0.2.18: F-1 fix (fts_id as FTS rowid) and F-2 fix (NFC normalization) written, NOT compiled, NOT run. UNCONFIRMED.
+
+v0.2.19: ADR-002 accepted (Compose + Hilt + Navigation Compose, staged). Hilt 2.60 via KSP, @HiltAndroidApp, DatabaseModule,
+@AndroidEntryPoint MainActivity written, NOT compiled, NOT run. UNCONFIRMED. Still open for Step B: Compose + Navigation (v0.2.20),
+release variant, final version-freeze document. v0.2.18 reported CONFIRMED by the owner (CI run successful, emulator run passed; figures not yet recorded here). Step A is therefore done and the first Step D gate condition is met; the second (Step B merged with green CI) is still open.

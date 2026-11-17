@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
+    id("com.google.dagger.hilt.android")
 }
 
 android {
@@ -13,7 +14,7 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        versionName = "0.2.18-fts-rowid-and-nfc"
+        versionName = "0.2.19-hilt"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -44,6 +45,12 @@ dependencies {
     implementation("androidx.room:room-ktx:$roomVersion")
     implementation("androidx.sqlite:sqlite-bundled:2.7.1")
     ksp("androidx.room:room-compiler:$roomVersion")
+
+    // v0.2.19 (ADR-002): Hilt via KSP only (no KAPT). Compose and Navigation come in v0.2.20.
+    val hiltVersion = "2.60"
+    implementation("com.google.dagger:hilt-android:$hiltVersion")
+    ksp("com.google.dagger:hilt-compiler:$hiltVersion")
+    implementation("androidx.activity:activity:1.10.1") // ComponentActivity, required by @AndroidEntryPoint
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.xerial:sqlite-jdbc:3.50.2.0")

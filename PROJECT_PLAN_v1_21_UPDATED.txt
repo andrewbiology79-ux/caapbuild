@@ -1,7 +1,7 @@
 QUESTION BANK ANDROID APP COMPLETE PROJECT DEVELOPMENT & DELIVERY PLAN
 ============================================================
 
-Document version: 1.20 (benchmark results, ADR-003 decision and v0.2.18 patch added as section 32)
+Document version: 1.21 (ADR-002 accepted, Step B started with Hilt in v0.2.19, section 33)
 Planning baseline: 16 November 2026
 Project status: Single-database architecture confirmed; canonical SQL and Room build harness prepared. CI run 11 (package v0.2.8) passed: KSP/Room generation, unit tests (5 of 5) and debug APK assembly. The package is still a build harness, not a complete application; Room-database runtime behaviour (CHECK emulation, Bengali FTS on the real database) is not yet device-tested.
 
@@ -2250,3 +2250,35 @@ P-20  N-2 deep OFFSET paging 275 ms at offset 150,000. Status: OPEN (use keyset 
 - v1.20: measured benchmark results, ADR-003 and F-2 decisions, package v0.2.18, problems P-19 and P-20.
 
 END OF VERSION 1.20 UPDATE
+
+
+============================================================
+33. ADR-002 AND PACKAGE v0.2.19 (STEP B, PART 1) - VERSION 1.21
+============================================================
+
+33.1 ADR-002 ACCEPTED (owner decision, 17 November 2026)
+UI: Jetpack Compose (Material 3). DI: Hilt via KSP (no KAPT). Navigation: Navigation Compose. Full text: docs/ADR-002_UI_Toolkit_and_DI.md.
+
+33.2 Confirmation of v0.2.18 (owner report, 17 November 2026)
+The owner reports that v0.2.18 passed: the normal CI run was successful and the emulator run passed.
+P-14 (F-1) and P-15 (F-2) are therefore recorded CONFIRMED on the owner's report. The measured figures (edit/delete ms per row at
+20,000 and 300,000 rows, test counts) were not supplied and are NOT recorded here; add them from the CI report when available.
+Section 32.8 steps 1-3 are done. The first Step D gate condition (29.4, Step A) is met; the second (Step B merged with green CI) is open.
+
+33.3 Package v0.2.19 (written, NOT compiled, NOT run - UNCONFIRMED)
+Hilt 2.60 (KSP), androidx.activity 1.10.1, QuestionBankApp, DatabaseModule, MainActivity as Hilt entry point, DEPENDENCY_FREEZE.md draft.
+Stages: v0.2.19 Hilt; v0.2.20 Compose + Navigation; v0.2.21 release variant + freeze document.
+
+33.4 Status
+PHASE 1: BUILD GATE PASSED, FOUNDATION INCOMPLETE (Hilt written, unconfirmed; Compose, navigation, release variant, freeze open).
+PHASE 2: DONE (v0.2.18 confirmed by owner report; figures pending). PHASES 3-17: NOT STARTED.
+
+33.5 Problem log additions
+P-21  Hilt 2.60 versus Kotlin 2.4.21 metadata/KSP compatibility. Status: OPEN (unverified; see DEPENDENCY_FREEZE.md).
+P-22  New dependencies may shift the resolved kotlinx-coroutines version (v0.2.15 conflict at 1.8.1). Status: OPEN (unverified).
+
+33.6 Next steps (in order)
+1. Push v0.2.19 and read CI (any failure is Hilt-only). 2. If green: build v0.2.20 (Compose + Navigation).
+3. Record the v0.2.18 benchmark figures in Test_Execution_Report.md / section 32 when available.
+
+END OF VERSION 1.21 UPDATE
