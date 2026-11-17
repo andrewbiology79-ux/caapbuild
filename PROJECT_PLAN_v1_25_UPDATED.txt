@@ -1,7 +1,7 @@
 QUESTION BANK ANDROID APP COMPLETE PROJECT DEVELOPMENT & DELIVERY PLAN
 ============================================================
 
-Document version: 1.24 (v0.2.21 emulator run: Android regex defect found, package v0.2.22 added as section 36)
+Document version: 1.25 (v0.2.22 owner phone test passed; package v0.2.23 added as section 37)
 Planning baseline: 16 November 2026
 Project status: Single-database architecture confirmed; canonical SQL and Room build harness prepared. CI run 11 (package v0.2.8) passed: KSP/Room generation, unit tests (5 of 5) and debug APK assembly. The package is still a build harness, not a complete application; Room-database runtime behaviour (CHECK emulation, Bengali FTS on the real database) is not yet device-tested.
 
@@ -2490,3 +2490,65 @@ P-29  Process gap: the normal CI runs JVM tests only; Android-runtime defects ap
 - v1.24: v0.2.21 emulator result, defect F-3, package v0.2.22, problem P-29, corrected test count.
 
 END OF VERSION 1.24 UPDATE
+
+
+============================================================
+37. v0.2.22 PHONE TEST PASSED AND PACKAGE v0.2.23 (QUESTION EDITOR, NEVER LOSING A QUESTION) - VERSION 1.25
+============================================================
+
+Planning update date: 18 November 2026
+
+37.1 Evidence (owner test of v0.2.22 on a phone)
+- CI report OK. Instrumented test OK. Adding subject, chapter and topic OK. Two items with the same name are not created.
+- F-3 (Android regex flag) is CLOSED. P-29 stays open (the normal CI still runs JVM tests only).
+- First open of the app takes about 5 seconds. Owner decision: acceptable as long as later updates do not make it longer; even 10 seconds is
+  acceptable. Recorded as requirement N-1 (cold start at most 10 s). Likely causes: debug APK, first Room open with FTS tables and triggers, Compose
+  cold start. Possible later measures (low priority): release build with R8, baseline profile, opening the database off the main thread.
+- Owner requirement for this step: the app must be reliable enough that questions added to it are never lost (requirement N-2).
+
+37.2 Findings that shaped v0.2.23
+- N-2 risk 1 (found by reading the workflow): CI builds the debug APK on a fresh runner, which creates a new random debug key each time.
+  Android refuses to update an app signed with another key, so every update would need an uninstall, which deletes the database. FIXED by a committed
+  fixed debug key (ADR-005 item 5). One last uninstall is needed when moving from v0.2.22.
+- N-2 risk 2: there is no backup. Data lives in app-private storage; "allowBackup" is false. Uninstall, "Clear data" or a lost phone deletes everything.
+  NOT fixed in v0.2.23; proposed as the next package (P-31).
+- N-2 risk 3: text typed but not yet saved is lost if the app is killed. FIXED by automatic drafts (ADR-005 items 3).
+
+37.3 Package v0.2.23 (written, NOT compiled, NOT run - UNCONFIRMED)
+- Fixed debug signing key, versionCode 23, CI step that records the APK certificate (apk-signature.txt; SHA-256 must be identical in every run).
+- Question types seeded for ক, খ, গ, ঘ (1, 2, 3, 4 marks; assumption, ids fixed, labels renamable).
+- TypeCqQuestionDao (abstract class, @Transaction insertGroup), TypeCqQuestionRepository(+Impl), QuestionRules, draft storage in app_metadata.
+- Editor screen (stimulus + four blocks), list screen per topic (newest first, grouped by stimulus), topic list now opens the question list.
+- Durable commits: PRAGMA synchronous=FULL on the writer connection before each save (outside a transaction).
+- All-or-nothing save with read-back verification; save is non-cancellable once started.
+- Not included: edit, delete, search UI, boards, categories, images, solutions, Paging 3 (lists are read as one list per topic).
+- No schema change: database version 1, identityHash must remain 786b471dfa14c9ae4739bb81479bab25.
+- Tests: 11 new JVM tests (QuestionRulesTest), 10 new emulator tests (TypeCqQuestionRepositoryTest).
+
+37.4 Status
+PHASE 1: BUILD GATE PASSED, FOUNDATION INCOMPLETE (open: release signing). PHASE 2: DONE.
+PHASE 4/5: hierarchy create/list CONFIRMED on a phone (v0.2.22); Type_CQ question create/list written (v0.2.23), UNCONFIRMED.
+PHASES 3, 6-17: NOT STARTED, except as listed. Step D: in progress.
+
+37.5 Problem log additions
+N-1   Cold start about 5 s (owner accepts up to 10 s). Status: ACCEPTED; re-check after each package.
+N-2   Questions must never be lost. Status: OPEN until v0.2.23 is confirmed and a backup export exists.
+P-30  Random debug key per CI run forced an uninstall on every update. Status: FIX WRITTEN (v0.2.23), unconfirmed until two consecutive CI runs show the same certificate.
+P-31  No backup/export of the database. Status: OPEN, HIGH priority, proposed for v0.2.24.
+P-32  Question types and marks (ক 1, খ 2, গ 3, ঘ 4) are an assumption of the assistant. Status: OPEN, owner to confirm or change before many questions are entered.
+P-33  Paging and search UI deferred. Status: OPEN, low priority.
+
+37.6 Next steps (in order)
+1. Push v0.2.23 and send the normal CI report. Expect BUILD SUCCESSFUL, 28 unit tests (17 + 11), identityHash unchanged, apk-signature.txt present.
+2. Run the emulator workflow (20,000 rows). Expect 30 tests green (10 + 1 + 7 + 2 + 10). Send the report.
+3. Only then install on the phone: uninstall v0.2.22 once, install v0.2.23. Test: add subject, chapter, topic; open the topic; add a question with a stimulus and
+   at least ক and গ; save; "saved" message; close the app from the recent apps list; reopen; the question must still be there.
+   Draft test: type text in the editor, do NOT save, remove the app from recent apps at once, reopen, open the editor: the text must come back.
+4. v0.2.24: backup export (consistent copy of the database to a file the owner can store elsewhere, plus restore with an integrity check), then question search, edit and delete.
+5. Confirm or change the question-type labels and marks (P-32).
+
+37.7 Change log addition
+- v1.25: v0.2.22 phone test result, requirements N-1 and N-2, package v0.2.23, problems P-30 to P-33.
+
+END OF VERSION 1.25 UPDATE
+

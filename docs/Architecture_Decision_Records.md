@@ -54,3 +54,17 @@ ACCEPTED 18 November 2026 (assistant proposal; owner may overrule before more da
 5. `sort_order` is assigned as MAX+1 inside the same INSERT statement, so ordering is atomic. Lists are ordered by
    sort_order, then name, then id.
 6. No delete or rename in v0.2.21 (foreign keys use RESTRICT); both belong to the Phase 5 hierarchy management work.
+
+## ADR-005 - Never losing a question (Step D, v0.2.23)
+ACCEPTED 18 November 2026 (owner requirement: questions entered in the app must not be lost).
+1. One save = one transaction: stimulus, sub-questions, FTS rows (canonical triggers) and removal of the draft. A DAO `@Transaction` method
+   does it, so Room rolls everything back on any exception. Reason: no half-saved group, no draft that disappears without a saved question.
+2. Success is reported only after a read-back of the stored texts (compared with what was sent).
+3. Drafts are stored in `app_metadata` (existing table, no schema change), written by an application-scope writer with a conflated queue.
+   Reason: viewModelScope is cancelled when a screen is left; the app scope is not. A blank draft deletes the row.
+4. `PRAGMA synchronous=FULL` on the writer connection before every question save, outside any transaction.
+5. One fixed debug signing key is committed (`app/debug.keystore`, alias androiddebugkey, password android). Release signing stays a Phase 17 decision;
+   the release key must NOT be committed. Reason: updates must install over the old app, otherwise the data is deleted by the forced uninstall.
+6. Question types are fixed by the sub-question label (ক 1, খ 2, গ 3, ঘ 4 marks) and seeded with fixed ids; the editor does not ask for a type.
+7. Known gap (accepted for now): data lives only in app-private storage and `allowBackup` is false. A user-controlled backup export is the next step.
+

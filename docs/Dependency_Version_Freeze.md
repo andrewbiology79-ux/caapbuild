@@ -39,3 +39,5 @@ If CI reports a minCompileSdk or AGP-version error, the first fix is to lower th
 compileSdk. Upgrading to AGP 9 / compileSdk 37 / Compose 1.12+ is a separate CI-verified step.
 
 Release variant: `release` exists, unsigned, not minified. Signing and R8 are Phase 17 work.
+
+v0.2.23: no dependency changed. Added: `app/debug.keystore` (fixed debug signing key, versionCode 23). `org.json` (part of Android) is used for draft storage.

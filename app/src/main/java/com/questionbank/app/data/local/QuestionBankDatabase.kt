@@ -8,6 +8,7 @@ import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.execSQL
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.questionbank.app.data.local.dao.TypeCqChapterDao
+import com.questionbank.app.data.local.dao.TypeCqQuestionDao
 import com.questionbank.app.data.local.dao.TypeCqSubjectDao
 import com.questionbank.app.data.local.dao.TypeCqTopicDao
 import com.questionbank.app.data.local.entity.AppMetadataEntity
@@ -92,6 +93,7 @@ abstract class QuestionBankDatabase : RoomDatabase() {
     abstract fun typeCqSubjectDao(): TypeCqSubjectDao
     abstract fun typeCqChapterDao(): TypeCqChapterDao
     abstract fun typeCqTopicDao(): TypeCqTopicDao
+    abstract fun typeCqQuestionDao(): TypeCqQuestionDao
 
     companion object {
         /**
@@ -106,6 +108,7 @@ abstract class QuestionBankDatabase : RoomDatabase() {
 
         private fun installCanonicalObjects(connection: SQLiteConnection) {
             CanonicalDatabaseObjects.statements.forEach { statement -> connection.execSQL(statement) }
+            SeedData.statements.forEach { statement -> connection.execSQL(statement) }
         }
 
         fun create(context: Context): QuestionBankDatabase =

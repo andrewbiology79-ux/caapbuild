@@ -44,10 +44,10 @@ fun HomeScreen(onOpenTypeCq: () -> Unit) {
                 ) {
                     Text("Build foundation", style = MaterialTheme.typography.titleMedium)
                     Text("Version: $versionName")
-                    Text("এটি এখনো সম্পূর্ণ অ্যাপ নয়। এখন শুধু Type_CQ-এর বিষয়, অধ্যায় ও টপিক যোগ করা যায়।")
+                    Text("এটি এখনো সম্পূর্ণ অ্যাপ নয়। এখন Type_CQ-এর বিষয়, অধ্যায়, টপিক এবং টপিকের ভেতরে প্রশ্ন (উদ্দীপকসহ ক-ঘ) যোগ করা যায়।")
                 }
             }
-            Button(onClick = onOpenTypeCq) { Text("Type_CQ: বিষয় → অধ্যায় → টপিক") }
+            Button(onClick = onOpenTypeCq) { Text("Type_CQ: বিষয় → অধ্যায় → টপিক → প্রশ্ন") }
         }
     }
 }

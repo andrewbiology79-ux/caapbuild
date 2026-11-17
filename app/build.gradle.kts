@@ -13,9 +13,21 @@ android {
         applicationId = "com.questionbank.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.2.22-hierarchy-name-fix"
+        versionCode = 23
+        versionName = "0.2.23-question-editor"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    // v0.2.23: one fixed debug key, committed on purpose (a debug key is not a secret). Without it every CI run
+    // signs the APK with a new random key, Android refuses to update the installed app, and the only way to install
+    // is to uninstall first, which deletes every question on the phone. Release signing is decided in Phase 17.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
