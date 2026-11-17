@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
@@ -13,15 +14,19 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        versionName = "0.2.19-adr002-release-variant"
+        versionName = "0.2.20-compose-navigation-foundation"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         release {
-            // Unsigned, not minified yet (v0.2.19). Signing and R8 are decided in Phase 17.
+            // Unsigned, not minified. Signing and R8 are decided in Phase 17.
             isMinifyEnabled = false
         }
+    }
+
+    buildFeatures {
+        compose = true
     }
 
     sourceSets {
@@ -47,6 +52,16 @@ ksp {
 
 dependencies {
     val roomVersion = "2.8.5"
+    val composeBom = platform("androidx.compose:compose-bom:2026.09.00")
+    implementation(composeBom)
+    implementation("androidx.activity:activity-compose:1.13.0")
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.navigation:navigation-compose:2.10.1")
+    implementation("androidx.paging:paging-runtime-ktx:3.5.3")
+    implementation("androidx.paging:paging-compose:3.5.3")
+    debugImplementation("androidx.compose.ui:ui-tooling")
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
     implementation("androidx.sqlite:sqlite-bundled:2.7.1")

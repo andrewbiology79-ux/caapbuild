@@ -45,7 +45,7 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: "8.14.3"
+          gradle-version: "8.14.4"
           add-job-summary: "never"
 
       - name: Run instrumented tests on emulator
