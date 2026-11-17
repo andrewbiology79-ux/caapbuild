@@ -7,8 +7,8 @@ package com.questionbank.app.data.local
  */
 internal object CanonicalDatabaseObjects {
     private val baseStatements: List<String> = listOf(
-        """CREATE VIRTUAL TABLE IF NOT EXISTS type_cq_question_fts USING fts5(question_id UNINDEXED, question_text, short_answer, tokenize = "unicode61 tokenchars 'ািীুূৃেৈোৌংঃঁ়্'")""",
-        """CREATE VIRTUAL TABLE IF NOT EXISTS chapter_cq_question_fts USING fts5(question_id UNINDEXED, question_text, short_answer, tokenize = "unicode61 tokenchars 'ািীুূৃেৈোৌংঃঁ়্'")""",
+        """CREATE VIRTUAL TABLE IF NOT EXISTS type_cq_question_fts USING fts5(question_text, short_answer, tokenize = "unicode61 tokenchars 'ািীুূৃেৈোৌংঃঁ়্'")""",
+        """CREATE VIRTUAL TABLE IF NOT EXISTS chapter_cq_question_fts USING fts5(question_text, short_answer, tokenize = "unicode61 tokenchars 'ািীুূৃেৈোৌংঃঁ়্'")""",
         """CREATE TRIGGER IF NOT EXISTS trg_paper_item_source_required_insert
 BEFORE INSERT ON paper_question_items
 WHEN NEW.type_cq_question_id IS NULL AND NEW.chapter_cq_question_id IS NULL
@@ -59,24 +59,24 @@ BEGIN SELECT RAISE(ABORT, 'Cannot move section while attached items belong to an
 BEFORE DELETE ON paper_categories WHEN OLD.is_system=1
 BEGIN SELECT RAISE(ABORT, 'System paper category cannot be deleted'); END""",
         """CREATE TRIGGER IF NOT EXISTS trg_type_question_fts_insert AFTER INSERT ON type_cq_questions BEGIN
- INSERT INTO type_cq_question_fts(question_id, question_text, short_answer) VALUES (NEW.question_id, NEW.question_text, NEW.short_answer);
+ INSERT INTO type_cq_question_fts(rowid, question_text, short_answer) VALUES (NEW.fts_id, NEW.question_text, NEW.short_answer);
 END""",
-        """CREATE TRIGGER IF NOT EXISTS trg_type_question_fts_update AFTER UPDATE OF question_id, question_text, short_answer ON type_cq_questions BEGIN
- DELETE FROM type_cq_question_fts WHERE question_id=OLD.question_id;
- INSERT INTO type_cq_question_fts(question_id, question_text, short_answer) VALUES (NEW.question_id, NEW.question_text, NEW.short_answer);
+        """CREATE TRIGGER IF NOT EXISTS trg_type_question_fts_update AFTER UPDATE OF fts_id, question_text, short_answer ON type_cq_questions BEGIN
+ DELETE FROM type_cq_question_fts WHERE rowid=OLD.fts_id;
+ INSERT INTO type_cq_question_fts(rowid, question_text, short_answer) VALUES (NEW.fts_id, NEW.question_text, NEW.short_answer);
 END""",
         """CREATE TRIGGER IF NOT EXISTS trg_type_question_fts_delete AFTER DELETE ON type_cq_questions BEGIN
- DELETE FROM type_cq_question_fts WHERE question_id=OLD.question_id;
+ DELETE FROM type_cq_question_fts WHERE rowid=OLD.fts_id;
 END""",
         """CREATE TRIGGER IF NOT EXISTS trg_chapter_question_fts_insert AFTER INSERT ON chapter_cq_questions BEGIN
- INSERT INTO chapter_cq_question_fts(question_id, question_text, short_answer) VALUES (NEW.question_id, NEW.question_text, NEW.short_answer);
+ INSERT INTO chapter_cq_question_fts(rowid, question_text, short_answer) VALUES (NEW.fts_id, NEW.question_text, NEW.short_answer);
 END""",
-        """CREATE TRIGGER IF NOT EXISTS trg_chapter_question_fts_update AFTER UPDATE OF question_id, question_text, short_answer ON chapter_cq_questions BEGIN
- DELETE FROM chapter_cq_question_fts WHERE question_id=OLD.question_id;
- INSERT INTO chapter_cq_question_fts(question_id, question_text, short_answer) VALUES (NEW.question_id, NEW.question_text, NEW.short_answer);
+        """CREATE TRIGGER IF NOT EXISTS trg_chapter_question_fts_update AFTER UPDATE OF fts_id, question_text, short_answer ON chapter_cq_questions BEGIN
+ DELETE FROM chapter_cq_question_fts WHERE rowid=OLD.fts_id;
+ INSERT INTO chapter_cq_question_fts(rowid, question_text, short_answer) VALUES (NEW.fts_id, NEW.question_text, NEW.short_answer);
 END""",
         """CREATE TRIGGER IF NOT EXISTS trg_chapter_question_fts_delete AFTER DELETE ON chapter_cq_questions BEGIN
- DELETE FROM chapter_cq_question_fts WHERE question_id=OLD.question_id;
+ DELETE FROM chapter_cq_question_fts WHERE rowid=OLD.fts_id;
 END""",
         """INSERT OR IGNORE INTO paper_categories (paper_category_id, name, description, color, icon, sort_order, is_system, created_at, updated_at) VALUES ('system_uncategorized', 'অশ্রেণিবদ্ধ', 'সিস্টেমের ডিফল্ট ক্যাটাগরি', '', '', 0, 1, 0, 0)"""
     )

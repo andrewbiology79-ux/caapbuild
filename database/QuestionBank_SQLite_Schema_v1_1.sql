@@ -25,7 +25,7 @@ CREATE INDEX IF NOT EXISTS idx_type_cq_topics_chapter ON type_cq_topics(chapter_
 CREATE TABLE IF NOT EXISTS type_cq_question_types ( question_type_id TEXT PRIMARY KEY NOT NULL, code TEXT NOT NULL UNIQUE, label TEXT NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0, is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0,1)) );
 CREATE TABLE IF NOT EXISTS type_cq_stimuli ( stimulus_id TEXT PRIMARY KEY NOT NULL, topic_id TEXT NOT NULL, stimulus_text TEXT NOT NULL DEFAULT '', rating INTEGER CHECK (rating IS NULL OR rating BETWEEN 1 AND 5), reference_text TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, FOREIGN KEY(topic_id) REFERENCES type_cq_topics(topic_id) ON UPDATE CASCADE ON DELETE RESTRICT );
 CREATE INDEX IF NOT EXISTS idx_type_cq_stimuli_topic ON type_cq_stimuli(topic_id, updated_at);
-CREATE TABLE IF NOT EXISTS type_cq_questions ( question_id TEXT PRIMARY KEY NOT NULL, stimulus_id TEXT, topic_id TEXT NOT NULL, question_type_id TEXT NOT NULL, subquestion_label TEXT NOT NULL CHECK (subquestion_label IN ('ক','খ','গ','ঘ')), marks REAL NOT NULL CHECK (marks > 0), question_text TEXT NOT NULL DEFAULT '', short_answer TEXT NOT NULL DEFAULT '', rating INTEGER CHECK (rating IS NULL OR rating BETWEEN 1 AND 5), sort_order INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, FOREIGN KEY(stimulus_id) REFERENCES type_cq_stimuli(stimulus_id) ON UPDATE CASCADE ON DELETE RESTRICT, FOREIGN KEY(topic_id) REFERENCES type_cq_topics(topic_id) ON UPDATE CASCADE ON DELETE RESTRICT, FOREIGN KEY(question_type_id) REFERENCES type_cq_question_types(question_type_id) ON UPDATE CASCADE ON DELETE RESTRICT );
+CREATE TABLE IF NOT EXISTS type_cq_questions ( question_id TEXT PRIMARY KEY NOT NULL, fts_id INTEGER NOT NULL UNIQUE, stimulus_id TEXT, topic_id TEXT NOT NULL, question_type_id TEXT NOT NULL, subquestion_label TEXT NOT NULL CHECK (subquestion_label IN ('ক','খ','গ','ঘ')), marks REAL NOT NULL CHECK (marks > 0), question_text TEXT NOT NULL DEFAULT '', short_answer TEXT NOT NULL DEFAULT '', rating INTEGER CHECK (rating IS NULL OR rating BETWEEN 1 AND 5), sort_order INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, FOREIGN KEY(stimulus_id) REFERENCES type_cq_stimuli(stimulus_id) ON UPDATE CASCADE ON DELETE RESTRICT, FOREIGN KEY(topic_id) REFERENCES type_cq_topics(topic_id) ON UPDATE CASCADE ON DELETE RESTRICT, FOREIGN KEY(question_type_id) REFERENCES type_cq_question_types(question_type_id) ON UPDATE CASCADE ON DELETE RESTRICT );
 CREATE INDEX IF NOT EXISTS idx_type_cq_questions_topic ON type_cq_questions(topic_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_type_cq_questions_stimulus ON type_cq_questions(stimulus_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_type_cq_questions_type ON type_cq_questions(question_type_id, sort_order);
@@ -46,7 +46,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_chapter_cq_subject_name ON chapter_cq_subje
 CREATE TABLE IF NOT EXISTS chapter_cq_chapters ( chapter_id TEXT PRIMARY KEY NOT NULL, subject_id TEXT NOT NULL, name TEXT NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, FOREIGN KEY(subject_id) REFERENCES chapter_cq_subjects(subject_id) ON UPDATE CASCADE ON DELETE RESTRICT );
 CREATE INDEX IF NOT EXISTS idx_chapter_cq_chapters_subject ON chapter_cq_chapters(subject_id, sort_order);
 CREATE TABLE IF NOT EXISTS chapter_cq_stimuli ( stimulus_id TEXT PRIMARY KEY NOT NULL, chapter_id TEXT NOT NULL, stimulus_text TEXT NOT NULL DEFAULT '', rating INTEGER CHECK (rating IS NULL OR rating BETWEEN 1 AND 5), reference_text TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, FOREIGN KEY(chapter_id) REFERENCES chapter_cq_chapters(chapter_id) ON UPDATE CASCADE ON DELETE RESTRICT );
-CREATE TABLE IF NOT EXISTS chapter_cq_questions ( question_id TEXT PRIMARY KEY NOT NULL, stimulus_id TEXT, chapter_id TEXT NOT NULL, subquestion_label TEXT NOT NULL CHECK (subquestion_label IN ('ক','খ','গ','ঘ')), marks REAL NOT NULL CHECK (marks > 0), question_text TEXT NOT NULL DEFAULT '', short_answer TEXT NOT NULL DEFAULT '', rating INTEGER CHECK (rating IS NULL OR rating BETWEEN 1 AND 5), sort_order INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, FOREIGN KEY(stimulus_id) REFERENCES chapter_cq_stimuli(stimulus_id) ON UPDATE CASCADE ON DELETE RESTRICT, FOREIGN KEY(chapter_id) REFERENCES chapter_cq_chapters(chapter_id) ON UPDATE CASCADE ON DELETE RESTRICT );
+CREATE TABLE IF NOT EXISTS chapter_cq_questions ( question_id TEXT PRIMARY KEY NOT NULL, fts_id INTEGER NOT NULL UNIQUE, stimulus_id TEXT, chapter_id TEXT NOT NULL, subquestion_label TEXT NOT NULL CHECK (subquestion_label IN ('ক','খ','গ','ঘ')), marks REAL NOT NULL CHECK (marks > 0), question_text TEXT NOT NULL DEFAULT '', short_answer TEXT NOT NULL DEFAULT '', rating INTEGER CHECK (rating IS NULL OR rating BETWEEN 1 AND 5), sort_order INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, FOREIGN KEY(stimulus_id) REFERENCES chapter_cq_stimuli(stimulus_id) ON UPDATE CASCADE ON DELETE RESTRICT, FOREIGN KEY(chapter_id) REFERENCES chapter_cq_chapters(chapter_id) ON UPDATE CASCADE ON DELETE RESTRICT );
 CREATE INDEX IF NOT EXISTS idx_chapter_cq_stimuli_chapter ON chapter_cq_stimuli(chapter_id, updated_at);
 CREATE INDEX IF NOT EXISTS idx_chapter_cq_questions_chapter ON chapter_cq_questions(chapter_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_chapter_cq_questions_stimulus ON chapter_cq_questions(stimulus_id, sort_order);
@@ -80,8 +80,8 @@ CREATE INDEX IF NOT EXISTS idx_chapter_cq_stimulus_images_image ON chapter_cq_st
 CREATE INDEX IF NOT EXISTS idx_chapter_cq_question_board_year ON chapter_cq_question_boards(board_code, year);
 CREATE INDEX IF NOT EXISTS idx_chapter_cq_stimulus_board_year ON chapter_cq_stimulus_boards(board_code, year);
 CREATE INDEX IF NOT EXISTS idx_chapter_cq_category_links_category ON chapter_cq_question_category_links(category_id, question_id);
-CREATE VIRTUAL TABLE IF NOT EXISTS type_cq_question_fts USING fts5(question_id UNINDEXED, question_text, short_answer, tokenize = "unicode61 tokenchars 'ািীুূৃেৈোৌংঃঁ়্'");
-CREATE VIRTUAL TABLE IF NOT EXISTS chapter_cq_question_fts USING fts5(question_id UNINDEXED, question_text, short_answer, tokenize = "unicode61 tokenchars 'ািীুূৃেৈোৌংঃঁ়্'");
+CREATE VIRTUAL TABLE IF NOT EXISTS type_cq_question_fts USING fts5(question_text, short_answer, tokenize = "unicode61 tokenchars 'ািীুূৃেৈোৌংঃঁ়্'");
+CREATE VIRTUAL TABLE IF NOT EXISTS chapter_cq_question_fts USING fts5(question_text, short_answer, tokenize = "unicode61 tokenchars 'ািীুূৃেৈোৌংঃঁ়্'");
 INSERT OR IGNORE INTO paper_categories (paper_category_id, name, description, color, icon, sort_order, is_system, created_at, updated_at) VALUES ('system_uncategorized', 'অশ্রেণিবদ্ধ', 'সিস্টেমের ডিফল্ট ক্যাটাগরি', '', '', 0, 1, 0, 0);
 CREATE TRIGGER IF NOT EXISTS trg_paper_item_source_required_insert
 BEFORE INSERT ON paper_question_items
@@ -133,22 +133,22 @@ CREATE TRIGGER IF NOT EXISTS trg_system_paper_category_no_delete
 BEFORE DELETE ON paper_categories WHEN OLD.is_system=1
 BEGIN SELECT RAISE(ABORT, 'System paper category cannot be deleted'); END;
 CREATE TRIGGER IF NOT EXISTS trg_type_question_fts_insert AFTER INSERT ON type_cq_questions BEGIN
- INSERT INTO type_cq_question_fts(question_id, question_text, short_answer) VALUES (NEW.question_id, NEW.question_text, NEW.short_answer);
+ INSERT INTO type_cq_question_fts(rowid, question_text, short_answer) VALUES (NEW.fts_id, NEW.question_text, NEW.short_answer);
 END;
-CREATE TRIGGER IF NOT EXISTS trg_type_question_fts_update AFTER UPDATE OF question_id, question_text, short_answer ON type_cq_questions BEGIN
- DELETE FROM type_cq_question_fts WHERE question_id=OLD.question_id;
- INSERT INTO type_cq_question_fts(question_id, question_text, short_answer) VALUES (NEW.question_id, NEW.question_text, NEW.short_answer);
+CREATE TRIGGER IF NOT EXISTS trg_type_question_fts_update AFTER UPDATE OF fts_id, question_text, short_answer ON type_cq_questions BEGIN
+ DELETE FROM type_cq_question_fts WHERE rowid=OLD.fts_id;
+ INSERT INTO type_cq_question_fts(rowid, question_text, short_answer) VALUES (NEW.fts_id, NEW.question_text, NEW.short_answer);
 END;
 CREATE TRIGGER IF NOT EXISTS trg_type_question_fts_delete AFTER DELETE ON type_cq_questions BEGIN
- DELETE FROM type_cq_question_fts WHERE question_id=OLD.question_id;
+ DELETE FROM type_cq_question_fts WHERE rowid=OLD.fts_id;
 END;
 CREATE TRIGGER IF NOT EXISTS trg_chapter_question_fts_insert AFTER INSERT ON chapter_cq_questions BEGIN
- INSERT INTO chapter_cq_question_fts(question_id, question_text, short_answer) VALUES (NEW.question_id, NEW.question_text, NEW.short_answer);
+ INSERT INTO chapter_cq_question_fts(rowid, question_text, short_answer) VALUES (NEW.fts_id, NEW.question_text, NEW.short_answer);
 END;
-CREATE TRIGGER IF NOT EXISTS trg_chapter_question_fts_update AFTER UPDATE OF question_id, question_text, short_answer ON chapter_cq_questions BEGIN
- DELETE FROM chapter_cq_question_fts WHERE question_id=OLD.question_id;
- INSERT INTO chapter_cq_question_fts(question_id, question_text, short_answer) VALUES (NEW.question_id, NEW.question_text, NEW.short_answer);
+CREATE TRIGGER IF NOT EXISTS trg_chapter_question_fts_update AFTER UPDATE OF fts_id, question_text, short_answer ON chapter_cq_questions BEGIN
+ DELETE FROM chapter_cq_question_fts WHERE rowid=OLD.fts_id;
+ INSERT INTO chapter_cq_question_fts(rowid, question_text, short_answer) VALUES (NEW.fts_id, NEW.question_text, NEW.short_answer);
 END;
 CREATE TRIGGER IF NOT EXISTS trg_chapter_question_fts_delete AFTER DELETE ON chapter_cq_questions BEGIN
- DELETE FROM chapter_cq_question_fts WHERE question_id=OLD.question_id;
+ DELETE FROM chapter_cq_question_fts WHERE rowid=OLD.fts_id;
 END;

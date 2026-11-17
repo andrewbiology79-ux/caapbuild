@@ -1,4 +1,4 @@
-Question Bank Android build foundation - package version 0.2.17 (plan v1.19)
+Question Bank Android build foundation - package version 0.2.18 (plan v1.20)
 
 This ZIP is an incremental Android/Room build-harness package, not a completed Question Bank application.
 MainActivity is still a placeholder TextView; no feature of the Master Checklist is implemented.
@@ -24,3 +24,9 @@ kotlinx-coroutines-android:1.10.2 androidTest dependency (runtime classpath pinn
 v0.2.17: CI run on v0.2.16: main build SUCCESSFUL (exit 0, unit tests + APK). Non-blocking androidTest compile step reported
 2 errors in ScaleBenchmarkTest (mixed-type arrayOf inferred an intersection type). Fixed with arrayOf<Any?>.
 No other androidTest compile error was reported (Room driver APIs resolved). Emulator run still pending.
+
+v0.2.17 RESULT (emulator, API 34): instrumented run green, 9 of 9 (8 runtime tests + scale benchmark), exit code 0;
+unit tests 7 of 7. Benchmark at 300,000 rows: import 75 s (4,004 rows/s), DB 589 MB, edit 127.7 ms, delete 117.7 ms per row
+(F-1 confirmed), rank search 109 ms, deep OFFSET 275 ms. F-2 confirmed open (decomposed query found 0).
+
+v0.2.18: F-1 fix (fts_id as FTS rowid) and F-2 fix (NFC normalization) written, NOT compiled, NOT run. UNCONFIRMED.

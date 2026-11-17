@@ -7,6 +7,8 @@ import androidx.room.useWriterConnection
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.questionbank.app.TestDb.INSERT_QUESTION
+import com.questionbank.app.TestDb.INSERT_QUESTION_EXPLICIT_FTS
+import com.questionbank.app.data.local.BanglaText
 import com.questionbank.app.data.local.CanonicalDatabaseObjects
 import com.questionbank.app.data.local.QuestionBankDatabase
 import kotlinx.coroutines.runBlocking
@@ -100,8 +102,8 @@ class RoomRuntimeTest {
         write { it.exec("INSERT INTO type_cq_stimuli(stimulus_id, topic_id, stimulus_text, reference_text, created_at, updated_at) VALUES('st1','t1','','',1,1)") }
         expectFailure("question topic must match stimulus topic") {
             it.exec(
-                "INSERT INTO type_cq_questions(question_id, stimulus_id, topic_id, question_type_id, subquestion_label, marks, created_at, updated_at) " +
-                    "VALUES('m1','st1','t2','qt1','ক',1,1,1)"
+                "INSERT INTO type_cq_questions(question_id, fts_id, stimulus_id, topic_id, question_type_id, subquestion_label, marks, created_at, updated_at) " +
+                    "VALUES('m1',99,'st1','t2','qt1','ক',1,1,1)"
             )
         }
     }
@@ -130,12 +132,43 @@ class RoomRuntimeTest {
         assertEquals("prefix কর্ম", 1L, write { it.ftsCount("\"কর্ম\"*") })
     }
 
-    /** Informational (no assertion): Unicode normalization of য় (U+09DF vs U+09AF U+09BC). */
+    /** F-2: both spellings of য় must find the same question once text and query are normalized. */
     @Test
-    fun banglaNormalizationReport() {
-        write { it.exec(INSERT_QUESTION, "n1", "t1", "ক", 1.0, "দ\u09DFা করে", "", 0) }
-        val precomposed = write { it.ftsCount("\"দ\u09DFা\"") }
-        val decomposed = write { it.ftsCount("\"দ\u09AF\u09BCা\"") }
-        Log.i("QB_BENCH", "normalization: indexed precomposed U+09DF; query precomposed=$precomposed decomposed=$decomposed")
+    fun banglaNormalizationMakesBothSpellingsSearchable() {
+        val pre = "দ\u09DFা"
+        val dec = "দ\u09AF\u09BCা"
+        write { it.exec(INSERT_QUESTION, "n1", "t1", "ক", 1.0, BanglaText.normalize("$pre করে"), "", 0) }
+        val viaPre = write { it.ftsCount("\"${BanglaText.normalize(pre)}\"") }
+        val viaDec = write { it.ftsCount("\"${BanglaText.normalize(dec)}\"") }
+        Log.i("QB_BENCH", "normalization: normalized store+query; precomposed=$viaPre decomposed=$viaDec")
+        assertEquals("precomposed query", 1L, viaPre)
+        assertEquals("decomposed query", 1L, viaDec)
+    }
+
+    @Test
+    fun ftsIdIsRequiredAndUnique() {
+        val noId = "INSERT INTO type_cq_questions(question_id, topic_id, question_type_id, subquestion_label, marks, created_at, updated_at) VALUES('x1','t1','qt1','ক',1,1,1)"
+        expectFailure("fts_id missing must be rejected") { it.exec(noId) }
+        write { it.exec(INSERT_QUESTION_EXPLICIT_FTS, "u1", 500L, "t1", "ক", 1.0, "প্রথম", "", 0) }
+        expectFailure("duplicate fts_id must be rejected") {
+            it.exec(INSERT_QUESTION_EXPLICIT_FTS, "u2", 500L, "t1", "ক", 1.0, "দ্বিতীয়", "", 1)
+        }
+    }
+
+    @Test
+    fun searchJoinByFtsIdReturnsTheRightQuestionAndFollowsEditsAndDeletes() {
+        write { it.exec(INSERT_QUESTION_EXPLICIT_FTS, "j1", 7L, "t1", "ক", 1.0, "আলোর প্রতিফলন", "", 0) }
+        write { it.exec(INSERT_QUESTION_EXPLICIT_FTS, "j2", 8L, "t1", "খ", 1.0, "ধ্বনির প্রতিধ্বনি", "", 1) }
+        val join = "SELECT q.question_id FROM type_cq_question_fts f JOIN type_cq_questions q ON q.fts_id = f.rowid WHERE f.type_cq_question_fts MATCH ?"
+        assertEquals("j1", write { it.scalarText(join, "\"আলোর\"") })
+        write { it.exec("UPDATE type_cq_questions SET question_text = ? WHERE question_id = 'j1'", "চুম্বকত্ব") }
+        assertEquals(0L, write { it.ftsCount("\"আলোর\"") })
+        assertEquals("j1", write { it.scalarText(join, "\"চুম্বকত্ব\"") })
+        write { it.exec("DELETE FROM type_cq_questions WHERE question_id = 'j2'") }
+        assertEquals(0L, write { it.ftsCount("\"প্রতিধ্বনি\"") })
+        assertEquals(
+            write { it.scalarLong("SELECT COUNT(*) FROM type_cq_questions") },
+            write { it.scalarLong("SELECT COUNT(*) FROM type_cq_question_fts") }
+        )
     }
 }

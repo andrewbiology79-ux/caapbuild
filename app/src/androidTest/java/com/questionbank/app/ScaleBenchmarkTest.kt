@@ -8,7 +8,8 @@ import androidx.room.useWriterConnection
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.questionbank.app.TestDb.INSERT_QUESTION
+import com.questionbank.app.TestDb.INSERT_QUESTION_EXPLICIT_FTS
+import com.questionbank.app.data.local.FtsIdAllocator
 import com.questionbank.app.TestDb.INSERT_SOLUTION
 import com.questionbank.app.data.local.QuestionBankDatabase
 import kotlinx.coroutines.runBlocking
@@ -94,6 +95,7 @@ class ScaleBenchmarkTest {
 
         // ---- 1. Import (batches of 10,000 questions + 20,000 solution parts per transaction) ----
         val rnd = Random(42)
+        val ids = FtsIdAllocator(0)
         val batch = 10_000
         var done = 0
         val (_, importMs) = timed {
@@ -103,11 +105,11 @@ class ScaleBenchmarkTest {
                 val (_, ms) = timed {
                     db.useWriterConnection { tx ->
                         tx.withTransaction(Transactor.SQLiteTransactionType.IMMEDIATE) {
-                            usePrepared(INSERT_QUESTION) { st ->
+                            usePrepared(INSERT_QUESTION_EXPLICIT_FTS) { st ->
                                 for (k in 0 until n) {
                                     val i = start + k
                                     st.reset()
-                                    bindAll(st, arrayOf<Any?>("q$i", "t${i % topics + 1}", labels[i % 4], (i % 4 + 1).toDouble(), sentence(rnd, 14, i % 1000 == 0), sentence(rnd, 5), i))
+                                    bindAll(st, arrayOf<Any?>("q$i", ids.next(), "t${i % topics + 1}", labels[i % 4], (i % 4 + 1).toDouble(), sentence(rnd, 14, i % 1000 == 0), sentence(rnd, 5), i))
                                     st.step()
                                 }
                             }
@@ -150,12 +152,12 @@ class ScaleBenchmarkTest {
         // ---- 3. Search / paging latency (reader connection) ----
         val common = words[0]
         val queries = listOf(
-            Triple("fts_common_limit50", "SELECT question_id FROM type_cq_question_fts WHERE type_cq_question_fts MATCH ? LIMIT 50", "\"$common\""),
-            Triple("fts_common_rank_limit50", "SELECT question_id FROM type_cq_question_fts WHERE type_cq_question_fts MATCH ? ORDER BY rank LIMIT 50", "\"$common\""),
+            Triple("fts_common_limit50", "SELECT rowid FROM type_cq_question_fts WHERE type_cq_question_fts MATCH ? LIMIT 50", "\"$common\""),
+            Triple("fts_common_rank_limit50", "SELECT rowid FROM type_cq_question_fts WHERE type_cq_question_fts MATCH ? ORDER BY rank LIMIT 50", "\"$common\""),
             Triple("fts_common_count", "SELECT COUNT(*) FROM type_cq_question_fts WHERE type_cq_question_fts MATCH ?", "\"$common\""),
-            Triple("fts_rare_word", "SELECT question_id FROM type_cq_question_fts WHERE type_cq_question_fts MATCH ?", "\"$rareWord\""),
-            Triple("fts_prefix_limit50", "SELECT question_id FROM type_cq_question_fts WHERE type_cq_question_fts MATCH ? LIMIT 50", "\"${common.take(3)}\"*"),
-            Triple("fts_join_topic_limit50", "SELECT q.question_id FROM type_cq_question_fts f JOIN type_cq_questions q ON q.question_id = f.question_id WHERE f.type_cq_question_fts MATCH ? AND q.topic_id = 't7' LIMIT 50", "\"$common\"")
+            Triple("fts_rare_word", "SELECT rowid FROM type_cq_question_fts WHERE type_cq_question_fts MATCH ?", "\"$rareWord\""),
+            Triple("fts_prefix_limit50", "SELECT rowid FROM type_cq_question_fts WHERE type_cq_question_fts MATCH ? LIMIT 50", "\"${common.take(3)}\"*"),
+            Triple("fts_join_topic_limit50", "SELECT q.question_id FROM type_cq_question_fts f JOIN type_cq_questions q ON q.fts_id = f.rowid WHERE f.type_cq_question_fts MATCH ? AND q.topic_id = 't7' LIMIT 50", "\"$common\"")
         )
         for ((label, sql, arg) in queries) {
             var hits = 0
@@ -197,29 +199,11 @@ class ScaleBenchmarkTest {
         }
         log("DELETE rows=$k total_ms=${"%.0f".format(delMs)} per_row_ms=${"%.2f".format(delMs / k)} (cascades solution parts, fires FTS delete trigger)")
 
-        // ---- 5. Experiment: FTS keyed by rowid instead of the UNINDEXED question_id column ----
-        db.useWriterConnection { tx ->
-            tx.exec(
-                "CREATE VIRTUAL TABLE bench_fts_rowid USING fts5(question_text, short_answer, " +
-                    "tokenize = \"unicode61 tokenchars 'ািীুূৃেৈোৌংঃঁ়্'\")"
-            )
-            tx.exec("INSERT INTO bench_fts_rowid(rowid, question_text, short_answer) SELECT rowid, question_text, short_answer FROM type_cq_questions")
-        }
-        val (_, directUnindexedMs) = timed {
-            db.useWriterConnection { tx ->
-                tx.withTransaction(Transactor.SQLiteTransactionType.IMMEDIATE) {
-                    for (i in 2 * k until 3 * k) exec("DELETE FROM type_cq_question_fts WHERE question_id = ?", "q$i")
-                }
-            }
-        }
-        val (_, directRowidMs) = timed {
-            db.useWriterConnection { tx ->
-                tx.withTransaction(Transactor.SQLiteTransactionType.IMMEDIATE) {
-                    for (i in 3 * k until 4 * k) exec("DELETE FROM bench_fts_rowid WHERE rowid = (SELECT rowid FROM type_cq_questions WHERE question_id = ?)", "q$i")
-                }
-            }
-        }
-        log("EXPERIMENT fts_delete per_row_ms unindexed_question_id=${"%.3f".format(directUnindexedMs / k)} rowid_keyed=${"%.3f".format(directRowidMs / k)} rows_in_fts=${rows - k}")
+        // ---- 5. Consistency: every remaining question has exactly one FTS row ----
+        val qRows = db.useReaderConnection { it.scalarLong("SELECT COUNT(*) FROM type_cq_questions") }
+        val fRows = db.useReaderConnection { it.scalarLong("SELECT COUNT(*) FROM type_cq_question_fts") }
+        log("CONSISTENCY questions=$qRows fts_rows=$fRows")
+        assertEquals("FTS rows must match question rows after edits and deletes", qRows, fRows)
         log("DONE rows=$rows")
     }
 }

@@ -13,7 +13,7 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        versionName = "0.2.17-androidtest-compile-fix"
+        versionName = "0.2.18-fts-rowid-and-nfc"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

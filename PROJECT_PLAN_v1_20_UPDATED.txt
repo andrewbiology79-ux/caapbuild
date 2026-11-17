@@ -1,7 +1,7 @@
 QUESTION BANK ANDROID APP COMPLETE PROJECT DEVELOPMENT & DELIVERY PLAN
 ============================================================
 
-Document version: 1.19 (problem and solution log added as section 31)
+Document version: 1.20 (benchmark results, ADR-003 decision and v0.2.18 patch added as section 32)
 Planning baseline: 16 November 2026
 Project status: Single-database architecture confirmed; canonical SQL and Room build harness prepared. CI run 11 (package v0.2.8) passed: KSP/Room generation, unit tests (5 of 5) and debug APK assembly. The package is still a build harness, not a complete application; Room-database runtime behaviour (CHECK emulation, Bengali FTS on the real database) is not yet device-tested.
 
@@ -2105,6 +2105,8 @@ P-09  CI on v0.2.16 - non-blocking androidTest compile step reported 2 errors in
       String/Double/Int inferred an intersection type for a reified parameter.
       Fix (v0.2.17): arrayOf<Any?>(...). Status: UNCONFIRMED until the next CI run shows a clean androidtest-compile.log.
       Note: the main build stayed green because that step is non-blocking (this was the intended design).
+      UPDATE v1.20: CONFIRMED. CI androidtest-compile.log on v0.2.17 reports BUILD SUCCESSFUL, 0 errors; compileDebugAndroidTestKotlin executed.
+
 
 31.2 Database design problems
 
@@ -2112,14 +2114,20 @@ P-10  Room @Entity cannot declare SQL CHECK constraints, so the 48 canonical CHE
       Fix (v0.2.6): 46 BEFORE INSERT/UPDATE triggers (23 tables x 2) generated from the canonical SQL; NULL semantics match CHECK.
       Offline fuzz (about 124,000 operations): 0 differences. Counts 48 CHECK vs 46 triggers reconciled. Status: CONFIRMED at JDBC level;
       runtime on the real Room database UNCONFIRMED (RoomRuntimeTest not run yet).
+      UPDATE v1.20: CONFIRMED on the real Room database (emulator API 34, v0.2.17): RoomRuntimeTest.checkEmulationRejectsInvalidRows passed (9 of 9).
+
 
 P-11  Bengali full-text search: default tokenizer split words at vowel signs and hasanta.
       Fix (v0.2.6): unicode61 with tokenchars for Bengali vowel signs, hasanta, chandrabindu, visarga, anusvara, nukta; FTS update trigger fires on the right columns.
       Offline prototype: conjunct words and prefixes searchable. Status: CONFIRMED offline; device confirmation UNCONFIRMED.
+      UPDATE v1.20: CONFIRMED on device for whole words and prefixes (banglaWordsAndPrefixesAreSearchable passed). Unicode spelling variants are F-2 (P-15).
+
 
 P-12  Redundant indexes and uncovered foreign keys (scale risk, several hundred thousand questions).
       Fix (v0.2.14): removed 2 duplicate indexes; added 12 indexes so every foreign key is covered; Room entities and strict parity test match;
       WAL set explicitly. Status: CONFIRMED (run 18: 48 indices, 39 foreign keys, 7/7 tests). WAL actually active on device: UNCONFIRMED.
+      UPDATE v1.20: WAL CONFIRMED on emulator (walJournalModeIsActive passed). Index coverage was confirmed earlier (run 18).
+
 
 P-13  Schema drift risk between canonical SQL and Room entities.
       Fix (v0.2.13-0.2.14): RoomSchemaParityTest compares tables, columns, keys, foreign keys and indexes (strict). Status: CONFIRMED.
@@ -2128,9 +2136,13 @@ P-14  F-1 FTS delete/update scans the whole FTS table (question_id is an UNINDEX
       Evidence (offline prototype only): 18.3 ms per row at 50,000 rows vs 0.019 ms by rowid; cost grows linearly with row count.
       Status: OPEN. Plan: confirm with ScaleBenchmarkTest on the emulator, then decide ADR-003 (recommended: integer surrogate column used as FTS rowid;
       database is still version 1 and unreleased, so no migration is needed). Canonical schema is not changed before that decision.
+      UPDATE v1.20: CONFIRMED by measurement at 300,000 rows (section 32). Fix in v0.2.18 is UNCONFIRMED until CI and the emulator run pass.
+
 
 P-15  F-2 Unicode normalization: precomposed and decomposed forms of the letter য় (and similar letters) do not match each other in search.
       Status: OPEN. Plan: normalize text on write and on query (NFC plus folding), Phase 12.
+      UPDATE v1.20: STILL OPEN on v0.2.17 (decomposed query found 0 rows). Fix in v0.2.18 (NFC on write and query) is UNCONFIRMED.
+
 
 31.3 Planning and documentation problems
 
@@ -2155,3 +2167,86 @@ P-18  Phase 0 deliverables (146-item traceability sheet, screen inventory, requi
 - v1.19: Problem and solution log (P-01 to P-18) and working rules added.
 
 END OF VERSION 1.19 UPDATE
+
+
+============================================================
+32. BENCHMARK RESULTS, ADR-003 AND PACKAGE v0.2.18 - VERSION 1.20
+============================================================
+
+Planning update date: 17 November 2026
+
+32.1 Measured results (emulator sdk_gphone64_x86_64, API 34, GitHub Actions runner; package v0.2.17)
+Both instrumented runs: Gradle exit code 0, 9 of 9 tests passed (8 runtime tests + 1 benchmark). Unit tests 7 of 7.
+
+Metric                              20,000 rows    300,000 rows
+Import total                        6.1 s          74.9 s (4,004 rows/s average, about 5,500 rows/s late)
+Database size                       39 MB          589 MB (about 2 KB per question with 2 solution parts)
+WAL peak before checkpoint          20.7 MB        38.8 MB
+FTS optimize                        20 ms          755 ms
+Search common word, LIMIT 50        0.7 ms         0.7 ms
+Search common word, ORDER BY rank   7.3 ms         109.4 ms
+Search prefix, LIMIT 50             0.8 ms         3.7 ms
+Search + topic join, LIMIT 50       10.7 ms        25.8 ms
+Topic first page                    0.8 ms         0.7 ms
+Global deep OFFSET                  4.9 ms         275.2 ms (offset 150,000)
+Edit per row (FTS trigger)          5.12 ms        127.72 ms
+Delete per row (FTS trigger)        5.51 ms        117.73 ms
+FTS delete by question_id           4.28 ms        105.22 ms
+FTS delete by rowid                 0.044 ms       0.117 ms
+
+Caveats: x86 emulator on a CI runner, synthetic Latin-and-Bengali text, 2 solution parts per question, no images.
+Treat as a relative baseline, not as phone speed. dbstat was unavailable, so per-table sizes are unknown.
+The earlier estimate of 70-80 ms per edit at 300,000 rows was too low; the measured cost grows faster than linearly.
+
+32.2 Findings
+- F-1 CONFIRMED: edit and delete cost 118-128 ms per row at 300,000 rows (about 900 times slower than rowid keying).
+  Deleting 10,000 questions would take roughly 20 minutes. Not acceptable.
+- F-2 STILL OPEN on v0.2.17: indexed precomposed U+09DF, decomposed query found 0 rows.
+- NEW (design notes, not defects yet):
+  N-1 ORDER BY rank on a common word costs 109 ms at 300,000 rows. Keep rank sorting optional or bounded in the UI.
+  N-2 Deep OFFSET paging costs 275 ms at offset 150,000. Use Paging 3 with keyset (cursor) queries, not OFFSET.
+
+32.3 ADR-003 decision (F-1): option (a), integer surrogate column used as the FTS rowid, app-assigned
+- Column: fts_id INTEGER NOT NULL UNIQUE on type_cq_questions and chapter_cq_questions.
+- Why app-assigned: a missing or duplicate value fails loudly (NOT NULL / UNIQUE) instead of corrupting search silently;
+  FTS triggers stay simple; no extra UPDATE per insert; the DAO layer is not written yet, so a single central allocator
+  (FtsIdAllocator, read MAX once per write transaction) can be enforced.
+- Rejected: using the implicit rowid or setting fts_id = rowid in a trigger. Question tables have a TEXT primary key,
+  so VACUUM may renumber rowids; a later insert could then collide with an old fts_id. A trigger using MAX(fts_id)+1
+  would need a nullable column and an extra UPDATE per insert.
+- Rejected: option (c) (indexed question_id column inside FTS) - depends on IDs tokenizing as one token.
+- Rules: fts_id is internal; never written to backups or exports; restore and import allocate new values.
+- FTS is derived data: it can be rebuilt from the question tables; a maintenance routine (row-count check and rebuild)
+  belongs to Phase 12/Backup work.
+
+32.4 F-2 decision
+- NFC on write and on every query (BanglaText.normalize). U+09DF, U+09DC and U+09DD are Unicode composition
+  exclusions, so NFC alone maps them to base letter + nukta (checked with Python unicodedata); no folding table.
+- NFC also unifies split and composed vowel signs. Existing sources of text (editor, import, restore, search box)
+  must all call BanglaText.normalize; this is a Phase 12 acceptance item.
+
+32.5 Package v0.2.18 (written, NOT compiled, NOT run - UNCONFIRMED)
+See VERSION_NOTES_0.2.18.md. Offline prototype (Python sqlite3 3.45, 100,000 rows): edit 0.040 ms and delete 0.044 ms per
+row, FTS count equals question count, missing/duplicate fts_id rejected, NFC search finds both spellings. Not a device result.
+
+32.6 Status
+PHASE 1: BUILD GATE PASSED, FOUNDATION INCOMPLETE (unchanged).
+PHASE 2: runtime verification on emulator DONE for v0.2.17 (CHECK emulation, FK, WAL, FTS sync, Bengali words/prefixes,
+         scale baseline). F-1 and F-2 fixes written, UNCONFIRMED.
+PHASES 3-17: NOT STARTED.
+
+32.7 Problem log additions
+P-19  N-1 rank search 109 ms at 300,000 rows. Status: OPEN (design note; decide in Phase 12).
+P-20  N-2 deep OFFSET paging 275 ms at offset 150,000. Status: OPEN (use keyset paging in the DAO layer).
+
+32.8 Next steps (in order)
+1. Push v0.2.18; confirm the normal workflow is green (7 + 4 = 11 unit tests, parity test, KSP not from cache) and commit the
+   regenerated app/schemas/.../1.json from the CI report.
+2. Run the instrumented workflow with 20000 rows and then 300000 rows; expected 11 of 11 tests; compare edit and delete per row
+   with the v0.2.17 baseline (target: well under 1 ms per row at 300,000).
+3. If green: mark P-14 and P-15 CONFIRMED; record ADR-002 (UI toolkit and DI); then Step B of section 29.2.
+
+32.9 Change log addition
+- v1.20: measured benchmark results, ADR-003 and F-2 decisions, package v0.2.18, problems P-19 and P-20.
+
+END OF VERSION 1.20 UPDATE

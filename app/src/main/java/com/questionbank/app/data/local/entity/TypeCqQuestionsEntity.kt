@@ -7,6 +7,7 @@ import androidx.room.*
         ForeignKey(entity = TypeCqTopicsEntity::class, parentColumns = ["topic_id"], childColumns = ["topic_id"], onUpdate = ForeignKey.CASCADE, onDelete = ForeignKey.RESTRICT),
         ForeignKey(entity = TypeCqStimuliEntity::class, parentColumns = ["stimulus_id"], childColumns = ["stimulus_id"], onUpdate = ForeignKey.CASCADE, onDelete = ForeignKey.RESTRICT)
     ], indices = [
+        Index(value = ["fts_id"], unique = true),
         Index(value = ["question_type_id", "sort_order"], unique = false),
         Index(value = ["stimulus_id", "sort_order"], unique = false),
         Index(value = ["topic_id", "sort_order"], unique = false)
@@ -14,6 +15,8 @@ import androidx.room.*
 data class TypeCqQuestionsEntity(
     @ColumnInfo(name = "question_id")
     val questionId: String,
+    @ColumnInfo(name = "fts_id")
+    val ftsId: Long,
     @ColumnInfo(name = "stimulus_id")
     val stimulusId: String?,
     @ColumnInfo(name = "topic_id")

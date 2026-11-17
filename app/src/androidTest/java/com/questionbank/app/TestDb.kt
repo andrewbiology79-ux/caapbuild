@@ -20,9 +20,15 @@ object TestDb {
     }
 
     const val INSERT_QUESTION =
-        "INSERT INTO type_cq_questions(question_id, stimulus_id, topic_id, question_type_id, " +
+        "INSERT INTO type_cq_questions(question_id, fts_id, stimulus_id, topic_id, question_type_id, " +
             "subquestion_label, marks, question_text, short_answer, rating, sort_order, created_at, updated_at) " +
-            "VALUES(?, NULL, ?, 'qt1', ?, ?, ?, ?, NULL, ?, 1, 1)"
+            "VALUES(?, (SELECT COALESCE(MAX(fts_id), 0) + 1 FROM type_cq_questions), NULL, ?, 'qt1', ?, ?, ?, ?, NULL, ?, 1, 1)"
+
+    /** Same insert with an explicit fts_id (second bound value), as the real import path will do. */
+    const val INSERT_QUESTION_EXPLICIT_FTS =
+        "INSERT INTO type_cq_questions(question_id, fts_id, stimulus_id, topic_id, question_type_id, " +
+            "subquestion_label, marks, question_text, short_answer, rating, sort_order, created_at, updated_at) " +
+            "VALUES(?, ?, NULL, ?, 'qt1', ?, ?, ?, ?, NULL, ?, 1, 1)"
 
     const val INSERT_SOLUTION =
         "INSERT INTO type_cq_solution_parts(part_id, question_id, position, part_type, text_content, image_id, created_at) " +

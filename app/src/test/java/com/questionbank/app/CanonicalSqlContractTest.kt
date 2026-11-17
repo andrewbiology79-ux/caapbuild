@@ -105,7 +105,7 @@ class CanonicalSqlContractTest {
                 st.execute("INSERT INTO type_cq_chapters(chapter_id,subject_id,name,created_at,updated_at) VALUES('c1','s1','Acids',1,1)")
                 st.execute("INSERT INTO type_cq_topics(topic_id,chapter_id,name,created_at,updated_at) VALUES('t1','c1','Reaction',1,1)")
                 st.execute("INSERT INTO type_cq_question_types(question_type_id,code,label) VALUES('qt1','T1','T1')")
-                st.execute("INSERT INTO type_cq_questions(question_id,stimulus_id,topic_id,question_type_id,subquestion_label,marks,question_text,short_answer,sort_order,created_at,updated_at) VALUES('q1',NULL,'t1','qt1','ক',1,'Acid reaction test','Neutralization',0,1,1)")
+                st.execute("INSERT INTO type_cq_questions(question_id,fts_id,stimulus_id,topic_id,question_type_id,subquestion_label,marks,question_text,short_answer,sort_order,created_at,updated_at) VALUES('q1',1,NULL,'t1','qt1','ক',1,'Acid reaction test','Neutralization',0,1,1)")
                 st.executeQuery("SELECT COUNT(*) FROM type_cq_question_fts WHERE type_cq_question_fts MATCH 'Acid'").use { rs ->
                     assertTrue(rs.next())
                     assertEquals(1, rs.getInt(1))
@@ -153,7 +153,7 @@ class CanonicalSqlContractTest {
             connection.createStatement().use { st ->
                 val ftsDdl = Regex("CREATE VIRTUAL TABLE IF NOT EXISTS type_cq_question_fts[^;]*").find(sql)!!.value
                 st.execute(ftsDdl)
-                st.execute("INSERT INTO type_cq_question_fts(question_id, question_text, short_answer) VALUES('q1','বাংলাদেশ সরকার পরীক্ষা','')")
+                st.execute("INSERT INTO type_cq_question_fts(rowid, question_text, short_answer) VALUES(1,'বাংলাদেশ সরকার পরীক্ষা','')")
                 fun hits(q: String) = st.executeQuery("SELECT COUNT(*) FROM type_cq_question_fts WHERE type_cq_question_fts MATCH '$q'").use { rs -> rs.next(); rs.getInt(1) }
                 assertEquals(1, hits("পরীক্ষা"))
                 assertEquals(1, hits("সরকার"))

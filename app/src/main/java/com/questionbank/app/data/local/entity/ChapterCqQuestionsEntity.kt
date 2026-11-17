@@ -6,12 +6,15 @@ import androidx.room.*
         ForeignKey(entity = ChapterCqChaptersEntity::class, parentColumns = ["chapter_id"], childColumns = ["chapter_id"], onUpdate = ForeignKey.CASCADE, onDelete = ForeignKey.RESTRICT),
         ForeignKey(entity = ChapterCqStimuliEntity::class, parentColumns = ["stimulus_id"], childColumns = ["stimulus_id"], onUpdate = ForeignKey.CASCADE, onDelete = ForeignKey.RESTRICT)
     ], indices = [
+        Index(value = ["fts_id"], unique = true),
         Index(value = ["stimulus_id", "sort_order"], unique = false),
         Index(value = ["chapter_id", "sort_order"], unique = false)
     ])
 data class ChapterCqQuestionsEntity(
     @ColumnInfo(name = "question_id")
     val questionId: String,
+    @ColumnInfo(name = "fts_id")
+    val ftsId: Long,
     @ColumnInfo(name = "stimulus_id")
     val stimulusId: String?,
     @ColumnInfo(name = "chapter_id")
