@@ -85,3 +85,15 @@ ACCEPTED 18 November 2026 (closes the known gap of ADR-005 item 7; problem P-31)
 5. Backup status (last time, question count then) lives in SharedPreferences, not in the database: the home screen shows it without opening the
    database (requirement N-1) and it survives a restore.
 6. There is no automatic scheduled backup yet; the screen warns when the question count changed since the last backup.
+
+
+## ADR-009 - UI shell, owner-chosen theme and text size (v0.2.25)
+ACCEPTED 18 November 2026 (owner delegated decisions D-1 to D-14 to the assistant; the plan recommendations were taken as they are). ADR-007 (mathematics) and ADR-008 (PDF) stay reserved.
+1. The app has five bottom tabs in the owner's order: Create, Type CQ, Chapter CQ, Filter, Profile. Each tab is its own navigation graph, so leaving a tab saves where the owner was and coming back restores it.
+2. Theme (Light / Dark) and text size (12 to 28, default 16) are chosen by the owner in Profile, not by the system (D-3). They are kept in SharedPreferences, like the backup status, because the first frame needs them before the database opens (N-1). They are not in the backup file yet; they move into the database together with the other settings.
+3. Text size works by scaling the font scale of the whole app from the base size 16, so every screen follows without changing each text.
+4. Brand colour #3B4FD8 and the light/dark palette from plan 39.4 (D-4). Cards use 16 dp corners.
+5. Numbers shown on screen go through one formatter (`toBengaliDigits`, D-11). File names, database values and search text keep Latin digits.
+6. Every screen uses one header component (`AppHeader`): blue bar, back arrow, title, optional subtitle, and it fills the area behind the status bar.
+7. Tab icons are plain text glyphs in this package (no new dependency). The Hind Siliguri font is not added: a font file is needed and none can be downloaded in the build environment. Both are small later steps.
+8. Back at the first screen asks before leaving the app. The question editor hides the bottom bar.

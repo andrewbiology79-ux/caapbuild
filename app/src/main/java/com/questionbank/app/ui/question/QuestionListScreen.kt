@@ -29,10 +29,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.questionbank.app.ui.components.AppHeader
+import com.questionbank.app.ui.format.toBengali
+import com.questionbank.app.ui.format.toBengaliDigits
 import com.questionbank.app.domain.question.SavedGroup
 
 internal fun marksText(marks: Double): String =
-    if (marks % 1.0 == 0.0) marks.toInt().toString() else marks.toString()
+    (if (marks % 1.0 == 0.0) marks.toInt().toString() else marks.toString()).toBengaliDigits()
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,20 +52,20 @@ fun QuestionListScreen(
 
     LaunchedEffect(savedCount) {
         if (savedCount > 0) {
-            snackbar.showSnackbar("$savedCount টি প্রশ্ন সংরক্ষিত হয়েছে ✓")
+            snackbar.showSnackbar("${savedCount.toBengali()} টি প্রশ্ন সংরক্ষিত হয়েছে ✓")
             onSavedShown()
         }
     }
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(if (topicName.isNullOrEmpty()) "প্রশ্ন" else "$topicName › প্রশ্ন") },
-                navigationIcon = { TextButton(onClick = onBack) { Text("← পিছনে") } },
+            AppHeader(
+                title = if (topicName.isNullOrEmpty()) "প্রশ্ন" else "$topicName › প্রশ্ন",
+                onBack = onBack,
             )
         },
         snackbarHost = { SnackbarHost(snackbar) },
-        floatingActionButton = { ExtendedFloatingActionButton(onClick = onAdd) { Text("+ প্রশ্ন যোগ করুন") } },
+        floatingActionButton = { ExtendedFloatingActionButton(onClick = onAdd, containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary) { Text("+ প্রশ্ন যোগ করুন") } },
     ) { innerPadding ->
         val current = groups
         Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
@@ -80,7 +83,7 @@ fun QuestionListScreen(
                 ) {
                     item(key = "count") {
                         Text(
-                            "মোট ${current.sumOf { it.subQuestions.size }} টি প্রশ্ন",
+                            "মোট ${current.sumOf { it.subQuestions.size }.toBengali()} টি প্রশ্ন",
                             style = MaterialTheme.typography.labelLarge,
                         )
                     }

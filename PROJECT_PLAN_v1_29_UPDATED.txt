@@ -1,7 +1,7 @@
 QUESTION BANK ANDROID APP COMPLETE PROJECT DEVELOPMENT & DELIVERY PLAN
 ============================================================
 
-Document version: 1.26 (v0.2.23 owner phone test passed; package v0.2.24 added as section 38)
+Document version: 1.29 (v0.2.24 fully confirmed on phone; owner delegated D-1..D-14; package v0.2.25 UI shell written; section 40 added)
 Planning baseline: 16 November 2026
 Project status: Single-database architecture confirmed; canonical SQL and Room build harness prepared. CI run 11 (package v0.2.8) passed: KSP/Room generation, unit tests (5 of 5) and debug APK assembly. The package is still a build harness, not a complete application; Room-database runtime behaviour (CHECK emulation, Bengali FTS on the real database) is not yet device-tested.
 
@@ -2607,3 +2607,368 @@ P-30  Fixed debug key. Status: confirmed by the owner's v0.2.23 run only for que
 - v1.26: v0.2.23 phone test result, next step split into part A (v0.2.24 backup) and part B (v0.2.25 search/edit/delete), package v0.2.24, problems P-34 to P-36.
 
 END OF VERSION 1.26 UPDATE
+
+(Version 1.28 continues below.)
+
+
+============================================================
+39. UI DESIGN BASELINE (caapbuild-updated-21), v0.2.24 TEST PROGRESS AND REVISED PACKAGE ORDER - VERSION 1.28
+============================================================
+
+Planning update date: 18 November 2026
+(Version 1.27 had a shorter section 39 written after a partial reading. Version 1.28 replaces it after reading all screens.)
+
+39.1 Evidence received since v1.26 (package v0.2.24)
+1. CI run: SUCCESSFUL (owner report). Instrumented (emulator) test: SUCCESSFUL (owner report).
+   The counts expected in 38.5 (35 unit tests, 37 emulator tests, identityHash, apk-signature SHA-256) were not sent to the
+   assistant. Status: reported green by the owner; counts NOT re-verified by the assistant.
+2. Phone test, step 3a of section 38.5 (create a backup): SUCCESSFUL (owner report).
+3. Not yet reported: install over v0.2.23 without uninstall (P-30), warning after the question count changes, restore from the
+   backup file with confirmation and restart (P-34), refusal of a wrong file.
+   Consequence: P-31 is PARTLY confirmed (export works). Restore, P-30 and P-34 stay UNCONFIRMED until the owner reports.
+
+39.2 What caapbuild-updated-21 is, and how it was read
+- A web-technology app: React 19, TypeScript, Tailwind CSS 4, Vite, Capacitor 7 (Android shell), Dexie 4 (IndexedDB), KaTeX,
+  jsPDF + html2canvas-pro, react-zoom-pan-pinch, lucide-react, font Hind Siliguri. package.json: qb-collection-exam 1.1.0,
+  appId com.qbcollection.examv2. About 33,000 lines in src/, 30 vitest test files, a GitHub Actions APK workflow.
+- It is a DIFFERENT technology stack from this project (Kotlin / Room / Compose, ADR-001, ADR-002). RULE: it is a design and
+  behaviour REFERENCE. No code is copied. Every screen is rebuilt in Jetpack Compose (Material 3) on top of the repositories (section 3.1).
+- How it was read (honest scope): for every screen and component the assistant read the comments, all visible Bengali labels,
+  state and handler names, and the key render blocks (question card, menus, form sections, PDF layout rules). It did NOT read every
+  line of the 33,000 lines. Not read in detail: the folder-sync code (src/storage/, about 300 KB, not adopted, see D-1), the sync
+  preview dialogs, the native Java (only the method list), package-lock.json, the bodies of the test files (names only), and the
+  second half of pdfGenerator.ts (page factory / save). When a screen is built, its source file is re-read for that screen.
+- The 146-item Feature-to-Schema Audit Matrix is referenced by this plan but was not among the uploaded files, so this section
+  does not map design features to the 146 numbered items. That mapping stays an open Phase 0 task (39.13).
+
+39.3 Design inventory - screens and behaviours (source: the reference app)
+NAVIGATION
+- One window, five bottom tabs in this order: Create | Type CQ | Chapter CQ | Filter | Profile. Active tab: blue icon in a light-blue pill.
+- Android Back works as a priority stack: the topmost dialog or inner view closes first; at the root a confirmation asks before leaving.
+- Last position inside Type CQ / Chapter CQ is remembered when switching tabs. The Filter tab can jump to "where this question is" and the
+  card flashes there.
+HEADER (every screen): blue bar, optional back arrow, centred title with optional small subtitle, optional search icon, 3-dot menu.
+  Screen titles seen: "তৈরি (Create)" / "পরীক্ষা ও প্রশ্নপত্র ব্যবস্থাপনা"; "প্রোফাইল (Profile)" / "পরিসংখ্যান, ব্যাকআপ ও সেটিংস";
+  "বিষয় তালিকা (Subjects)" and then the subject / chapter / topic name.
+
+TYPE CQ and CHAPTER CQ TABS (same screen, two scopes)
+- Levels: Type CQ = subjects -> chapters -> topics -> questions. Chapter CQ = subjects -> chapters -> questions (the reference hides a
+  default topic; this plan has separate Chapter_CQ tables without topics, which fits).
+- Under the header: a horizontally scrollable breadcrumb (each part tappable), a "Reorder / Done" button on list levels, and on the
+  question level a "N নির্বাচিত" pill with "Clear all selection". Right side: counter "মোট বিষয়: N টি" / "মোট ... টি".
+- List cards: blue rounded square with the 2-digit Bengali serial, name, line "N টি প্রশ্ন · N নির্বাচিত", chevron, 3-dot (নাম পরিবর্তন,
+  মুছে ফেলুন). Reorder mode shows up/down arrows (শেষে ক্রম সংরক্ষণ). Empty states with a "+ ... যোগ করুন" button.
+- Header menu on list levels: new subject/chapter/topic, rename and delete of the open item, Import / Export (subject level),
+  clear all selection. Header menu on the question level: JSON paste import, select all / deselect, copy selected (N), cut selected (N),
+  paste copied (N), delete selected (N).
+- Search icon in the header (question level only): box "প্রশ্ন, উদ্দীপক বা বোর্ড খুঁজুন...". The reference does a plain lower-case substring
+  match over stimulus text, board tag, question text, solution text (picture marker lines removed) and board names and years (Latin and
+  Bengali digits). A card shows only the sub-questions that matched; a match in the stimulus shows all.
+- Floating "+" button adds a question to the open topic.
+- Shared clipboard that works between Type CQ and Chapter CQ (copy / cut of a stimulus group or many selected questions; paste before,
+  after, or at the end). A banner shows "N টি প্রশ্ন কপি/কাট করা আছে" with a clear button.
+QUESTION CARD (one card per stimulus group)
+- Blue ribbon: "প্রশ্ন N" (running number), a checkbox selecting all sub-questions of the stimulus, a yellow rating badge (stars text such as
+  "৩★"), a 3-dot menu: Edit this Q&A, রেফারেন্স দেখুন, Copy, Cut, Paste after, Paste before, Delete.
+- Light-grey chips row: paper-usage chips (emerald, "<paper short name> ×N") and board chips written like DB'25,26 (stimulus boards only;
+  each sub-question's own boards sit beside its own button); "ট্যাগ নেই" when none.
+- Body: stimulus pictures placed above the text (imageTopCount) then text then the remaining pictures; sub-questions "গ." "ঘ." with text;
+  per question a small "সমাধান দেখো / সমাধান লুকাও" button; the solution panel "সমাধান:" shows ordered text boxes and pictures;
+  tapping a picture opens a zoom viewer. Math is shown rendered (KaTeX); a wrong formula shows the faulty code in red, never crashes.
+- Rating on the card = the stimulus rating (rule U-1).
+
+QUESTION EDITOR (full-screen form, title "প্রশ্ন যোগ করো" / "প্রশ্ন সম্পাদনা", "অসংরক্ষিত" tag, undo, redo, save)
+- Mode switch "Minimum | Full Editor". Minimum is ALWAYS the default each time the form opens.
+- Minimum: stimulus box (2 rows) with board picker, rating, add-picture "+" at start; reference box; per question block: type label, marks
+  label, board picker, rating, eye (live preview), question box (2 rows), solution = ordered boxes (text box, picture "+", new box "+"),
+  save. Topic is taken from where the form was opened.
+- Full adds: collapsible subject / chapter / topic card (topic required), math toolbar (inline $, block $$, fraction, root, power, subscript,
+  sum, integral, 16 Greek letters), larger boxes with a drag handle, type chooser and editable marks for each question, delete-block button,
+  "ক-খ-গ-ঘ সাজাও" (sort blocks), "+ আরও প্রশ্ন যোগ করো", short answer box "সংক্ষিপ্ত উত্তর (ঐচ্ছিক)" with preview, picture tools (replace,
+  export, big zoom preview).
+- Both modes: board dropdown opens a year window (tap years, or "অন্য সাল লিখুন"); chips with remove; custom boards ("নতুন বোর্ড যুক্ত করুন"
+  code + name); rating 1-5 (সহজ, মোটামুটি, মাঝারি, ভালো, চ্যালেঞ্জিং; default 3); undo/redo with grouped typing; marks follow the type
+  while still at the default (ক 1, খ 2, গ 3, ঘ 4); validation errors; delete-block confirmation; "এই প্রশ্ন আগে থেকেই আছে" duplicate warning with
+  "তবু সংরক্ষণ করো / ফিরে যাও" (never silently blocked; compares text ignoring spaces, $ marks, brackets and punctuation, in BOTH Type CQ and
+  Chapter CQ); unsaved-changes prompt on close; Back closes inner windows first. Mode switching keeps all values.
+- Pictures: added from the phone, optional editor (rotate left/right, crop, scan mode gray / black-and-white, can be switched off in Settings),
+  stored as WebP, longest side 800 px, quality 0.8; export as PNG to Download/QbCollection/Images.
+
+FILTER TAB
+- Search box "প্রশ্ন, উদ্দীপক বা সমাধান খুঁজুন..." (debounced) and a row of filter chips that can be re-ordered by long-press-drag (personal layout).
+- Filter window with sections: উৎস (সব / Type CQ / Chapter CQ), সাজান (default, rating high-low, rating low-high, marks high-low, type),
+  বিষয়, অধ্যায়, টাইপ / টপিক (Type CQ only), প্রশ্নের ধরন (ক-ঘ), রেটিং, নম্বর, বোর্ড, সাল, যে ক্যাটেগরিতে ব্যবহৃত হয়েছে,
+  বোর্ডে এসেছে কিনা (সব / এসেছে / আসেনি), উদ্দীপক (সব / আছে / নেই), সমাধান (সব / আছে / নেই).
+  Hidden choices drop out when their parent changes (no invisible filters).
+- Result cards are grouped by stimulus and show only the matching sub-questions; same checkbox selection as the Collection tabs.
+- Saved filters: name the current filter + sort, apply with one tap, delete. Filters survive tab switches.
+- Header menu: save this filter, saved filters (N), select all (N), invert, clear selection, PDF বানান, রেটিং বদলান (bulk), কপি, কাট, মুছে ফেলুন
+  (confirmation: "সমাধানের ছবিসহ স্থায়ীভাবে মুছে যাবে").
+
+CREATE TAB (question papers)
+- List of papers with category filter chips and search "নাম বা শিরোনাম দিয়ে খুঁজুন"; each paper shows a short name = category name + number
+  (for example "উইকলি মডেল টেস্ট-১"), date, time, marks, and a "some questions not in the bank" badge when needed.
+- Multi-select mode with bottom bar: ক্যাটেগরি (move), কপি, কাট, ডিলিট; paste; batch PDF export; floating "নতুন প্রশ্নপত্র".
+- New paper = the questions SELECTED by checkboxes in the Type CQ / Chapter CQ / Filter tabs (one persistent selection shared by all three).
+- Paper form: the included stimulus groups as cards, move up / down, remove from list, edit the question inside this paper only (the bank is
+  never changed; marker "প্রশ্ন পরিবর্তিত"; can return to the original), warning chip when the same question is already in other papers,
+  warning (never a block) when the question marks do not add up to the total marks, button to put a question that is missing from the bank back
+  into the bank, unsaved-changes prompt. Paper information dialog: title *, category * (or "+ নতুন ক্যাটেগরি"), subject line, দ্রষ্টব্য note (blank =
+  none, default from Settings), time, total marks.
+- Paper view: student copy is the default; teacher copies "short answers" or "full solutions"; PDF text size control (remembered); edit paper; delete;
+  download PDF.
+
+PDF (this is the visual standard for the owner's papers)
+- A4 portrait, white page always (also when the app is in dark mode). Margins about 34 px sides, 32 px top and bottom; two columns of 350 px with a 24 px
+  divider; footer with page number.
+- Page 1 header over both columns: title, subject line, time and total marks row, দ্রষ্টব্য note. Later pages: a small running header.
+- Column 1 fills first, then column 2, then the next page. A question group is never cut across columns or pages (a group taller than a column is
+  placed alone in an empty column so progress continues). End marker "— সমাপ্ত —".
+- Group layout: running number beside the stimulus text, stimulus pictures above/below, sub-questions "গ." with the marks on the right, formulas on the
+  same baseline as the text; teacher copy adds an answer or solution box and a suffix in the title and file name.
+- Batch export: one new folder per category, file name = paper name. Filter tab can build one PDF from selected rows of both collections.
+- The reference rasterises pages with html2canvas (large files, text not selectable). The owner's checklist test-data/PDF_TEST_CHECKLIST.md
+  (3 stimuli, 11 questions, 4 pictures, long stimulus, 18-step solution, missing answers, dark-mode check) is kept as the acceptance test for D-7.
+
+PROFILE TAB (the hub for categories, statistics, data and settings)
+- Categories: list with paper counts, new, rename, copy and paste (duplicates the category), sort (own order, name, newest, oldest, most/fewest papers),
+  re-order with arrows, multi-select (backup file, PDF export, delete). "অশ্রেণিবদ্ধ" is always pinned on top. Deleting a category moves its papers there.
+  Inside a category: papers with sort / reorder / multi-select, copy, cut, paste, move, copy to another category, share as file, open in Create, PDF.
+- পরিসংখ্যান: chips সব / Type CQ / Chapter CQ; total, used, unused; by board with years; ratings bars; question types; "weak part" = a chapter with fewer than half
+  of the average number of questions. Computed only when the screen opens.
+- Import / export: Type CQ file, Chapter CQ file (JSON v1.1, pictures embedded, preview with counts, merge or replace with a strong warning, manual picture
+  attach, sample file), full backup (everything including papers, pictures, custom boards, filter layout), restore as replace or merge; category / paper share files.
+- Settings: theme Light / Dark (applies to the app, not the PDF), text size by number 12-28 (default 16), default paper title, default দ্রষ্টব্য note,
+  picture editor on/off, daily auto backup and "এখনই ব্যাকআপ নিন" with the result shown under the button.
+- Auto backup: once a day, new folder named date_time with three files (Type CQ, Chapter CQ, full backup); checked at app start, on return and every 30 minutes.
+- Share app, app info (version, build, date).
+- JSON paste import (Type CQ and Chapter CQ question level menu): the owner photographs questions, an AI tool converts them to JSON using the prompt built into the
+  app ("AI-এর জন্য prompt কপি"), and the owner pastes it. Format: groups[] with stimulus, stimulusRating, reference, stimulusBoards[], questions[] each with
+  type, marks, rating, questionText, solutionText, answerText, usedInBoards[]. The parser is forgiving: removes ```json fences and text outside the JSON,
+  trailing commas, raw line breaks inside strings, repairs single backslashes of LaTeX (\frac, \times, \theta ... so JSON does not turn \t into a TAB),
+  accepts Bengali digits, guesses type from marks (1 ক, 2 খ, 3 গ, 4 ঘ) or marks from type, clamps rating to 1-5, accepts flat question arrays. Buttons: পেস্ট, নমুনা কপি.
+  This is the owner's main data-entry route (REQUIREMENT U-3).
+
+39.4 Design tokens to carry into Compose (visual parity is the target)
+Light: primary #3B4FD8, primary dark #2A3BB0, brand light #EEF2FF, screen background #F2F4F8, card #FFFFFF, border #D5D9E2, text #1B1F2A, text blue #2A3BB0,
+  muted #64748B, faint #94A3B8, chip row background #F8FAFC with border #E2E8F0. Rating badge: background #FEF9C3, text #713F12, border #FDE047.
+  Paper-usage chip: emerald (background emerald-50, text emerald-800, border emerald-200). Delete: red. Cut: amber.
+Dark: background #0F172A, card #1E293B, border #334155, text #F1F5F9, muted #94A3B8, primary text #818CF8 / #A5B4FC, selected chip #1E1B4B,
+  rating badge dark #422006 with text #FDE68A, success #052E16, error #450A0A.
+Typography: Hind Siliguri 400 / 500 / 600 for Bengali and Latin. Card text about 12 sp, header title 18 sp, chips 10 sp, nav labels 11 sp; everything scales
+  from the Settings base size. Numbers on screen are written in Bengali digits (requirement U-2) with 2-digit padded serials (০১, ০২).
+Shape and size: cards radius 16 dp, border 1 dp (question card 1.5 dp blue), touch targets at least 44 dp, header 56 dp, bottom nav 64 dp, FAB bottom right.
+Theme control: owner-chosen Light / Dark in Settings, not the system theme. The current Compose theme follows the system and uses #315EFB with no custom font (P-37).
+Status bar: blue with light icons, content not under it; Back at root asks before exit.
+Reference helpers worth keeping as behaviour: safe-area insets, long-press-drag reorder of filter chips, remembered scroll / position per tab.
+
+39.5 Data model comparison (to be VERIFIED against the 35 canonical tables in the traceability step)
+- Entities in the design: Subject, Chapter, Topic, Stimulus (text, imageIds, imageTopCount, boardTag, usedInBoards[], rating, reference), Question (stimulusId, topicId,
+  type, marks, questionText, solutionText + solutionImageIds, answerText, rating, order, usedInBoards[]), Category, Paper (shortName, category, title, subjectLine, note,
+  duration, totalMarks, questionIds[], edits, order), DbImage (fileName, topicId, w, h), QuestionCopy (copy of a deleted-from-bank question kept for papers).
+  The canonical schema already has counterparts for most of these (stimulus boards, question boards, solution parts, images, categories and links, papers, paper items,
+  paper overrides, paper images). Fields to CHECK in the canonical SQL: stimulus rating, stimulus reference, image top count, answer text, question order, paper order,
+  paper note / duration / total marks, custom boards.
+- Solution: the design keeps ONE text with marker lines [[img:<id>]] and [[box]]. This plan uses the ordered solution-parts table. Do not copy the marker trick.
+  The importer (D-2) converts markers to ordered parts.
+- Rating rule U-1 (from CHANGES.txt, applies to cards, filter, sort, statistics): stimulus rating if saved; else the question's own rating (a card with several questions
+  shows the average); no stimulus: the question's rating, else 3.
+- Paper-only edits map to paper item overrides. A deleted-from-bank question still shown in a paper maps to the immutable paper snapshot (sections 3.5, 13); the plan keeps
+  the snapshot as the authority and adds the design's "put it back into the bank" action (U-6).
+- Persistent selection (checkbox on cards, shared by Type CQ, Chapter CQ, Filter and Create): the design keeps it in the database. The canonical schema has no obvious
+  table for it. Needs a decision (D-10): app_metadata, or a new table through a migration.
+- Things the design keeps in the phone's localStorage and that MUST be in the database here so the backup contains them: custom boards, saved filters, filter chip order,
+  settings, last PDF text size, remembered sort modes.
+- Scale: the reference loads whole lists into memory (filter rows with a search string for every question, statistics counted in memory, plain substring search). That
+  cannot serve hundreds of thousands of questions. Same behaviour, different implementation: SQL queries with indexes and FTS, Paging 3, SQL aggregates (R-U3).
+
+39.6 Feature inventory with plan mapping (UI-xx numbers are for the traceability sheet; state = at v0.2.24)
+ UI-01 Five-tab shell, header, theme, fonts, Bengali digits          Phase 5, 15   NOT started (single home screen today)
+ UI-02 Subject/chapter/topic lists with counts, breadcrumb             Phase 5       Lists exist (Type CQ); no counts, no breadcrumb, no selection count
+ UI-03 Rename, delete, reorder of subject/chapter/topic                Phase 5       NOT started (ADR-004 item 6)
+ UI-04 Question card (ribbon, rating, chips, solution toggle, viewer)  Phase 11      NOT started (plain list exists)
+ UI-05 In-topic search                                                 Phase 12      NOT started (Bengali FTS proven in tests, no UI)
+ UI-06 Question editor, Minimum and Full modes                         Phase 6-8     Text-only editor exists (one mode)
+ UI-07 Ratings (stimulus + question), rule U-1                         Phase 8, 11   NOT started
+ UI-08 Boards + years, custom boards, year window                      Phase 8       NOT started
+ UI-09 Reference text, short answer, editable marks                    Phase 8       NOT started
+ UI-10 Undo / redo, duplicate warning, unsaved prompt                  Phase 6, 12   Drafts exist (better than the prompt); rest NOT started
+ UI-11 Edit existing question, delete question / group                 Phase 9, 11   NOT started (delete-safety design first)
+ UI-12 Selection, copy / cut / paste (before, after, end), shared clip Phase 11      NOT started
+ UI-13 Solution as ordered text/picture boxes                          Phase 8, 10   NOT started
+ UI-14 Pictures: add, WebP 800 px, editor, viewer, export              Phase 10      NOT started
+ UI-15 Mathematics: render, math toolbar, live preview                 Phase 8       NOT started, HIGH RISK (R-U1)
+ UI-16 JSON paste import + AI prompt (requirement U-3)                 not in plan   NEW
+ UI-17 Collection JSON v1.1 import/export, full backup file            Phase 14      Own backup exists (v0.2.24); reference-file importer is NEW (D-2)
+ UI-18 Filter tab: criteria, saved filters, chip order, bulk actions   Phase 12      NOT started
+ UI-19 Categories hub, category and paper operations                   Phase 11, 13  NOT started
+ UI-20 Create tab: paper list, multi-select, paste, search             Phase 13      NOT started
+ UI-21 Paper form, paper-only edits, repeat and marks warnings         Phase 13      NOT started
+ UI-22 Paper view, teacher copies, text size                           Phase 13      NOT started
+ UI-23 PDF A4 two-column layout, batch export                          Phase 13      NOT started, HIGH RISK (R-U2)
+ UI-24 Statistics                                                      Phase 12      NOT started
+ UI-25 Settings (theme, size, paper defaults, picture editor)          Phase 15      NOT started
+ UI-26 Daily auto backup                                               Phase 14      NOT started (P-35)
+ UI-27 Chapter CQ screens (same UI, second scope)                      Step E        NOT started
+ UI-28 Backup / restore                                                Phase 14      v0.2.24: export confirmed, restore unconfirmed
+ Not adopted: folder sync (README "Folder sync"), MANAGE_EXTERNAL_STORAGE permission, WebView/Capacitor shell.
+
+39.7 Where the design and this plan disagree (the plan stays the authority until the owner decides)
+- Folders as master vs one Room database as master (ADR-001, ADR-006). Not adopted (D-1).
+- Reference papers point to live questions plus copies; this plan requires immutable snapshots. Plan wins.
+- Reference storage permission "All files access" and visible folders Download/QB Collection; this plan uses the Storage Access Framework with no broad permission.
+- Reference has no transactional / crash-safety guarantees; the plan rules (atomic save, drafts, read-back, backup verification) stay.
+- Reference shows one unsaved-changes prompt; this app keeps automatic drafts (ADR-005) and adds the prompt only where useful.
+- Reference deletion removes pictures permanently without any backup reminder; the plan requires the delete-safety design first.
+
+39.8 Decisions needed from the owner (recommendation in brackets; nothing below is decided yet)
+ D-1  Folder sync with visible folders: adopt or not? [NO. Database + backup file (done) + later an optional readable export.]
+ D-2  Must the new app read data made in the reference app? [YES if the owner has real data there. Build an importer for its Type CQ / Chapter CQ JSON v1.1 files and
+      full backup (pictures are embedded as base64), NOT for its folder format. Decide before Phase 10 so the schema keeps what the files carry.]
+ D-3  Theme: owner-chosen Light / Dark and text size in Settings, not the system theme. [YES]
+ D-4  Brand colour #3B4FD8 instead of #315EFB. [YES]
+ D-5  JSON paste import: include? [YES, and EARLY: it is the owner's main way to enter many questions (U-3). Needs the stimulus rating, reference, boards, answer text
+      fields first (UI-07 to UI-09). Ask the owner for one real AI-made JSON sample to test the forgiving parser.]
+ D-6  Mathematics in Compose: (a) WebView + bundled KaTeX per card, (b) native Compose LaTeX library, (c) formula rendered once to an image and cached.
+      [Prototype all feasible options with the owner's PDF sample and measure on a real phone; record ADR-007 before UI-15.]
+ D-7  PDF method: Android PdfDocument with own two-column layout, or WebView print. Acceptance = the reference layout of 39.3 and the checklist in test-data.
+      [Prototype first; record ADR-008. Prefer selectable text and small files over the reference's rasterised pages.]
+ D-8  P-32 types and marks: the reference uses ক 1, খ 2, গ 3, ঘ 4 with editable marks and the AI prompt uses the same. [Close P-32 as confirmed.]
+ D-9  Rating rule U-1 into requirements. [YES]
+ D-10 Where to keep the persistent question selection. [app_metadata for now; a table only if the Create tab needs per-paper history.]
+ D-11 Bengali digits everywhere in the UI through one formatter. [YES]
+ D-12 Search: the plan uses FTS; the reference uses plain substring. [FTS for text; board and year search through normal indexed columns, accepting Bengali and Latin
+      digits. Behaviour to reproduce: stimulus, question, solution text, boards, years.]
+ D-13 Picture export location: reference writes Download/QbCollection/Images. [Use the Storage Access Framework or MediaStore; no broad storage permission.]
+ D-14 Automatic daily backup: [Add after restore is confirmed; WorkManager once a day; keeps N latest files; decide N.]
+
+39.9 Revised package order (recommendation; supersedes 38.2 / 38.5 steps 4-5 only after the owner agrees)
+ v0.2.24  FINISH: owner reports the remaining phone steps. Nothing new is built.
+ v0.2.25  UI SHELL (no schema change): Light/Dark setting, #3B4FD8 palette, Hind Siliguri font resource, text-size setting, Bengali digit formatter, five-tab bottom
+          navigation with real screens for Type CQ and Profile (backup), placeholders for the others, blue header component, existing screens moved in.
+          Checks: cold start still at most 10 s (N-1), identityHash 786b471dfa14c9ae4739bb81479bab25 unchanged.
+ v0.2.26  HIERARCHY MANAGEMENT in the new design: counts, breadcrumb, rename, delete with confirmation, reorder with arrows (UI-02, UI-03).
+ v0.2.27  QUESTION CARD + SEARCH + EDIT: full card design, solution toggle, Bengali FTS search in the header, open an existing question in the editor (UI-04, UI-05, part of UI-11).
+ v0.2.28  EDITOR FIELDS: Minimum / Full modes, ratings with rule U-1, boards + years + custom boards, reference, short answer, editable marks, undo/redo, duplicate warning
+          (UI-06 to UI-10). Needs a schema check (39.5) first; a migration only if a field is missing.
+ v0.2.29  DELETE + SELECTION: delete-safety design (confirmation, shared stimulus text, backup reminder), checkboxes, copy / cut / paste, shared clipboard (UI-11, UI-12).
+ v0.2.30  JSON PASTE IMPORT and the reference-file importer (UI-16, UI-17), if D-2 and D-5 are YES.
+ then     pictures and ordered solutions (UI-13, UI-14) -> mathematics (UI-15, after the D-6 prototype) -> Filter tab and statistics (UI-18, UI-24) -> categories, papers,
+          PDF (UI-19 to UI-23, after the D-7 prototype) -> Chapter CQ (UI-27) -> settings, auto backup, regression, release.
+ Rule kept: every package is CI-verified, emulator-verified and phone-verified before the next one starts (section 31.4).
+ Tests to port as Kotlin unit tests from the reference's logic tests: rating rule U-1, filter semantics, duplicate-text normalisation, solution-part parsing, paper-only edits and
+ mark totals, JSON paste parser, Bengali digit conversion.
+
+39.10 New requirements
+ U-1  Rating rule (39.5).   U-2  Bengali digits in all displayed numbers.   U-3  JSON paste import is a core data-entry route.
+ U-4  The PDF page is always white and black, independent of the app theme.
+ U-5  Paper short name = category name + running number; "অশ্রেণিবদ্ধ" category always first; deleting a category moves its papers there.
+ U-6  A question missing from the bank can be put back from a paper snapshot.
+ U-7  Selection is persistent and shared by Type CQ, Chapter CQ, Filter and Create.
+ U-8  Filters never hide silently: a choice that is no longer offered is dropped.
+
+39.11 New risks
+ R-U1  Mathematics rendering and editing in Compose (the reference relies on KaTeX). Mitigation: D-6 prototype.
+ R-U2  PDF quality and two-column pagination with Bengali and formulas. Mitigation: D-7 prototype with test-data/pdf-test-collection.json and its checklist.
+ R-U3  The reference does filtering, statistics and search in memory; this must be SQL + FTS + Paging 3 for hundreds of thousands of questions. Mitigation: build each
+       screen on queries, measure with the 300,000-row benchmark data.
+ R-U4  Scope growth: the design is much larger than the current plan. Mitigation: package order 39.9, UI-xx traceability, one package at a time.
+ R-U5  Custom font, theme and card rendering may lengthen cold start (N-1). Mitigation: measure in v0.2.25.
+ R-U6  Cards with rendered math and pictures in long lists can scroll slowly. Mitigation: lazy images, cached formula renders, measure on the phone.
+
+39.12 Status
+PHASE 1: BUILD GATE PASSED, FOUNDATION INCOMPLETE (open: release signing). PHASE 2: DONE.
+PHASE 4/5: hierarchy and Type_CQ question create/list CONFIRMED on a phone (v0.2.22, v0.2.23).
+v0.2.24: CI and emulator green (owner report); backup export confirmed on phone; restore, P-30 and P-34 UNCONFIRMED.
+UI design reference: read and inventoried (39.2 states the scope); no Compose UI work started. PHASES 3, 6-17: NOT STARTED, except as listed.
+
+39.13 Problem log additions and next steps
+P-31  Backup export. Status: export CONFIRMED on phone; restore part UNCONFIRMED.
+P-32  Types and marks. Status: OPEN, to close with D-8.
+P-37  Compose theme follows the system theme, default font, colour #315EFB; differs from the owner's design. Status: OPEN, fix planned v0.2.25.
+P-38  Design contains features outside the plan (JSON paste import, reference-file import, categories hub, statistics, daily auto backup). Status: OPEN, decisions D-2, D-5, D-14.
+P-39  Mathematics and PDF approach undecided. Status: OPEN, prototypes before UI-15 and UI-23.
+P-40  The 146-item audit matrix was not available for this update. Status: OPEN, owner to upload it so UI-xx can be mapped to the numbered items.
+P-41  Persistent selection has no table in the canonical schema. Status: OPEN, D-10.
+Next steps (in order):
+1. Owner: finish the phone steps of 38.5 item 3 and report.
+2. Owner: answer D-1 to D-14 (short answers are enough; the recommendations are the default if no answer comes). Upload the 146-item matrix and one real AI-made JSON sample.
+3. Assistant: package v0.2.25 (UI shell) after step 1 is green.
+4. Assistant: start the traceability sheet with the UI-01 to UI-28 rows.
+
+39.14 Change log addition
+- v1.27: first design baseline (partial reading).
+- v1.28: whole design read; section 39 rewritten: full screen inventory (39.3), tokens (39.4), data comparison (39.5), 28 UI features (39.6), decisions D-1..D-14,
+  package order v0.2.25-v0.2.30, requirements U-1..U-8, risks R-U1..R-U6, problems P-37..P-41.
+
+END OF VERSION 1.28 UPDATE
+
+
+============================================================
+40. v0.2.24 CONFIRMED, DECISIONS D-1 TO D-14 TAKEN, PACKAGE v0.2.25 (UI SHELL) - VERSION 1.29
+============================================================
+
+Planning update date: 18 November 2026
+
+40.1 Evidence (owner report)
+1. v0.2.24 installed over v0.2.23 WITHOUT uninstall: OK (P-30 CONFIRMED: the fixed debug key works for updates).
+2. Backup screen: backup creation and restore with confirmation and restart: OK (P-31 CONFIRMED, P-34 accepted by design and works).
+3. A photo chosen as backup file is refused and nothing changes: OK.
+Consequence: v0.2.24 is confirmed by CI, emulator and phone. The counts (35 unit, 37 emulator tests) were not sent; they stay "reported green by the owner".
+Owner instruction: the assistant decides what is best, delivers small packages one at a time, each one completed; the owner is not asked for decisions.
+
+40.2 Decisions taken (plan recommendations adopted)
+ D-1  Folder sync with visible folders: NO. Database + backup file; a readable export may come later.
+ D-2  Importer for the reference app's Type CQ / Chapter CQ JSON v1.1 files and full backup: YES (package v0.2.30). Not its folder format.
+ D-3  Owner-chosen Light / Dark and text size in Settings: YES (done in v0.2.25).
+ D-4  Brand colour #3B4FD8: YES (done in v0.2.25).
+ D-5  JSON paste import: YES, early (v0.2.30, after the editor fields of v0.2.28 exist). A real AI-made JSON sample is still wanted for testing the parser.
+ D-6  Mathematics in Compose: prototype all feasible options on a real phone, then ADR-007, before UI-15.
+ D-7  PDF method: prototype Android PdfDocument and WebView print, then ADR-008, before UI-23. Prefer selectable text and small files.
+ D-8  P-32 types and marks: CLOSED as confirmed (ক 1, খ 2, গ 3, ঘ 4, marks editable later in the Full editor).
+ D-9  Rating rule U-1 is a requirement: YES.
+ D-10 Persistent question selection: stored in app_metadata first; a table only if the Create tab needs history (decide in v0.2.29).
+ D-11 Bengali digits everywhere through one formatter: YES (formatter done in v0.2.25; applied screen by screen).
+ D-12 Search: FTS for text; board and year through indexed columns, Latin and Bengali digits accepted.
+ D-13 Picture export: Storage Access Framework or MediaStore, no broad storage permission.
+ D-14 Automatic daily backup: YES, WorkManager once a day, keep the 7 latest files (N = 7), after v0.2.30.
+Still wanted from the owner when convenient (does not block): the 146-item audit matrix (P-40) and one real AI-made JSON sample.
+
+40.3 Package v0.2.25 (written, NOT compiled, NOT run - UNCONFIRMED)
+- Five bottom tabs (Create, Type CQ, Chapter CQ, Filter, Profile), one navigation graph per tab (each tab remembers its position). App starts on Type CQ.
+- Blue header component on every screen; old top bars removed; home screen removed (its content moved to Profile).
+- Profile: backup status and button, theme Light / Dark, text size 12-28 (default 16), app version. Settings live in SharedPreferences (needed before the database opens).
+- Theme: palette of 39.4, 16 dp corners, text size scales the whole app. Bengali digit formatter applied to question counts, marks, backup counts and times.
+- Back at the first screen asks before leaving. The editor hides the bottom bar.
+- No schema change (identityHash 786b471dfa14c9ae4739bb81479bab25), no dependency change. Tests: 11 new unit (expected 46), 3 new emulator (expected 40).
+- Left out on purpose: Hind Siliguri font (needs a font file, nothing can be downloaded in the build environment), real tab icons, 64 dp bottom bar, theme/size inside the backup file.
+- ADR-009 records these choices. See VERSION_NOTES_0.2.25.md for the phone check list.
+
+40.4 Status
+PHASE 1: BUILD GATE PASSED, FOUNDATION INCOMPLETE (open: release signing). PHASE 2: DONE.
+PHASE 4/5: hierarchy and question create/list CONFIRMED on phone (v0.2.22, v0.2.23); backup and restore CONFIRMED on phone (v0.2.24).
+UI-01 (shell, theme, header, Bengali digits): written in v0.2.25, UNCONFIRMED. Font part of UI-01 still open.
+PHASES 3, 6-17: NOT STARTED, except as listed.
+
+40.5 Problem log
+P-30  Fixed debug key. Status: CONFIRMED (update over install works).
+P-31  Backup export and restore. Status: CONFIRMED on phone.
+P-32  Types and marks. Status: CLOSED (D-8).
+P-34  Restore needs one app restart. Status: ACCEPTED BY DESIGN, works on phone.
+P-37  Theme, colour, font. Status: theme and colour written in v0.2.25 (UNCONFIRMED); font OPEN (needs Hind Siliguri font file).
+P-38  Design features outside the plan. Status: DECIDED (D-2, D-5, D-14), scheduled from v0.2.30.
+P-39  Mathematics and PDF approach. Status: OPEN, prototypes before UI-15 and UI-23 (D-6, D-7).
+P-40  146-item audit matrix missing. Status: OPEN, not blocking.
+P-41  Persistent selection table. Status: DECIDED (D-10), implemented in v0.2.29.
+P-42  Tab icons are text symbols and the bottom bar is 80 dp. Status: OPEN, low priority.
+P-43  Theme and text size are not in the backup file. Status: OPEN, low priority.
+
+40.6 Next steps (in order)
+1. Owner: send the CI report and the emulator report of v0.2.25, then do the phone check list in VERSION_NOTES_0.2.25.md and report.
+2. Assistant: package v0.2.26 (hierarchy management: counts, breadcrumb, rename, delete with confirmation, reorder) after step 1 is green.
+3. Later small steps: font file, tab icons.
+
+40.7 Change log addition
+- v1.29: v0.2.24 confirmed, decisions D-1..D-14 taken, package v0.2.25 (UI shell), problems P-42, P-43.
+
+END OF VERSION 1.29 UPDATE

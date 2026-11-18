@@ -13,6 +13,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import com.questionbank.app.ui.components.AppHeader
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -51,7 +52,7 @@ fun HierarchyListScreen(
     viewModel: HierarchyListViewModel,
     labels: HierarchyLabels,
     onItemClick: ((HierarchyItem) -> Unit)?,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
 ) {
     val listState by viewModel.items.collectAsState()
     val parent by viewModel.parent.collectAsState()
@@ -62,12 +63,10 @@ fun HierarchyListScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    val parentName = parent?.name
-                    Text(if (parentName.isNullOrEmpty()) labels.title else "$parentName › ${labels.title}")
-                },
-                navigationIcon = { TextButton(onClick = onBack) { Text("← পিছনে") } },
+            val parentName = parent?.name
+            AppHeader(
+                title = if (parentName.isNullOrEmpty()) labels.title else "$parentName › ${labels.title}",
+                onBack = onBack,
             )
         },
         floatingActionButton = {
@@ -75,7 +74,7 @@ fun HierarchyListScreen(
                 text = ""
                 viewModel.clearError()
                 showDialog = true
-            }) { Text(labels.addButton) }
+            }, containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary) { Text(labels.addButton) }
         },
     ) { innerPadding ->
         val current = listState

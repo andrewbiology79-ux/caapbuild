@@ -11,6 +11,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import com.questionbank.app.ui.components.AppHeader
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -45,10 +46,7 @@ fun QuestionEditorScreen(
     val draft = viewModel.draft
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("প্রশ্ন যোগ করুন") },
-                navigationIcon = { TextButton(onClick = onBack) { Text("← পিছনে") } },
-            )
+            AppHeader(title = "প্রশ্ন যোগ করুন", onBack = onBack)
         },
     ) { innerPadding ->
         if (!viewModel.loaded) {

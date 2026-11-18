@@ -16,6 +16,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import com.questionbank.app.ui.components.AppHeader
+import com.questionbank.app.ui.format.toBengali
+import com.questionbank.app.ui.format.toBengaliDigits
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -43,10 +46,7 @@ fun BackupScreen(viewModel: BackupViewModel, onBack: () -> Unit) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("ব্যাকআপ ও রিস্টোর") },
-                navigationIcon = { TextButton(onClick = onBack) { Text("← ফিরে যান") } },
-            )
+            AppHeader(title = "ব্যাকআপ ও রিস্টোর", onBack = onBack)
         },
     ) { padding ->
         Column(
@@ -69,10 +69,10 @@ fun BackupScreen(viewModel: BackupViewModel, onBack: () -> Unit) {
                     if (viewModel.lastBackupAt == 0L) {
                         Text("এখনো কোনো ব্যাকআপ নেওয়া হয়নি। অ্যাপ আনইনস্টল, \"Clear data\" বা ফোন হারালে প্রশ্ন মুছে যাবে।", color = MaterialTheme.colorScheme.error)
                     } else {
-                        Text("শেষ ব্যাকআপ: ${BackupNames.display(viewModel.lastBackupAt)} (তখন প্রশ্ন ছিল ${viewModel.lastBackupQuestions})")
+                        Text("শেষ ব্যাকআপ: ${BackupNames.display(viewModel.lastBackupAt).toBengaliDigits()} (তখন প্রশ্ন ছিল ${viewModel.lastBackupQuestions.toBengali()})")
                         val now = viewModel.current?.questions
                         if (now != null && now != viewModel.lastBackupQuestions) {
-                            Text("শেষ ব্যাকআপের পর প্রশ্নের সংখ্যা বদলেছে (এখন $now)। নতুন ব্যাকআপ নিন।", color = MaterialTheme.colorScheme.error)
+                            Text("শেষ ব্যাকআপের পর প্রশ্নের সংখ্যা বদলেছে (এখন ${now.toBengali()})। নতুন ব্যাকআপ নিন।", color = MaterialTheme.colorScheme.error)
                         }
                     }
                 }

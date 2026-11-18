@@ -6,6 +6,7 @@ import com.questionbank.app.data.backup.BackupService
 import com.questionbank.app.data.local.QuestionBankDatabase
 import com.questionbank.app.data.local.forceFullSync
 import com.questionbank.app.data.repository.TypeCqHierarchyRepositoryImpl
+import com.questionbank.app.data.settings.AppSettings
 import com.questionbank.app.data.repository.TypeCqQuestionRepositoryImpl
 import com.questionbank.app.domain.hierarchy.TypeCqHierarchyRepository
 import com.questionbank.app.domain.question.TypeCqQuestionRepository
@@ -43,6 +44,9 @@ class AppContainer(private val appContext: Context) {
     }
 
     val backupPrefs: BackupPrefs by lazy { BackupPrefs(appContext) }
+
+    /** Theme and text size (preferences, not the database: they are needed at the first frame). */
+    val appSettings: AppSettings by lazy { AppSettings(appContext) }
 
     val backup: BackupService by lazy {
         BackupService(
