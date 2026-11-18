@@ -3367,3 +3367,105 @@ P-51, P-48, P-44, P-46, P-47, P-49, P-45, P-37: unchanged.
 - v1.37: v0.2.29 written (edit drafts B-2 + hashtag search option A), expected 95 unit / 78 emulator tests, UNCONFIRMED; P-50 and P-53 fixed in code; decision A taken by the assistant.
 
 END OF VERSION 1.37 UPDATE
+
+============================================================
+47. v0.2.29 CONFIRMED; v0.2.30 SPLIT; PART A-1 (RATINGS, DATA LAYER) WRITTEN - VERSION 1.38
+============================================================
+
+Planning update date: 18 November 2026
+
+47.1 Basis
+- Owner report: for v0.2.29, CI clean, instrumented test clean, phone check list clean (the counts and the step-by-step results were not sent to the assistant). v0.2.29 is CONFIRMED by owner report.
+  That closes P-50 (unsaved edit lost when the app is killed) and P-53 (hashtag search, option A). The owner did not ask for option B.
+- The owner asked the assistant to start the next step and, if it is big, to work in small steps. The next step is v0.2.30 "editor fields" (UI-06 to UI-10).
+- Schema check (39.5) done for the editor fields against the real entities of v0.2.29: type_cq_stimuli has rating and reference_text; type_cq_questions has rating, marks and short_answer;
+  type_cq_stimulus_boards and type_cq_question_boards (board_code, year, sort_order) and board_catalog (code, display_name, board_kind, is_archived) exist; rating columns have CHECK 1..5.
+  RESULT: no migration is needed for ratings, boards, years, reference, short answer or marks. Still to check when part B starts: board_kind values for custom boards.
+
+47.2 Split of v0.2.30 (each part is a package the owner can confirm on its own)
+ v0.2.30a (A-1)  Ratings, data and rule layer only: save / edit / read-back / drafts. NO screen change.            <- WRITTEN in this update
+ v0.2.30b (A-2)  Rating buttons (1-5 with the names) on the new-question screen and the edit screen; draft keeps them; card shows the saved rating (UI-07).
+ v0.2.30c (B)    Boards + years + custom boards, year window, chips on card and editor (UI-08); search by board / year stays OPEN until then.
+ v0.2.30d (C)    Reference text, editable marks (follow the type while at the default), type chooser (UI-09).
+ v0.2.30e (D)    Minimum / Full modes, undo / redo with grouped typing, duplicate warning (UI-06, UI-10).
+ Package order after that is unchanged: v0.2.31 delete + selection -> v0.2.32 JSON paste import -> the rest as in 43.4.
+
+47.3 Part A-1, what was written
+- Models: RatingsInput(stimulus, byLabel), RatingRules (1-5, names), RatingChange, QuestionRatingUpdate; QuestionGroupInput, GroupEditInput and DraftText got OPTIONAL rating fields (default = old behaviour), so every v0.2.29 screen and test compiles unchanged.
+- Meaning on edit: ratings = null leaves every stored rating alone; when given, stimulus null clears the stimulus rating, a label present with null clears that question's rating, a label absent keeps it.
+- Rules: QuestionRules (new group) keeps a rating only when its block is really stored (a stimulus rating needs a stimulus text, a question rating needs a question text); QuestionEditRules counts a rating-only change as a real change (NoChange otherwise);
+  a rating outside 1-5 gives BadRating, mapped to SaveResult.Failed / UpdateResult.Failed (no new sealed subtype, so the existing screens' `when` stay exhaustive).
+- DAO: NewQuestionRow.rating, insertGroup(stimulusRating), updateGroup(changeStimulusRating, newStimulusRating, ratingUpdates), updateQuestionRating, updateStimulusRating, readBack now returns the rating, readStimulusRating. All still ONE transaction with the draft removal.
+- Repository: read-back after save and after edit also compares the ratings. Draft JSON got stimulusRating and ratings (0 = none); older drafts decode as "no rating".
+- DECISION by the assistant (owner may overrule): no rating chosen is stored as NULL, not as 3. The card still shows 3 by rule U-1. If 3 were saved by default, every stimulus would carry a saved rating and the question ratings could never count.
+- Naming rule N-1 (44.3) checked: no function `setX` next to a property `x` was added.
+
+47.4 Tests (expected, NOT run)
+- Unit: 11 new in QuestionRatingRulesTest -> 106 of 106 (95 + 11).
+- Emulator: 7 new in QuestionRatingTest -> 85 (78 + 7).
+- identityHash 786b471dfa14c9ae4739bb81479bab25 unchanged (no schema change); same debug key; versionCode 30, versionName 0.2.30a-ratings-data.
+- The Kotlin code has NOT been compiled or run (no Gradle in the assistant environment). The first CI run may show a compile error; send the report and the plan will record it.
+
+47.5 UI inventory status (39.6)
+ UI-07 Ratings: data layer WRITTEN (v0.2.30a, UNCONFIRMED); buttons v0.2.30b. P-48 (every card shows "3*") stays BY DESIGN until v0.2.30b.
+ UI-06, UI-08, UI-09, UI-10: unchanged (parts B, C, D, E above). UI-05 / UI-11: as in 46.7, now CONFIRMED for drafts and hashtag search.
+
+47.6 Status and problem log
+PHASE 1: BUILD GATE PASSED, FOUNDATION INCOMPLETE (open: release signing). PHASE 2: DONE. PHASE 4/5: create / list / search / edit, edit drafts and hashtag search CONFIRMED on phone (owner report); ratings data layer WRITTEN, UNCONFIRMED.
+P-50  CLOSED (CONFIRMED by owner report on v0.2.29).
+P-53  CLOSED (CONFIRMED by owner report on v0.2.29; option A kept).
+P-48  Every card shows "3*". BY DESIGN until v0.2.30b.
+P-51, P-44, P-46, P-47, P-49, P-45, P-37: unchanged.
+
+47.7 Next steps (in order)
+1. Owner: push v0.2.30a (QuestionBank_v0_2_30.zip) and send the CI report. Expect BUILD SUCCESSFUL, 106 unit tests (95 + 11), identityHash 786b471d... unchanged, same debug key. If it fails, send the new report.
+2. Owner: run the emulator workflow and send the report. Expect 85 tests (78 + 7).
+3. Owner: do the 4-step phone check list of VERSION_NOTES_0.2.30.md (nothing visible changes) and report.
+4. Assistant: read the reports, issue plan v1.39 (v0.2.30a CONFIRMED or corrected), then write v0.2.30b (rating buttons), again in small steps.
+   If the owner prefers to wait for the screens before testing, the assistant can write v0.2.30b on top of this package; then test a and b together.
+
+47.8 Change log addition
+- v1.38: v0.2.29 CONFIRMED by owner report (P-50, P-53 closed); v0.2.30 split into a-e (47.2); schema check done, no migration; v0.2.30a written (ratings data layer, no screen change), expected 106 unit / 85 emulator tests, UNCONFIRMED; decision: no rating = NULL.
+
+END OF VERSION 1.38 UPDATE
+
+============================================================
+48. PACKAGE v0.2.30b (RATING BUTTONS) WRITTEN ON TOP OF v0.2.30a - VERSION 1.39
+============================================================
+
+Planning update date: 18 November 2026
+
+48.1 Basis
+- The owner answered "yes" to the offer in 47.7 (write v0.2.30b on top of v0.2.30a, test both together). No CI / emulator / phone report for v0.2.30a exists, so v0.2.30a stays UNCONFIRMED and is NOT a separate test target any more.
+- Package: QuestionBank_v0_2_30b.zip (versionCode 31, versionName 0.2.30b-rating-buttons). No schema change, no new dependency.
+
+48.2 What was written (part A-2, UI-07)
+- RatingPicker (new): five FilterChips "1*..5*" in Bengali digits; tapping the chosen one again clears (null). Under it one line (RatingHint.kt, pure): the name of the chosen rating, or "no rating chosen (the card will show 3*)".
+- New-question screen: stimulus rating buttons appear when the stimulus has text; a question's buttons appear when its question text is not blank (a rating is stored only with its text, see 47.3). The ViewModel got changeStimulusRating / changeRating (names chosen to respect rule N-1), and save passes RatingsInput.
+- Edit screen: stimulus rating buttons for a card with a stimulus; per-block buttons for blocks with text. The ViewModel loads the saved ratings, keeps them in state, includes them in the draft (draftOf), restores them from an edit draft, and passes RatingsInput(stimulus only for a card with a stimulus, byLabel for the blocks shown). A rating-only difference counts as `changed` (save button on, leave dialog, draft kept).
+- The card is unchanged: QuestionCardRules.rating (rule U-1) already used both ratings. P-48 ("every card shows 3*") therefore ends as soon as the owner rates a question.
+
+48.3 Tests (expected, NOT run)
+- Unit: 14 new (QuestionRatingRulesTest 11 + RatingHintTest 3) -> 109 of 109 (95 + 14).
+- Emulator: 7 new (QuestionRatingTest) -> 85 (78 + 7). The screens have no emulator test; they are checked by the 8-step phone list in VERSION_NOTES_0.2.30.md.
+- identityHash 786b471dfa14c9ae4739bb81479bab25 unchanged; same debug key.
+- The Kotlin code has NOT been compiled or run (no Gradle). Risk points for the first CI run: FilterChip parameters (Material 3 1.4.0), the two ViewModels (new members: stimulusRating, ratings, changeStimulusRating, changeRating; no setX next to a property x).
+
+48.4 UI inventory status (39.6)
+ UI-07 Ratings: WRITTEN (v0.2.30a data + v0.2.30b buttons), UNCONFIRMED. Filter / sort by rating stays in the Filter tab phase (not started).
+ UI-06, UI-08, UI-09, UI-10: unchanged (parts c, d, e of 47.2).
+
+48.5 Status and problem log
+P-48  BY DESIGN until the owner rates a question; fixed in code by v0.2.30b (UNCONFIRMED).
+All other items: as in 47.6.
+
+48.6 Next steps (in order)
+1. Owner: push v0.2.30b (QuestionBank_v0_2_30b.zip) and send the CI report. Expect BUILD SUCCESSFUL, 109 unit tests (95 + 14), identityHash 786b471d... unchanged, same debug key.
+2. Owner: run the emulator workflow and send the report. Expect 85 tests (78 + 7).
+3. Owner: do the 8-step phone check list of VERSION_NOTES_0.2.30.md and report step by step.
+4. Assistant: read the reports, issue plan v1.40 (v0.2.30a + b CONFIRMED or corrected), then write v0.2.30c (boards + years + custom boards), again in small steps.
+
+48.7 Change log addition
+- v1.39: v0.2.30b written (rating buttons on both editor screens, draft keeps ratings); a and b tested together; expected 109 unit / 85 emulator tests, UNCONFIRMED.
+
+END OF VERSION 1.39 UPDATE

@@ -41,7 +41,7 @@ private fun editResultText(result: UpdateResult?): String? = when (result) {
     is UpdateResult.Failed -> "সংরক্ষণ করা যায়নি; আগের লেখা অক্ষত আছে। আবার চেষ্টা করুন।"
 }
 
-/** Edit screen of one existing card (v0.2.28; automatic edit draft v0.2.29). Full screen like the new-question editor. */
+/** Edit screen of one existing card (v0.2.28; automatic edit draft v0.2.29; rating buttons v0.2.30b). Full screen like the new-question editor. */
 @Composable
 fun QuestionEditScreen(
     viewModel: QuestionEditViewModel,
@@ -121,6 +121,12 @@ fun QuestionEditScreen(
                         minLines = 3,
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    RatingPicker(
+                        title = "উদ্দীপকের রেটিং",
+                        selected = viewModel.stimulusRating,
+                        enabled = !viewModel.saving,
+                        onSelect = viewModel::changeStimulusRating,
+                    )
                 }
                 viewModel.editableLabels.forEach { label ->
                     val i = label.sortOrder - 1
@@ -136,6 +142,15 @@ fun QuestionEditScreen(
                         minLines = 2,
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    // The rating of a block is stored only with its question text.
+                    if (viewModel.texts[i].isNotBlank()) {
+                        RatingPicker(
+                            title = "${label.letter}) প্রশ্নের রেটিং",
+                            selected = viewModel.ratings[i],
+                            enabled = !viewModel.saving,
+                            onSelect = { viewModel.changeRating(label, it) },
+                        )
+                    }
                     OutlinedTextField(
                         value = viewModel.answers[i],
                         onValueChange = { viewModel.setAnswer(label, it) },

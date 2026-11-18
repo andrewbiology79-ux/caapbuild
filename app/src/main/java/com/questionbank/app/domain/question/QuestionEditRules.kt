@@ -5,21 +5,34 @@ package com.questionbank.app.domain.question
  *
  * Same cleaning and limits as a new save ([QuestionRules]). What an edit may NOT do: blank the text of a stored sub-question or
  * the stimulus of a group that has one (that is a delete, a later package). What it may do: change texts and short answers, and
- * add a sub-question for a label that was empty (only in a group with a stimulus). Marks and types never change here.
+ * add a sub-question for a label that was empty (only in a group with a stimulus). Marks and types never change here. v0.2.30: ratings may change (see [RatingsInput]); a rating-only change is a real change.
  * Nothing that equals the stored value is written again, so a save without a real change is [Checked.NoChange].
  */
 object QuestionEditRules {
     sealed interface Checked {
-        /** [stimulusText] is null when the stimulus stays as it is. */
-        data class Ok(val stimulusText: String?, val updates: List<QuestionUpdate>, val adds: List<SubQuestionInput>) : Checked
+        /**
+         * [stimulusText] is null when the stimulus stays as it is. v0.2.30: [stimulusRating] is null when the stimulus rating stays;
+         * [ratingUpdates] lists stored questions whose rating changes (text may stay the same); [addRatings] holds the ratings of [adds].
+         */
+        data class Ok(
+            val stimulusText: String?,
+            val updates: List<QuestionUpdate>,
+            val adds: List<SubQuestionInput>,
+            val stimulusRating: RatingChange? = null,
+            val ratingUpdates: List<QuestionRatingUpdate> = emptyList(),
+            val addRatings: Map<CqLabel, Int?> = emptyMap(),
+        ) : Checked
         data object NoChange : Checked
         data class BlankedQuestion(val label: CqLabel) : Checked
         data object BlankedStimulus : Checked
         data class MissingText(val label: CqLabel) : Checked
         data class TooLong(val field: String) : Checked
+        data object BadRating : Checked
     }
 
     fun check(original: SavedGroup, input: GroupEditInput): Checked {
+        val wanted = input.ratings
+        if (wanted != null && !RatingRules.allValid(wanted)) return Checked.BadRating
         val hasStimulus = original.stimulusId != null
         var newStimulus: String? = null
         if (hasStimulus) {
@@ -30,6 +43,11 @@ object QuestionEditRules {
         }
         val updates = ArrayList<QuestionUpdate>()
         val adds = ArrayList<SubQuestionInput>()
+        val ratingUpdates = ArrayList<QuestionRatingUpdate>()
+        val addRatings = LinkedHashMap<CqLabel, Int?>()
+        // A stimulus rating can only change on a group that has a stimulus.
+        val stimulusRating: RatingChange? =
+            if (hasStimulus && wanted != null && wanted.stimulus != original.stimulusRating) RatingChange(wanted.stimulus) else null
         for (sub in input.subQuestions) {
             val text = QuestionRules.clean(sub.text)
             val answer = QuestionRules.clean(sub.shortAnswer)
@@ -39,6 +57,9 @@ object QuestionEditRules {
                 if (text.length > QuestionRules.MAX_TEXT_LENGTH) return Checked.TooLong("${sub.label.letter}) প্রশ্ন")
                 if (answer.length > QuestionRules.MAX_TEXT_LENGTH) return Checked.TooLong("${sub.label.letter}) উত্তর")
                 if (text != stored.text || answer != stored.shortAnswer) updates.add(QuestionUpdate(stored.id, sub.label, text, answer))
+                if (wanted != null && wanted.byLabel.containsKey(sub.label) && wanted.byLabel[sub.label] != stored.rating) {
+                    ratingUpdates.add(QuestionRatingUpdate(stored.id, sub.label, RatingChange(wanted.byLabel[sub.label])))
+                }
             } else {
                 if (text.isEmpty()) {
                     if (answer.isNotEmpty()) return Checked.MissingText(sub.label)
@@ -48,9 +69,10 @@ object QuestionEditRules {
                 if (text.length > QuestionRules.MAX_TEXT_LENGTH) return Checked.TooLong("${sub.label.letter}) প্রশ্ন")
                 if (answer.length > QuestionRules.MAX_TEXT_LENGTH) return Checked.TooLong("${sub.label.letter}) উত্তর")
                 adds.add(SubQuestionInput(sub.label, text, answer))
+                if (wanted != null && wanted.byLabel.containsKey(sub.label)) addRatings[sub.label] = wanted.byLabel[sub.label]
             }
         }
-        if (newStimulus == null && updates.isEmpty() && adds.isEmpty()) return Checked.NoChange
-        return Checked.Ok(newStimulus, updates, adds)
+        if (newStimulus == null && updates.isEmpty() && adds.isEmpty() && stimulusRating == null && ratingUpdates.isEmpty()) return Checked.NoChange
+        return Checked.Ok(newStimulus, updates, adds, stimulusRating, ratingUpdates, addRatings)
     }
 }

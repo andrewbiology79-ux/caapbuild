@@ -18,11 +18,37 @@ enum class CqLabel(val letter: String, val typeId: String, val typeCode: String,
 /** What the person typed for one sub-question (raw, not yet cleaned). */
 data class SubQuestionInput(val label: CqLabel, val text: String, val shortAnswer: String)
 
+/**
+ * Ratings chosen in the editor (v0.2.30, UI-07). A rating is 1-5 or null (= not saved; the card then shows 3 by rule U-1).
+ * For a NEW group the map holds the labels the person rated. For an EDIT the object means "these are the wanted ratings":
+ * [stimulus] null clears the stimulus rating, a label present with null clears that question's rating, a label that is
+ * absent from [byLabel] keeps whatever is stored.
+ */
+data class RatingsInput(
+    val stimulus: Int? = null,
+    val byLabel: Map<CqLabel, Int?> = emptyMap(),
+)
+
+/** Names of the five ratings (plan 39.3). */
+object RatingRules {
+    const val MIN = 1
+    const val MAX = 5
+    private val NAMES = listOf("সহজ", "মোটামুটি", "মাঝারি", "ভালো", "চ্যালেঞ্জিং")
+
+    fun isValid(rating: Int?): Boolean = rating == null || rating in MIN..MAX
+
+    fun name(rating: Int): String = NAMES[(rating - MIN).coerceIn(0, NAMES.size - 1)]
+
+    fun allValid(r: RatingsInput): Boolean = isValid(r.stimulus) && r.byLabel.values.all { isValid(it) }
+}
+
 /** Everything typed in the editor: an optional stimulus (উদ্দীপক) and the four sub-question blocks. */
 data class QuestionGroupInput(
     val topicId: String,
     val stimulusText: String,
     val subQuestions: List<SubQuestionInput>,
+    /** v0.2.30: null = no rating chosen. Ratings of a label without question text, and a stimulus rating without stimulus text, are not stored. */
+    val ratings: RatingsInput? = null,
 )
 
 /** Raw editor text, used for the automatic draft. Index 0..3 = ক, খ, গ, ঘ. */
@@ -30,6 +56,9 @@ data class DraftText(
     val stimulus: String = "",
     val texts: List<String> = List(4) { "" },
     val answers: List<String> = List(4) { "" },
+    /** v0.2.30: the rating chosen for the stimulus and for ক..ঘ (1-5 or null). A rating alone is not content: see [isBlank]. */
+    val stimulusRating: Int? = null,
+    val ratings: List<Int?> = List(4) { null },
 ) {
     val isBlank: Boolean
         get() = stimulus.isBlank() && texts.all { it.isBlank() } && answers.all { it.isBlank() }
@@ -42,7 +71,7 @@ data class SavedSubQuestion(
     val marks: Double,
     val text: String,
     val shortAnswer: String,
-    /** The question's own rating 1-5, or null when none was saved (the editor does not set ratings yet). */
+    /** The question's own rating 1-5, or null when none was saved (set in the editor since v0.2.30). */
     val rating: Int? = null,
 )
 
@@ -86,7 +115,15 @@ data class GroupEditInput(
     val groupKey: String,
     val stimulusText: String,
     val subQuestions: List<SubQuestionInput>,
+    /** v0.2.30: null = leave every stored rating untouched (the older screens pass nothing). See [RatingsInput] for the meaning when given. */
+    val ratings: RatingsInput? = null,
 )
+
+/** A rating that changes to [value] (null = cleared). Used where "no change" must be told apart from "cleared". */
+data class RatingChange(val value: Int?)
+
+/** One stored sub-question whose rating changes (v0.2.30). */
+data class QuestionRatingUpdate(val questionId: String, val label: CqLabel, val change: RatingChange)
 
 /** New cleaned text and short answer for one stored sub-question. */
 data class QuestionUpdate(val questionId: String, val label: CqLabel, val text: String, val answer: String)

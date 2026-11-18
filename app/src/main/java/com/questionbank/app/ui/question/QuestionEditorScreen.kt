@@ -81,6 +81,15 @@ fun QuestionEditorScreen(
                 minLines = 3,
                 modifier = Modifier.fillMaxWidth(),
             )
+            // A stimulus rating is stored only with a stimulus text, so the buttons appear when there is one.
+            if (draft.stimulus.isNotBlank()) {
+                RatingPicker(
+                    title = "উদ্দীপকের রেটিং",
+                    selected = draft.stimulusRating,
+                    enabled = !viewModel.saving,
+                    onSelect = viewModel::changeStimulusRating,
+                )
+            }
 
             CqLabel.entries.forEachIndexed { i, label ->
                 Text(
@@ -95,6 +104,15 @@ fun QuestionEditorScreen(
                     minLines = 2,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                // Same for a question: its rating is stored only with its question text.
+                if (draft.texts[i].isNotBlank()) {
+                    RatingPicker(
+                        title = "${label.letter}) প্রশ্নের রেটিং",
+                        selected = draft.ratings[i],
+                        enabled = !viewModel.saving,
+                        onSelect = { viewModel.changeRating(i, it) },
+                    )
+                }
                 OutlinedTextField(
                     value = draft.answers[i],
                     onValueChange = { viewModel.setAnswer(i, it) },

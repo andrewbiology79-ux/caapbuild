@@ -10,6 +10,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.questionbank.app.domain.question.CqLabel
 import com.questionbank.app.domain.question.DraftText
 import com.questionbank.app.domain.question.QuestionGroupInput
+import com.questionbank.app.domain.question.RatingsInput
 import com.questionbank.app.domain.question.SaveResult
 import com.questionbank.app.domain.question.SubQuestionInput
 import com.questionbank.app.domain.question.TypeCqQuestionRepository
@@ -90,6 +91,12 @@ class QuestionEditorViewModel(
     fun setAnswer(index: Int, value: String) =
         change(draft.copy(answers = draft.answers.toMutableList().also { it[index] = value }))
 
+    /** v0.2.30b: [value] 1-5, or null to clear. */
+    fun changeStimulusRating(value: Int?) = change(draft.copy(stimulusRating = value))
+
+    fun changeRating(index: Int, value: Int?) =
+        change(draft.copy(ratings = draft.ratings.toMutableList().also { it[index] = value }))
+
     fun clearAll() = change(DraftText())
 
     fun dismissResult() {
@@ -121,6 +128,10 @@ class QuestionEditorViewModel(
                         subQuestions = CqLabel.entries.mapIndexed { i, label ->
                             SubQuestionInput(label, snapshot.texts[i], snapshot.answers[i])
                         },
+                        ratings = RatingsInput(
+                            stimulus = snapshot.stimulusRating,
+                            byLabel = CqLabel.entries.mapIndexed { i, label -> label to snapshot.ratings[i] }.toMap(),
+                        ),
                     )
                 )
             }

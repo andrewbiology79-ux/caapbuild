@@ -1,6 +1,7 @@
 package com.questionbank.app.data.repository
 
 import com.questionbank.app.data.local.dao.NewQuestionRow
+import com.questionbank.app.data.local.dao.QuestionRatingDb
 import com.questionbank.app.data.local.dao.QuestionRowDb
 import com.questionbank.app.data.local.dao.QuestionTextUpdate
 import com.questionbank.app.data.local.dao.TypeCqQuestionDao
@@ -12,6 +13,7 @@ import com.questionbank.app.domain.question.QuestionGroupKey
 import com.questionbank.app.domain.question.UpdateResult
 import com.questionbank.app.domain.question.QuestionGroupInput
 import com.questionbank.app.domain.question.QuestionRules
+import com.questionbank.app.domain.question.RatingRules
 import com.questionbank.app.domain.question.QuestionSearchRules
 import com.questionbank.app.domain.question.SearchOutcome
 import com.questionbank.app.domain.question.SaveResult
@@ -52,24 +54,27 @@ class TypeCqQuestionRepositoryImpl(
             QuestionRules.Checked.Empty -> return SaveResult.Empty
             is QuestionRules.Checked.MissingText -> return SaveResult.MissingQuestionText(checked.label)
             is QuestionRules.Checked.TooLong -> return SaveResult.TooLong(checked.field)
+            QuestionRules.Checked.BadRating -> return SaveResult.Failed("রেটিং ১ থেকে ৫-এর মধ্যে হতে হবে")
             is QuestionRules.Checked.Ok -> checked
         }
         return try {
             beforeWrite()
             val stimulusId = if (ok.stimulusText.isNotEmpty()) newId() else null
             val rows = ok.items.map {
-                NewQuestionRow(newId(), it.label.typeId, it.label.letter, it.label.marks, it.text, it.shortAnswer)
+                NewQuestionRow(newId(), it.label.typeId, it.label.letter, it.label.marks, it.text, it.shortAnswer, ok.ratings[it.label])
             }
-            val written = dao.insertGroup(input.topicId, stimulusId, ok.stimulusText, rows, clock(), draftKey(input.topicId))
+            val stimulusRating = if (stimulusId != null) ok.stimulusRating else null
+            val written = dao.insertGroup(input.topicId, stimulusId, ok.stimulusText, stimulusRating, rows, clock(), draftKey(input.topicId))
             if (!written) return SaveResult.TopicMissing
 
             // Read-back: "saved" is reported only when the rows are really in the database with the same text.
             val stored = dao.readBack(rows.map { it.id }).associateBy { it.questionId }
             val questionsOk = rows.all { r ->
                 val s = stored[r.id]
-                s != null && s.questionText == r.text && s.shortAnswer == r.answer
+                s != null && s.questionText == r.text && s.shortAnswer == r.answer && s.rating == r.rating
             }
-            val stimulusOk = stimulusId == null || dao.readStimulusText(stimulusId) == ok.stimulusText
+            val stimulusOk = stimulusId == null ||
+                (dao.readStimulusText(stimulusId) == ok.stimulusText && dao.readStimulusRating(stimulusId) == stimulusRating)
             if (questionsOk && stimulusOk) {
                 SaveResult.Saved(stimulusId, rows.map { it.id })
             } else {
@@ -133,11 +138,12 @@ class TypeCqQuestionRepositoryImpl(
                 is QuestionEditRules.Checked.BlankedQuestion -> return UpdateResult.BlankedQuestion(checked.label)
                 is QuestionEditRules.Checked.MissingText -> return UpdateResult.MissingQuestionText(checked.label)
                 is QuestionEditRules.Checked.TooLong -> return UpdateResult.TooLong(checked.field)
+                QuestionEditRules.Checked.BadRating -> return UpdateResult.Failed("রেটিং ১ থেকে ৫-এর মধ্যে হতে হবে")
                 is QuestionEditRules.Checked.Ok -> checked
             }
             beforeWrite()
             val rows = ok.adds.map {
-                NewQuestionRow(newId(), it.label.typeId, it.label.letter, it.label.marks, it.text, it.shortAnswer)
+                NewQuestionRow(newId(), it.label.typeId, it.label.letter, it.label.marks, it.text, it.shortAnswer, ok.addRatings[it.label])
             }
             val written = dao.updateGroup(
                 topicId = input.topicId,
@@ -147,6 +153,9 @@ class TypeCqQuestionRepositoryImpl(
                 adds = rows,
                 now = clock(),
                 draftKey = editDraftKey(input.groupKey),
+                changeStimulusRating = ok.stimulusRating != null,
+                newStimulusRating = ok.stimulusRating?.value,
+                ratingUpdates = ok.ratingUpdates.map { QuestionRatingDb(it.questionId, it.change.value) },
             )
             if (!written) return UpdateResult.GroupMissing
 
@@ -154,12 +163,19 @@ class TypeCqQuestionRepositoryImpl(
             val expected = ok.updates.associate { it.questionId to (it.text to it.answer) } +
                 rows.associate { it.id to (it.text to it.answer) }
             val stored = dao.readBack(expected.keys.toList()).associateBy { it.questionId }
+            val wantRating = ok.ratingUpdates.associate { it.questionId to it.change.value } +
+                rows.associate { it.id to it.rating }
+            val ratingIds = wantRating.keys - expected.keys
+            val storedRatingOnly = if (ratingIds.isEmpty()) emptyMap() else dao.readBack(ratingIds.toList()).associateBy { it.questionId }
             val questionsOk = expected.all { (id, want) ->
                 val s = stored[id]
-                s != null && s.questionText == want.first && s.shortAnswer == want.second
-            }
+                s != null && s.questionText == want.first && s.shortAnswer == want.second &&
+                    (!wantRating.containsKey(id) || s.rating == wantRating[id])
+            } && ratingIds.all { id -> storedRatingOnly[id] != null && storedRatingOnly[id]!!.rating == wantRating[id] }
             val stimulusId = original.stimulusId
-            val stimulusOk = ok.stimulusText == null || (stimulusId != null && dao.readStimulusText(stimulusId) == ok.stimulusText)
+            val stimulusTextOk = ok.stimulusText == null || (stimulusId != null && dao.readStimulusText(stimulusId) == ok.stimulusText)
+            val stimulusRatingOk = ok.stimulusRating == null || (stimulusId != null && dao.readStimulusRating(stimulusId) == ok.stimulusRating.value)
+            val stimulusOk = stimulusTextOk && stimulusRatingOk
             if (questionsOk && stimulusOk) UpdateResult.Updated else UpdateResult.Failed("read-back mismatch")
         } catch (e: CancellationException) {
             throw e
@@ -244,16 +260,22 @@ class TypeCqQuestionRepositoryImpl(
             .put("stimulus", d.stimulus)
             .put("texts", JSONArray(d.texts))
             .put("answers", JSONArray(d.answers))
+            .put("stimulusRating", d.stimulusRating ?: 0) // 0 = no rating (a rating is 1-5)
+            .put("ratings", JSONArray(d.ratings.map { it ?: 0 }))
             .toString()
 
         internal fun decode(json: String): DraftText? = try {
             val o = JSONObject(json)
             val t = o.getJSONArray("texts")
             val a = o.getJSONArray("answers")
+            // Drafts written before v0.2.30 have no rating fields: they decode as "no rating".
+            val r = o.optJSONArray("ratings")
             DraftText(
                 stimulus = o.optString("stimulus", ""),
                 texts = List(4) { t.optString(it, "") },
                 answers = List(4) { a.optString(it, "") },
+                stimulusRating = o.optInt("stimulusRating", 0).takeIf { it in RatingRules.MIN..RatingRules.MAX },
+                ratings = List(4) { i -> r?.optInt(i, 0)?.takeIf { it in RatingRules.MIN..RatingRules.MAX } },
             )
         } catch (e: Exception) {
             null

@@ -11,6 +11,7 @@ import com.questionbank.app.domain.question.CqLabel
 import com.questionbank.app.domain.question.DraftText
 import com.questionbank.app.domain.question.GroupEditInput
 import com.questionbank.app.domain.question.QuestionEditRules
+import com.questionbank.app.domain.question.RatingsInput
 import com.questionbank.app.domain.question.SavedGroup
 import com.questionbank.app.domain.question.SubQuestionInput
 import com.questionbank.app.domain.question.TypeCqQuestionRepository
@@ -60,6 +61,11 @@ class QuestionEditViewModel(
         private set
     var answers by mutableStateOf(List(4) { "" })
         private set
+    /** v0.2.30b: the stimulus rating and the rating of ক..ঘ as typed (1-5 or null = none). Changed with [changeStimulusRating] / [changeRating]. */
+    var stimulusRating by mutableStateOf<Int?>(null)
+        private set
+    var ratings by mutableStateOf(List<Int?>(4) { null })
+        private set
     var saving by mutableStateOf(false)
         private set
     var result by mutableStateOf<UpdateResult?>(null)
@@ -85,15 +91,19 @@ class QuestionEditViewModel(
             } else {
                 val t = MutableList(4) { "" }
                 val a = MutableList(4) { "" }
+                val r = MutableList<Int?>(4) { null }
                 for (sub in group.subQuestions) {
                     val label = sub.label ?: continue
                     t[label.sortOrder - 1] = sub.text
                     a[label.sortOrder - 1] = sub.shortAnswer
+                    r[label.sortOrder - 1] = sub.rating
                 }
                 original = group
                 stimulus = group.stimulusText
                 texts = t
                 answers = a
+                stimulusRating = group.stimulusRating
+                ratings = r
                 load = EditLoad.READY
                 restoreDraft(group)
                 startWriter()
@@ -104,16 +114,22 @@ class QuestionEditViewModel(
     /** Puts a saved edit draft on top of the stored text. Only the blocks this screen can edit are taken from it. */
     private suspend fun restoreDraft(group: SavedGroup) {
         val stored = repository.loadEditDraft(groupKey) ?: return
-        if (group.stimulusId != null) stimulus = stored.stimulus
+        if (group.stimulusId != null) {
+            stimulus = stored.stimulus
+            stimulusRating = stored.stimulusRating
+        }
         val t = texts.toMutableList()
         val a = answers.toMutableList()
+        val r = ratings.toMutableList()
         for (label in editableLabels) {
             val i = label.sortOrder - 1
             t[i] = stored.texts[i]
             a[i] = stored.answers[i]
+            r[i] = stored.ratings[i]
         }
         texts = t
         answers = a
+        ratings = r
         if (changed) {
             restoredFromDraft = true
             draftStatus = DraftStatus.SAVED
@@ -138,7 +154,8 @@ class QuestionEditViewModel(
     /** The typed text as a draft, or null while it equals the stored text. */
     private fun currentDraft(): DraftText? = if (changed) draftOf() else null
 
-    private fun draftOf(): DraftText = DraftText(stimulus = stimulus, texts = texts, answers = answers)
+    private fun draftOf(): DraftText =
+        DraftText(stimulus = stimulus, texts = texts, answers = answers, stimulusRating = stimulusRating, ratings = ratings)
 
     private fun queueDraft() {
         if (finished || load != EditLoad.READY) return
@@ -164,6 +181,11 @@ class QuestionEditViewModel(
             groupKey = groupKey,
             stimulusText = stimulus,
             subQuestions = editableLabels.map { SubQuestionInput(it, texts[it.sortOrder - 1], answers[it.sortOrder - 1]) },
+            // The ratings of exactly the blocks this screen shows; the stimulus rating only for a card that has a stimulus.
+            ratings = RatingsInput(
+                stimulus = if (hasStimulus) stimulusRating else null,
+                byLabel = editableLabels.associateWith { ratings[it.sortOrder - 1] },
+            ),
         )
 
     /** True when the typed text differs from what is stored (after the same cleaning a save does). Blanking something counts as a change. */
@@ -190,6 +212,21 @@ class QuestionEditViewModel(
     fun setAnswer(label: CqLabel, value: String) {
         if (saving || finished) return
         answers = answers.toMutableList().also { it[label.sortOrder - 1] = value }
+        result = null
+        queueDraft()
+    }
+
+    /** [value] 1-5, or null to clear. Only meaningful for a card with a stimulus (the screen shows the buttons only then). */
+    fun changeStimulusRating(value: Int?) {
+        if (saving || finished) return
+        stimulusRating = value
+        result = null
+        queueDraft()
+    }
+
+    fun changeRating(label: CqLabel, value: Int?) {
+        if (saving || finished) return
+        ratings = ratings.toMutableList().also { it[label.sortOrder - 1] = value }
         result = null
         queueDraft()
     }

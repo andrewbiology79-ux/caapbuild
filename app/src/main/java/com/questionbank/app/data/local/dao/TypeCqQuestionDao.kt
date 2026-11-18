@@ -33,6 +33,7 @@ data class StoredTextDb(
     @ColumnInfo(name = "question_id") val questionId: String,
     @ColumnInfo(name = "question_text") val questionText: String,
     @ColumnInfo(name = "short_answer") val shortAnswer: String,
+    @ColumnInfo(name = "rating") val rating: Int?,
 )
 
 /** Values for one question to insert; ids and the fts_id are decided inside the transaction. */
@@ -43,7 +44,12 @@ data class NewQuestionRow(
     val marks: Double,
     val text: String,
     val answer: String,
+    /** v0.2.30: 1-5 or null (the table has a CHECK for the range). */
+    val rating: Int? = null,
 )
+
+/** Values for one stored question whose rating changes (v0.2.30); [rating] null clears it. */
+data class QuestionRatingDb(val questionId: String, val rating: Int?)
 
 /** Values for one stored question whose text and short answer change (v0.2.28). */
 data class QuestionTextUpdate(val questionId: String, val text: String, val answer: String)
@@ -115,17 +121,27 @@ abstract class TypeCqQuestionDao {
     @Query("UPDATE type_cq_questions SET question_text = :text, short_answer = :answer, updated_at = :now WHERE question_id = :questionId")
     abstract suspend fun updateQuestionText(questionId: String, text: String, answer: String, now: Long): Int
 
+    @Query("UPDATE type_cq_questions SET rating = :rating, updated_at = :now WHERE question_id = :questionId")
+    abstract suspend fun updateQuestionRating(questionId: String, rating: Int?, now: Long): Int
+
+    @Query("UPDATE type_cq_stimuli SET rating = :rating, updated_at = :now WHERE stimulus_id = :stimulusId")
+    abstract suspend fun updateStimulusRating(stimulusId: String, rating: Int?, now: Long): Int
+
     @Insert
     abstract suspend fun insertStimulus(row: TypeCqStimuliEntity)
 
     @Insert
     abstract suspend fun insertQuestion(row: TypeCqQuestionsEntity)
 
-    @Query("SELECT question_id, question_text, short_answer FROM type_cq_questions WHERE question_id IN (:ids)")
+    @Query("SELECT question_id, question_text, short_answer, rating FROM type_cq_questions WHERE question_id IN (:ids)")
     abstract suspend fun readBack(ids: List<String>): List<StoredTextDb>
 
     @Query("SELECT stimulus_text FROM type_cq_stimuli WHERE stimulus_id = :stimulusId")
     abstract suspend fun readStimulusText(stimulusId: String): String?
+
+    /** The stored stimulus rating (null when none, and also null when the stimulus does not exist: the callers check existence first). */
+    @Query("SELECT rating FROM type_cq_stimuli WHERE stimulus_id = :stimulusId")
+    abstract suspend fun readStimulusRating(stimulusId: String): Int?
 
     @Query("SELECT value_json FROM app_metadata WHERE \"key\" = :key")
     abstract suspend fun getMeta(key: String): String?
@@ -142,13 +158,14 @@ abstract class TypeCqQuestionDao {
         topicId: String,
         stimulusId: String?,
         stimulusText: String,
+        stimulusRating: Int?,
         items: List<NewQuestionRow>,
         now: Long,
         draftKey: String,
     ): Boolean {
         if (countTopic(topicId) == 0) return false
         if (stimulusId != null) {
-            insertStimulus(TypeCqStimuliEntity(stimulusId, topicId, stimulusText, null, "", now, now))
+            insertStimulus(TypeCqStimuliEntity(stimulusId, topicId, stimulusText, stimulusRating, "", now, now))
         }
         val ids = FtsIdAllocator(maxFtsId())
         var order = maxSortOrder(topicId)
@@ -165,7 +182,7 @@ abstract class TypeCqQuestionDao {
                     marks = item.marks,
                     questionText = item.text,
                     shortAnswer = item.answer,
-                    rating = null,
+                    rating = item.rating?.toLong(),
                     sortOrder = order,
                     createdAt = now,
                     updatedAt = now,
@@ -194,16 +211,28 @@ abstract class TypeCqQuestionDao {
         adds: List<NewQuestionRow>,
         now: Long,
         draftKey: String,
+        changeStimulusRating: Boolean,
+        newStimulusRating: Int?,
+        ratingUpdates: List<QuestionRatingDb>,
     ): Boolean {
         if (countTopic(topicId) == 0) return false
         if (stimulusId != null && countStimulus(stimulusId, topicId) == 0) return false
         if (updates.isNotEmpty() && countQuestionsIn(updates.map { it.questionId }, topicId) != updates.size) return false
+        if (ratingUpdates.isNotEmpty() && countQuestionsIn(ratingUpdates.map { it.questionId }, topicId) != ratingUpdates.size) return false
+        if (changeStimulusRating && stimulusId == null) return false
         if (newStimulusText != null) {
             val sid = checkNotNull(stimulusId) { "stimulus text given for a group without a stimulus" }
             check(updateStimulusText(sid, newStimulusText, now) == 1) { "stimulus row was not updated" }
         }
+        if (changeStimulusRating) {
+            val sid = checkNotNull(stimulusId) { "stimulus rating given for a group without a stimulus" }
+            check(updateStimulusRating(sid, newStimulusRating, now) == 1) { "stimulus rating was not updated" }
+        }
         for (u in updates) {
             check(updateQuestionText(u.questionId, u.text, u.answer, now) == 1) { "question row was not updated" }
+        }
+        for (r in ratingUpdates) {
+            check(updateQuestionRating(r.questionId, r.rating, now) == 1) { "question rating was not updated" }
         }
         if (adds.isNotEmpty()) {
             val sid = checkNotNull(stimulusId) { "new sub-question needs a stimulus" }
@@ -221,7 +250,7 @@ abstract class TypeCqQuestionDao {
                         marks = item.marks,
                         questionText = item.text,
                         shortAnswer = item.answer,
-                        rating = null,
+                        rating = item.rating?.toLong(),
                         sortOrder = order,
                         createdAt = now,
                         updatedAt = now,
