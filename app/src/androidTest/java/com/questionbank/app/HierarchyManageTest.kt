@@ -102,7 +102,8 @@ class HierarchyManageTest {
         val b = id(repo.addSubject("অন্য"))
         assertEquals(EditResult.Duplicate, repo.renameSubject(b, "সম\u09AF\u09BC"))
         assertEquals("অন্য", repo.observeSubject(b).first()?.name)
-        assertEquals("সম\u09DF", repo.observeSubject(a).first()?.name)
+        // Names are stored in NFC: the single letter য় (U+09DF) is stored as য + nukta (U+09AF U+09BC).
+        assertEquals("সম\u09AF\u09BC", repo.observeSubject(a).first()?.name)
     }
 
     @Test
