@@ -59,7 +59,10 @@ fun QuestionListScreen(
     viewModel: QuestionListViewModel,
     savedCount: Int,
     onSavedShown: () -> Unit,
+    edited: Boolean,
+    onEditedShown: () -> Unit,
     onAdd: () -> Unit,
+    onEdit: (SavedGroup) -> Unit,
     onBack: () -> Unit,
 ) {
     val groups by viewModel.groups.collectAsState()
@@ -79,6 +82,13 @@ fun QuestionListScreen(
         if (savedCount > 0) {
             snackbar.showSnackbar("${savedCount.toBengali()} টি প্রশ্ন সংরক্ষিত হয়েছে ✓")
             onSavedShown()
+        }
+    }
+
+    LaunchedEffect(edited) {
+        if (edited) {
+            snackbar.showSnackbar("পরিবর্তন সংরক্ষিত হয়েছে ✓")
+            onEditedShown()
         }
     }
 
@@ -112,16 +122,16 @@ fun QuestionListScreen(
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
             if (showSearch) {
-                SearchBody(searchState)
+                SearchBody(searchState, onEdit)
             } else {
-                ListBody(groups)
+                ListBody(groups, onEdit)
             }
         }
     }
 }
 
 @Composable
-private fun ListBody(current: List<SavedGroup>?) {
+private fun ListBody(current: List<SavedGroup>?, onEdit: (SavedGroup) -> Unit) {
     when {
         current == null -> Box(Modifier.fillMaxSize()) { CircularProgressIndicator(modifier = Modifier.align(Alignment.Center)) }
         current.isEmpty() -> Box(Modifier.fillMaxSize()) {
@@ -131,18 +141,18 @@ private fun ListBody(current: List<SavedGroup>?) {
                 style = MaterialTheme.typography.bodyLarge,
             )
         }
-        else -> CardList(current, totalLine(current))
+        else -> CardList(current, totalLine(current), onEdit)
     }
 }
 
 @Composable
-private fun SearchBody(state: SearchUiState) {
+private fun SearchBody(state: SearchUiState, onEdit: (SavedGroup) -> Unit) {
     when (state) {
         SearchUiState.Idle -> Unit
         SearchUiState.NoTerms -> Message("খোঁজার জন্য অক্ষর বা সংখ্যা লিখুন।")
         is SearchUiState.Failed -> Message("খোঁজা যায়নি। আবার চেষ্টা করুন।", isError = true)
         is SearchUiState.Results ->
-            if (state.groups.isEmpty()) Message("কোনো প্রশ্ন পাওয়া যায়নি।") else CardList(state.groups, foundLine(state.groups))
+            if (state.groups.isEmpty()) Message("কোনো প্রশ্ন পাওয়া যায়নি।") else CardList(state.groups, foundLine(state.groups), onEdit)
     }
 }
 
@@ -159,7 +169,7 @@ private fun Message(text: String, isError: Boolean = false) {
 }
 
 @Composable
-private fun CardList(groups: List<SavedGroup>, headline: String) {
+private fun CardList(groups: List<SavedGroup>, headline: String, onEdit: (SavedGroup) -> Unit) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
@@ -169,7 +179,7 @@ private fun CardList(groups: List<SavedGroup>, headline: String) {
             Text(headline, style = MaterialTheme.typography.labelLarge)
         }
         itemsIndexed(groups, key = { _, group -> group.stimulusId ?: group.subQuestions.first().id }) { index, group ->
-            QuestionCard(number = index + 1, group = group)
+            QuestionCard(number = index + 1, group = group, onEdit = { onEdit(group) })
         }
     }
 }

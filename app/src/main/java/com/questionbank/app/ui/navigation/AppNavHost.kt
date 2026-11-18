@@ -41,6 +41,9 @@ import com.questionbank.app.ui.hierarchy.HierarchyLabels
 import com.questionbank.app.ui.hierarchy.HierarchyListScreen
 import com.questionbank.app.ui.hierarchy.HierarchyListViewModel
 import com.questionbank.app.ui.profile.ProfileScreen
+import com.questionbank.app.domain.question.QuestionGroupKey
+import com.questionbank.app.ui.question.QuestionEditScreen
+import com.questionbank.app.ui.question.QuestionEditViewModel
 import com.questionbank.app.ui.question.QuestionEditorScreen
 import com.questionbank.app.ui.question.QuestionEditorViewModel
 import com.questionbank.app.ui.question.QuestionListScreen
@@ -68,12 +71,15 @@ object Routes {
     const val TOPICS = "type_cq/chapters/{chapterId}/topics"
     const val QUESTIONS = "type_cq/topics/{topicId}/questions"
     const val QUESTION_EDITOR = "type_cq/topics/{topicId}/questions/new"
+    const val QUESTION_EDIT = "type_cq/topics/{topicId}/questions/edit/{groupKey}"
     const val SAVED_COUNT_KEY = "savedCount"
+    const val EDITED_KEY = "questionEdited"
 
     fun chapters(subjectId: String) = "type_cq/subjects/$subjectId/chapters"
     fun topics(chapterId: String) = "type_cq/chapters/$chapterId/topics"
     fun questions(topicId: String) = "type_cq/topics/$topicId/questions"
     fun questionEditor(topicId: String) = "type_cq/topics/$topicId/questions/new"
+    fun questionEdit(topicId: String, groupKey: String) = "type_cq/topics/$topicId/questions/edit/$groupKey"
 }
 
 private val SUBJECT_LABELS = HierarchyLabels(
@@ -113,7 +119,7 @@ fun AppNavHost() {
     val currentDestination = backStackEntry?.destination
     val currentRoute = currentDestination?.route
     // The editor is full screen: more room for typing, and no tab switch in the middle of a question.
-    val showBottomBar = currentRoute != Routes.QUESTION_EDITOR
+    val showBottomBar = currentRoute != Routes.QUESTION_EDITOR && currentRoute != Routes.QUESTION_EDIT
 
     // Back at the very first screen asks before leaving (design 39.3).
     var showExitDialog by rememberSaveable { mutableStateOf(false) }
@@ -245,11 +251,17 @@ fun AppNavHost() {
                         factory = QuestionListViewModel.factory { QuestionListViewModel(topicId, questionRepo) }
                     )
                     val savedCount by entry.savedStateHandle.getStateFlow(Routes.SAVED_COUNT_KEY, 0).collectAsState()
+                    val edited by entry.savedStateHandle.getStateFlow(Routes.EDITED_KEY, false).collectAsState()
                     QuestionListScreen(
                         viewModel = vm,
                         savedCount = savedCount,
                         onSavedShown = { entry.savedStateHandle[Routes.SAVED_COUNT_KEY] = 0 },
+                        edited = edited,
+                        onEditedShown = { entry.savedStateHandle[Routes.EDITED_KEY] = false },
                         onAdd = { navController.navigate(Routes.questionEditor(topicId)) },
+                        onEdit = { group ->
+                            QuestionGroupKey.of(group)?.let { navController.navigate(Routes.questionEdit(topicId, it)) }
+                        },
                         onBack = { navController.popBackStack() },
                     )
                 }
@@ -268,6 +280,28 @@ fun AppNavHost() {
                         viewModel = vm,
                         onSaved = { count ->
                             navController.previousBackStackEntry?.savedStateHandle?.set(Routes.SAVED_COUNT_KEY, count)
+                            navController.popBackStack()
+                        },
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+
+                composable(
+                    route = Routes.QUESTION_EDIT,
+                    arguments = listOf(
+                        navArgument("topicId") { type = NavType.StringType },
+                        navArgument("groupKey") { type = NavType.StringType },
+                    ),
+                ) { entry ->
+                    val topicId = entry.arguments?.getString("topicId").orEmpty()
+                    val groupKey = entry.arguments?.getString("groupKey").orEmpty()
+                    val vm: QuestionEditViewModel = viewModel(
+                        factory = QuestionEditViewModel.factory { QuestionEditViewModel(topicId, groupKey, questionRepo) }
+                    )
+                    QuestionEditScreen(
+                        viewModel = vm,
+                        onSaved = {
+                            navController.previousBackStackEntry?.savedStateHandle?.set(Routes.EDITED_KEY, true)
                             navController.popBackStack()
                         },
                         onBack = { navController.popBackStack() },

@@ -75,3 +75,36 @@ sealed interface SearchOutcome {
     data class Found(val groups: List<SavedGroup>) : SearchOutcome
     data class Failed(val reason: String) : SearchOutcome
 }
+
+/**
+ * What the edit screen hands over when an EXISTING group is saved (v0.2.28). [groupKey] comes from [QuestionGroupKey].
+ * [subQuestions] holds the blocks the person could edit: all four labels for a group with a stimulus, only the question's own
+ * label for a single question. [stimulusText] is ignored for a single question.
+ */
+data class GroupEditInput(
+    val topicId: String,
+    val groupKey: String,
+    val stimulusText: String,
+    val subQuestions: List<SubQuestionInput>,
+)
+
+/** New cleaned text and short answer for one stored sub-question. */
+data class QuestionUpdate(val questionId: String, val label: CqLabel, val text: String, val answer: String)
+
+sealed interface UpdateResult {
+    /** Written in one transaction and read back. */
+    data object Updated : UpdateResult
+    /** Nothing differs from what is stored; nothing was written. */
+    data object NoChange : UpdateResult
+    /** The text of a stored sub-question was blanked. That would be a delete (a later package), so nothing was written. */
+    data class BlankedQuestion(val label: CqLabel) : UpdateResult
+    /** The stimulus of a group that has one was blanked. Nothing was written. */
+    data object BlankedStimulus : UpdateResult
+    /** A short answer was typed for a label that has no question text. */
+    data class MissingQuestionText(val label: CqLabel) : UpdateResult
+    data class TooLong(val field: String) : UpdateResult
+    /** The group (or its topic) no longer exists. */
+    data object GroupMissing : UpdateResult
+    /** The database refused the write, or the read-back did not match. Nothing was changed. */
+    data class Failed(val reason: String) : UpdateResult
+}

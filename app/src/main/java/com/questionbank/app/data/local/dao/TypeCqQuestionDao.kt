@@ -45,13 +45,25 @@ data class NewQuestionRow(
     val answer: String,
 )
 
-/** Question rows of one topic with their stimulus, newest first. Shared by the live list and the search. */
-private const val QUESTION_ROWS_SQL =
+/** Values for one stored question whose text and short answer change (v0.2.28). */
+data class QuestionTextUpdate(val questionId: String, val text: String, val answer: String)
+
+private const val QUESTION_SELECT_SQL =
     "SELECT q.question_id AS question_id, q.stimulus_id AS stimulus_id, s.stimulus_text AS stimulus_text, " +
         "q.subquestion_label AS subquestion_label, q.marks AS marks, q.question_text AS question_text, " +
         "q.short_answer AS short_answer, q.rating AS rating, s.rating AS stimulus_rating " +
-        "FROM type_cq_questions q LEFT JOIN type_cq_stimuli s ON s.stimulus_id = q.stimulus_id " +
-        "WHERE q.topic_id = :topicId ORDER BY q.sort_order DESC, q.question_id"
+        "FROM type_cq_questions q LEFT JOIN type_cq_stimuli s ON s.stimulus_id = q.stimulus_id "
+
+/** Question rows of one topic with their stimulus, newest first. Shared by the live list and the search. */
+private const val QUESTION_ROWS_SQL = QUESTION_SELECT_SQL + "WHERE q.topic_id = :topicId ORDER BY q.sort_order DESC, q.question_id"
+
+/** The rows of ONE card: all questions of a stimulus (v0.2.28). */
+private const val GROUP_BY_STIMULUS_SQL =
+    QUESTION_SELECT_SQL + "WHERE q.topic_id = :topicId AND q.stimulus_id = :stimulusId ORDER BY q.sort_order DESC, q.question_id"
+
+/** The row of ONE single question without a stimulus (v0.2.28). */
+private const val GROUP_BY_SINGLE_SQL =
+    QUESTION_SELECT_SQL + "WHERE q.topic_id = :topicId AND q.question_id = :questionId AND q.stimulus_id IS NULL"
 
 /**
  * Abstract class (not an interface) because [insertGroup] is a @Transaction method with a body.
@@ -70,6 +82,12 @@ abstract class TypeCqQuestionDao {
     @Query(QUESTION_ROWS_SQL)
     abstract suspend fun selectByTopic(topicId: String): List<QuestionRowDb>
 
+    @Query(GROUP_BY_STIMULUS_SQL)
+    abstract suspend fun selectByStimulus(topicId: String, stimulusId: String): List<QuestionRowDb>
+
+    @Query(GROUP_BY_SINGLE_SQL)
+    abstract suspend fun selectBySingle(topicId: String, questionId: String): List<QuestionRowDb>
+
     @Query("SELECT stimulus_id, stimulus_text FROM type_cq_stimuli WHERE topic_id = :topicId AND stimulus_text <> ''")
     abstract suspend fun stimuliOfTopic(topicId: String): List<StimulusTextDb>
 
@@ -81,6 +99,21 @@ abstract class TypeCqQuestionDao {
 
     @Query("SELECT COALESCE(MAX(sort_order), 0) FROM type_cq_questions WHERE topic_id = :topicId")
     abstract suspend fun maxSortOrder(topicId: String): Long
+
+    @Query("SELECT COUNT(*) FROM type_cq_stimuli WHERE stimulus_id = :stimulusId AND topic_id = :topicId")
+    abstract suspend fun countStimulus(stimulusId: String, topicId: String): Int
+
+    @Query("SELECT COUNT(*) FROM type_cq_questions WHERE question_id IN (:ids) AND topic_id = :topicId")
+    abstract suspend fun countQuestionsIn(ids: List<String>, topicId: String): Int
+
+    @Query("SELECT COALESCE(MAX(sort_order), 0) FROM type_cq_questions WHERE stimulus_id = :stimulusId")
+    abstract suspend fun maxSortOrderOfStimulus(stimulusId: String): Long
+
+    @Query("UPDATE type_cq_stimuli SET stimulus_text = :text, updated_at = :now WHERE stimulus_id = :stimulusId")
+    abstract suspend fun updateStimulusText(stimulusId: String, text: String, now: Long): Int
+
+    @Query("UPDATE type_cq_questions SET question_text = :text, short_answer = :answer, updated_at = :now WHERE question_id = :questionId")
+    abstract suspend fun updateQuestionText(questionId: String, text: String, answer: String, now: Long): Int
 
     @Insert
     abstract suspend fun insertStimulus(row: TypeCqStimuliEntity)
@@ -140,6 +173,59 @@ abstract class TypeCqQuestionDao {
             )
         }
         deleteMeta(draftKey)
+        return true
+    }
+    /**
+     * Changes an existing group in ONE transaction (v0.2.28). Returns false, having written nothing, when the topic, the stimulus
+     * or one of the questions no longer exists (everything is checked before the first write). Any exception rolls back every
+     * write of this call. The `trg_type_question_fts_update` trigger keeps the FTS rows in step with the new texts.
+     *
+     * New rows get the group's current highest `sort_order`, so the card keeps its place in the list (the list shows the newest
+     * card first and a card is placed by its highest `sort_order`).
+     */
+    @Transaction
+    open suspend fun updateGroup(
+        topicId: String,
+        stimulusId: String?,
+        newStimulusText: String?,
+        updates: List<QuestionTextUpdate>,
+        adds: List<NewQuestionRow>,
+        now: Long,
+    ): Boolean {
+        if (countTopic(topicId) == 0) return false
+        if (stimulusId != null && countStimulus(stimulusId, topicId) == 0) return false
+        if (updates.isNotEmpty() && countQuestionsIn(updates.map { it.questionId }, topicId) != updates.size) return false
+        if (newStimulusText != null) {
+            val sid = checkNotNull(stimulusId) { "stimulus text given for a group without a stimulus" }
+            check(updateStimulusText(sid, newStimulusText, now) == 1) { "stimulus row was not updated" }
+        }
+        for (u in updates) {
+            check(updateQuestionText(u.questionId, u.text, u.answer, now) == 1) { "question row was not updated" }
+        }
+        if (adds.isNotEmpty()) {
+            val sid = checkNotNull(stimulusId) { "new sub-question needs a stimulus" }
+            val ids = FtsIdAllocator(maxFtsId())
+            val order = maxSortOrderOfStimulus(sid)
+            for (item in adds) {
+                insertQuestion(
+                    TypeCqQuestionsEntity(
+                        questionId = item.id,
+                        ftsId = ids.next(),
+                        stimulusId = sid,
+                        topicId = topicId,
+                        questionTypeId = item.typeId,
+                        subquestionLabel = item.label,
+                        marks = item.marks,
+                        questionText = item.text,
+                        shortAnswer = item.answer,
+                        rating = null,
+                        sortOrder = order,
+                        createdAt = now,
+                        updatedAt = now,
+                    )
+                )
+            }
+        }
         return true
     }
 }

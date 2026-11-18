@@ -15,6 +15,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
@@ -35,6 +36,7 @@ sealed interface SearchUiState {
  * Search (v0.2.27): the typed text lives in Compose snapshot state (typing never races with the keyboard, same choice as the
  * editor). A search starts 300 ms after the last key; a newer text cancels an older search. While the text is empty nothing is
  * searched and the normal list shows. Search state lives in this ViewModel, so it survives rotation and a visit to the editor.
+ * v0.2.28: the search also runs again whenever the rows of the topic change (an edit was saved), without waiting 300 ms.
  */
 class QuestionListViewModel(private val topicId: String, private val repository: TypeCqQuestionRepository) : ViewModel() {
 
@@ -51,8 +53,11 @@ class QuestionListViewModel(private val topicId: String, private val repository:
         private set
 
     @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
-    val searchState: StateFlow<SearchUiState> = snapshotFlow { query }
-        .debounce { text -> if (text.isEmpty()) 0L else SEARCH_DELAY_MS }
+    val searchState: StateFlow<SearchUiState> = combine(
+        snapshotFlow { query }.debounce { text -> if (text.isEmpty()) 0L else SEARCH_DELAY_MS },
+        // v0.2.28: a saved edit changes the topic's rows; the same text is searched again so the result never shows old text.
+        repository.observeGroups(topicId),
+    ) { text, _ -> text }
         .mapLatest { text ->
             if (text.isBlank()) {
                 SearchUiState.Idle

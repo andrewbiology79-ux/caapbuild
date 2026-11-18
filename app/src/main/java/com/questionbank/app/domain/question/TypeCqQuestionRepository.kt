@@ -21,6 +21,16 @@ interface TypeCqQuestionRepository {
      */
     suspend fun search(topicId: String, rawQuery: String): SearchOutcome
 
+    /** One card as saved now, for the edit screen (v0.2.28). Null when it no longer exists. [groupKey] comes from [QuestionGroupKey]. */
+    suspend fun loadGroup(topicId: String, groupKey: String): SavedGroup?
+
+    /**
+     * Saves changes to an EXISTING group (v0.2.28) in ONE transaction: stimulus text, texts and short answers of stored
+     * sub-questions (the FTS update trigger replaces their FTS rows), new rows for labels that were empty, `updated_at`. Reported
+     * as [UpdateResult.Updated] only after the rows were read back. Refusals (see [QuestionEditRules]) write nothing.
+     */
+    suspend fun updateGroup(input: GroupEditInput): UpdateResult
+
     suspend fun loadDraft(topicId: String): DraftText?
     /** A blank draft removes the stored draft. Failures are swallowed on purpose: a draft must never break typing. */
     suspend fun saveDraft(topicId: String, draft: DraftText)

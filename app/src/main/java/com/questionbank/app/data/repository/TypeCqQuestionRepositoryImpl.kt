@@ -2,9 +2,14 @@ package com.questionbank.app.data.repository
 
 import com.questionbank.app.data.local.dao.NewQuestionRow
 import com.questionbank.app.data.local.dao.QuestionRowDb
+import com.questionbank.app.data.local.dao.QuestionTextUpdate
 import com.questionbank.app.data.local.dao.TypeCqQuestionDao
 import com.questionbank.app.domain.question.CqLabel
 import com.questionbank.app.domain.question.DraftText
+import com.questionbank.app.domain.question.GroupEditInput
+import com.questionbank.app.domain.question.QuestionEditRules
+import com.questionbank.app.domain.question.QuestionGroupKey
+import com.questionbank.app.domain.question.UpdateResult
 import com.questionbank.app.domain.question.QuestionGroupInput
 import com.questionbank.app.domain.question.QuestionRules
 import com.questionbank.app.domain.question.QuestionSearchRules
@@ -92,6 +97,66 @@ class TypeCqQuestionRepositoryImpl(
             throw e
         } catch (e: Exception) {
             SearchOutcome.Failed(e.message ?: e.javaClass.simpleName)
+        }
+    }
+
+    override suspend fun loadGroup(topicId: String, groupKey: String): SavedGroup? = try {
+        loadOriginal(topicId, groupKey)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        null
+    }
+
+    private suspend fun loadOriginal(topicId: String, groupKey: String): SavedGroup? {
+        val rows = when (val key = QuestionGroupKey.parse(groupKey)) {
+            null -> return null
+            is QuestionGroupKey.Parsed.Stimulus -> dao.selectByStimulus(topicId, key.id)
+            is QuestionGroupKey.Parsed.Single -> dao.selectBySingle(topicId, key.id)
+        }
+        return group(rows).firstOrNull()
+    }
+
+    override suspend fun updateGroup(input: GroupEditInput): UpdateResult {
+        return try {
+            val original = loadOriginal(input.topicId, input.groupKey) ?: return UpdateResult.GroupMissing
+            val ok = when (val checked = QuestionEditRules.check(original, input)) {
+                QuestionEditRules.Checked.NoChange -> return UpdateResult.NoChange
+                QuestionEditRules.Checked.BlankedStimulus -> return UpdateResult.BlankedStimulus
+                is QuestionEditRules.Checked.BlankedQuestion -> return UpdateResult.BlankedQuestion(checked.label)
+                is QuestionEditRules.Checked.MissingText -> return UpdateResult.MissingQuestionText(checked.label)
+                is QuestionEditRules.Checked.TooLong -> return UpdateResult.TooLong(checked.field)
+                is QuestionEditRules.Checked.Ok -> checked
+            }
+            beforeWrite()
+            val rows = ok.adds.map {
+                NewQuestionRow(newId(), it.label.typeId, it.label.letter, it.label.marks, it.text, it.shortAnswer)
+            }
+            val written = dao.updateGroup(
+                topicId = input.topicId,
+                stimulusId = original.stimulusId,
+                newStimulusText = ok.stimulusText,
+                updates = ok.updates.map { QuestionTextUpdate(it.questionId, it.text, it.answer) },
+                adds = rows,
+                now = clock(),
+            )
+            if (!written) return UpdateResult.GroupMissing
+
+            // Read-back: "updated" is reported only when the rows really hold the new text.
+            val expected = ok.updates.associate { it.questionId to (it.text to it.answer) } +
+                rows.associate { it.id to (it.text to it.answer) }
+            val stored = dao.readBack(expected.keys.toList()).associateBy { it.questionId }
+            val questionsOk = expected.all { (id, want) ->
+                val s = stored[id]
+                s != null && s.questionText == want.first && s.shortAnswer == want.second
+            }
+            val stimulusId = original.stimulusId
+            val stimulusOk = ok.stimulusText == null || (stimulusId != null && dao.readStimulusText(stimulusId) == ok.stimulusText)
+            if (questionsOk && stimulusOk) UpdateResult.Updated else UpdateResult.Failed("read-back mismatch")
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            UpdateResult.Failed(e.message ?: e.javaClass.simpleName)
         }
     }
 

@@ -1,7 +1,7 @@
 QUESTION BANK ANDROID APP COMPLETE PROJECT DEVELOPMENT & DELIVERY PLAN
 ============================================================
 
-Document version: 1.33 (next step split in two: part A = v0.2.27 question card + in-topic search written, UNCONFIRMED; part B = v0.2.28 open an existing question in the editor, designed, not written; package order renumbered; section 42 added)
+Document version: 1.34 (v0.2.27 CONFIRMED after a one-line compile fix; part B split again: v0.2.28 = B-1 edit core written, UNCONFIRMED; v0.2.29 = B-2 edit drafts; package order renumbered; section 43 added)
 Planning baseline: 16 November 2026
 Project status: Single-database architecture confirmed; canonical SQL and Room build harness prepared. CI run 11 (package v0.2.8) passed: KSP/Room generation, unit tests (5 of 5) and debug APK assembly. The package is still a build harness, not a complete application; Room-database runtime behaviour (CHECK emulation, Bengali FTS on the real database) is not yet device-tested.
 
@@ -3124,3 +3124,76 @@ P-37  Font file (Hind Siliguri). Status: OPEN (unchanged).
 
 END OF VERSION 1.33 UPDATE
 
+
+============================================================
+43. v0.2.27 CONFIRMED; PART B SPLIT AGAIN, PACKAGE v0.2.28 (B-1: EDIT AN EXISTING QUESTION) - VERSION 1.34
+============================================================
+
+Planning update date: 18 November 2026
+
+43.1 Evidence for v0.2.27 (reports read by the assistant)
+- CI run 37 FAILED at compileDebugKotlin (also compileReleaseKotlin and the androidTest compile): "Platform declaration clash", QuestionListViewModel.kt, because the property `query` (with a private setter) and the function `setQuery(String)` have the same JVM signature. Cause: written without a compiler (the plan said NOT compiled). Fix: the function was renamed `onQueryChange`; its only caller is QuestionListScreen.
+- CI run 38 (commit 07baf68): BUILD SUCCESSFUL, exit code 0; 74 of 74 unit tests, 0 skipped; identityHash 786b471dfa14c9ae4739bb81479bab25 unchanged; APK signed with the same fixed debug key (CN=Android Debug).
+- Emulator report (emulator-5554, API 14): 59 of 59 tests, BUILD SUCCESSFUL.
+- Phone check list (8 steps of VERSION_NOTES_0.2.27.md): clear, by owner report.
+RESULT: v0.2.27 CONFIRMED (UI-04 part: card, ribbon, rating badge, chip strip, text; UI-05: in-topic search).
+LESSON (rule kept): code written without a compiler can fail at the first compile. This is why every package is CI-verified before the next one is built on it (section 31.4); the owner's report of run 37 caught this at the cheapest moment.
+
+43.2 Owner decision: part B is split in two
+Part B (section 42.4) is the first package that changes SAVED questions, so it is cut again by risk:
+- B-1 = v0.2.28 (written in this update): "⋮" menu on the card, edit screen with the stored texts, ONE all-or-nothing save, refusals, discard dialog. No edit draft.
+- B-2 = v0.2.29 (designed, not written): automatic edit drafts, key `draft:type_cq:edit:<id>`, written like the new-question draft, removed in the same transaction as the update, restored when the edit is opened again. Starts after B-1 is confirmed.
+Reason: B-1 contains every write that can touch saved data; B-2 only adds protection for text that is not saved yet. A killed app during an edit loses only the typed edit in B-1; the saved question is never half changed.
+
+43.3 Package v0.2.28 (written, NOT compiled, NOT run - UNCONFIRMED; ADR-012)
+- Card: ribbon gets a 3-dot button with one item "সম্পাদনা" (list and search results). A card is named by QuestionGroupKey: "s-<stimulusId>" or "q-<questionId>" (single question).
+- Route type_cq/topics/{topicId}/questions/edit/{groupKey}; full screen like the new-question editor (no bottom tabs).
+- Rules (domain/question/QuestionEditRules.kt, pure): same cleaning and limits as a new save (NFC, trim, 20,000). Changed texts and short answers of stored sub-questions; a new sub-question for an empty label (only in a card with a stimulus); changed stimulus. REFUSED, nothing written: blanking a stored sub-question text, blanking the stimulus, a short answer without question text, too long. A value equal to the stored one is not written; nothing changed = NoChange (save button disabled).
+- DAO updateGroup (@Transaction): everything is checked before the first write (topic, stimulus, question ids); stimulus text, question text + short answer + updated_at, new rows with their own fts_id; any exception rolls back all. The existing trigger trg_type_question_fts_update keeps the FTS rows in step.
+- Repository: loadGroup(topicId, groupKey), updateGroup(input) -> UpdateResult (Updated after read-back, NoChange, BlankedQuestion, BlankedStimulus, MissingQuestionText, TooLong, GroupMissing, Failed).
+- DECISION by the assistant (owner may overrule): a new sub-question gets the card's current highest sort_order, not "next sort_order" (42.4 item 3), so the edited card keeps its place in the newest-first list.
+- Search: the in-topic search runs again whenever the topic's rows change (combine with observeGroups), so a result never shows old text after an edit.
+- Leaving with unsaved changes asks first (discard dialog). Marks and types never change in this package.
+- versionCode 28, versionName 0.2.28-edit-question. NO schema change (identityHash 786b471d... must stay). No new dependency.
+- Tests: 15 new unit tests (QuestionEditRulesTest) -> expected 89 of 89 (74 + 15); 9 new emulator tests (QuestionEditTest) -> expected 68 (59 + 9).
+- Phone check list: 10 steps in VERSION_NOTES_0.2.28.md.
+
+43.4 Revised package order (supersedes 42.5 from v0.2.28 on; contents unchanged)
+ v0.2.27  PART A: question card + in-topic search. CONFIRMED.
+ v0.2.28  PART B-1: edit an existing question (core). Written, UNCONFIRMED.
+ v0.2.29  PART B-2: edit drafts.
+ v0.2.30  EDITOR FIELDS (was v0.2.29): Minimum / Full modes, ratings with rule U-1, boards + years + custom boards, reference, short answer, editable marks, undo/redo, duplicate warning (UI-06 to UI-10).
+ v0.2.31  DELETE + SELECTION (was v0.2.30): delete-safety design, checkboxes, copy / cut / paste, shared clipboard (UI-11 delete part, UI-12).
+ v0.2.32  JSON PASTE IMPORT and reference-file importer (was v0.2.31; UI-16, UI-17).
+ then     pictures and ordered solutions -> mathematics -> Filter tab and statistics -> categories, papers, PDF -> Chapter CQ -> settings, auto backup, regression, release (unchanged).
+ Where earlier text says "v0.2.30" for the delete-safety design or for deleting non-empty items (ADR-010, P-44), read v0.2.31; where it says "v0.2.29" for the editor fields, read v0.2.30.
+ Rule kept: every package is CI-verified, emulator-verified and phone-verified before the next one starts (section 31.4).
+
+43.5 UI inventory status (39.6)
+ UI-04 Question card: ribbon, rating badge, chip strip, text CONFIRMED (v0.2.27); 3-dot menu WRITTEN (v0.2.28, UNCONFIRMED, one item); checkbox, solution toggle, viewer OPEN.
+ UI-05 In-topic search: CONFIRMED (v0.2.27); board / year / solution search OPEN until those fields exist.
+ UI-11 Edit existing question: core WRITTEN (v0.2.28, UNCONFIRMED); drafts v0.2.29; delete part v0.2.31.
+ UI-01 to UI-03: CONFIRMED, unchanged.
+
+43.6 Status
+PHASE 1: BUILD GATE PASSED, FOUNDATION INCOMPLETE (open: release signing). PHASE 2: DONE.
+PHASE 4/5: hierarchy, question create/list/search CONFIRMED on phone; backup and restore CONFIRMED on phone.
+UI-01 to UI-05: CONFIRMED (font part OPEN). v0.2.28: written, UNCONFIRMED. PHASES 3, 6-17: NOT STARTED, except as listed.
+
+43.7 Problem log additions
+P-50  An edit that is not saved is lost if the app is killed during the edit (no edit draft in v0.2.28). The saved question is never affected. Status: BY DESIGN until v0.2.29.
+P-51  A stored question cannot be emptied or removed from its card by editing (that is a delete). Status: BY DESIGN until v0.2.31.
+P-48  Every card shows the rating "৩★". Status: BY DESIGN until v0.2.30 (number moved from v0.2.29).
+P-44  Non-empty items cannot be deleted. Status: BY DESIGN until v0.2.31 (number moved).
+P-46, P-47, P-49, P-45, P-37: unchanged.
+
+43.8 Next steps (in order)
+1. Owner: push v0.2.28 and send the CI report. Expect BUILD SUCCESSFUL, 89 unit tests (74 + 15), identityHash 786b471d... unchanged, same debug key.
+2. Owner: run the emulator workflow and send the report. Expect 68 tests (59 + 9).
+3. Owner: do the 10-step phone check list of VERSION_NOTES_0.2.28.md and report step by step.
+4. Assistant: read the reports, issue plan v1.35 (v0.2.28 CONFIRMED or corrected), then write v0.2.29 (edit drafts).
+
+43.9 Change log addition
+- v1.34: v0.2.27 CONFIRMED (CI run 38, 74/74; emulator 59/59; phone check clear); CI run 37 compile failure and its one-line fix recorded; part B split into B-1 (v0.2.28 written) and B-2 (v0.2.29 drafts); package order renumbered (43.4); ADR-012; problems P-50, P-51.
+
+END OF VERSION 1.34 UPDATE
