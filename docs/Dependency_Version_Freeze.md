@@ -43,3 +43,5 @@ Release variant: `release` exists, unsigned, not minified. Signing and R8 are Ph
 v0.2.23: no dependency changed. Added: `app/debug.keystore` (fixed debug signing key, versionCode 23). `org.json` (part of Android) is used for draft storage.
 
 v0.2.25: no dependency changed (versionCode 25). Used from existing libraries only: `androidx.activity` (enableEdgeToEdge, SystemBarStyle), Navigation Compose nested graphs, Material 3 NavigationBar. No icon library and no font file were added.
+
+v0.2.26: no dependency changed (versionCode 26). Only existing Compose Material 3 components were added to the list screen (DropdownMenu, SnackbarHost); no schema change, database version 1.

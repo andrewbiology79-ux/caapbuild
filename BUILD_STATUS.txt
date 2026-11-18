@@ -1,4 +1,4 @@
-Question Bank Android build foundation - package version 0.2.25 (plan v1.29)
+Question Bank Android build foundation - package version 0.2.26 (plan v1.30)
 
 This ZIP is an incremental Android/Room package, not a completed Question Bank application.
 
@@ -14,6 +14,10 @@ v0.2.23: owner phone test passed (CI report, instrumented test, questions surviv
 
 v0.2.24: CI and emulator green (owner report); phone test passed: install over v0.2.23 without uninstall, backup, restore with confirmation and restart, wrong file refused.
 
+NEW in v0.2.26 (written, NOT compiled, NOT run - UNCONFIRMED): hierarchy management - counts and breadcrumb on the subject/chapter/topic lists, rename, delete (only empty items, ADR-010),
+reorder with arrows (saved once); no schema change; 11 new unit tests (expected 57) and 11 new emulator tests (expected 51). See VERSION_NOTES_0.2.26.md.
+v0.2.25 is CONFIRMED by owner report (CI, emulator, phone check list); the test counts were not sent.
+
 NEW in v0.2.25 (written, NOT compiled, NOT run - UNCONFIRMED): UI shell - five bottom tabs, blue header, owner-chosen Light/Dark theme and text size in Profile,
 Bengali digit formatter, existing screens moved into the new design; no schema change; 11 new unit tests (expected 46) and 3 new emulator tests. See VERSION_NOTES_0.2.25.md.
 
@@ -24,5 +28,5 @@ previous database kept); 7 new unit tests and 7 new emulator tests. See VERSION_
 atomic save + read-back, automatic drafts, synchronous=FULL; 11 new unit tests, 10 new emulator tests. See VERSION_NOTES_0.2.23.md.
 Do not install the v0.2.21 APK (adding a subject would crash). Uninstall v0.2.22 once before installing v0.2.23 (different signing key).
 
-Open: confirm v0.2.25 (CI + emulator + phone), hierarchy management (v0.2.26), question card + search + edit (v0.2.27), keyset paging (P-20), rank-search cost (P-19, 10 ms at 20,000 rows),
+Open: confirm v0.2.26 (CI + emulator + phone), question card + search + edit (v0.2.27), keyset paging (P-20), rank-search cost (P-19, 10 ms at 20,000 rows),
 Phase 0 documents, release signing, AGP 9 / compileSdk 37 upgrade (later, separate step).

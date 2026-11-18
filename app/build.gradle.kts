@@ -13,8 +13,8 @@ android {
         applicationId = "com.questionbank.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 25
-        versionName = "0.2.25-ui-shell"
+        versionCode = 26
+        versionName = "0.2.26-hierarchy-management"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

@@ -46,6 +46,7 @@ import com.questionbank.app.ui.question.QuestionEditorViewModel
 import com.questionbank.app.ui.question.QuestionListScreen
 import com.questionbank.app.ui.question.QuestionListViewModel
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 
 /** Route names. Add one constant per destination; keep them stable (they appear in saved state). */
 object Routes {
@@ -75,9 +76,18 @@ object Routes {
     fun questionEditor(topicId: String) = "type_cq/topics/$topicId/questions/new"
 }
 
-private val SUBJECT_LABELS = HierarchyLabels("বিষয়", "+ বিষয়", "নতুন বিষয়")
-private val CHAPTER_LABELS = HierarchyLabels("অধ্যায়", "+ অধ্যায়", "নতুন অধ্যায়")
-private val TOPIC_LABELS = HierarchyLabels("টপিক", "+ টপিক", "নতুন টপিক")
+private val SUBJECT_LABELS = HierarchyLabels(
+    title = "বিষয়", addButton = "+ বিষয়", dialogTitle = "নতুন বিষয়",
+    renameTitle = "বিষয়ের নাম পরিবর্তন", totalLabel = "মোট বিষয়", childUnit = "অধ্যায়",
+)
+private val CHAPTER_LABELS = HierarchyLabels(
+    title = "অধ্যায়", addButton = "+ অধ্যায়", dialogTitle = "নতুন অধ্যায়",
+    renameTitle = "অধ্যায়ের নাম পরিবর্তন", totalLabel = "মোট অধ্যায়", childUnit = "টপিক",
+)
+private val TOPIC_LABELS = HierarchyLabels(
+    title = "টপিক", addButton = "+ টপিক", dialogTitle = "নতুন টপিক",
+    renameTitle = "টপিকের নাম পরিবর্তন", totalLabel = "মোট টপিক", childUnit = null,
+)
 
 /** One bottom-bar tab. The glyph is plain text for now (no icon library is added in this package). */
 private class Tab(val route: String, val label: String, val glyph: String)
@@ -147,7 +157,14 @@ fun AppNavHost() {
                 composable(Routes.SUBJECTS) {
                     val vm: HierarchyListViewModel = viewModel(
                         factory = HierarchyListViewModel.factory {
-                            HierarchyListViewModel(repo.observeSubjects(), flowOf(null)) { name -> repo.addSubject(name) }
+                            HierarchyListViewModel(
+                                rowsFlow = repo.observeSubjectRows(),
+                                ancestorsFlow = flowOf(emptyList()),
+                                addItem = { name -> repo.addSubject(name) },
+                                renameItem = { id, name -> repo.renameSubject(id, name) },
+                                deleteItem = { id -> repo.deleteSubject(id) },
+                                reorderItems = { ids -> repo.reorderSubjects(ids) },
+                            )
                         }
                     )
                     HierarchyListScreen(
@@ -166,9 +183,13 @@ fun AppNavHost() {
                     val vm: HierarchyListViewModel = viewModel(
                         factory = HierarchyListViewModel.factory {
                             HierarchyListViewModel(
-                                repo.observeChapters(subjectId),
-                                repo.observeSubject(subjectId),
-                            ) { name -> repo.addChapter(subjectId, name) }
+                                rowsFlow = repo.observeChapterRows(subjectId),
+                                ancestorsFlow = repo.observeSubject(subjectId).map { listOfNotNull(it?.name) },
+                                addItem = { name -> repo.addChapter(subjectId, name) },
+                                renameItem = { id, name -> repo.renameChapter(id, name) },
+                                deleteItem = { id -> repo.deleteChapter(id) },
+                                reorderItems = { ids -> repo.reorderChapters(subjectId, ids) },
+                            )
                         }
                     )
                     HierarchyListScreen(
@@ -176,6 +197,8 @@ fun AppNavHost() {
                         labels = CHAPTER_LABELS,
                         onItemClick = { navController.navigate(Routes.topics(it.id)) },
                         onBack = { navController.popBackStack() },
+                        // crumbs: 0 = subject list (current list is the chapters of the last crumb)
+                        onCrumbClick = { index -> if (index == 0) navController.popBackStack(Routes.SUBJECTS, false) },
                     )
                 }
 
@@ -187,9 +210,15 @@ fun AppNavHost() {
                     val vm: HierarchyListViewModel = viewModel(
                         factory = HierarchyListViewModel.factory {
                             HierarchyListViewModel(
-                                repo.observeTopics(chapterId),
-                                repo.observeChapter(chapterId),
-                            ) { name -> repo.addTopic(chapterId, name) }
+                                rowsFlow = repo.observeTopicRows(chapterId),
+                                ancestorsFlow = repo.observeChapterPath(chapterId).map { path ->
+                                    if (path == null) emptyList() else listOf(path.subject.name, path.chapter.name)
+                                },
+                                addItem = { name -> repo.addTopic(chapterId, name) },
+                                renameItem = { id, name -> repo.renameTopic(id, name) },
+                                deleteItem = { id -> repo.deleteTopic(id) },
+                                reorderItems = { ids -> repo.reorderTopics(chapterId, ids) },
+                            )
                         }
                     )
                     HierarchyListScreen(
@@ -197,6 +226,13 @@ fun AppNavHost() {
                         labels = TOPIC_LABELS,
                         onItemClick = { navController.navigate(Routes.questions(it.id)) },
                         onBack = { navController.popBackStack() },
+                        // crumbs: 0 = subject list, 1 = chapter list of that subject, 2 = this list (not tappable)
+                        onCrumbClick = { index ->
+                            when (index) {
+                                0 -> navController.popBackStack(Routes.SUBJECTS, false)
+                                1 -> navController.popBackStack(Routes.CHAPTERS, false)
+                            }
+                        },
                     )
                 }
 

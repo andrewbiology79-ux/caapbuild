@@ -97,3 +97,14 @@ ACCEPTED 18 November 2026 (owner delegated decisions D-1 to D-14 to the assistan
 6. Every screen uses one header component (`AppHeader`): blue bar, back arrow, title, optional subtitle, and it fills the area behind the status bar.
 7. Tab icons are plain text glyphs in this package (no new dependency). The Hind Siliguri font is not added: a font file is needed and none can be downloaded in the build environment. Both are small later steps.
 8. Back at the first screen asks before leaving the app. The question editor hides the bottom bar.
+
+
+## ADR-010 - Hierarchy management: counts, rename, delete, reorder (v0.2.26)
+PROPOSED 18 November 2026 (assistant decision inside the owner's delegation D-1 to D-14; the owner may overrule item 2).
+1. Counts on the list cards come from SQL aggregates (sub-selects over indexed columns), never from lists loaded into memory. "Questions" means question rows (sub-questions), the same unit as "মোট N টি প্রশ্ন" in the question list.
+2. Delete is allowed only for an EMPTY item: a subject without chapters and questions, a chapter without topics and questions, a topic without questions. A non-empty item is refused with a message and nothing changes. Reason: the foreign keys are RESTRICT, and deleting questions (with solutions, images and FTS rows) needs the delete-safety design of v0.2.29 (confirmation, shared stimulus text, backup reminder). A cascade delete of a whole subject must not be built before that. The check and the delete run in one transaction.
+3. Deleting a topic also removes its unsaved draft (`draft:type_cq:<topicId>` in app_metadata); drafts of other topics stay.
+4. Rename uses the same cleaning (NFC, white space, 200 characters) and the same uniqueness scope as add (subject: global; chapter: inside its subject; topic: inside its chapter). Renaming to the item's own name is allowed. Id, position and children do not change.
+5. Reorder sends the COMPLETE list of ids in the new order. The DAO compares it with the current ids inside one transaction and writes sort_order 1..n only if the two sets are identical; otherwise nothing is written (an item was added or deleted meanwhile). The arrows change a copy on screen; the database is written once, on "ক্রম সংরক্ষণ". Back or "বাতিল" discards the change.
+6. The breadcrumb is [বিষয় তালিকা] + the names above the open list; every part except the last is tappable and pops the back stack to that list.
+7. No schema change: database version 1, identityHash must remain 786b471dfa14c9ae4739bb81479bab25.
