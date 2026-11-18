@@ -3469,3 +3469,31 @@ All other items: as in 47.6.
 - v1.39: v0.2.30b written (rating buttons on both editor screens, draft keeps ratings); a and b tested together; expected 109 unit / 85 emulator tests, UNCONFIRMED.
 
 END OF VERSION 1.39 UPDATE
+
+============================================================
+49. CI RUN 42 FAILED (COMPILE ERROR) AND WAS FIXED - VERSION 1.40
+============================================================
+
+Planning update date: 18 November 2026
+
+49.1 Report read
+- Owner report: "Latest build failed", with QuestionBank-ci-report (run 42, commit 3be32a5d..., debug and release compile both failed, Gradle exit code 1).
+- The only Kotlin diagnostic (debug, release and the androidTest compile log all show the same line):
+  TypeCqQuestionDao.kt:168:83 "Argument type mismatch: actual type is 'Int?', but 'Long?' was expected."
+- Cause (assistant's mistake in v0.2.30a): `TypeCqStimuliEntity.rating` is `Long?` (Room entity), but `insertGroup` passed the new `stimulusRating: Int?` as it was. The question rows were already converted with `?.toLong()`; the stimulus row was missed.
+- Fix (v0.2.30b-fix1): `stimulusRating?.toLong()` in insertGroup. One line. All other uses of the entity types were re-checked: TypeCqQuestionsEntity (rating = item.rating?.toLong()) and the read side (QuestionRowDb.rating / stimulus_rating are Int?, which Room maps) are correct.
+- No other error was reported, but Kotlin stops before the test sources when main sources fail, so the unit and emulator test code is still unchecked by a compiler; the next run may show a test compile error. Send the report.
+
+49.2 Problem log
+P-54  v0.2.30a/b compile error Int? vs Long? in insertGroup. Status: FIXED in v0.2.30b-fix1 (UNCONFIRMED until the next CI run). Lesson recorded: entity rating columns are Long?; every write into an entity needs ?.toLong().
+All other items: as in 48.5.
+
+49.3 Next steps (in order)
+1. Owner: push QuestionBank_v0_2_30b_fix1.zip and send the CI report. Expect BUILD SUCCESSFUL, 109 unit tests, identityHash 786b471d... unchanged.
+2. Owner: emulator workflow (expect 85 tests), then the 8-step phone list of VERSION_NOTES_0.2.30.md.
+3. Assistant: read the reports, issue plan v1.41, then write v0.2.30c (boards + years).
+
+49.4 Change log addition
+- v1.40: CI run 42 failed with one compile error (Int? vs Long? in insertGroup); fixed in v0.2.30b-fix1; P-54 added.
+
+END OF VERSION 1.40 UPDATE

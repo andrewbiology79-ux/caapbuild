@@ -47,4 +47,6 @@ Boards + years (part B), reference text + editable marks (part C), Minimum / Ful
 
 If any step fails or looks wrong, tell the assistant and the record will be corrected.
 
+FIX1: CI run 42 failed to compile (TypeCqQuestionDao.kt:168, stimulus rating Int? where the entity wants Long?). One line fixed; nothing else changed.
+
 STATUS: written, NOT compiled, NOT run - UNCONFIRMED.

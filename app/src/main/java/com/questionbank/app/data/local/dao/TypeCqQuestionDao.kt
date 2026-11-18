@@ -165,7 +165,7 @@ abstract class TypeCqQuestionDao {
     ): Boolean {
         if (countTopic(topicId) == 0) return false
         if (stimulusId != null) {
-            insertStimulus(TypeCqStimuliEntity(stimulusId, topicId, stimulusText, stimulusRating, "", now, now))
+            insertStimulus(TypeCqStimuliEntity(stimulusId, topicId, stimulusText, stimulusRating?.toLong(), "", now, now))
         }
         val ids = FtsIdAllocator(maxFtsId())
         var order = maxSortOrder(topicId)

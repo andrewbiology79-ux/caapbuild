@@ -1,10 +1,11 @@
-Question Bank Android build foundation - package version 0.2.30b (plan v1.39)
+Question Bank Android build foundation - package version 0.2.30b-fix1 (plan v1.40)
 
 v0.2.29 is CONFIRMED by owner report (CI clean, instrumented test clean, phone check list clean; the counts were not sent to the assistant).
 
 NEW in v0.2.30a + v0.2.30b (parts A-1 and A-2 of the split step "editor fields"; written, NOT compiled, NOT run - UNCONFIRMED; tested together because the owner asked for b on top of a):
 a = ratings in the data and rule layer (stimulus rating + rating per sub-question, saved with a new group, changed by an edit, read back, carried by drafts);
 b = rating buttons "১★..৫★" on the new-question screen and the edit screen, with the names and the line under them; a rating-only edit is a real change.
+CI run 42 FAILED with one compile error (Int? vs Long? in TypeCqQuestionDao.insertGroup); fixed in fix1, see plan 49.
 No schema change; 14 new unit tests (expected 109) and 7 new emulator tests (expected 85). Next: v0.2.30c boards + years. See VERSION_NOTES_0.2.30.md.
 
 NEW in v0.2.29 (part B-2 of the split step plus hashtag search; written, NOT compiled, NOT run - UNCONFIRMED): automatic edit drafts (key draft:type_cq:edit:<card>, restored when the
