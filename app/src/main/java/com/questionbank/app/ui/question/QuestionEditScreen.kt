@@ -107,7 +107,7 @@ fun QuestionEditScreen(
                 if (viewModel.hasStimulus) {
                     OutlinedTextField(
                         value = viewModel.stimulus,
-                        onValueChange = viewModel::setStimulus,
+                        onValueChange = viewModel::changeStimulus,
                         label = { Text("উদ্দীপক") },
                         minLines = 3,
                         modifier = Modifier.fillMaxWidth(),

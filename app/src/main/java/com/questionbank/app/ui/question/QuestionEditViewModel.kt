@@ -98,7 +98,7 @@ class QuestionEditViewModel(
             return QuestionEditRules.check(group, buildInput()) != QuestionEditRules.Checked.NoChange
         }
 
-    fun setStimulus(value: String) {
+    fun changeStimulus(value: String) {
         if (saving) return
         stimulus = value
         result = null

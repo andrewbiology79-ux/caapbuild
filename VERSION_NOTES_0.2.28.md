@@ -44,3 +44,6 @@ v0.2.27 is CONFIRMED (CI run 38: 74 of 74; emulator 59 of 59; identityHash uncha
 If any step fails or looks wrong, tell the assistant and the record will be corrected.
 
 STATUS: written, NOT compiled, NOT run - UNCONFIRMED.
+
+## CI fix (run 39)
+- `QuestionEditViewModel`: `fun setStimulus(value)` clashed with the JVM setter of `var stimulus ... private set` ("Platform declaration clash", compileDebugKotlin failed). Renamed the function to `changeStimulus` and updated `QuestionEditScreen`. No behaviour change.
