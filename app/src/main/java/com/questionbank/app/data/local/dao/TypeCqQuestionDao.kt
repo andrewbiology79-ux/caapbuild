@@ -182,6 +182,8 @@ abstract class TypeCqQuestionDao {
      *
      * New rows get the group's current highest `sort_order`, so the card keeps its place in the list (the list shows the newest
      * card first and a card is placed by its highest `sort_order`).
+     *
+     * v0.2.29: [draftKey] (the edit draft of this card) is deleted in the same transaction, after every write succeeded.
      */
     @Transaction
     open suspend fun updateGroup(
@@ -191,6 +193,7 @@ abstract class TypeCqQuestionDao {
         updates: List<QuestionTextUpdate>,
         adds: List<NewQuestionRow>,
         now: Long,
+        draftKey: String,
     ): Boolean {
         if (countTopic(topicId) == 0) return false
         if (stimulusId != null && countStimulus(stimulusId, topicId) == 0) return false
@@ -226,6 +229,8 @@ abstract class TypeCqQuestionDao {
                 )
             }
         }
+        // v0.2.29: the edit draft of this card is removed in the same transaction, so a saved edit never leaves a draft behind.
+        deleteMeta(draftKey)
         return true
     }
 }

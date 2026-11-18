@@ -1,7 +1,7 @@
 QUESTION BANK ANDROID APP COMPLETE PROJECT DEVELOPMENT & DELIVERY PLAN
 ============================================================
 
-Document version: 1.34 (v0.2.27 CONFIRMED after a one-line compile fix; part B split again: v0.2.28 = B-1 edit core written, UNCONFIRMED; v0.2.29 = B-2 edit drafts; package order renumbered; section 43 added)
+Document version: 1.37 (v0.2.29 written: edit drafts B-2 and hashtag search option A, UNCONFIRMED; section 46 added; before it: v1.36 = v0.2.28 CONFIRMED by owner report and hashtag finding P-53, v1.35 = CI run 39 compile failure and fix, v1.34 = v0.2.27 CONFIRMED, part B split into v0.2.28 = B-1 and v0.2.29 = B-2)
 Planning baseline: 16 November 2026
 Project status: Single-database architecture confirmed; canonical SQL and Room build harness prepared. CI run 11 (package v0.2.8) passed: KSP/Room generation, unit tests (5 of 5) and debug APK assembly. The package is still a build harness, not a complete application; Room-database runtime behaviour (CHECK emulation, Bengali FTS on the real database) is not yet device-tested.
 
@@ -3197,3 +3197,173 @@ P-46, P-47, P-49, P-45, P-37: unchanged.
 - v1.34: v0.2.27 CONFIRMED (CI run 38, 74/74; emulator 59/59; phone check clear); CI run 37 compile failure and its one-line fix recorded; part B split into B-1 (v0.2.28 written) and B-2 (v0.2.29 drafts); package order renumbered (43.4); ADR-012; problems P-50, P-51.
 
 END OF VERSION 1.34 UPDATE
+
+
+============================================================
+44. v0.2.28: CI RUN 39 FAILED (COMPILE ERROR), ONE-LINE FIX WRITTEN - VERSION 1.35
+============================================================
+
+Planning update date: 18 November 2026
+
+44.1 Evidence (QuestionBank-ci-report of run 39, read by the assistant)
+- Run 39, run ID 44274729177, commit 645d4d0a, branch main, Java 17.0.21. Build step outcome: failure. Gradle exit code 1. BUILD FAILED in 50 s.
+- The first failing task is :app:compileDebugKotlin. Two errors, both "Platform declaration clash" (JVM signature setStimulus(Ljava/lang/String;)V), in QuestionEditViewModel.kt: line 43 (`var stimulus by mutableStateOf("")` with `private set`) and line 101 (`fun setStimulus(value: String)`). The private setter of the property and the function have the same JVM signature.
+- The release assemble and the androidTest compile fail with the same two errors. No APK exists, so apk-signature.txt only shows "app-debug.apk (No such file or directory)"; this is a consequence, not a second defect.
+- Tasks before the failure ran normally: kspDebugKotlin finished and the exported schema 1.json has identityHash 786b471dfa14c9ae4739bb81479bab25 (unchanged, as expected for a package without schema change).
+- No unit test ran (the build stopped at the compile step). Run 39 therefore says NOTHING yet about the 15 new tests, about the edit transaction or about the rules.
+
+44.2 Cause and fix
+- Cause: the package was written without a compiler (43.3 said NOT compiled). The same kind of defect as run 37 (43.1: QuestionListViewModel `query` and `setQuery`), now in the new edit screen.
+- Fix (one rename, no behaviour change): in QuestionEditViewModel.kt `fun setStimulus(value: String)` is renamed `fun changeStimulus(value: String)`. The only caller is QuestionEditScreen.kt (the stimulus text field: `onValueChange = viewModel::changeStimulus`).
+- QuestionEditorViewModel (the new-question editor) also has a function `setStimulus`, but it has no property named `stimulus` (the text lives in `draft`), so there is no clash; it is not changed. Its `setText` and `setAnswer` take an index plus a value (two parameters), so they cannot clash either.
+- The assistant scanned the whole main source (app/src/main) for every `var x` that has a one-parameter `fun setX(...)` in the same file: QuestionEditViewModel.stimulus was the only match. The scan is a text search, not a compiler: the next CI run is the proof.
+- VERSION_NOTES_0.2.28.md has a short "CI fix (run 39)" note. versionCode 28 and versionName 0.2.28-edit-question are unchanged: the package keeps its number, as v0.2.27 did after its fix.
+
+44.3 Naming rule from now on (assistant decision, owner may overrule)
+- N-1: a class that has a property `x` with a setter (also `private set`, also a Compose `by mutableStateOf` property) never gets a function `setX(value)`. Change functions are named `onXChange` or `changeX`. Reason: two defects of the same kind in two packages in a row (runs 37 and 39).
+
+44.4 Package v0.2.28 status
+UNCONFIRMED. Written, fix for run 39 written, NOT yet compiled, NOT run. Everything in 43.3 still applies (89 unit tests expected, 68 emulator tests expected, 10-step phone check list). Section 43 stays valid except that the CI result below replaces "NOT compiled" once the next report arrives.
+
+44.5 Revised package order
+No change from 43.4: v0.2.28 (B-1, UNCONFIRMED) -> v0.2.29 (B-2 edit drafts) -> v0.2.30 editor fields -> v0.2.31 delete + selection -> v0.2.32 JSON paste import -> the rest as in 43.4.
+Rule kept: v0.2.29 is not started until v0.2.28 is CI-verified, emulator-verified and phone-verified (section 31.4).
+
+44.6 UI inventory status (39.6)
+No change from 43.5: UI-04 3-dot menu and UI-11 edit core WRITTEN (v0.2.28, UNCONFIRMED).
+
+44.7 Status
+PHASE 1: BUILD GATE PASSED, FOUNDATION INCOMPLETE (open: release signing). PHASE 2: DONE.
+PHASE 4/5: hierarchy, question create/list/search CONFIRMED on phone; backup and restore CONFIRMED on phone.
+UI-01 to UI-05: CONFIRMED (font part OPEN). v0.2.28: CI run 39 failed at compile, fix written, UNCONFIRMED. PHASES 3, 6-17: NOT STARTED, except as listed.
+
+44.8 Problem log additions
+P-52  CI run 39 (v0.2.28): compileDebugKotlin failed, "Platform declaration clash" setStimulus (QuestionEditViewModel.kt). Cause: property `stimulus` with private setter and `fun setStimulus(String)`. Fix: function renamed `changeStimulus`, caller QuestionEditScreen updated; naming rule N-1 (44.3). Status: FIX WRITTEN, UNCONFIRMED until the next CI run shows a clean compile and 89 of 89 unit tests.
+P-50, P-51, P-48, P-44, P-46, P-47, P-49, P-45, P-37: unchanged.
+
+44.9 Next steps (in order)
+1. Owner: push the fixed v0.2.28 (QuestionBank_v0_2_28_fixed.zip) and send the CI report. Expect BUILD SUCCESSFUL, 89 unit tests (74 + 15), identityHash 786b471d... unchanged, same debug key in apk-signature.txt. If it fails again, send the new report; the plan records each run.
+2. Owner: run the emulator workflow and send the report. Expect 68 tests (59 + 9).
+3. Owner: do the 10-step phone check list of VERSION_NOTES_0.2.28.md and report step by step.
+4. Assistant: read the reports, issue plan v1.36 (v0.2.28 CONFIRMED or corrected), then write v0.2.29 (edit drafts).
+
+44.10 Change log addition
+- v1.35: CI run 39 (v0.2.28) read: compile failure "Platform declaration clash" in QuestionEditViewModel (setStimulus), one-line fix (changeStimulus) written, v0.2.28 stays UNCONFIRMED; naming rule N-1; problem P-52.
+
+END OF VERSION 1.35 UPDATE
+
+
+============================================================
+45. v0.2.28 CONFIRMED (OWNER REPORT); HASHTAG SEARCH FINDING - VERSION 1.36
+============================================================
+
+Planning update date: 18 November 2026
+
+45.1 Evidence for v0.2.28 (owner report, 18 November 2026)
+- CI run after the run 39 fix: clean. Instrumented (emulator) test: clean. Phone check list (10 steps of VERSION_NOTES_0.2.28.md): clean.
+- The assistant did not receive the new CI and emulator reports in this round, so the counts (89 unit tests, 68 emulator tests, identityHash, debug key) are NOT read by the assistant; they are recorded as owner-reported clean.
+RESULT: v0.2.28 CONFIRMED by owner report (UI-04 3-dot menu, UI-11 edit core: open an existing question, edit the stored texts, one all-or-nothing save). P-52 (run 39 compile clash) CLOSED: the fix compiled in the following CI run.
+
+45.2 Finding from the phone check: a question with a hashtag is not shown by search
+- Owner report: a hashtag was written in one question; searching for the hashtag does not show that question. The exact text typed in the search field was not stated. Everything else in the check list was correct; the question itself is saved and shown, so this is a search behaviour, not a data fault.
+- Assistant check (read of QuestionSearchRules.kt and TypeCqQuestionRepositoryImpl.search, plus a test with SQLite 3.45 FTS5 using the same tokenizer string as the app; NOT run on the phone):
+  1. "#" is not a letter or digit, so the FTS5 tokenizer (unicode61) treats it as a separator and never stores it.
+  2. A search word without any letter or digit is dropped (rule of v0.2.27, section 42). Searching only "#" therefore sends nothing to the database: SearchOutcome.NoTerms.
+  3. A search such as "#আলো", "#Optics", "#physics_cq" or "#২০২৪" DID find the tagged question in the test. The "#" is ignored and the word is matched, so the same word without "#" is found too: a hashtag cannot be told apart from the plain word.
+- Conclusion: searching a hashtag by its text works, but the "#" sign itself can never be searched, so "show me all questions with a hashtag" is not possible. If the owner typed more than "#" and still saw nothing, this explanation is not enough and a new report with the exact text is needed.
+
+45.3 Options (owner decides; nothing written yet)
+- A) Hash-aware search: a search word that starts with "#" (also "#" alone) is matched as plain text, with the "#" character, in the question text, the short answer and the stimulus (Kotlin side, like the stimulus today; the repository already loads every group of the topic). Other words stay FTS. No schema change, read-only. Needs a few new unit tests in QuestionSearchRulesTest and one emulator test.
+- B) Leave as is: the planned categories and the Filter tab (Phase 12, plan section 39) are the real tag system, and the hashtag stays an ordinary word in the text.
+- Assistant recommendation: A, inside the next package (v0.2.29), because it is small and read-only. The owner may overrule.
+
+45.4 Revised package order
+No change from 43.4: v0.2.28 (CONFIRMED) -> v0.2.29 (B-2 edit drafts; plus option A if chosen) -> v0.2.30 editor fields -> v0.2.31 delete + selection -> v0.2.32 JSON paste import -> the rest as in 43.4.
+
+45.5 UI inventory status (39.6)
+ UI-04 Question card: ribbon, rating badge, chip strip, text, 3-dot menu CONFIRMED (3-dot menu in v0.2.28); checkbox, solution toggle, viewer OPEN.
+ UI-05 In-topic search: CONFIRMED (v0.2.27); hashtag "#" search OPEN (P-53); board / year / solution search OPEN until those fields exist.
+ UI-11 Edit existing question: core CONFIRMED (v0.2.28); drafts v0.2.29; delete part v0.2.31.
+ UI-01 to UI-03: CONFIRMED, unchanged.
+
+45.6 Status
+PHASE 1: BUILD GATE PASSED, FOUNDATION INCOMPLETE (open: release signing). PHASE 2: DONE.
+PHASE 4/5: hierarchy, question create/list/search/edit CONFIRMED on phone; backup and restore CONFIRMED on phone.
+UI-01 to UI-05 and UI-11 core: CONFIRMED (font part OPEN). PHASES 3, 6-17: NOT STARTED, except as listed.
+
+45.7 Problem log additions
+P-52  CLOSED (CONFIRMED): run 39 compile clash fixed by `changeStimulus`; the following CI run was clean (owner report).
+P-53  The "#" sign cannot be searched: it is not indexed by FTS5 and a search word without letter or digit is dropped; "#word" finds the word with or without "#". Status: OPEN, decision A or B (45.3).
+P-50, P-51, P-48, P-44, P-46, P-47, P-49, P-45, P-37: unchanged.
+
+45.8 Next steps (in order)
+1. Owner: answer 45.3 (A or B) and, if possible, say what exactly was typed in the search field when the hashtag was not found.
+2. Assistant: write v0.2.29 (edit drafts, section 43.2; plus hash-aware search if A), NOT compiled until CI says so; naming rule N-1 (44.3) applies.
+3. Owner: push, send the CI report, run the emulator workflow, do the phone check list, report step by step.
+4. Assistant: read the reports and issue plan v1.37.
+
+45.9 Change log addition
+- v1.36: v0.2.28 CONFIRMED by owner report (CI clean, emulator clean, 10-step phone check clean); P-52 closed; hashtag search finding P-53 with options A/B (decision open).
+
+END OF VERSION 1.36 UPDATE
+
+
+============================================================
+46. PACKAGE v0.2.29 (B-2 EDIT DRAFTS + HASHTAG SEARCH) WRITTEN - VERSION 1.37
+============================================================
+
+Planning update date: 18 November 2026
+
+46.1 Basis
+- v0.2.28 is CONFIRMED by owner report (section 45.1). The owner asked the assistant to do the next step and, if it is big, to do it step by step. The next step is v0.2.29 (45.4, 45.8 item 2).
+- The owner did not answer the A/B question of 45.3. DECISION by the assistant (owner may overrule): option A (hash-aware search) is included, as recommended in 45.3, because it is small, read-only and needs no schema change. If the owner prefers B, remove the hashtag part (QuestionSearchRules, the search() change, 6 unit tests, 3 emulator tests); the drafts part is independent.
+- The package was written in four steps: (1) data layer for edit drafts, (2) edit ViewModel / screen / navigation, (3) hashtag search + tests, (4) tests, version, notes, plan.
+
+46.2 Part 1 - edit drafts (B-2), design as announced in 43.2
+- Key `draft:type_cq:edit:<groupKey>` in app_metadata (groupKey = "s-<stimulusId>" or "q-<questionId>"). The value reuses the DraftText JSON of the new-question draft (stimulus, four texts, four short answers).
+- Repository: loadEditDraft, saveEditDraft (a blank text is stored too, because emptying every block is a real edit state), discardEditDraft. Failures are swallowed on purpose (a draft must never break typing).
+- DAO updateGroup got a draftKey parameter and deletes the draft as its last statement, in the SAME @Transaction (all or nothing, like insertGroup). A refused update (BlankedQuestion, BlankedStimulus, MissingQuestionText, TooLong) or NoChange writes nothing and keeps the draft.
+- QuestionEditViewModel: every change is queued (conflated channel) to a writer in the application scope; the queued value is the typed text while it differs from the stored text, otherwise "remove the draft". On open, a stored draft is put on top of the stored text (only the blocks this screen can edit); a draft equal to the stored text is removed; a draft of a card that no longer exists is removed. Save stops the writer first, then updateGroup; on refusal or failure the writer restarts and the typed text is written as a draft again. discard() stops the writer, removes the draft, then leaves. After a successful save or a discard no draft is written any more (flag).
+- Screen: status line (waiting / saved), blue line "আগের অসমাপ্ত সম্পাদনা ফিরিয়ে আনা হয়েছে।", discard dialog text says the draft is thrown away too. No visual change otherwise.
+- Naming rule N-1 (44.3) checked: no function `setX` next to a property `x` was added (new members: restoredFromDraft, draftStatus, discard, finished).
+- The saved question rows are never written by a draft: P-50 (an unsaved edit is lost when the app is killed) is solved by design; status UNCONFIRMED until the phone check.
+
+46.3 Part 2 - hashtag search (option A of 45.3)
+- tokens(): a word that starts with "#" is kept even when it has no letter or digit. ftsQuery(): hash words are left out of the FTS5 string (the last remaining word stays the prefix); only hash words -> null. hashWordsMatch(): every hash word must occur as plain text (case-insensitive for Latin letters) in question text + short answer.
+- Repository search(): NoTerms only when there is no word at all. With only hash words nothing is asked from FTS5 and every question of the topic is checked by hashWordsMatch. With both kinds, the FTS5 ids and the hash rule must both hold. The stimulus keeps its plain match of ALL words (hash words included), so a stimulus match still shows the whole card.
+- Result: "#" alone finds every question with a "#"; "#আলো" finds "#আলো" and "#আলোর" but not the bare word; the bare word "আলো" still finds tagged and untagged texts (unchanged). A hash inside a word (a#b) is not a hash word.
+- Closes the finding of 45.2 / P-53 in code (UNCONFIRMED until the phone check, steps 9-10). Open point: the exact text the owner typed in the original report is still not known; if the new check does not show the missing card, a new report with the exact text is needed.
+
+46.4 Tests (expected, NOT run)
+- Unit: 6 new in QuestionSearchRulesTest -> 95 of 95 (89 + 6).
+- Emulator: QuestionEditDraftTest 7 + QuestionSearchTest 3 -> 78 (68 + 10).
+- identityHash 786b471dfa14c9ae4739bb81479bab25 unchanged (no schema change); same debug key.
+- The Kotlin code has NOT been compiled or run (no Gradle in the assistant environment). Like runs 37 and 39, the first CI run may show a compile error; send the report and the plan will record it.
+
+46.5 Phone check list
+10 steps in VERSION_NOTES_0.2.29.md (restore after kill, old text back = no draft, dialog and discard, save removes the draft, two cards separate, refused save keeps the draft, hashtag search).
+
+46.6 Package order (unchanged from 45.4)
+v0.2.29 (written, UNCONFIRMED) -> v0.2.30 editor fields (Minimum / Full modes, ratings with rule U-1, boards, years, reference, editable marks, undo/redo, duplicate warning) -> v0.2.31 delete + selection -> v0.2.32 JSON paste import -> the rest as in 43.4.
+
+46.7 UI inventory status (39.6)
+ UI-05 In-topic search: CONFIRMED (v0.2.27); hashtag search WRITTEN (v0.2.29, UNCONFIRMED); board / year / solution search OPEN.
+ UI-11 Edit existing question: core CONFIRMED (v0.2.28); drafts WRITTEN (v0.2.29, UNCONFIRMED); delete part v0.2.31.
+ UI-01 to UI-04: unchanged (UI-04 checkbox, solution toggle, viewer OPEN).
+
+46.8 Status and problem log
+PHASE 1: BUILD GATE PASSED, FOUNDATION INCOMPLETE (open: release signing). PHASE 2: DONE. PHASE 4/5: create/list/search/edit CONFIRMED on phone; drafts for edits and hashtag search WRITTEN, UNCONFIRMED. PHASES 3, 6-17: NOT STARTED, except as listed.
+P-50  Unsaved edit lost when the app is killed. Status: FIXED IN v0.2.29 (UNCONFIRMED).
+P-53  The "#" sign cannot be searched. Status: FIXED IN v0.2.29 by option A (UNCONFIRMED; the owner may still choose B).
+P-51, P-48, P-44, P-46, P-47, P-49, P-45, P-37: unchanged.
+
+46.9 Next steps (in order)
+1. Owner: push v0.2.29 (QuestionBank_v0_2_29.zip) and send the CI report. Expect BUILD SUCCESSFUL, 95 unit tests (89 + 6), identityHash 786b471d... unchanged, same debug key. If it fails, send the new report.
+2. Owner: run the emulator workflow and send the report. Expect 78 tests (68 + 10).
+3. Owner: do the 10-step phone check list of VERSION_NOTES_0.2.29.md and report step by step. Also answer 45.3 if A is not wanted.
+4. Assistant: read the reports, issue plan v1.38 (v0.2.29 CONFIRMED or corrected), then write v0.2.30 (editor fields), again in steps if it is big.
+
+46.10 Change log addition
+- v1.37: v0.2.29 written (edit drafts B-2 + hashtag search option A), expected 95 unit / 78 emulator tests, UNCONFIRMED; P-50 and P-53 fixed in code; decision A taken by the assistant.
+
+END OF VERSION 1.37 UPDATE

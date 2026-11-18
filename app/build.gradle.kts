@@ -13,8 +13,8 @@ android {
         applicationId = "com.questionbank.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 28
-        versionName = "0.2.28-edit-question"
+        versionCode = 29
+        versionName = "0.2.29-edit-drafts-hashtag"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

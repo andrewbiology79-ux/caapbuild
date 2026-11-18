@@ -296,7 +296,7 @@ fun AppNavHost() {
                     val topicId = entry.arguments?.getString("topicId").orEmpty()
                     val groupKey = entry.arguments?.getString("groupKey").orEmpty()
                     val vm: QuestionEditViewModel = viewModel(
-                        factory = QuestionEditViewModel.factory { QuestionEditViewModel(topicId, groupKey, questionRepo) }
+                        factory = QuestionEditViewModel.factory { QuestionEditViewModel(topicId, groupKey, questionRepo, container.appScope) }
                     )
                     QuestionEditScreen(
                         viewModel = vm,

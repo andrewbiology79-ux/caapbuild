@@ -1,4 +1,10 @@
-Question Bank Android build foundation - package version 0.2.28 (plan v1.34)
+Question Bank Android build foundation - package version 0.2.29 (plan v1.37)
+
+v0.2.28 is CONFIRMED by owner report (CI clean, emulator clean, 10-step phone check clean; the counts were not sent to the assistant).
+
+NEW in v0.2.29 (part B-2 of the split step plus hashtag search; written, NOT compiled, NOT run - UNCONFIRMED): automatic edit drafts (key draft:type_cq:edit:<card>, restored when the
+edit is opened again, removed in the same transaction as a successful save, removed by "discard"); search words that start with "#" are matched as plain text with the "#" sign
+(question, short answer, stimulus); no schema change; 6 new unit tests (expected 95) and 10 new emulator tests (expected 78). See VERSION_NOTES_0.2.29.md.
 
 This ZIP is an incremental Android/Room package, not a completed Question Bank application.
 

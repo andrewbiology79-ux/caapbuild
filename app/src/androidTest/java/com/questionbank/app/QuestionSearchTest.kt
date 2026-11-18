@@ -169,4 +169,42 @@ class QuestionSearchTest {
         assertEquals(listOf("আলো তিন", "আলো দুই", "আলো এক"), texts(found("আলো")))
         assertEquals(3L, db.useReaderConnection { it.scalarLong("SELECT COUNT(*) FROM type_cq_question_fts") })
     }
+
+    // ---- v0.2.29: hashtag search (plan 45.3, option A), on the real FTS5 database ----
+
+    @Test
+    fun aLoneHashFindsEveryQuestionWithAHashInTheTextOrTheShortAnswer() = runBlocking {
+        save(topicId, "", Triple(CqLabel.KA, "আলোর বেগ কত? #আলো", ""))
+        save(topicId, "", Triple(CqLabel.KA, "অন্য প্রশ্ন", "উত্তর #২০২৪"))
+        save(topicId, "", Triple(CqLabel.KA, "চিহ্নহীন প্রশ্ন", ""))
+        save(topicId, "#উদ্দীপক চিহ্ন", Triple(CqLabel.KA, "উদ্দীপকের প্রশ্ন", ""))
+
+        val hits = found("#")
+        assertEquals(setOf("আলোর বেগ কত? #আলো", "অন্য প্রশ্ন", "উদ্দীপকের প্রশ্ন"), texts(hits).toSet())
+        assertTrue(texts(hits).none { it == "চিহ্নহীন প্রশ্ন" })
+    }
+
+    @Test
+    fun aHashtagIsNotTheSameAsThePlainWord() = runBlocking {
+        save(topicId, "", Triple(CqLabel.KA, "আলোর প্রতিফলন #আলো", ""))
+        save(topicId, "", Triple(CqLabel.KA, "আলো ছাড়া শব্দ", ""))
+
+        assertEquals(listOf("আলোর প্রতিফলন #আলো"), texts(found("#আলো")))
+        assertEquals(2, found("আলো").size) // the plain word still finds both (FTS5 ignores the "#")
+        assertTrue(found("#অন্য").isEmpty())
+    }
+
+    @Test
+    fun aHashtagWordCombinesWithPlainWordsAndMatchesInTheStimulus() = runBlocking {
+        save(topicId, "", Triple(CqLabel.KA, "আলোর বেগ #physics_cq", ""))
+        save(topicId, "", Triple(CqLabel.KA, "শব্দের বেগ #physics_cq", ""))
+        save(topicId, "উদ্দীপক #Optics", Triple(CqLabel.KA, "প্রথম", ""), Triple(CqLabel.KHA, "দ্বিতীয়", ""))
+
+        assertEquals(listOf("আলোর বেগ #physics_cq"), texts(found("#physics_cq আলোর")))
+        assertEquals(2, found("বেগ #PHYSICS_CQ").size) // Latin letters ignore case
+        val byStimulus = found("#optics")
+        assertEquals(1, byStimulus.size)
+        assertEquals(listOf(CqLabel.KA, CqLabel.KHA), byStimulus[0].subQuestions.map { it.label }) // a stimulus match keeps all
+        assertTrue(found("#physics_cq প্রথম").isEmpty()) // every word must match
+    }
 }

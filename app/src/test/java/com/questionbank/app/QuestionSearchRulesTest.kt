@@ -92,4 +92,54 @@ class QuestionSearchRulesTest {
     fun nothingMatchingGivesAnEmptyList() {
         assertTrue(QuestionSearchRules.filter(listOf(group("s1", sub("a"))), emptySet(), emptySet()).isEmpty())
     }
+
+    // ---- v0.2.29: hashtag words (plan 45.3, option A) ----
+
+    @Test
+    fun aWordThatStartsWithHashIsKeptEvenWithoutLetterOrDigit() {
+        assertEquals(listOf("#"), QuestionSearchRules.tokens("#"))
+        assertEquals(listOf("#", "#আলো", "#physics_cq"), QuestionSearchRules.tokens("  # #আলো ... #physics_cq "))
+        assertTrue(QuestionSearchRules.isHashWord("#"))
+        assertTrue(QuestionSearchRules.isHashWord("#২০২৪"))
+        assertFalse(QuestionSearchRules.isHashWord("a#b")) // a hash inside a word does not make a hashtag word
+        assertEquals(listOf("a#b"), QuestionSearchRules.tokens("a#b"))
+    }
+
+    @Test
+    fun hashWordsNeverGoToFtsAndTheLastOtherWordStaysThePrefix() {
+        assertNull(QuestionSearchRules.ftsQuery(listOf("#")))
+        assertNull(QuestionSearchRules.ftsQuery(listOf("#আলো", "#optics")))
+        assertEquals("\"আলো\"*", QuestionSearchRules.ftsQuery(listOf("#tag", "আলো")))
+        assertEquals("\"আলো\" \"প্রতি\"*", QuestionSearchRules.ftsQuery(listOf("আলো", "#tag", "প্রতি")))
+    }
+
+    @Test
+    fun hashWordsMatchAsPlainTextInTheQuestionOrTheShortAnswer() {
+        val tokens = QuestionSearchRules.tokens("#আলো")
+        assertTrue(QuestionSearchRules.hashWordsMatch("প্রশ্ন #আলো", "", tokens))
+        assertTrue(QuestionSearchRules.hashWordsMatch("প্রশ্ন", "উত্তর #আলোর", tokens)) // a longer tag with the same start also matches
+        assertFalse(QuestionSearchRules.hashWordsMatch("আলো ছাড়া হ্যাশ", "আলো", tokens)) // the bare word is not the hashtag
+    }
+
+    @Test
+    fun hashWordsMatchIgnoresLatinCaseAndNeedsEveryHashWord() {
+        val tokens = QuestionSearchRules.tokens("#Optics #2024")
+        assertTrue(QuestionSearchRules.hashWordsMatch("x #optics y", "#2024", tokens))
+        assertFalse(QuestionSearchRules.hashWordsMatch("x #optics y", "", tokens))
+    }
+
+    @Test
+    fun aLoneHashMatchesAnyTextThatContainsAHash() {
+        val tokens = QuestionSearchRules.tokens("#")
+        assertTrue(QuestionSearchRules.hashWordsMatch("a # b", "", tokens))
+        assertFalse(QuestionSearchRules.hashWordsMatch("no sign here", "none", tokens))
+    }
+
+    @Test
+    fun withoutHashWordsEverythingMatchesAndTheStimulusUsesPlainTextForHashWords() {
+        assertTrue(QuestionSearchRules.hashWordsMatch("anything", "", QuestionSearchRules.tokens("আলো")))
+        val tokens = QuestionSearchRules.tokens("#tag আলো")
+        assertTrue(QuestionSearchRules.containsAll("উদ্দীপক #TAG আলোর", tokens))
+        assertFalse(QuestionSearchRules.containsAll("উদ্দীপক tag আলোর", tokens))
+    }
 }

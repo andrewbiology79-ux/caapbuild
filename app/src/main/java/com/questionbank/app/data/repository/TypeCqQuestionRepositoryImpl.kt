@@ -84,10 +84,17 @@ class TypeCqQuestionRepositoryImpl(
 
     override suspend fun search(topicId: String, rawQuery: String): SearchOutcome {
         val tokens = QuestionSearchRules.tokens(rawQuery)
-        val match = QuestionSearchRules.ftsQuery(tokens) ?: return SearchOutcome.NoTerms
+        if (tokens.isEmpty()) return SearchOutcome.NoTerms
+        // null when every word is a hashtag word: then nothing is asked from FTS5 and the hashtag rule alone decides (v0.2.29).
+        val match = QuestionSearchRules.ftsQuery(tokens)
         return try {
             val groups = group(dao.selectByTopic(topicId))
-            val matchedQuestions = ftsMatch(topicId, match).toSet()
+            val ftsIds = if (match == null) null else ftsMatch(topicId, match).toSet()
+            val matchedQuestions = groups.asSequence()
+                .flatMap { it.subQuestions.asSequence() }
+                .filter { (ftsIds == null || it.id in ftsIds) && QuestionSearchRules.hashWordsMatch(it.text, it.shortAnswer, tokens) }
+                .map { it.id }
+                .toSet()
             val matchedStimuli = dao.stimuliOfTopic(topicId)
                 .filter { QuestionSearchRules.containsAll(it.stimulusText, tokens) }
                 .map { it.stimulusId }
@@ -139,6 +146,7 @@ class TypeCqQuestionRepositoryImpl(
                 updates = ok.updates.map { QuestionTextUpdate(it.questionId, it.text, it.answer) },
                 adds = rows,
                 now = clock(),
+                draftKey = editDraftKey(input.groupKey),
             )
             if (!written) return UpdateResult.GroupMissing
 
@@ -157,6 +165,34 @@ class TypeCqQuestionRepositoryImpl(
             throw e
         } catch (e: Exception) {
             UpdateResult.Failed(e.message ?: e.javaClass.simpleName)
+        }
+    }
+
+    override suspend fun loadEditDraft(groupKey: String): DraftText? = try {
+        dao.getMeta(editDraftKey(groupKey))?.let { decode(it) }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        null
+    }
+
+    override suspend fun saveEditDraft(groupKey: String, draft: DraftText) {
+        try {
+            dao.putMeta(editDraftKey(groupKey), encode(draft), clock())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // A draft must never break typing.
+        }
+    }
+
+    override suspend fun discardEditDraft(groupKey: String) {
+        try {
+            dao.deleteMeta(editDraftKey(groupKey))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Nothing to do: a leftover draft only offers the typed text again.
         }
     }
 
@@ -199,6 +235,9 @@ class TypeCqQuestionRepositoryImpl(
 
     companion object {
         fun draftKey(topicId: String) = "draft:type_cq:$topicId"
+
+        /** v0.2.29: one edit draft per card. [groupKey] is "s-<stimulusId>" or "q-<questionId>" (see QuestionGroupKey). */
+        fun editDraftKey(groupKey: String) = "draft:type_cq:edit:$groupKey"
 
         internal fun encode(d: DraftText): String = JSONObject()
             .put("v", 1)

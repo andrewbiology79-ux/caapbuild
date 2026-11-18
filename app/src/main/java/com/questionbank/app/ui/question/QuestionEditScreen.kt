@@ -41,7 +41,7 @@ private fun editResultText(result: UpdateResult?): String? = when (result) {
     is UpdateResult.Failed -> "সংরক্ষণ করা যায়নি; আগের লেখা অক্ষত আছে। আবার চেষ্টা করুন।"
 }
 
-/** Edit screen of one existing card (v0.2.28). Full screen like the new-question editor. */
+/** Edit screen of one existing card (v0.2.28; automatic edit draft v0.2.29). Full screen like the new-question editor. */
 @Composable
 fun QuestionEditScreen(
     viewModel: QuestionEditViewModel,
@@ -63,11 +63,11 @@ fun QuestionEditScreen(
         AlertDialog(
             onDismissRequest = { askDiscard = false },
             title = { Text("পরিবর্তন সংরক্ষিত হয়নি") },
-            text = { Text("এখন বের হলে আপনার করা পরিবর্তন ফেলে দেওয়া হবে। প্রশ্নটি আগের মতোই থাকবে।") },
+            text = { Text("এখন বের হলে আপনার করা পরিবর্তন ও তার ড্রাফট ফেলে দেওয়া হবে। প্রশ্নটি আগের মতোই থাকবে।") },
             confirmButton = {
                 TextButton(onClick = {
                     askDiscard = false
-                    onBack()
+                    viewModel.discard(onBack)
                 }) { Text("ফেলে দিন") }
             },
             dismissButton = { TextButton(onClick = { askDiscard = false }) { Text("সম্পাদনা চালিয়ে যান") } },
@@ -100,10 +100,19 @@ fun QuestionEditScreen(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text(
-                    "পরিবর্তন সংরক্ষণ না করা পর্যন্ত প্রশ্নটি আগের মতোই থাকে।",
-                    style = MaterialTheme.typography.bodySmall,
-                )
+                val status = when (viewModel.draftStatus) {
+                    DraftStatus.NONE -> "পরিবর্তন সংরক্ষণ না করা পর্যন্ত প্রশ্নটি আগের মতোই থাকে। আপনার লেখা স্বয়ংক্রিয়ভাবে ড্রাফটে রাখা হয়; অ্যাপ বন্ধ হলেও হারাবে না।"
+                    DraftStatus.WAITING -> "ড্রাফটে সংরক্ষণ হচ্ছে…"
+                    DraftStatus.SAVED -> "ড্রাফট সংরক্ষিত ✓ (প্রশ্নটি এখনো আগের মতোই আছে)"
+                }
+                Text(status, style = MaterialTheme.typography.bodySmall)
+                if (viewModel.restoredFromDraft) {
+                    Text(
+                        "আগের অসমাপ্ত সম্পাদনা ফিরিয়ে আনা হয়েছে।",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
                 if (viewModel.hasStimulus) {
                     OutlinedTextField(
                         value = viewModel.stimulus,

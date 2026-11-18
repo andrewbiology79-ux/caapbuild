@@ -16,8 +16,9 @@ interface TypeCqQuestionRepository {
     suspend fun saveGroup(input: QuestionGroupInput): SaveResult
 
     /**
-     * Searches ONE topic (v0.2.27, ADR-011). Words are matched with FTS5 in the question text and short answer (the last word
-     * as a prefix) and as plain text in the stimulus. All words must match. Read-only: nothing is written.
+     * Searches ONE topic (v0.2.27, ADR-011; hashtag words v0.2.29). Words are matched with FTS5 in the question text and short answer (the last word
+     * as a prefix) and as plain text in the stimulus. A word that starts with "#" is matched as plain text (with the "#") in the question,
+     * the short answer and the stimulus. All words must match. Read-only: nothing is written.
      */
     suspend fun search(topicId: String, rawQuery: String): SearchOutcome
 
@@ -30,6 +31,17 @@ interface TypeCqQuestionRepository {
      * as [UpdateResult.Updated] only after the rows were read back. Refusals (see [QuestionEditRules]) write nothing.
      */
     suspend fun updateGroup(input: GroupEditInput): UpdateResult
+
+    /**
+     * Edit drafts (v0.2.29, part B-2). The typed text of an edit that is not saved yet, one per card, stored in `app_metadata`
+     * under `draft:type_cq:edit:<groupKey>`. A successful [updateGroup] removes it in the same transaction. Failures are
+     * swallowed on purpose (a draft must never break typing), like the new-question draft.
+     */
+    suspend fun loadEditDraft(groupKey: String): DraftText?
+    /** Unlike a new-question draft, a blank text is stored too: emptying every block is a real (refused-on-save) edit state. */
+    suspend fun saveEditDraft(groupKey: String, draft: DraftText)
+    /** Removes the edit draft of one card (the person chose "discard", or the typed text equals the stored text). */
+    suspend fun discardEditDraft(groupKey: String)
 
     suspend fun loadDraft(topicId: String): DraftText?
     /** A blank draft removes the stored draft. Failures are swallowed on purpose: a draft must never break typing. */

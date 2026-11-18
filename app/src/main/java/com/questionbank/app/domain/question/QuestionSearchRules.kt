@@ -10,6 +10,11 @@ import java.util.Locale
  * space, double quotes removed, words without any letter or digit dropped. Each word is sent to FTS5 as a quoted phrase, so characters
  * such as `-`, `:`, `*`, `(` can never be read as FTS syntax. The LAST word is a prefix (`"আলো"*`): while typing, "আলো" finds "আলোর".
  * All words must match (implicit AND).
+ *
+ * v0.2.29 (plan 45.3 option A): a word that STARTS with `#` (also `#` alone) is a hashtag word. The FTS5 tokenizer never stores `#`,
+ * so such a word is not sent to FTS5; it is matched as plain text, `#` included (case-insensitive for Latin letters), in the
+ * question text, the short answer and the stimulus. `#` alone finds every text that contains a `#`; `#আলো` finds `#আলো` and
+ * `#আলোর` but no longer the bare word `আলো`. Other words stay FTS5 words. All words (hashtag or not) must still match.
  */
 object QuestionSearchRules {
     const val MAX_QUERY_LENGTH = 200
@@ -19,14 +24,29 @@ object QuestionSearchRules {
         BanglaText.normalize(raw).take(MAX_QUERY_LENGTH)
             .split(Regex("\\s+"))
             .map { it.replace("\"", "") }
-            .filter { word -> word.any { it.isLetterOrDigit() } }
+            .filter { word -> isHashWord(word) || word.any { it.isLetterOrDigit() } }
             .take(MAX_WORDS)
 
-    /** The FTS5 MATCH string for [tokens], or null when there is no word. */
+    /** A hashtag word starts with `#` (v0.2.29). It is matched as plain text, never by FTS5. */
+    fun isHashWord(word: String): Boolean = word.startsWith("#")
+
+    /** The FTS5 MATCH string for the non-hashtag words of [tokens], or null when there is none (for example only `#tag`). */
     fun ftsQuery(tokens: List<String>): String? {
-        if (tokens.isEmpty()) return null
-        val last = tokens.lastIndex
-        return tokens.mapIndexed { i, word -> if (i == last) "\"$word\"*" else "\"$word\"" }.joinToString(" ")
+        val words = tokens.filterNot { isHashWord(it) }
+        if (words.isEmpty()) return null
+        val last = words.lastIndex
+        return words.mapIndexed { i, word -> if (i == last) "\"$word\"*" else "\"$word\"" }.joinToString(" ")
+    }
+
+    /**
+     * True when every hashtag word of [tokens] occurs in the question text or the short answer (plain text, case-insensitive for
+     * Latin letters). True when [tokens] has no hashtag word.
+     */
+    fun hashWordsMatch(text: String, shortAnswer: String, tokens: List<String>): Boolean {
+        val hashWords = tokens.filter { isHashWord(it) }
+        if (hashWords.isEmpty()) return true
+        val haystack = (text + "\n" + shortAnswer).lowercase(Locale.ROOT)
+        return hashWords.all { haystack.contains(it.lowercase(Locale.ROOT)) }
     }
 
     /** Plain-text match used for the stimulus (it is not in the FTS table): every word occurs, case-insensitive for Latin letters. */
