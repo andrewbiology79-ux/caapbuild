@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.questionbank.app.domain.question.BoardFilter
 import com.questionbank.app.domain.question.BoardItem
 import com.questionbank.app.domain.question.SavedGroup
 import com.questionbank.app.domain.question.SearchOutcome
@@ -56,18 +57,23 @@ class QuestionListViewModel(private val topicId: String, private val repository:
         private set
     var query by mutableStateOf("")
         private set
+    /** v0.2.30c-3: the board / year filter of the search. Empty = no filter. Cleared when the search is closed. */
+    var filter by mutableStateOf(BoardFilter())
+        private set
 
     @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
     val searchState: StateFlow<SearchUiState> = combine(
         snapshotFlow { query }.debounce { text -> if (text.isEmpty()) 0L else SEARCH_DELAY_MS },
+        // v0.2.30c-3: a filter change searches at once (no typing to wait for).
+        snapshotFlow { filter },
         // v0.2.28: a saved edit changes the topic's rows; the same text is searched again so the result never shows old text.
         repository.observeGroups(topicId),
-    ) { text, _ -> text }
-        .mapLatest { text ->
-            if (text.isBlank()) {
+    ) { text, f, _ -> text to f }
+        .mapLatest { (text, f) ->
+            if (text.isBlank() && f.isEmpty) {
                 SearchUiState.Idle
             } else {
-                when (val outcome = repository.search(topicId, text)) {
+                when (val outcome = repository.search(topicId, text, f)) {
                     SearchOutcome.NoTerms -> SearchUiState.NoTerms
                     is SearchOutcome.Found -> SearchUiState.Results(outcome.groups)
                     is SearchOutcome.Failed -> SearchUiState.Failed(outcome.reason)
@@ -83,6 +89,11 @@ class QuestionListViewModel(private val topicId: String, private val repository:
     fun closeSearch() {
         searchOpen = false
         query = ""
+        filter = BoardFilter()
+    }
+
+    fun changeFilter(value: BoardFilter) {
+        filter = value
     }
 
     fun onQueryChange(text: String) {

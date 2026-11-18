@@ -10,6 +10,7 @@ import com.questionbank.app.data.local.dao.QuestionTextUpdate
 import com.questionbank.app.data.local.dao.TypeCqQuestionDao
 import com.questionbank.app.data.local.entity.BoardCatalogEntity
 import com.questionbank.app.domain.question.AddBoardResult
+import com.questionbank.app.domain.question.BoardFilter
 import com.questionbank.app.domain.question.BoardItem
 import com.questionbank.app.domain.question.BoardRules
 import com.questionbank.app.domain.question.BoardTag
@@ -106,24 +107,36 @@ class TypeCqQuestionRepositoryImpl(
         }
     }
 
-    override suspend fun search(topicId: String, rawQuery: String): SearchOutcome {
+    override suspend fun search(topicId: String, rawQuery: String, filter: BoardFilter?): SearchOutcome {
+        val f = filter?.takeIf { !it.isEmpty }
         val tokens = QuestionSearchRules.tokens(rawQuery)
-        if (tokens.isEmpty()) return SearchOutcome.NoTerms
-        // null when every word is a hashtag word: then nothing is asked from FTS5 and the hashtag rule alone decides (v0.2.29).
+        // Text that was typed but has no usable word is NoTerms (also with a filter); no text and no filter is NoTerms too.
+        if (tokens.isEmpty() && (rawQuery.isNotBlank() || f == null)) return SearchOutcome.NoTerms
+        // null when every word is a hashtag word (or there is no word): then nothing is asked from FTS5 (v0.2.29).
         val match = QuestionSearchRules.ftsQuery(tokens)
         return try {
             val groups = group(dao.selectByTopic(topicId), tagsOfTopic(topicId))
-            val ftsIds = if (match == null) null else ftsMatch(topicId, match).toSet()
-            val matchedQuestions = groups.asSequence()
-                .flatMap { it.subQuestions.asSequence() }
-                .filter { (ftsIds == null || it.id in ftsIds) && QuestionSearchRules.hashWordsMatch(it.text, it.shortAnswer, tokens) }
-                .map { it.id }
-                .toSet()
-            val matchedStimuli = dao.stimuliOfTopic(topicId)
-                .filter { QuestionSearchRules.containsAll(it.stimulusText, tokens) }
-                .map { it.stimulusId }
-                .toSet()
-            SearchOutcome.Found(QuestionSearchRules.filter(groups, matchedQuestions, matchedStimuli))
+            val found = if (tokens.isEmpty()) {
+                // No text, only the board / year filter (v0.2.30c-3).
+                QuestionSearchRules.filterByBoards(groups, null, emptySet(), f!!)
+            } else {
+                val ftsIds = if (match == null) null else ftsMatch(topicId, match).toSet()
+                val matchedQuestions = groups.asSequence()
+                    .flatMap { it.subQuestions.asSequence() }
+                    .filter { (ftsIds == null || it.id in ftsIds) && QuestionSearchRules.hashWordsMatch(it.text, it.shortAnswer, tokens) }
+                    .map { it.id }
+                    .toSet()
+                val matchedStimuli = dao.stimuliOfTopic(topicId)
+                    .filter { QuestionSearchRules.containsAll(it.stimulusText, tokens) }
+                    .map { it.stimulusId }
+                    .toSet()
+                if (f == null) {
+                    QuestionSearchRules.filter(groups, matchedQuestions, matchedStimuli)
+                } else {
+                    QuestionSearchRules.filterByBoards(groups, matchedQuestions, matchedStimuli, f)
+                }
+            }
+            SearchOutcome.Found(found)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

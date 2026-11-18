@@ -1,7 +1,7 @@
 QUESTION BANK ANDROID APP COMPLETE PROJECT DEVELOPMENT & DELIVERY PLAN
 ============================================================
 
-Document version: 1.43 (v0.2.30c-1 + fix1 CONFIRMED by owner report; v0.2.30c-2 written = board + year picker, chips, new-board dialog, boards in drafts, UNCONFIRMED; section 52 added; before it: v1.42 = CI run for v0.2.30c failed with one compile error, fixed in v0.2.30c-fix1, section 51 added; before it: v1.41 = v0.2.30a + b CONFIRMED by owner report; v0.2.30c split into C-1 / C-2 / C-3; C-1 written = board catalog + boards and years in the data and rule layer, UNCONFIRMED; section 50 added; before it: v1.40 = CI run 42 compile error and fix, v1.39 = v0.2.30b, v1.38 = v0.2.30a, v1.37 = v0.2.29 written: edit drafts B-2 and hashtag search option A, UNCONFIRMED; section 46 added; before it: v1.36 = v0.2.28 CONFIRMED by owner report and hashtag finding P-53, v1.35 = CI run 39 compile failure and fix, v1.34 = v0.2.27 CONFIRMED, part B split into v0.2.28 = B-1 and v0.2.29 = B-2)
+Document version: 1.44 (v0.2.30c-2 CONFIRMED by owner report; v0.2.30c-3 written = search by board and year (filter bar), UNCONFIRMED; section 53 added; before it: v1.43 = v0.2.30c-1 + fix1 CONFIRMED by owner report; v0.2.30c-2 written = board + year picker, chips, new-board dialog, boards in drafts, UNCONFIRMED; section 52 added; before it: v1.42 = CI run for v0.2.30c failed with one compile error, fixed in v0.2.30c-fix1, section 51 added; before it: v1.41 = v0.2.30a + b CONFIRMED by owner report; v0.2.30c split into C-1 / C-2 / C-3; C-1 written = board catalog + boards and years in the data and rule layer, UNCONFIRMED; section 50 added; before it: v1.40 = CI run 42 compile error and fix, v1.39 = v0.2.30b, v1.38 = v0.2.30a, v1.37 = v0.2.29 written: edit drafts B-2 and hashtag search option A, UNCONFIRMED; section 46 added; before it: v1.36 = v0.2.28 CONFIRMED by owner report and hashtag finding P-53, v1.35 = CI run 39 compile failure and fix, v1.34 = v0.2.27 CONFIRMED, part B split into v0.2.28 = B-1 and v0.2.29 = B-2)
 Planning baseline: 16 November 2026
 Project status: Single-database architecture confirmed; canonical SQL and Room build harness prepared. CI run 11 (package v0.2.8) passed: KSP/Room generation, unit tests (5 of 5) and debug APK assembly. The package is still a build harness, not a complete application; Room-database runtime behaviour (CHECK emulation, Bengali FTS on the real database) is not yet device-tested.
 
@@ -3644,3 +3644,51 @@ P-46, P-51, P-44, P-47, P-49, P-45, P-37: unchanged.
 - v1.43: v0.2.30c-1 + fix1 CONFIRMED by owner report (CI run 45: 122 unit tests; emulator 94 of 94; check list clean; P-55 closed; the expected emulator count 93 was one too low); C-2 written (board + year picker, chips with remove in the editor, new-board dialog, tags on cards, tags in drafts), expected 132 unit / 96 emulator tests, UNCONFIRMED; decisions B-5 to B-9.
 
 END OF VERSION 1.43 UPDATE
+
+============================================================
+53. v0.2.30c-2 CONFIRMED; PART C-3 (SEARCH BY BOARD AND YEAR) WRITTEN - VERSION 1.44
+============================================================
+
+Planning update date: 18 November 2026
+
+53.1 Basis
+- Owner report for QuestionBank_v0_2_30c2.zip: CI clean, instrumented (emulator) test clean, check list clean. The report files and the step-by-step results of the check list were NOT sent this time (same as for v0.2.30b-fix1), so the counts (expected 132 unit / 96 emulator) and the 8 phone steps were not checked by the assistant. v0.2.30c-2 is CONFIRMED by owner report only.
+- The owner asked for the next step: C-3 (50.2), the last part of v0.2.30c.
+
+53.2 Decision at the start of C-3 (50.2 left it open: "the hashtag-style rule or a board chip in the search")
+- A filter bar with two chips (board, year) under the search box. Reasons: the board and the year are catalog values, not words; typing them as words would clash with question text, with the FTS tokenizer and with Bengali / Latin digits (P-46); chips make the search explicit and let board + year be tested as ONE tag.
+- Rules C3-1 to C3-6 are listed in VERSION_NOTES_0.2.30c3.md: filter chips, not text words (C3-1); board + year on the same tag (C3-2); a stimulus tag counts for all sub-questions of the card, a question tag for that question (C3-3); with a filter on, text AND tags must fit the same question and only those sub-questions are shown, without a filter the old behaviour is unchanged (C3-4); closing the search clears text and filter (C3-5); text without a usable word is still NoTerms, also with a filter (C3-6).
+
+53.3 Part C-3, what was written
+- Domain: BoardFilter(boardCode?, year?) with isEmpty and matches(tags); QuestionSearchRules.filterByBoards(groups, textMatchedQuestionIds?, textMatchedStimulusIds, filter) (pure).
+- Repository: search(topicId, rawQuery, filter: BoardFilter? = null). Without a filter the code path and the result are the same as in v0.2.29; with a filter and no text the tags alone decide; text and filter are combined by filterByBoards. No new query: the tags were already read for the list (tagsOfTopic).
+- UI: BoardFilterBar (two chips, board dialog, year dialog with the year window and "অন্য সাল", "ফিল্টার মুছুন"); QuestionListViewModel has `filter` (changeFilter) and a 3-flow combine, so a filter change searches at once; the list screen shows search results also while only the filter is on; the back arrow clears both.
+- No schema, DAO or entity change: identityHash must stay 786b471d... , database version 1. versionCode 34, versionName 0.2.30c3-board-search. No new dependency.
+- Lessons of P-54 / P-55 applied: no new sealed subtype; the only changed signature (search) has a default parameter, and every caller was grepped (list ViewModel and tests).
+
+53.4 Tests (expected, NOT run)
+- Unit: 10 new in BoardFilterSearchTest -> 142 of 142 (132 + 10).
+- Emulator: 3 new in QuestionBoardTest (search by board / year without text; text + filter and the old search unchanged; NoTerms) -> 99 (96 + 3). The filter bar is checked by the 6-step phone list of VERSION_NOTES_0.2.30c3.md.
+- The Kotlin code has NOT been compiled or run (no Gradle in the assistant environment). Risk points for the first CI run: BoardFilterBar.kt (new Compose code), the 3-flow combine, the default parameter on the interface method. If CI fails, send the report and the plan will record it.
+
+53.5 UI inventory status (39.6)
+ UI-08 Boards + years, custom boards, year window: data layer CONFIRMED (c-1); screens CONFIRMED (c-2, by owner report); search by board / year WRITTEN (c-3), UNCONFIRMED.
+ UI-05 In-topic search: text CONFIRMED (v0.2.27), hashtag CONFIRMED (v0.2.29); board / year filter WRITTEN (c-3), UNCONFIRMED.
+ UI-07 Ratings: CONFIRMED. UI-06, UI-09, UI-10: unchanged (parts D and E).
+
+53.6 Status and problem log
+PHASE 1: BUILD GATE PASSED, FOUNDATION INCOMPLETE (open: release signing). PHASE 2: DONE. PHASE 4/5: create / list / search / edit, edit drafts, hashtag search, ratings, boards data layer and board + year screens CONFIRMED; board / year search WRITTEN, UNCONFIRMED.
+P-46  Bengali and Latin digits in the TEXT search are different words. Status: closed FOR YEARS (the year filter compares numbers, so ২০১৯ = 2019); stays OPEN, low priority, for digits inside question text.
+P-51, P-44, P-47, P-49, P-45, P-37: unchanged.
+Removing a chip directly on a list card (B-5) stays an optional small step; the owner has not asked for it.
+
+53.7 Next steps (in order)
+1. Owner: push v0.2.30c3 (QuestionBank_v0_2_30c3.zip) and send the CI report. Expect BUILD SUCCESSFUL, 142 unit tests (132 + 10), identityHash 786b471d... unchanged, same debug key. If it fails, send the new report.
+2. Owner: run the emulator workflow and send the report. Expect 99 tests (96 + 3).
+3. Owner: do the 6-step phone check list of VERSION_NOTES_0.2.30c3.md and report step by step.
+4. Assistant: read the reports, issue plan v1.45 (c-3 CONFIRMED or corrected; v0.2.30c finished), then start v0.2.30d (reference text, editable marks, type chooser; UI-09), split into small steps if big. If the owner prefers, d can be written on top of this package and tested together.
+
+53.8 Change log addition
+- v1.44: v0.2.30c-2 CONFIRMED by owner report (counts and phone steps not sent); C-3 written (board / year filter bar in the search, BoardFilter, filterByBoards, search with filter), expected 142 unit / 99 emulator tests, UNCONFIRMED; decisions C3-1 to C3-6; P-46 closed for years.
+
+END OF VERSION 1.44 UPDATE

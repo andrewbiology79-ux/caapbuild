@@ -19,8 +19,12 @@ interface TypeCqQuestionRepository {
      * Searches ONE topic (v0.2.27, ADR-011; hashtag words v0.2.29). Words are matched with FTS5 in the question text and short answer (the last word
      * as a prefix) and as plain text in the stimulus. A word that starts with "#" is matched as plain text (with the "#") in the question,
      * the short answer and the stimulus. All words must match. Read-only: nothing is written.
+     *
+     * v0.2.30c-3: [filter] (board and / or year) narrows the result: a question is kept when its text part fits (see
+     * [QuestionSearchRules.filterByBoards]) AND one of its tags, or of its stimulus, fits the filter. With a non-empty filter the text may be empty
+     * (then every question of the topic is checked against the filter); text that has no usable word is still [SearchOutcome.NoTerms].
      */
-    suspend fun search(topicId: String, rawQuery: String): SearchOutcome
+    suspend fun search(topicId: String, rawQuery: String, filter: BoardFilter? = null): SearchOutcome
 
     /** One card as saved now, for the edit screen (v0.2.28). Null when it no longer exists. [groupKey] comes from [QuestionGroupKey]. */
     suspend fun loadGroup(topicId: String, groupKey: String): SavedGroup?

@@ -70,4 +70,28 @@ object QuestionSearchRules {
                 if (matching.isEmpty()) null else group.copy(subQuestions = matching)
             }
         }
+
+    /**
+     * v0.2.30c-3: the search with a board / year filter. A sub-question is kept when BOTH hold:
+     *  - the text part: [textMatchedQuestionIds] is null (no text was typed: every question fits), or the question matched, or its
+     *    stimulus matched ([textMatchedStimulusIds]);
+     *  - the tag part: a tag of the question fits [filter], or (for a group with a stimulus) a tag of the stimulus fits it.
+     * A card shows only the kept sub-questions; a group without any disappears. The order of [groups] is kept.
+     */
+    fun filterByBoards(
+        groups: List<SavedGroup>,
+        textMatchedQuestionIds: Set<String>?,
+        textMatchedStimulusIds: Set<String>,
+        filter: BoardFilter,
+    ): List<SavedGroup> =
+        groups.mapNotNull { group ->
+            val stimulusId = group.stimulusId
+            val stimulusTextOk = stimulusId != null && stimulusId in textMatchedStimulusIds
+            val stimulusTagOk = stimulusId != null && filter.matches(group.stimulusBoards)
+            val kept = group.subQuestions.filter { q ->
+                val textOk = textMatchedQuestionIds == null || q.id in textMatchedQuestionIds || stimulusTextOk
+                textOk && (stimulusTagOk || filter.matches(q.boards))
+            }
+            if (kept.isEmpty()) null else group.copy(subQuestions = kept)
+        }
 }

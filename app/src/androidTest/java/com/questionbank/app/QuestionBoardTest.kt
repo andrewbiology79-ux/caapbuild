@@ -11,6 +11,7 @@ import com.questionbank.app.data.repository.TypeCqHierarchyRepositoryImpl
 import com.questionbank.app.data.repository.TypeCqQuestionRepositoryImpl
 import com.questionbank.app.domain.hierarchy.AddResult
 import com.questionbank.app.domain.question.AddBoardResult
+import com.questionbank.app.domain.question.BoardFilter
 import com.questionbank.app.domain.question.BoardTag
 import com.questionbank.app.domain.question.BoardsInput
 import com.questionbank.app.domain.question.CqLabel
@@ -265,5 +266,53 @@ class QuestionBoardTest {
         val d = repo.loadEditDraft("s-bad")!!
         assertEquals(listOf(dhaka2019), d.stimulusBoards)
         assertEquals(listOf(ctg2021), d.boards[0])
+    }
+
+    private suspend fun seedSearchRows() {
+        // Group A: stimulus tagged DHA 2019; ক tagged RAJ 2020; খ untagged. Group B: a single question tagged DHA 2020.
+        saveOk(
+            "উদ্দীপক এক",
+            BoardsInput(stimulus = listOf(dhaka2019), byLabel = mapOf(CqLabel.KA to listOf(raj2020))),
+            CqLabel.KA to "আলোর প্রতিফলন", CqLabel.KHA to "প্রতিসরণ",
+        )
+        saveOk("", BoardsInput(byLabel = mapOf(CqLabel.KA to listOf(dhaka2020))), CqLabel.KA to "আলোর বেগ")
+    }
+
+    private fun foundTexts(outcome: SearchOutcome): Set<String> {
+        assertTrue("expected Found but was $outcome", outcome is SearchOutcome.Found)
+        return (outcome as SearchOutcome.Found).groups.flatMap { g -> g.subQuestions.map { it.text } }.toSet()
+    }
+
+    @Test
+    fun searchByBoardAndYearWithoutText() = runBlocking {
+        seedSearchRows()
+        // DHA: the stimulus tag keeps ক and খ of group A; group B has DHA 2020.
+        assertEquals(setOf("আলোর প্রতিফলন", "প্রতিসরণ", "আলোর বেগ"), foundTexts(repo.search(topicId, "", BoardFilter(boardCode = "DHA"))))
+        // Year 2020: ক of A (RAJ 2020) and B; খ of A has no 2020 tag and the stimulus is 2019.
+        assertEquals(setOf("আলোর প্রতিফলন", "আলোর বেগ"), foundTexts(repo.search(topicId, "", BoardFilter(year = 2020))))
+        // DHA and 2020 must be ONE tag: only B. (A has DHA 2019 on the stimulus and RAJ 2020 on ক.)
+        assertEquals(setOf("আলোর বেগ"), foundTexts(repo.search(topicId, "", BoardFilter("DHA", 2020))))
+        assertEquals(emptySet<String>(), foundTexts(repo.search(topicId, "", BoardFilter("CTG"))))
+    }
+
+    @Test
+    fun searchTextAndFilterTogetherAndTheOldSearchIsUnchanged() = runBlocking {
+        seedSearchRows()
+        // Text "আলোর" fits ক of A and B; the DHA filter keeps both (A through its stimulus tag).
+        assertEquals(setOf("আলোর প্রতিফলন", "আলোর বেগ"), foundTexts(repo.search(topicId, "আলোর", BoardFilter(boardCode = "DHA"))))
+        // Text and 2019: only the stimulus of A is 2019, and the text fits ক only.
+        assertEquals(setOf("আলোর প্রতিফলন"), foundTexts(repo.search(topicId, "আলোর", BoardFilter(year = 2019))))
+        // No filter, or an empty one: the same result as before v0.2.30c-3.
+        val plain = foundTexts(repo.search(topicId, "আলোর"))
+        assertEquals(setOf("আলোর প্রতিফলন", "আলোর বেগ"), plain)
+        assertEquals(plain, foundTexts(repo.search(topicId, "আলোর", BoardFilter())))
+    }
+
+    @Test
+    fun searchWithoutUsableTextIsStillNoTerms() = runBlocking {
+        seedSearchRows()
+        assertEquals(SearchOutcome.NoTerms, repo.search(topicId, ""))
+        assertEquals(SearchOutcome.NoTerms, repo.search(topicId, "", BoardFilter()))
+        assertEquals(SearchOutcome.NoTerms, repo.search(topicId, " ... ", BoardFilter(boardCode = "DHA")))
     }
 }

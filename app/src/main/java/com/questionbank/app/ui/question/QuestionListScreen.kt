@@ -3,6 +3,7 @@ package com.questionbank.app.ui.question
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -74,8 +75,9 @@ fun QuestionListScreen(
 
     val searchOpen = viewModel.searchOpen
     val query = viewModel.query
-    // Search results replace the list only while the text is not empty and its first result has arrived; otherwise the normal list stays.
-    val showSearch = searchOpen && query.isNotBlank() && searchState != SearchUiState.Idle
+    // Search results replace the list only while the text is not empty (or a board / year filter is on) and its first result has arrived; otherwise the normal list stays.
+    val filter = viewModel.filter
+    val showSearch = searchOpen && (query.isNotBlank() || !filter.isEmpty) && searchState != SearchUiState.Idle
 
     // Back closes the search first (the innermost handler wins over the navigation Back).
     BackHandler(enabled = searchOpen) { viewModel.closeSearch() }
@@ -97,7 +99,10 @@ fun QuestionListScreen(
     Scaffold(
         topBar = {
             if (searchOpen) {
-                SearchHeader(query = query, onQueryChange = viewModel::onQueryChange, onClose = viewModel::closeSearch)
+                Column {
+                    SearchHeader(query = query, onQueryChange = viewModel::onQueryChange, onClose = viewModel::closeSearch)
+                    BoardFilterBar(filter = filter, boards = boardCatalog, onChange = viewModel::changeFilter)
+                }
             } else {
                 AppHeader(
                     title = if (topicName.isNullOrEmpty()) "প্রশ্ন" else "$topicName › প্রশ্ন",

@@ -15,6 +15,18 @@ data class BoardsInput(
     val byLabel: Map<CqLabel, List<BoardTag>> = emptyMap(),
 )
 
+/**
+ * The board / year filter of the search (v0.2.30c-3). [boardCode] and [year] are each optional; when both are given they must be on
+ * the SAME tag ("ঢাকা" and 2019 means a tag ঢাকা 2019, not ঢাকা 2015 plus some other board 2019). Both null = no filter.
+ */
+data class BoardFilter(val boardCode: String? = null, val year: Int? = null) {
+    val isEmpty: Boolean get() = boardCode == null && year == null
+
+    /** True when one of [tags] fits the filter. Callers test [isEmpty] first: an empty filter fits any non-empty list. */
+    fun matches(tags: List<BoardTag>): Boolean =
+        tags.any { (boardCode == null || it.boardCode == boardCode) && (year == null || it.year == year) }
+}
+
 /** A board of the catalog as the editor lists it. */
 data class BoardItem(val code: String, val displayName: String, val isCustom: Boolean, val isArchived: Boolean)
 
