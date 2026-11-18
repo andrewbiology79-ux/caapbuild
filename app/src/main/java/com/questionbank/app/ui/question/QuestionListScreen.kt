@@ -85,7 +85,7 @@ fun QuestionListScreen(
     Scaffold(
         topBar = {
             if (searchOpen) {
-                SearchHeader(query = query, onQueryChange = viewModel::setQuery, onClose = viewModel::closeSearch)
+                SearchHeader(query = query, onQueryChange = viewModel::onQueryChange, onClose = viewModel::closeSearch)
             } else {
                 AppHeader(
                     title = if (topicName.isNullOrEmpty()) "প্রশ্ন" else "$topicName › প্রশ্ন",

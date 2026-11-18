@@ -75,7 +75,7 @@ class QuestionListViewModel(private val topicId: String, private val repository:
         query = ""
     }
 
-    fun setQuery(text: String) {
+    fun onQueryChange(text: String) {
         query = text
     }
 
