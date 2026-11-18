@@ -7,6 +7,8 @@ import com.questionbank.app.domain.question.CqLabel
 import com.questionbank.app.domain.question.DraftText
 import com.questionbank.app.domain.question.QuestionGroupInput
 import com.questionbank.app.domain.question.QuestionRules
+import com.questionbank.app.domain.question.QuestionSearchRules
+import com.questionbank.app.domain.question.SearchOutcome
 import com.questionbank.app.domain.question.SaveResult
 import com.questionbank.app.domain.question.SavedGroup
 import com.questionbank.app.domain.question.SavedSubQuestion
@@ -21,12 +23,18 @@ import org.json.JSONObject
 /**
  * [beforeWrite] runs before every question save; the app uses it to force `PRAGMA synchronous=FULL` on the writer
  * connection (every commit is flushed to storage). Ids and the clock can be replaced in tests.
+ *
+ * [ftsMatch] runs the FTS5 query of the search: (topicId, MATCH string) -> ids of the matching questions in that topic. It is a
+ * function because Room cannot check a query on an FTS virtual table at compile time; the app wires `QuestionBankDatabase.typeCqFtsMatch`.
+ * The default throws on purpose: a repository that was not wired for search must fail loudly, not return "nothing found".
  */
 class TypeCqQuestionRepositoryImpl(
     private val dao: TypeCqQuestionDao,
     private val beforeWrite: suspend () -> Unit = {},
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val newId: () -> String = { UUID.randomUUID().toString() },
+    private val ftsMatch: suspend (topicId: String, match: String) -> List<String> =
+        { _, _ -> throw IllegalStateException("ftsMatch is not wired") },
 ) : TypeCqQuestionRepository {
 
     override fun observeTopicName(topicId: String): Flow<String?> = dao.observeTopicName(topicId)
@@ -69,6 +77,24 @@ class TypeCqQuestionRepositoryImpl(
         }
     }
 
+    override suspend fun search(topicId: String, rawQuery: String): SearchOutcome {
+        val tokens = QuestionSearchRules.tokens(rawQuery)
+        val match = QuestionSearchRules.ftsQuery(tokens) ?: return SearchOutcome.NoTerms
+        return try {
+            val groups = group(dao.selectByTopic(topicId))
+            val matchedQuestions = ftsMatch(topicId, match).toSet()
+            val matchedStimuli = dao.stimuliOfTopic(topicId)
+                .filter { QuestionSearchRules.containsAll(it.stimulusText, tokens) }
+                .map { it.stimulusId }
+                .toSet()
+            SearchOutcome.Found(QuestionSearchRules.filter(groups, matchedQuestions, matchedStimuli))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            SearchOutcome.Failed(e.message ?: e.javaClass.simpleName)
+        }
+    }
+
     override suspend fun loadDraft(topicId: String): DraftText? = try {
         dao.getMeta(draftKey(topicId))?.let { decode(it) }
     } catch (e: CancellationException) {
@@ -98,9 +124,10 @@ class TypeCqQuestionRepositoryImpl(
             SavedGroup(
                 stimulusId = first.stimulusId,
                 stimulusText = first.stimulusText.orEmpty(),
+                stimulusRating = first.stimulusRating,
                 subQuestions = list
                     .sortedBy { CqLabel.fromLetter(it.label)?.sortOrder ?: 9 }
-                    .map { SavedSubQuestion(it.questionId, CqLabel.fromLetter(it.label), it.marks, it.questionText, it.shortAnswer) },
+                    .map { SavedSubQuestion(it.questionId, CqLabel.fromLetter(it.label), it.marks, it.questionText, it.shortAnswer, it.rating) },
             )
         }
     }

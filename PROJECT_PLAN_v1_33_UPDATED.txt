@@ -1,7 +1,7 @@
 QUESTION BANK ANDROID APP COMPLETE PROJECT DEVELOPMENT & DELIVERY PLAN
 ============================================================
 
-Document version: 1.30 (v0.2.25 confirmed by owner report; package v0.2.26 hierarchy management written; section 41 added)
+Document version: 1.33 (next step split in two: part A = v0.2.27 question card + in-topic search written, UNCONFIRMED; part B = v0.2.28 open an existing question in the editor, designed, not written; package order renumbered; section 42 added)
 Planning baseline: 16 November 2026
 Project status: Single-database architecture confirmed; canonical SQL and Room build harness prepared. CI run 11 (package v0.2.8) passed: KSP/Room generation, unit tests (5 of 5) and debug APK assembly. The package is still a build harness, not a complete application; Room-database runtime behaviour (CHECK emulation, Bengali FTS on the real database) is not yet device-tested.
 
@@ -2975,7 +2975,7 @@ END OF VERSION 1.29 UPDATE
 
 
 ============================================================
-41. v0.2.25 CONFIRMED, PACKAGE v0.2.26 (HIERARCHY MANAGEMENT) - VERSION 1.30
+41. v0.2.25 CONFIRMED, v0.2.26 (HIERARCHY MANAGEMENT) CONFIRMED - VERSION 1.32
 ============================================================
 
 Planning update date: 18 November 2026
@@ -2992,24 +2992,135 @@ Planning update date: 18 November 2026
 - Deleting a topic also removes its unsaved draft. Reorder refuses a list that no longer matches the database.
 - No schema change (identityHash 786b471dfa14c9ae4739bb81479bab25), no new dependency, versionCode 26.
 - Tests: 11 new unit (expected 57), 11 new emulator (expected 51).
-- STATUS: written, NOT compiled, NOT run - UNCONFIRMED. The assistant's environment has no Gradle or Android SDK; the first compile is the owner's CI run.
+- STATUS: CONFIRMED (CI 57 of 57, emulator 51 of 51, both read by the assistant; phone check list done by owner report). See 41.2a and 41.2b.
+
+41.2a Evidence received for v0.2.26
+1. Emulator report (API 34, supplied and read by the assistant): 51 tests, 50 passed, 1 failed. The package therefore compiled and ran on Android.
+   The failure: HierarchyManageTest.renameUsesTheSameCleaningAsAdd. Cause: a wrong expectation in the TEST (names are stored in NFC, so U+09DF is stored as U+09AF U+09BC). The app behaviour was correct; the duplicate check in the same test had passed. Test fixed in the re-issued package; no change under app/src/main.
+2. After the fix the owner reports: CI report green and instrumented report green (owner report). The assistant has NOT yet seen the CI report, so the unit-test count (expected 57), the emulator count (expected 51) and the identityHash are NOT re-verified.
+3. A green run proves the database logic (counts, rename, delete only when empty, reorder, breadcrumb path) and that earlier tests did not break. It does not prove the screens: cards, 3-dot menu, dialogs, arrows, breadcrumb taps, Back key have no automatic test and are checked only by the phone check list of VERSION_NOTES_0.2.26.md.
+
+41.2b Evidence received in v1.32 (reports read by the assistant)
+1. CI report (GitHub Actions run 36, commit ca93b17b, branch main, Java 17): Gradle exit code 0, BUILD SUCCESSFUL. Unit tests: 57 tests, 0 failures, 0 errors, 0 skipped.
+   Per class: BanglaText 4, BengaliDigits 6, CanonicalSqlContract 5, HierarchyListLogic 11, HierarchyName 6, QuestionRules 11, RestoreSwap 7, RoomSchemaParity 2, TextSizePolicy 5.
+   Expected 57 - MATCHES. Release assemble: BUILD SUCCESSFUL. androidTest compile: BUILD SUCCESSFUL. APK signed with the fixed debug key (CN=Android Debug, SHA-256 14e5a5fa...436d).
+   Room schema file 1.json: identityHash 786b471dfa14c9ae4739bb81479bab25 - UNCHANGED, as required (no schema change).
+   Kotlin compiler warnings (w: lines): none from the app code; only the Gradle "Deprecated Gradle Version" notice (tied to the later AGP 9 upgrade step).
+2. Instrumented (emulator) report (API 34, Android 14, emulator-5554): Gradle exit code 0, BUILD SUCCESSFUL. 51 tests, 0 failures, 0 errors, 0 skipped.
+   Per class: AppSettings 3, BackupRestore 7, HierarchyManage 11, HierarchyNameAndroid 2, RoomRuntime 10, ScaleBenchmark 1, TypeCqHierarchyRepository 7, TypeCqQuestionRepository 10.
+   Expected 51 - MATCHES. The previously failing test HierarchyManageTest.renameUsesTheSameCleaningAsAdd now PASSES (test expectation fixed, no change under app/src/main).
+3. Scale benchmark (20,000 rows, 2 solutions per question): import 6,095 ms (3,281 rows/s); WAL checkpoint 4 ms; FTS optimize 33 ms; common-word search 0.6 ms (rank-sorted: 10.0 ms);
+   rare word 0.8 ms; prefix 0.9 ms; search joined to a topic 6.6 ms; first page of a topic 0.7 ms; deep OFFSET 10,000 = 6.6 ms; edit 0.16 ms per row; delete 0.22 ms per row (cascade + FTS trigger);
+   consistency check questions = fts_rows = 19,800. No regression against earlier runs; rank-search cost (P-19) is unchanged at about 10 ms for 20,000 rows. (dbstat size breakdown is not available on this device: informational only.)
+4. Phone check list of VERSION_NOTES_0.2.26.md (7 steps): reported DONE by the owner (owner report). Per-step results were not listed and no problem was reported, so all 7 steps are recorded as passed.
+   If any step failed or looked wrong, tell the assistant and this record will be corrected.
+5. Consequence: v0.2.26 is CONFIRMED: database logic by two machine reports read by the assistant, screens by the owner's phone check.
 
 41.3 Status
 PHASE 1: BUILD GATE PASSED, FOUNDATION INCOMPLETE (open: release signing). PHASE 2: DONE.
 PHASE 4/5: hierarchy and question create/list CONFIRMED on phone; backup and restore CONFIRMED on phone.
-UI-01: CONFIRMED (owner report), font part OPEN. UI-02, UI-03: written in v0.2.26, UNCONFIRMED.
+UI-01: CONFIRMED (owner report), font part OPEN. UI-02, UI-03: CONFIRMED (CI 57 of 57 and emulator 51 of 51 read by the assistant; phone check list done by owner report).
 PHASES 3, 6-17: NOT STARTED, except as listed.
 
 41.4 Problem log
 P-37  Theme, colour, font. Status: theme and colour CONFIRMED (owner report); font OPEN.
-P-44  Non-empty items cannot be deleted yet. Status: BY DESIGN until v0.2.29 (ADR-010); owner may ask for a cascade delete earlier.
-P-45  Reorder mode is lost on screen rotation (the saved order shows again). Status: OPEN, low priority.
+P-44  Non-empty items cannot be deleted yet. Status: BY DESIGN until v0.2.29 (ADR-010); owner may ask for a cascade delete earlier. Phone check done; no change requested.
+P-45  Reorder mode is lost on screen rotation (the saved order shows again). Status: OPEN, low priority (no report that it caused a problem).
+P-19  Rank search about 10 ms at 20,000 rows (v0.2.26 run, unchanged). Status: OPEN (design note; decide in Phase 12).
 
 41.5 Next steps (in order)
-1. Owner: push v0.2.26, send the normal CI report (expect BUILD SUCCESSFUL, 57 unit tests, identityHash unchanged) and the emulator report (expect 51 tests); then do the phone check list in VERSION_NOTES_0.2.26.md and report. If the CI run fails, send the log: this package was never compiled.
-2. Assistant: package v0.2.27 (question card, Bengali FTS search in the header, open an existing question in the editor; UI-04, UI-05) after step 1 is green.
+1. DONE: v0.2.26 CI report and emulator report read; 57 unit and 51 emulator tests green; identityHash unchanged; phone check list done (owner report).
+2. Assistant: package v0.2.27 (question card, Bengali FTS search in the header, open an existing question in the editor; UI-04, UI-05, part of UI-11). No schema change expected (identityHash 786b471d... must stay).
+   Expected counts for the owner to check: to be stated in VERSION_NOTES_0.2.27.md when the package is issued.
+3. Owner: for v0.2.27 send the CI report, the emulator report and the phone check results (steps listed one by one, as the plan asks).
+4. Later small steps: font file (P-37), tab icons (P-42).
 
 41.6 Change log addition
 - v1.30: v0.2.25 confirmed by owner report, package v0.2.26 (hierarchy management), ADR-010, problems P-44, P-45.
+- v1.31: emulator report of v0.2.26 read (50 of 51; the failure was a wrong test expectation, fixed); CI and emulator green by owner report; screens still need the phone check.
+- v1.32: CI report (run 36) and emulator report read by the assistant: 57 of 57 unit tests, 51 of 51 emulator tests, identityHash 786b471d... unchanged, benchmark no regression; phone check list done by owner report; v0.2.26 CONFIRMED (UI-02, UI-03). Section 41.2b added.
 
-END OF VERSION 1.30 UPDATE
+END OF VERSION 1.32 UPDATE
+
+
+============================================================
+42. NEXT STEP SPLIT IN TWO, PACKAGE v0.2.27 (PART A: QUESTION CARD + SEARCH) - VERSION 1.33
+============================================================
+
+Planning update date: 18 November 2026
+
+42.1 Owner decision: the next step is split in two parts
+The step of section 41.5 item 2 ("question card, Bengali FTS search in the header, open an existing question in the editor; UI-04, UI-05, part of UI-11") is split.
+- PART A = v0.2.27: question card in the new design and Bengali search inside a topic. READ-ONLY: no write path is added, so this package cannot damage saved data. Written in this update.
+- PART B = v0.2.28: open an existing question in the editor and save the change (first change of saved questions). Designed in 42.4, NOT written. Starts only after part A is confirmed
+  (CI report + emulator report + phone check list), as in section 31.4 and as in the split of section 38.2.
+Reason for the cut: A and B have different risk. A only reads. B is the first update of stored questions: FTS update trigger, a separate draft for edits, rules for what an edit may not do.
+
+42.2 Package v0.2.27 (written, NOT compiled, NOT run - UNCONFIRMED; ADR-011)
+- Card (UI-04, part): blue ribbon "প্রশ্ন N", yellow rating badge (rule U-1: stimulus rating, else average of the question ratings with ties rounded up, else 3), light chip strip ("ট্যাগ নেই" until boards exist), stimulus, sub-questions with label, type, marks, short answer. Light and dark colours from 39.4.
+- Search (UI-05): 🔍 in the header of the question list opens a search box. Question text and short answer through FTS5 (fts_id join, ADR-003); the LAST word is a prefix, earlier words are whole words, all words must match;
+  every word is sent as a quoted phrase, so FTS syntax characters and the words AND / OR / NEAR cannot break the query. Stimulus text by plain match of every word (the stimulus has no FTS table).
+  A card shows only the sub-questions that matched; a stimulus match shows all of them. Search starts 300 ms after the last key. Text is NFC-normalised (finding F-2).
+  Lines: "N টি প্রশ্ন পাওয়া গেছে", "কোনো প্রশ্ন পাওয়া যায়নি।", "খোঁজার জন্য অক্ষর বা সংখ্যা লিখুন।". Back closes the search first.
+- Code: domain/question/QuestionSearchRules.kt, QuestionCardRules.kt; TypeCqQuestionRepository.search(); data/local/TypeCqFtsSearch.kt (reader connection, plain prepared statement, because Room cannot check FTS tables at compile time);
+  DAO: rating columns added to the row query, selectByTopic, stimuliOfTopic; ui/question: QuestionCard, QuestionListLogic, QuestionListViewModel (search state), QuestionListScreen (search header).
+- versionCode 27, versionName 0.2.27-question-card-search. NO schema change (database version 1, identityHash 786b471dfa14c9ae4739bb81479bab25 must stay). No new dependency.
+- Tests: 17 new unit tests (QuestionSearchRules 10, QuestionCardRules 4, QuestionListLogic 3) -> expected 74 of 74. 8 new emulator tests (QuestionSearchTest) -> expected 59.
+  The FTS expectations of the new tests were checked against a real SQLite 3.45.1 FTS5 table with the same tokenizer; the Kotlin code itself was not compiled or run in this environment (no Gradle).
+- Not included: card checkbox and 3-dot menu, solution toggle and pictures, board / paper chips, highlighting of matches, search in solutions / boards / years, search across Bengali and Latin digits (P-46).
+
+42.3 Evidence
+None yet for v0.2.27. Everything above is UNCONFIRMED until the CI report, the emulator report and the phone check list (8 steps in VERSION_NOTES_0.2.27.md) have been received and read.
+
+42.4 Part B (v0.2.28) - design for the owner to overrule before it is written
+1. Entry: the card gets a 3-dot menu with one item, "সম্পাদনা" (the other items of the design come with copy / delete in v0.2.30). A group is identified by its stimulus id, or by the question id when it has no stimulus.
+2. The editor opens with the stored texts (stimulus, four question texts, four short answers), title "প্রশ্ন সম্পাদনা". A group WITHOUT stimulus is one question: only its own block is editable.
+3. Save is ONE transaction (updateGroup): stimulus text, question text and short answer of existing sub-questions (the FTS update trigger replaces the FTS row through fts_id), new rows for labels that were empty (new fts_id, next sort_order), updated_at. Read-back after commit, as for a new save. Marks and types stay fixed (editable marks come with the editor fields).
+4. Refused with a message, nothing written: blanking the text of an existing sub-question (that is a delete, v0.2.30); blanking the stimulus of a group that has one; the group disappeared meanwhile. Same cleaning and limits as a new save (NFC, trim, 20,000 characters).
+5. Edit drafts: separate key draft:type_cq:edit:<id> (the draft of a NEW question in the same topic is not touched); written automatically like the new-question draft, removed in the same transaction as the update, restored when the edit is opened again.
+6. After saving: back to the list, snackbar "পরিবর্তন সংরক্ষিত হয়েছে ✓"; the card and the search result show the new text at once.
+7. Tests planned: JVM for the pure "what changed / what is refused" rules; emulator for old word gone from FTS and new word found, rollback keeps the old text, blanking refused, missing label added, stimulus changed, draft lifecycle, other topic untouched.
+8. No schema change expected (identityHash must stay).
+
+42.5 Revised package order (supersedes the numbers of section 39.9 from v0.2.27 on; the contents are unchanged)
+ v0.2.27  PART A: question card + in-topic search (UI-04 part, UI-05).
+ v0.2.28  PART B: open an existing question in the editor and save the change (UI-11, edit part).
+ v0.2.29  EDITOR FIELDS (was v0.2.28): Minimum / Full modes, ratings with rule U-1, boards + years + custom boards, reference, short answer, editable marks, undo/redo, duplicate warning (UI-06 to UI-10).
+ v0.2.30  DELETE + SELECTION (was v0.2.29): delete-safety design, checkboxes, copy / cut / paste, shared clipboard (UI-11 delete part, UI-12).
+ v0.2.31  JSON PASTE IMPORT and reference-file importer (was v0.2.30; UI-16, UI-17).
+ then     pictures and ordered solutions -> mathematics -> Filter tab and statistics -> categories, papers, PDF -> Chapter CQ -> settings, auto backup, regression, release (unchanged).
+ Where earlier text says "v0.2.29" for the delete-safety design or for deleting non-empty items (ADR-010, VERSION_NOTES_0.2.26, P-44), read v0.2.30.
+ Rule kept: every package is CI-verified, emulator-verified and phone-verified before the next one starts (section 31.4).
+
+42.6 UI inventory status (39.6)
+ UI-04 Question card: ribbon, rating badge, chip strip, text WRITTEN (v0.2.27, UNCONFIRMED); checkbox, 3-dot menu, solution toggle, viewer OPEN.
+ UI-05 In-topic search: WRITTEN (v0.2.27, UNCONFIRMED); board / year / solution search OPEN until those fields exist.
+ UI-11 Edit existing question: designed (42.4), part B; delete part v0.2.30.
+ UI-01, UI-02, UI-03: CONFIRMED (section 41), unchanged.
+
+42.7 Status
+PHASE 1: BUILD GATE PASSED, FOUNDATION INCOMPLETE (open: release signing). PHASE 2: DONE.
+PHASE 4/5: hierarchy and question create/list CONFIRMED on phone; backup and restore CONFIRMED on phone.
+UI-01 to UI-03: CONFIRMED (font part OPEN). v0.2.27: written, UNCONFIRMED. PHASES 3, 6-17: NOT STARTED, except as listed.
+
+42.8 Problem log additions
+P-46  Search does not match across Bengali and Latin digits (২ is not 2); FTS keeps them as different words. Status: OPEN, low priority (decide with the board/year search, D-12).
+P-47  The stimulus is searched as plain text in Kotlin, not by FTS. Fine for one topic; a global search (Filter tab, Phase 12) would need an FTS table for stimuli (schema change). Status: OPEN, design note.
+P-48  Every card shows the rating "৩★" for now, because the editor cannot save ratings yet. Status: BY DESIGN until v0.2.29 (not a bug; rule U-1 default).
+P-49  The search button is an emoji glyph (🔍), like the tab glyphs (P-42). Status: OPEN, low priority (icons with the font step).
+P-44  Non-empty items cannot be deleted. Status: BY DESIGN until v0.2.30 (number moved from v0.2.29).
+P-45  Reorder mode is lost on rotation. Status: OPEN, low priority (unchanged).
+P-37  Font file (Hind Siliguri). Status: OPEN (unchanged).
+
+42.9 Next steps (in order)
+1. Owner: push v0.2.27 and send the CI report. Expect BUILD SUCCESSFUL, 74 unit tests (57 + 17), identityHash 786b471d... unchanged, same fixed debug key in apk-signature.txt.
+2. Owner: run the emulator workflow and send the report. Expect 59 tests (51 + 8).
+3. Owner: do the phone check list of VERSION_NOTES_0.2.27.md (8 steps) and report the result step by step.
+4. Assistant: read the reports, issue plan v1.34 (v0.2.27 CONFIRMED or corrected), then write part B (v0.2.28) after the owner has had the chance to overrule 42.4.
+5. Later small steps: font file (P-37), tab icons and search icon (P-42, P-49).
+
+42.10 Change log addition
+- v1.33: next step split in two (part A v0.2.27 written, part B v0.2.28 designed); package order renumbered (42.5); ADR-011; problems P-46 to P-49; P-44 moved to v0.2.30.
+
+END OF VERSION 1.33 UPDATE
+

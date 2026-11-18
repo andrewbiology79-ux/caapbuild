@@ -1,4 +1,4 @@
-Question Bank Android build foundation - package version 0.2.26 (plan v1.30)
+Question Bank Android build foundation - package version 0.2.27 (plan v1.33)
 
 This ZIP is an incremental Android/Room package, not a completed Question Bank application.
 
@@ -13,6 +13,11 @@ VERIFIED
 v0.2.23: owner phone test passed (CI report, instrumented test, questions survive removal from recents, drafts survive).
 
 v0.2.24: CI and emulator green (owner report); phone test passed: install over v0.2.23 without uninstall, backup, restore with confirmation and restart, wrong file refused.
+
+NEW in v0.2.27 (part A of the split step; written, NOT compiled, NOT run - UNCONFIRMED): question card in the new design (ribbon, rating badge by rule U-1, chip strip)
+and Bengali in-topic search (FTS5 for question text and short answer, plain match for the stimulus, 300 ms after the last key); read-only; no schema change; 17 new unit tests
+(expected 74) and 8 new emulator tests (expected 59). Part B (v0.2.28: open an existing question in the editor) starts after part A is confirmed. See VERSION_NOTES_0.2.27.md.
+v0.2.26 is CONFIRMED (CI run 36: 57 of 57 unit tests; emulator 51 of 51; identityHash unchanged; phone check list done by owner report).
 
 NEW in v0.2.26 (written, NOT compiled, NOT run - UNCONFIRMED): hierarchy management - counts and breadcrumb on the subject/chapter/topic lists, rename, delete (only empty items, ADR-010),
 reorder with arrows (saved once); no schema change; 11 new unit tests (expected 57) and 11 new emulator tests (expected 51). See VERSION_NOTES_0.2.26.md.

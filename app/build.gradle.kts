@@ -13,8 +13,8 @@ android {
         applicationId = "com.questionbank.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 26
-        versionName = "0.2.26-hierarchy-management"
+        versionCode = 27
+        versionName = "0.2.27-question-card-search"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

@@ -15,6 +15,12 @@ interface TypeCqQuestionRepository {
 
     suspend fun saveGroup(input: QuestionGroupInput): SaveResult
 
+    /**
+     * Searches ONE topic (v0.2.27, ADR-011). Words are matched with FTS5 in the question text and short answer (the last word
+     * as a prefix) and as plain text in the stimulus. All words must match. Read-only: nothing is written.
+     */
+    suspend fun search(topicId: String, rawQuery: String): SearchOutcome
+
     suspend fun loadDraft(topicId: String): DraftText?
     /** A blank draft removes the stored draft. Failures are swallowed on purpose: a draft must never break typing. */
     suspend fun saveDraft(topicId: String, draft: DraftText)

@@ -5,6 +5,7 @@ import com.questionbank.app.data.backup.BackupPrefs
 import com.questionbank.app.data.backup.BackupService
 import com.questionbank.app.data.local.QuestionBankDatabase
 import com.questionbank.app.data.local.forceFullSync
+import com.questionbank.app.data.local.typeCqFtsMatch
 import com.questionbank.app.data.repository.TypeCqHierarchyRepositoryImpl
 import com.questionbank.app.data.settings.AppSettings
 import com.questionbank.app.data.repository.TypeCqQuestionRepositoryImpl
@@ -73,6 +74,7 @@ class AppContainer(private val appContext: Context) {
         TypeCqQuestionRepositoryImpl(
             dao = database.typeCqQuestionDao(),
             beforeWrite = { database.forceFullSync() },
+            ftsMatch = { topicId, match -> database.typeCqFtsMatch(topicId, match) },
         )
     }
 }

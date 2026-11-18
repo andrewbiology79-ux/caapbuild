@@ -108,3 +108,19 @@ PROPOSED 18 November 2026 (assistant decision inside the owner's delegation D-1 
 5. Reorder sends the COMPLETE list of ids in the new order. The DAO compares it with the current ids inside one transaction and writes sort_order 1..n only if the two sets are identical; otherwise nothing is written (an item was added or deleted meanwhile). The arrows change a copy on screen; the database is written once, on "ক্রম সংরক্ষণ". Back or "বাতিল" discards the change.
 6. The breadcrumb is [বিষয় তালিকা] + the names above the open list; every part except the last is tappable and pops the back stack to that list.
 7. No schema change: database version 1, identityHash must remain 786b471dfa14c9ae4739bb81479bab25.
+
+
+## ADR-011 - Question card and in-topic search (v0.2.27, part A of the split step)
+PROPOSED 18 November 2026 (assistant decision inside the owner's delegation D-1 to D-14; D-12 is followed for the part that exists today).
+1. The step "question card + search + open an existing question" of plan 41.5 is split in two (owner decision, plan 42.2). Part A = v0.2.27 = this ADR: read-only card and search. Part B = v0.2.28: open an existing question in the editor and save the change. Part B starts only after part A is confirmed (CI + emulator + phone), as in section 31.4.
+2. Search covers ONE topic (the open question list). The global search belongs to the Filter tab (Phase 12).
+3. Question text and short answer are searched with FTS5 through the existing `fts_id` join (ADR-003). Every typed word becomes a quoted phrase, so `-`, `:`, `*`, `(` and the words AND / OR / NEAR can never be read as FTS syntax; a double quote typed by the person is removed. The LAST word is a prefix (`"আলো"*`), earlier words must be whole words. All words must match.
+4. The stimulus text is NOT in an FTS table. It is matched as plain text (every word is a substring, Latin letters case-insensitive) on the stimulus rows of the open topic only, in Kotlin. A topic is small, so this costs nothing; a global stimulus search would need an FTS table for stimuli (a schema change; open design note P-47).
+5. The typed text is normalised to NFC before it is split into words (finding F-2), so both spellings of য় ড় ঢ় find the same rows.
+6. A card shows only the sub-questions that matched; a match in the stimulus shows every sub-question of that stimulus (plan 39.3). Groups without a match disappear. The order is the order of the normal list (newest first).
+7. The FTS query is a plain prepared statement on a READER connection (`typeCqFtsMatch`), because Room's compile-time query check does not know FTS virtual tables. The repository receives it as a function; the default throws, so a repository that was not wired for search fails loudly instead of answering "nothing found".
+8. A search starts 300 ms after the last key; a newer text cancels the older search. The search text lives in Compose snapshot state inside the ViewModel (no keyboard race, survives rotation).
+9. Card rating follows rule U-1 (`QuestionCardRules.rating`): stimulus rating, else the average of the question ratings (ties rounded up), else 3. The editor cannot save ratings yet; the value comes from the database columns, which are null today, so every card shows ৩★ until the editor fields of v0.2.29 exist.
+10. Not in this package: checkbox, 3-dot menu, board and paper chips, solution toggle, pictures, highlighting of the matched words, search in solutions / boards / years (none of these can be entered yet), search across Bengali and Latin digits (P-46).
+11. No schema change: database version 1, identityHash must remain 786b471dfa14c9ae4739bb81479bab25. No new dependency.
+12. Because the step is split, the later packages move up by one (plan 42.5): editor fields v0.2.29, delete + selection v0.2.30, JSON paste import v0.2.31. Where ADR-010 says "v0.2.29" for the delete-safety design, read v0.2.30.

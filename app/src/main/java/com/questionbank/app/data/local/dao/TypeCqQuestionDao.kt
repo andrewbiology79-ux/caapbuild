@@ -19,6 +19,14 @@ data class QuestionRowDb(
     @ColumnInfo(name = "marks") val marks: Double,
     @ColumnInfo(name = "question_text") val questionText: String,
     @ColumnInfo(name = "short_answer") val shortAnswer: String,
+    @ColumnInfo(name = "rating") val rating: Int?,
+    @ColumnInfo(name = "stimulus_rating") val stimulusRating: Int?,
+)
+
+/** A stimulus of one topic with its text, for the plain-text part of the search. */
+data class StimulusTextDb(
+    @ColumnInfo(name = "stimulus_id") val stimulusId: String,
+    @ColumnInfo(name = "stimulus_text") val stimulusText: String,
 )
 
 data class StoredTextDb(
@@ -37,6 +45,14 @@ data class NewQuestionRow(
     val answer: String,
 )
 
+/** Question rows of one topic with their stimulus, newest first. Shared by the live list and the search. */
+private const val QUESTION_ROWS_SQL =
+    "SELECT q.question_id AS question_id, q.stimulus_id AS stimulus_id, s.stimulus_text AS stimulus_text, " +
+        "q.subquestion_label AS subquestion_label, q.marks AS marks, q.question_text AS question_text, " +
+        "q.short_answer AS short_answer, q.rating AS rating, s.rating AS stimulus_rating " +
+        "FROM type_cq_questions q LEFT JOIN type_cq_stimuli s ON s.stimulus_id = q.stimulus_id " +
+        "WHERE q.topic_id = :topicId ORDER BY q.sort_order DESC, q.question_id"
+
 /**
  * Abstract class (not an interface) because [insertGroup] is a @Transaction method with a body.
  * Room runs the whole body in one transaction: any exception rolls back the stimulus, every question, their FTS rows
@@ -47,14 +63,15 @@ abstract class TypeCqQuestionDao {
     @Query("SELECT name FROM type_cq_topics WHERE topic_id = :topicId")
     abstract fun observeTopicName(topicId: String): Flow<String?>
 
-    @Query(
-        "SELECT q.question_id AS question_id, q.stimulus_id AS stimulus_id, s.stimulus_text AS stimulus_text, " +
-            "q.subquestion_label AS subquestion_label, q.marks AS marks, q.question_text AS question_text, " +
-            "q.short_answer AS short_answer " +
-            "FROM type_cq_questions q LEFT JOIN type_cq_stimuli s ON s.stimulus_id = q.stimulus_id " +
-            "WHERE q.topic_id = :topicId ORDER BY q.sort_order DESC, q.question_id"
-    )
+    @Query(QUESTION_ROWS_SQL)
     abstract fun observeByTopic(topicId: String): Flow<List<QuestionRowDb>>
+
+    /** Same rows as [observeByTopic], read once (used by the search). */
+    @Query(QUESTION_ROWS_SQL)
+    abstract suspend fun selectByTopic(topicId: String): List<QuestionRowDb>
+
+    @Query("SELECT stimulus_id, stimulus_text FROM type_cq_stimuli WHERE topic_id = :topicId AND stimulus_text <> ''")
+    abstract suspend fun stimuliOfTopic(topicId: String): List<StimulusTextDb>
 
     @Query("SELECT COUNT(*) FROM type_cq_topics WHERE topic_id = :topicId")
     abstract suspend fun countTopic(topicId: String): Int

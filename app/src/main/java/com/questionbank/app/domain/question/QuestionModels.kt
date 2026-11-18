@@ -42,6 +42,8 @@ data class SavedSubQuestion(
     val marks: Double,
     val text: String,
     val shortAnswer: String,
+    /** The question's own rating 1-5, or null when none was saved (the editor does not set ratings yet). */
+    val rating: Int? = null,
 )
 
 /** One stimulus with its sub-questions, or one single question without a stimulus. */
@@ -49,6 +51,8 @@ data class SavedGroup(
     val stimulusId: String?,
     val stimulusText: String,
     val subQuestions: List<SavedSubQuestion>,
+    /** The stimulus rating 1-5, or null. Together with the question ratings it gives the card rating (rule U-1). */
+    val stimulusRating: Int? = null,
 )
 
 sealed interface SaveResult {
@@ -61,4 +65,13 @@ sealed interface SaveResult {
     data object TopicMissing : SaveResult
     /** The database refused the write, or the read-back after the write did not match. Nothing was stored. */
     data class Failed(val reason: String) : SaveResult
+}
+
+/** Result of a search inside one topic (v0.2.27). */
+sealed interface SearchOutcome {
+    /** The typed text has no usable word (empty, or only punctuation). Nothing was searched. */
+    data object NoTerms : SearchOutcome
+    /** [groups] is empty when nothing matched. A group holds only the matching sub-questions, or all of them when its stimulus matched. */
+    data class Found(val groups: List<SavedGroup>) : SearchOutcome
+    data class Failed(val reason: String) : SearchOutcome
 }
