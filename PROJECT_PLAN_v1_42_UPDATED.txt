@@ -1,7 +1,7 @@
 QUESTION BANK ANDROID APP COMPLETE PROJECT DEVELOPMENT & DELIVERY PLAN
 ============================================================
 
-Document version: 1.41 (v0.2.30a + b CONFIRMED by owner report; v0.2.30c split into C-1 / C-2 / C-3; C-1 written = board catalog + boards and years in the data and rule layer, UNCONFIRMED; section 50 added; before it: v1.40 = CI run 42 compile error and fix, v1.39 = v0.2.30b, v1.38 = v0.2.30a, v1.37 = v0.2.29 written: edit drafts B-2 and hashtag search option A, UNCONFIRMED; section 46 added; before it: v1.36 = v0.2.28 CONFIRMED by owner report and hashtag finding P-53, v1.35 = CI run 39 compile failure and fix, v1.34 = v0.2.27 CONFIRMED, part B split into v0.2.28 = B-1 and v0.2.29 = B-2)
+Document version: 1.42 (CI run for v0.2.30c failed with one compile error, fixed in v0.2.30c-fix1, section 51 added; before it: v1.41 = v0.2.30a + b CONFIRMED by owner report; v0.2.30c split into C-1 / C-2 / C-3; C-1 written = board catalog + boards and years in the data and rule layer, UNCONFIRMED; section 50 added; before it: v1.40 = CI run 42 compile error and fix, v1.39 = v0.2.30b, v1.38 = v0.2.30a, v1.37 = v0.2.29 written: edit drafts B-2 and hashtag search option A, UNCONFIRMED; section 46 added; before it: v1.36 = v0.2.28 CONFIRMED by owner report and hashtag finding P-53, v1.35 = CI run 39 compile failure and fix, v1.34 = v0.2.27 CONFIRMED, part B split into v0.2.28 = B-1 and v0.2.29 = B-2)
 Planning baseline: 16 November 2026
 Project status: Single-database architecture confirmed; canonical SQL and Room build harness prepared. CI run 11 (package v0.2.8) passed: KSP/Room generation, unit tests (5 of 5) and debug APK assembly. The package is still a build harness, not a complete application; Room-database runtime behaviour (CHECK emulation, Bengali FTS on the real database) is not yet device-tested.
 
@@ -3561,3 +3561,31 @@ P-46, P-51, P-44, P-47, P-49, P-45, P-37: unchanged.
 - v1.41: v0.2.30a + b CONFIRMED by owner report (P-54 and P-48 closed); v0.2.30c split into C-1 / C-2 / C-3 (50.2); schema check done, no migration, board_catalog was empty and is now seeded; C-1 written (catalog, custom boards, boards + years in the data and rule layer, no screen change), expected 122 unit / 93 emulator tests, UNCONFIRMED; decisions B-1 to B-4.
 
 END OF VERSION 1.41 UPDATE
+
+============================================================
+51. CI RUN FOR v0.2.30c FAILED (COMPILE ERROR) AND WAS FIXED - VERSION 1.42
+============================================================
+
+Planning update date: 18 November 2026
+
+51.1 Report read
+- Owner report: "Failed", with the CI report zip (debug, release and androidTest compile all failed).
+- The only Kotlin diagnostic (same line in all three logs):
+  TypeCqQuestionRepositoryImpl.kt:160:22 "'when' expression must be exhaustive. Add the 'BadBoard' branch or an 'else' branch."
+- Cause (assistant's mistake in v0.2.30c): the new QuestionEditRules.Checked.BadBoard was handled in saveGroup but the same branch was never added to the `when` in updateGroup (my scripted edit did not match and I did not check it).
+- Fix (v0.2.30c-fix1): one line, `QuestionEditRules.Checked.BadBoard -> return UpdateResult.Failed(BAD_BOARD_MESSAGE)`. All other planned edits of that file, the DAO and both rule files were re-checked one by one (every new function and parameter is present and used).
+- Kotlin stops before the test sources when main sources fail, so the unit and emulator test code of 50.5 is still unchecked by a compiler; the next run may show a test compile error. Send the report.
+
+51.2 Problem log
+P-55  v0.2.30c compile error: non-exhaustive `when` in updateGroup (BadBoard). Status: FIXED in v0.2.30c-fix1 (UNCONFIRMED until the next CI run). Lesson recorded: every new sealed subtype needs a grep for ALL `when` over that type; a scripted edit that does not match must fail loudly (assert), not pass silently.
+All other items: as in 50.7.
+
+51.3 Next steps (in order)
+1. Owner: push QuestionBank_v0_2_30c_fix1.zip and send the CI report. Expect BUILD SUCCESSFUL, 122 unit tests, identityHash 786b471d... unchanged.
+2. Owner: emulator workflow (expect 93 tests), then the 3-step phone list of VERSION_NOTES_0.2.30c.md.
+3. Assistant: read the reports, issue plan v1.43, then write C-2 (screens).
+
+51.4 Change log addition
+- v1.42: CI run for v0.2.30c failed with one compile error (missing BadBoard branch in updateGroup); fixed in v0.2.30c-fix1; P-55 added.
+
+END OF VERSION 1.42 UPDATE

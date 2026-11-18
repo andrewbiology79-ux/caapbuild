@@ -1,4 +1,4 @@
-Question Bank Android build foundation - package version 0.2.30c-boards-data (plan v1.41)
+Question Bank Android build foundation - package version 0.2.30c-fix1 (plan v1.42)
 
 v0.2.30a + b (b-fix1) are CONFIRMED by owner report (CI clean, instrumented test clean, phone check list clean; the counts were not sent to the assistant).
 

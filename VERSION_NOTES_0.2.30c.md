@@ -38,3 +38,5 @@ Board picker, year window, "অন্য সাল লিখুন", chips, "ন
 If any step fails or looks wrong, tell the assistant and the record will be corrected.
 
 STATUS: written, NOT compiled, NOT run - UNCONFIRMED.
+
+FIX1: CI failed to compile (TypeCqQuestionRepositoryImpl.kt:160, missing BadBoard branch in the `when` of updateGroup). One line added; nothing else changed.

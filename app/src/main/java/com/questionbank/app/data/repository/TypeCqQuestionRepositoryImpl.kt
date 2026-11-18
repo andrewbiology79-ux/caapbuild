@@ -164,6 +164,7 @@ class TypeCqQuestionRepositoryImpl(
                 is QuestionEditRules.Checked.MissingText -> return UpdateResult.MissingQuestionText(checked.label)
                 is QuestionEditRules.Checked.TooLong -> return UpdateResult.TooLong(checked.field)
                 QuestionEditRules.Checked.BadRating -> return UpdateResult.Failed("রেটিং ১ থেকে ৫-এর মধ্যে হতে হবে")
+                QuestionEditRules.Checked.BadBoard -> return UpdateResult.Failed(BAD_BOARD_MESSAGE)
                 is QuestionEditRules.Checked.Ok -> checked
             }
             val wantedTags = (ok.stimulusBoards?.tags.orEmpty()) + ok.boardUpdates.flatMap { it.change.tags } + ok.addBoards.values.flatten()
