@@ -10,9 +10,14 @@ VERIFIED
 
 - v0.2.22: owner phone test passed (CI report, instrumented test, add subject/chapter/topic, no duplicate names). First open about 5 s: accepted (up to 10 s).
 
-NEW in v0.2.23 (written, NOT compiled, NOT run - UNCONFIRMED): fixed debug signing key, question types seed, Type_CQ question editor with
+v0.2.23: owner phone test passed (CI report, instrumented test, questions survive removal from recents, drafts survive).
+
+NEW in v0.2.24 (written, NOT compiled, NOT run - UNCONFIRMED): backup export (VACUUM INTO, inspected, read back) and restore (staged, swapped at next start,
+previous database kept); 7 new unit tests and 7 new emulator tests. See VERSION_NOTES_0.2.24.md.
+
+(v0.2.23 content, written earlier) : fixed debug signing key, question types seed, Type_CQ question editor with
 atomic save + read-back, automatic drafts, synchronous=FULL; 11 new unit tests, 10 new emulator tests. See VERSION_NOTES_0.2.23.md.
 Do not install the v0.2.21 APK (adding a subject would crash). Uninstall v0.2.22 once before installing v0.2.23 (different signing key).
 
-Open: confirm v0.2.23 (CI + emulator + phone), BACKUP EXPORT (next), question search/edit/delete, keyset paging (P-20), rank-search cost (P-19, 10 ms at 20,000 rows),
+Open: confirm v0.2.24 (CI + emulator + phone), question search/edit/delete (v0.2.25), keyset paging (P-20), rank-search cost (P-19, 10 ms at 20,000 rows),
 Phase 0 documents, release signing, AGP 9 / compileSdk 37 upgrade (later, separate step).

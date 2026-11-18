@@ -13,8 +13,8 @@ android {
         applicationId = "com.questionbank.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 23
-        versionName = "0.2.23-question-editor"
+        versionCode = 24
+        versionName = "0.2.24-backup"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

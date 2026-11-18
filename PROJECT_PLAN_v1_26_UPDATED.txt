@@ -1,7 +1,7 @@
 QUESTION BANK ANDROID APP COMPLETE PROJECT DEVELOPMENT & DELIVERY PLAN
 ============================================================
 
-Document version: 1.25 (v0.2.22 owner phone test passed; package v0.2.23 added as section 37)
+Document version: 1.26 (v0.2.23 owner phone test passed; package v0.2.24 added as section 38)
 Planning baseline: 16 November 2026
 Project status: Single-database architecture confirmed; canonical SQL and Room build harness prepared. CI run 11 (package v0.2.8) passed: KSP/Room generation, unit tests (5 of 5) and debug APK assembly. The package is still a build harness, not a complete application; Room-database runtime behaviour (CHECK emulation, Bengali FTS on the real database) is not yet device-tested.
 
@@ -2550,5 +2550,60 @@ P-33  Paging and search UI deferred. Status: OPEN, low priority.
 37.7 Change log addition
 - v1.25: v0.2.22 phone test result, requirements N-1 and N-2, package v0.2.23, problems P-30 to P-33.
 
-END OF VERSION 1.25 UPDATE
+============================================================
+38. v0.2.23 PHONE TEST PASSED, NEXT STEP SPLIT IN TWO, PACKAGE v0.2.24 (BACKUP) - VERSION 1.26
+============================================================
 
+Planning update date: 18 November 2026
+
+38.1 Evidence (owner test of v0.2.23)
+1. CI report OK.
+2. Instrumented (emulator) test OK.
+3. Questions are saved; after saving and removing the app from the recent apps list, reopening shows the questions. The unsaved-draft case is also OK.
+Consequence: N-2 risk 1 (CI random key) and risk 3 (unsaved text) are confirmed fixed by the owner's test of the question editor and drafts.
+P-30 (fixed debug key) is confirmed only when v0.2.24 installs over v0.2.23 WITHOUT an uninstall (see 38.5 step 3).
+
+38.2 Owner decision: the next step (section 37.6 item 4, v0.2.24) is split into two parts
+- PART A = v0.2.24: backup export and restore (problem P-31, requirement N-2). Written in this update.
+- PART B = v0.2.25: question search (FTS, Bengali), edit and delete of questions. Starts only after part A is confirmed (CI + emulator + phone).
+  Part B needs a delete-safety design first (confirmation, no deletion of stimulus text that other sub-questions still use, backup reminder before delete).
+
+38.3 Package v0.2.24 (written, NOT compiled, NOT run - UNCONFIRMED)
+- data/backup: BackupInspector (header, integrity_check, foreign_key_check, Room identity hash, row counts), DatabaseSnapshot (VACUUM INTO + counts on the
+  same writer connection), BackupService (export with read-back SHA-256 compare; restore preparation, confirmation, staging), RestoreSwap (swap at next
+  process start, previous database kept as <db>.replaced*, rollback on failure), BackupPrefs (SharedPreferences), BackupNames.
+- AppContainer: backup service, closeDatabaseForRestore(); QuestionBankApp.onCreate applies a staged restore before the database can be opened.
+- UI: "ব্যাকআপ ও রিস্টোর" screen (Storage Access Framework: create/open document, no storage permission), restore confirmation showing backup counts
+  next to current counts, non-dismissable "close the app" dialog; home screen shows the last backup time and a button to the screen.
+- docs: ADR-006. versionCode 24, versionName 0.2.24-backup. No schema change: database version 1, identityHash must remain 786b471dfa14c9ae4739bb81479bab25.
+- Tests: 7 new JVM tests (RestoreSwapTest), 7 new emulator tests (BackupRestoreTest).
+- Not included: scheduled/automatic backup, encryption, merge-restore, image files (none exist yet).
+
+38.4 Status
+PHASE 1: BUILD GATE PASSED, FOUNDATION INCOMPLETE (open: release signing). PHASE 2: DONE.
+PHASE 4/5: hierarchy CONFIRMED on a phone (v0.2.22); Type_CQ question create/list CONFIRMED on a phone (v0.2.23); backup/restore written (v0.2.24), UNCONFIRMED.
+PHASES 3, 6-17: NOT STARTED, except as listed. Step D: in progress.
+
+38.5 Next steps (in order)
+1. Push v0.2.24 and send the normal CI report. Expect BUILD SUCCESSFUL, 35 unit tests (28 + 7), identityHash unchanged, apk-signature.txt SHA-256 identical to the v0.2.23 run.
+2. Run the emulator workflow (20,000 rows). Expect 37 tests green (30 + 7). Send the report.
+3. Phone: install v0.2.24 OVER v0.2.23 (no uninstall; the questions must still be there; this confirms P-30). Then:
+   a. Home -> ব্যাকআপ ও রিস্টোর -> ব্যাকআপ তৈরি করুন -> save the file in Drive or another place outside the phone; "ব্যাকআপ সম্পন্ন ও যাচাই করা হয়েছে" must appear.
+   b. Add one more question; open the backup screen: it must warn that the question count changed.
+   c. Restore from the file of step a: the confirmation must show the backup count (one less) and the current count; confirm; close the app when asked; reopen;
+      the extra question must be gone, the older ones present, and the screen must say the restore is complete.
+   d. Also try restoring a wrong file (for example a photo): it must be refused and nothing may change.
+4. Then v0.2.25 (part B): question search, edit and delete.
+5. Confirm or change the question-type labels and marks (P-32), still open.
+
+38.6 Problem log additions
+P-31  No backup/export of the database. Status: FIX WRITTEN (v0.2.24), unconfirmed.
+P-34  Restore needs one app restart (the live database connection is never replaced). Status: ACCEPTED BY DESIGN (ADR-006), re-check wording on the phone.
+P-35  Backup is manual; the owner must remember it (the screen warns when the question count changed). Status: OPEN, low priority; scheduled backup is a later option.
+P-36  Backup file is not encrypted or password protected. Status: OPEN, low priority.
+P-30  Fixed debug key. Status: confirmed by the owner's v0.2.23 run only for question saving; update-over-install test is step 3 above.
+
+38.7 Change log addition
+- v1.26: v0.2.23 phone test result, next step split into part A (v0.2.24 backup) and part B (v0.2.25 search/edit/delete), package v0.2.24, problems P-34 to P-36.
+
+END OF VERSION 1.26 UPDATE

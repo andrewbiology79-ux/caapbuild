@@ -68,3 +68,20 @@ ACCEPTED 18 November 2026 (owner requirement: questions entered in the app must 
 6. Question types are fixed by the sub-question label (ক 1, খ 2, গ 3, ঘ 4 marks) and seeded with fixed ids; the editor does not ask for a type.
 7. Known gap (accepted for now): data lives only in app-private storage and `allowBackup` is false. A user-controlled backup export is the next step.
 
+
+## ADR-006 - Backup export and restore (Step D, v0.2.24)
+ACCEPTED 18 November 2026 (closes the known gap of ADR-005 item 7; problem P-31).
+1. Export is a consistent copy made with `VACUUM INTO` on the writer connection: it includes rows that are still only in the -wal file,
+   needs no closing and no checkpoint, and the row counts are read on the same connection right after the copy.
+2. A backup counts as made only after: integrity_check = ok, foreign_key_check empty, counts equal to the live database, the file
+   written to the owner's chosen location (Storage Access Framework, no storage permission), then read back and compared by SHA-256.
+3. The backup is a plain SQLite file (`QuestionBank-backup-YYYYMMDD-HHMM.db`) of the whole database. Any later table (images metadata,
+   papers) is included automatically. Image FILES are not in the database; when images arrive (Phase 8) the backup format must be extended (new ADR).
+4. Restore never replaces a live database connection. Step 1 (running app): the chosen file is copied to the cache, inspected (also: same Room
+   identity hash as the running app), the owner sees backup counts next to current counts and confirms; it is then staged as `<db>.restore-pending`
+   and the database is closed; a non-dismissable dialog asks to close the app. Step 2 (next process start, `QuestionBankApp.onCreate`, before the
+   database can be opened): the staged file is inspected again and swapped in; the previous database (main + -wal + -shm) is kept as `<db>.replaced*`
+   until the next restore. Any failure moves the previous files back.
+5. Backup status (last time, question count then) lives in SharedPreferences, not in the database: the home screen shows it without opening the
+   database (requirement N-1) and it survives a restore.
+6. There is no automatic scheduled backup yet; the screen warns when the question count changed since the last backup.

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,7 +21,7 @@ import androidx.compose.ui.unit.dp
  * and to show Bengali text with the system font. Real content (subject/chapter hierarchy) starts in Step D.
  */
 @Composable
-fun HomeScreen(onOpenTypeCq: () -> Unit) {
+fun HomeScreen(onOpenTypeCq: () -> Unit, onOpenBackup: () -> Unit, backupStatus: String) {
     val context = LocalContext.current
     val versionName = remember(context) {
         try {
@@ -48,6 +49,8 @@ fun HomeScreen(onOpenTypeCq: () -> Unit) {
                 }
             }
             Button(onClick = onOpenTypeCq) { Text("Type_CQ: বিষয় → অধ্যায় → টপিক → প্রশ্ন") }
+            Text(backupStatus)
+            OutlinedButton(onClick = onOpenBackup) { Text("ব্যাকআপ ও রিস্টোর") }
         }
     }
 }

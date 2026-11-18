@@ -11,6 +11,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.questionbank.app.QuestionBankApp
+import com.questionbank.app.ui.backup.BackupScreen
+import com.questionbank.app.ui.backup.BackupViewModel
+import com.questionbank.app.ui.backup.backupStatusLine
 import com.questionbank.app.ui.hierarchy.HierarchyLabels
 import com.questionbank.app.ui.hierarchy.HierarchyListScreen
 import com.questionbank.app.ui.hierarchy.HierarchyListViewModel
@@ -24,6 +27,7 @@ import kotlinx.coroutines.flow.flowOf
 /** Route names. Add one constant per destination; keep them stable (they appear in saved state). */
 object Routes {
     const val HOME = "home"
+    const val BACKUP = "backup"
     const val SUBJECTS = "type_cq/subjects"
     const val CHAPTERS = "type_cq/subjects/{subjectId}/chapters"
     const val TOPICS = "type_cq/chapters/{chapterId}/topics"
@@ -50,7 +54,18 @@ fun AppNavHost() {
 
     NavHost(navController = navController, startDestination = Routes.HOME) {
         composable(Routes.HOME) {
-            HomeScreen(onOpenTypeCq = { navController.navigate(Routes.SUBJECTS) })
+            HomeScreen(
+                onOpenTypeCq = { navController.navigate(Routes.SUBJECTS) },
+                onOpenBackup = { navController.navigate(Routes.BACKUP) },
+                backupStatus = backupStatusLine(container.backupPrefs),
+            )
+        }
+
+        composable(Routes.BACKUP) {
+            val vm: BackupViewModel = viewModel(
+                factory = BackupViewModel.factory { BackupViewModel(container.backup, container.backupPrefs) }
+            )
+            BackupScreen(viewModel = vm, onBack = { navController.popBackStack() })
         }
 
         composable(Routes.SUBJECTS) {
