@@ -1,10 +1,18 @@
 package com.questionbank.app.data.repository
 
+import com.questionbank.app.data.local.dao.BoardRowDb
 import com.questionbank.app.data.local.dao.NewQuestionRow
+import com.questionbank.app.data.local.dao.NewTagRow
+import com.questionbank.app.data.local.dao.QuestionBoardsDb
 import com.questionbank.app.data.local.dao.QuestionRatingDb
 import com.questionbank.app.data.local.dao.QuestionRowDb
 import com.questionbank.app.data.local.dao.QuestionTextUpdate
 import com.questionbank.app.data.local.dao.TypeCqQuestionDao
+import com.questionbank.app.data.local.entity.BoardCatalogEntity
+import com.questionbank.app.domain.question.AddBoardResult
+import com.questionbank.app.domain.question.BoardItem
+import com.questionbank.app.domain.question.BoardRules
+import com.questionbank.app.domain.question.BoardTag
 import com.questionbank.app.domain.question.CqLabel
 import com.questionbank.app.domain.question.DraftText
 import com.questionbank.app.domain.question.GroupEditInput
@@ -47,7 +55,7 @@ class TypeCqQuestionRepositoryImpl(
     override fun observeTopicName(topicId: String): Flow<String?> = dao.observeTopicName(topicId)
 
     override fun observeGroups(topicId: String): Flow<List<SavedGroup>> =
-        dao.observeByTopic(topicId).map { rows -> group(rows) }
+        dao.observeByTopic(topicId).map { rows -> group(rows, tagsOfTopic(topicId)) }
 
     override suspend fun saveGroup(input: QuestionGroupInput): SaveResult {
         val ok = when (val checked = QuestionRules.check(input)) {
@@ -55,16 +63,23 @@ class TypeCqQuestionRepositoryImpl(
             is QuestionRules.Checked.MissingText -> return SaveResult.MissingQuestionText(checked.label)
             is QuestionRules.Checked.TooLong -> return SaveResult.TooLong(checked.field)
             QuestionRules.Checked.BadRating -> return SaveResult.Failed("রেটিং ১ থেকে ৫-এর মধ্যে হতে হবে")
+            QuestionRules.Checked.BadBoard -> return SaveResult.Failed(BAD_BOARD_MESSAGE)
             is QuestionRules.Checked.Ok -> checked
         }
         return try {
+            val unknownBoard = unknownBoardCode(ok.stimulusBoards + ok.boards.values.flatten())
+            if (unknownBoard != null) return SaveResult.Failed("অজানা বোর্ড: $unknownBoard")
             beforeWrite()
             val stimulusId = if (ok.stimulusText.isNotEmpty()) newId() else null
             val rows = ok.items.map {
-                NewQuestionRow(newId(), it.label.typeId, it.label.letter, it.label.marks, it.text, it.shortAnswer, ok.ratings[it.label])
+                NewQuestionRow(
+                    newId(), it.label.typeId, it.label.letter, it.label.marks, it.text, it.shortAnswer, ok.ratings[it.label],
+                    tagRows(ok.boards[it.label].orEmpty()),
+                )
             }
             val stimulusRating = if (stimulusId != null) ok.stimulusRating else null
-            val written = dao.insertGroup(input.topicId, stimulusId, ok.stimulusText, stimulusRating, rows, clock(), draftKey(input.topicId))
+            val stimulusTags = if (stimulusId != null) tagRows(ok.stimulusBoards) else emptyList()
+            val written = dao.insertGroup(input.topicId, stimulusId, ok.stimulusText, stimulusRating, stimulusTags, rows, clock(), draftKey(input.topicId))
             if (!written) return SaveResult.TopicMissing
 
             // Read-back: "saved" is reported only when the rows are really in the database with the same text.
@@ -75,7 +90,11 @@ class TypeCqQuestionRepositoryImpl(
             }
             val stimulusOk = stimulusId == null ||
                 (dao.readStimulusText(stimulusId) == ok.stimulusText && dao.readStimulusRating(stimulusId) == stimulusRating)
-            if (questionsOk && stimulusOk) {
+            val boardsOk = boardsMatch(
+                stimulusId?.let { it to ok.stimulusBoards },
+                ok.items.zip(rows).associate { (item, row) -> row.id to ok.boards[item.label].orEmpty() },
+            )
+            if (questionsOk && stimulusOk && boardsOk) {
                 SaveResult.Saved(stimulusId, rows.map { it.id })
             } else {
                 SaveResult.Failed("read-back mismatch")
@@ -93,7 +112,7 @@ class TypeCqQuestionRepositoryImpl(
         // null when every word is a hashtag word: then nothing is asked from FTS5 and the hashtag rule alone decides (v0.2.29).
         val match = QuestionSearchRules.ftsQuery(tokens)
         return try {
-            val groups = group(dao.selectByTopic(topicId))
+            val groups = group(dao.selectByTopic(topicId), tagsOfTopic(topicId))
             val ftsIds = if (match == null) null else ftsMatch(topicId, match).toSet()
             val matchedQuestions = groups.asSequence()
                 .flatMap { it.subQuestions.asSequence() }
@@ -126,7 +145,13 @@ class TypeCqQuestionRepositoryImpl(
             is QuestionGroupKey.Parsed.Stimulus -> dao.selectByStimulus(topicId, key.id)
             is QuestionGroupKey.Parsed.Single -> dao.selectBySingle(topicId, key.id)
         }
-        return group(rows).firstOrNull()
+        val stimulusIds = rows.mapNotNull { it.stimulusId }.distinct()
+        val questionIds = rows.map { it.questionId }.distinct()
+        val tags = Tags(
+            stimulus = if (stimulusIds.isEmpty()) emptyMap() else toTags(dao.stimulusBoardsIn(stimulusIds)),
+            question = if (questionIds.isEmpty()) emptyMap() else toTags(dao.questionBoardsIn(questionIds)),
+        )
+        return group(rows, tags).firstOrNull()
     }
 
     override suspend fun updateGroup(input: GroupEditInput): UpdateResult {
@@ -141,9 +166,15 @@ class TypeCqQuestionRepositoryImpl(
                 QuestionEditRules.Checked.BadRating -> return UpdateResult.Failed("রেটিং ১ থেকে ৫-এর মধ্যে হতে হবে")
                 is QuestionEditRules.Checked.Ok -> checked
             }
+            val wantedTags = (ok.stimulusBoards?.tags.orEmpty()) + ok.boardUpdates.flatMap { it.change.tags } + ok.addBoards.values.flatten()
+            val unknownBoard = unknownBoardCode(wantedTags)
+            if (unknownBoard != null) return UpdateResult.Failed("অজানা বোর্ড: $unknownBoard")
             beforeWrite()
             val rows = ok.adds.map {
-                NewQuestionRow(newId(), it.label.typeId, it.label.letter, it.label.marks, it.text, it.shortAnswer, ok.addRatings[it.label])
+                NewQuestionRow(
+                    newId(), it.label.typeId, it.label.letter, it.label.marks, it.text, it.shortAnswer, ok.addRatings[it.label],
+                    tagRows(ok.addBoards[it.label].orEmpty()),
+                )
             }
             val written = dao.updateGroup(
                 topicId = input.topicId,
@@ -156,6 +187,9 @@ class TypeCqQuestionRepositoryImpl(
                 changeStimulusRating = ok.stimulusRating != null,
                 newStimulusRating = ok.stimulusRating?.value,
                 ratingUpdates = ok.ratingUpdates.map { QuestionRatingDb(it.questionId, it.change.value) },
+                changeStimulusBoards = ok.stimulusBoards != null,
+                newStimulusBoards = ok.stimulusBoards?.let { tagRows(it.tags) } ?: emptyList(),
+                boardUpdates = ok.boardUpdates.map { QuestionBoardsDb(it.questionId, tagRows(it.change.tags)) },
             )
             if (!written) return UpdateResult.GroupMissing
 
@@ -176,7 +210,13 @@ class TypeCqQuestionRepositoryImpl(
             val stimulusTextOk = ok.stimulusText == null || (stimulusId != null && dao.readStimulusText(stimulusId) == ok.stimulusText)
             val stimulusRatingOk = ok.stimulusRating == null || (stimulusId != null && dao.readStimulusRating(stimulusId) == ok.stimulusRating.value)
             val stimulusOk = stimulusTextOk && stimulusRatingOk
-            if (questionsOk && stimulusOk) UpdateResult.Updated else UpdateResult.Failed("read-back mismatch")
+            val wantedQuestionTags = ok.boardUpdates.associate { it.questionId to it.change.tags } +
+                ok.adds.zip(rows).associate { (add, row) -> row.id to ok.addBoards[add.label].orEmpty() }
+            val boardsOk = boardsMatch(
+                if (stimulusId != null && ok.stimulusBoards != null) stimulusId to ok.stimulusBoards.tags else null,
+                wantedQuestionTags,
+            )
+            if (questionsOk && stimulusOk && boardsOk) UpdateResult.Updated else UpdateResult.Failed("read-back mismatch")
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -212,6 +252,42 @@ class TypeCqQuestionRepositoryImpl(
         }
     }
 
+    override fun observeBoards(): Flow<List<BoardItem>> = dao.observeBoards().map { list -> list.map { toItem(it) } }
+
+    override suspend fun addCustomBoard(rawCode: String, rawName: String): AddBoardResult {
+        val code = BoardRules.cleanCode(rawCode) ?: return AddBoardResult.BadCode
+        val name = BoardRules.cleanName(rawName) ?: return AddBoardResult.BadName
+        return try {
+            val existing = dao.boardsOnce()
+            if (existing.any { it.code == code }) return AddBoardResult.CodeExists
+            if (existing.any { it.displayName.trim().lowercase() == name.lowercase() }) return AddBoardResult.NameExists
+            beforeWrite()
+            val now = clock()
+            val row = BoardCatalogEntity(
+                boardId = "brd_" + newId(),
+                code = code,
+                displayName = name,
+                boardKind = "CUSTOM",
+                isArchived = 0L,
+                sortOrder = dao.maxBoardSortOrder() + 1,
+                createdAt = now,
+                updatedAt = now,
+            )
+            dao.insertBoard(row)
+            // Read-back: "added" is reported only when the catalog really holds the board.
+            val stored = dao.boardsOnce().firstOrNull { it.code == code }
+            if (stored != null && stored.displayName == name && stored.boardKind == "CUSTOM") {
+                AddBoardResult.Added(toItem(stored))
+            } else {
+                AddBoardResult.Failed("read-back mismatch")
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            AddBoardResult.Failed(e.message ?: e.javaClass.simpleName)
+        }
+    }
+
     override suspend fun loadDraft(topicId: String): DraftText? = try {
         dao.getMeta(draftKey(topicId))?.let { decode(it) }
     } catch (e: CancellationException) {
@@ -230,7 +306,39 @@ class TypeCqQuestionRepositoryImpl(
         }
     }
 
-    private fun group(rows: List<QuestionRowDb>): List<SavedGroup> {
+    private class Tags(val stimulus: Map<String, List<BoardTag>>, val question: Map<String, List<BoardTag>>)
+
+    private fun toTags(rows: List<BoardRowDb>): Map<String, List<BoardTag>> =
+        rows.groupBy({ it.ownerId }, { BoardTag(it.boardCode, it.year) })
+
+    private suspend fun tagsOfTopic(topicId: String): Tags =
+        Tags(toTags(dao.stimulusBoardsOfTopic(topicId)), toTags(dao.questionBoardsOfTopic(topicId)))
+
+    private fun tagRows(tags: List<BoardTag>): List<NewTagRow> = tags.map { NewTagRow(newId(), it.boardCode, it.year) }
+
+    /** The first board code that is not in the catalog, or null. Checked before the write so the person gets a clear message, not a foreign-key error. */
+    private suspend fun unknownBoardCode(tags: List<BoardTag>): String? {
+        if (tags.isEmpty()) return null
+        val known = dao.boardCodes().toSet()
+        return tags.firstOrNull { it.boardCode !in known }?.boardCode
+    }
+
+    /** Read-back of board tags: every wanted list must be stored exactly (same tags, same order). */
+    private suspend fun boardsMatch(wantStimulus: Pair<String, List<BoardTag>>?, wantQuestions: Map<String, List<BoardTag>>): Boolean {
+        if (wantStimulus != null) {
+            val got = toTags(dao.stimulusBoardsIn(listOf(wantStimulus.first)))[wantStimulus.first].orEmpty()
+            if (got != wantStimulus.second) return false
+        }
+        if (wantQuestions.isNotEmpty()) {
+            val got = toTags(dao.questionBoardsIn(wantQuestions.keys.toList()))
+            if (!wantQuestions.all { (id, want) -> got[id].orEmpty() == want }) return false
+        }
+        return true
+    }
+
+    private fun toItem(e: BoardCatalogEntity) = BoardItem(e.code, e.displayName, e.boardKind == "CUSTOM", e.isArchived == 1L)
+
+    private fun group(rows: List<QuestionRowDb>, tags: Tags): List<SavedGroup> {
         val buckets = LinkedHashMap<String, MutableList<QuestionRowDb>>()
         for (row in rows) {
             val key = row.stimulusId ?: ("single:" + row.questionId)
@@ -244,12 +352,20 @@ class TypeCqQuestionRepositoryImpl(
                 stimulusRating = first.stimulusRating,
                 subQuestions = list
                     .sortedBy { CqLabel.fromLetter(it.label)?.sortOrder ?: 9 }
-                    .map { SavedSubQuestion(it.questionId, CqLabel.fromLetter(it.label), it.marks, it.questionText, it.shortAnswer, it.rating) },
+                    .map {
+                        SavedSubQuestion(
+                            it.questionId, CqLabel.fromLetter(it.label), it.marks, it.questionText, it.shortAnswer, it.rating,
+                            tags.question[it.questionId].orEmpty(),
+                        )
+                    },
+                stimulusBoards = first.stimulusId?.let { tags.stimulus[it] }.orEmpty(),
             )
         }
     }
 
     companion object {
+        private const val BAD_BOARD_MESSAGE = "বোর্ড বা সাল ঠিক নেই (সাল ১৯০০ থেকে ২২০০-এর মধ্যে হতে হবে)"
+
         fun draftKey(topicId: String) = "draft:type_cq:$topicId"
 
         /** v0.2.29: one edit draft per card. [groupKey] is "s-<stimulusId>" or "q-<questionId>" (see QuestionGroupKey). */

@@ -1,6 +1,9 @@
-Question Bank Android build foundation - package version 0.2.30b-fix1 (plan v1.40)
+Question Bank Android build foundation - package version 0.2.30c-boards-data (plan v1.41)
 
-v0.2.29 is CONFIRMED by owner report (CI clean, instrumented test clean, phone check list clean; the counts were not sent to the assistant).
+v0.2.30a + b (b-fix1) are CONFIRMED by owner report (CI clean, instrumented test clean, phone check list clean; the counts were not sent to the assistant).
+
+NEW in v0.2.30c (part C-1 of the split step "editor fields"; written, NOT compiled, NOT run - UNCONFIRMED): the board catalog with 11 built-in boards (seeded on every open), custom boards (addCustomBoard), and boards + years (tags) saved, edited, read back and carried by the list / search / edit load - data and rule layer only, NO screen change. Drafts do not carry boards yet (C-2). No schema change; 13 new unit tests (expected 122) and 8 new emulator tests (expected 93). Next: C-2 board picker, year window, chips, new-board dialog. See VERSION_NOTES_0.2.30c.md.
+
 
 NEW in v0.2.30a + v0.2.30b (parts A-1 and A-2 of the split step "editor fields"; written, NOT compiled, NOT run - UNCONFIRMED; tested together because the owner asked for b on top of a):
 a = ratings in the data and rule layer (stimulus rating + rating per sub-question, saved with a new group, changed by an edit, read back, carried by drafts);

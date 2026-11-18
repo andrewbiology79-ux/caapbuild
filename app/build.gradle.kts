@@ -13,8 +13,8 @@ android {
         applicationId = "com.questionbank.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 31
-        versionName = "0.2.30b-rating-buttons"
+        versionCode = 32
+        versionName = "0.2.30c-boards-data"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

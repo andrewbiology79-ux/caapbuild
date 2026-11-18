@@ -109,6 +109,7 @@ abstract class QuestionBankDatabase : RoomDatabase() {
         private fun installCanonicalObjects(connection: SQLiteConnection) {
             CanonicalDatabaseObjects.statements.forEach { statement -> connection.execSQL(statement) }
             SeedData.statements.forEach { statement -> connection.execSQL(statement) }
+            SeedData.boardStatements.forEach { statement -> connection.execSQL(statement) }
         }
 
         fun create(context: Context): QuestionBankDatabase =

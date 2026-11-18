@@ -21,6 +21,10 @@ object QuestionEditRules {
             val stimulusRating: RatingChange? = null,
             val ratingUpdates: List<QuestionRatingUpdate> = emptyList(),
             val addRatings: Map<CqLabel, Int?> = emptyMap(),
+            /** v0.2.30c: [stimulusBoards] is null when the stimulus tags stay; [boardUpdates] lists stored questions whose tags change; [addBoards] holds the tags of [adds]. */
+            val stimulusBoards: BoardChange? = null,
+            val boardUpdates: List<QuestionBoardsUpdate> = emptyList(),
+            val addBoards: Map<CqLabel, List<BoardTag>> = emptyMap(),
         ) : Checked
         data object NoChange : Checked
         data class BlankedQuestion(val label: CqLabel) : Checked
@@ -28,11 +32,14 @@ object QuestionEditRules {
         data class MissingText(val label: CqLabel) : Checked
         data class TooLong(val field: String) : Checked
         data object BadRating : Checked
+        data object BadBoard : Checked
     }
 
     fun check(original: SavedGroup, input: GroupEditInput): Checked {
         val wanted = input.ratings
         if (wanted != null && !RatingRules.allValid(wanted)) return Checked.BadRating
+        val wantedBoards = input.boards
+        if (wantedBoards != null && !BoardRules.allValid(wantedBoards)) return Checked.BadBoard
         val hasStimulus = original.stimulusId != null
         var newStimulus: String? = null
         if (hasStimulus) {
@@ -45,9 +52,15 @@ object QuestionEditRules {
         val adds = ArrayList<SubQuestionInput>()
         val ratingUpdates = ArrayList<QuestionRatingUpdate>()
         val addRatings = LinkedHashMap<CqLabel, Int?>()
+        val boardUpdates = ArrayList<QuestionBoardsUpdate>()
+        val addBoards = LinkedHashMap<CqLabel, List<BoardTag>>()
         // A stimulus rating can only change on a group that has a stimulus.
         val stimulusRating: RatingChange? =
             if (hasStimulus && wanted != null && wanted.stimulus != original.stimulusRating) RatingChange(wanted.stimulus) else null
+        val stimulusBoards: BoardChange? =
+            if (hasStimulus && wantedBoards != null && BoardRules.normalizeTags(wantedBoards.stimulus) != original.stimulusBoards) {
+                BoardChange(BoardRules.normalizeTags(wantedBoards.stimulus))
+            } else null
         for (sub in input.subQuestions) {
             val text = QuestionRules.clean(sub.text)
             val answer = QuestionRules.clean(sub.shortAnswer)
@@ -60,6 +73,10 @@ object QuestionEditRules {
                 if (wanted != null && wanted.byLabel.containsKey(sub.label) && wanted.byLabel[sub.label] != stored.rating) {
                     ratingUpdates.add(QuestionRatingUpdate(stored.id, sub.label, RatingChange(wanted.byLabel[sub.label])))
                 }
+                val wantedTags = wantedBoards?.byLabel?.get(sub.label)
+                if (wantedTags != null && BoardRules.normalizeTags(wantedTags) != stored.boards) {
+                    boardUpdates.add(QuestionBoardsUpdate(stored.id, sub.label, BoardChange(BoardRules.normalizeTags(wantedTags))))
+                }
             } else {
                 if (text.isEmpty()) {
                     if (answer.isNotEmpty()) return Checked.MissingText(sub.label)
@@ -70,9 +87,13 @@ object QuestionEditRules {
                 if (answer.length > QuestionRules.MAX_TEXT_LENGTH) return Checked.TooLong("${sub.label.letter}) উত্তর")
                 adds.add(SubQuestionInput(sub.label, text, answer))
                 if (wanted != null && wanted.byLabel.containsKey(sub.label)) addRatings[sub.label] = wanted.byLabel[sub.label]
+                val newTags = wantedBoards?.byLabel?.get(sub.label)
+                if (newTags != null) addBoards[sub.label] = BoardRules.normalizeTags(newTags)
             }
         }
-        if (newStimulus == null && updates.isEmpty() && adds.isEmpty() && stimulusRating == null && ratingUpdates.isEmpty()) return Checked.NoChange
-        return Checked.Ok(newStimulus, updates, adds, stimulusRating, ratingUpdates, addRatings)
+        if (newStimulus == null && updates.isEmpty() && adds.isEmpty() && stimulusRating == null && ratingUpdates.isEmpty() &&
+            stimulusBoards == null && boardUpdates.isEmpty()
+        ) return Checked.NoChange
+        return Checked.Ok(newStimulus, updates, adds, stimulusRating, ratingUpdates, addRatings, stimulusBoards, boardUpdates, addBoards)
     }
 }

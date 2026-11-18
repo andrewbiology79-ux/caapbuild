@@ -1,7 +1,7 @@
 QUESTION BANK ANDROID APP COMPLETE PROJECT DEVELOPMENT & DELIVERY PLAN
 ============================================================
 
-Document version: 1.37 (v0.2.29 written: edit drafts B-2 and hashtag search option A, UNCONFIRMED; section 46 added; before it: v1.36 = v0.2.28 CONFIRMED by owner report and hashtag finding P-53, v1.35 = CI run 39 compile failure and fix, v1.34 = v0.2.27 CONFIRMED, part B split into v0.2.28 = B-1 and v0.2.29 = B-2)
+Document version: 1.41 (v0.2.30a + b CONFIRMED by owner report; v0.2.30c split into C-1 / C-2 / C-3; C-1 written = board catalog + boards and years in the data and rule layer, UNCONFIRMED; section 50 added; before it: v1.40 = CI run 42 compile error and fix, v1.39 = v0.2.30b, v1.38 = v0.2.30a, v1.37 = v0.2.29 written: edit drafts B-2 and hashtag search option A, UNCONFIRMED; section 46 added; before it: v1.36 = v0.2.28 CONFIRMED by owner report and hashtag finding P-53, v1.35 = CI run 39 compile failure and fix, v1.34 = v0.2.27 CONFIRMED, part B split into v0.2.28 = B-1 and v0.2.29 = B-2)
 Planning baseline: 16 November 2026
 Project status: Single-database architecture confirmed; canonical SQL and Room build harness prepared. CI run 11 (package v0.2.8) passed: KSP/Room generation, unit tests (5 of 5) and debug APK assembly. The package is still a build harness, not a complete application; Room-database runtime behaviour (CHECK emulation, Bengali FTS on the real database) is not yet device-tested.
 
@@ -3497,3 +3497,67 @@ All other items: as in 48.5.
 - v1.40: CI run 42 failed with one compile error (Int? vs Long? in insertGroup); fixed in v0.2.30b-fix1; P-54 added.
 
 END OF VERSION 1.40 UPDATE
+
+============================================================
+50. v0.2.30a + b CONFIRMED; v0.2.30c SPLIT; PART C-1 (BOARD CATALOG, BOARDS + YEARS, DATA LAYER) WRITTEN - VERSION 1.41
+============================================================
+
+Planning update date: 18 November 2026
+
+50.1 Basis
+- Owner report: for QuestionBank_v0_2_30b_fix1.zip, CI clean, instrumented (emulator) test clean, check list clean (the counts and the step-by-step results were not sent to the assistant). v0.2.30a, v0.2.30b and the fix are CONFIRMED by owner report.
+  That closes P-54 (compile error Int? vs Long?) and P-48 (every card showed "3*": the rating buttons exist and were checked).
+- The owner asked the assistant to do the next step and, if it is big, to work in small steps. The next step is v0.2.30c (boards + years + custom boards, UI-08). It is big, so it is split (50.2).
+- Schema check (39.5) for part C against the real entities: board_catalog (board_id, code unique, display_name, board_kind CHECK IN ('BUILTIN','CUSTOM'), is_archived, sort_order, created_at, updated_at); type_cq_stimulus_boards and type_cq_question_boards
+  (id, owner id, board_code FK to board_catalog.code ON DELETE RESTRICT, year CHECK 1900..2200, sort_order, UNIQUE(owner, board_code, year), owner FK ON DELETE CASCADE).
+  RESULT: no migration is needed. The board_kind values for custom boards are 'CUSTOM' (closes the open check of 47.1). board_catalog was EMPTY in every earlier package (nothing seeded it): C-1 seeds it.
+
+50.2 Split of v0.2.30c (each part is a package the owner can confirm on its own)
+ v0.2.30c-1 (C-1)  Board catalog (11 built-in boards seeded, custom boards), boards + years in the data and rule layer: save / edit / read-back / list / search / edit load. NO screen change.   <- WRITTEN in this update
+ v0.2.30c-2 (C-2)  Screens: board picker with the year window ("other year" typed with Bengali or Latin digits), chips with remove on card and editor, "new board" dialog (code + name), boards in the new and edit drafts (UI-08).
+ v0.2.30c-3 (C-3)  Search by board / year (closes the open part of UI-05 and P-46 for years): the hashtag-style rule or a board chip in the search, decided when C-3 starts.
+ Package order after that is unchanged: v0.2.30d (reference text, editable marks, type chooser) -> v0.2.30e (Minimum / Full modes, undo / redo, duplicate warning) -> v0.2.31 delete + selection -> v0.2.32 JSON paste import -> the rest as in 43.4.
+
+50.3 Part C-1, what was written
+- Domain (new BoardModels.kt): BoardTag(boardCode, year), BoardsInput(stimulus, byLabel) with the same meaning as RatingsInput, BoardItem, BoardChange, QuestionBoardsUpdate, AddBoardResult (Added / BadCode / BadName / CodeExists / NameExists / Failed), BoardRules (year 1900..2200, parseYear for Bengali and Latin digits, normalizeTags = remove duplicates keep order, at most 30 tags per block, cleanCode, cleanName).
+- Models: QuestionGroupInput.boards, GroupEditInput.boards (OPTIONAL, default null = old behaviour, so every earlier screen and test compiles unchanged); SavedGroup.stimulusBoards and SavedSubQuestion.boards (default empty).
+- Rules: QuestionRules keeps tags only for blocks that are really stored; QuestionEditRules counts a tags-only change as a real change (NoChange otherwise; same tags in the same order = no change); a bad tag gives BadBoard, mapped to SaveResult.Failed / UpdateResult.Failed (no new sealed subtype in the results, so the existing screens' `when` stay exhaustive; the new Checked.BadBoard is handled in the repository only).
+- DAO: NewQuestionRow.tags, insertGroup(stimulusTags), updateGroup(changeStimulusBoards, newStimulusBoards, boardUpdates), touchStimulus / touchQuestion (updated_at moves on a tags-only edit), per-topic and per-card tag reads, catalog read / insert. Tag rows are written in the SAME transaction as the group and the draft removal.
+- Repository: unknown board code refused before the write ("অজানা বোর্ড: CODE"); read-back after save and after edit also compares the tags (same tags, same order); observeBoards(); addCustomBoard(code, name) with read-back.
+- Seed: SeedData.builtinBoards / boardStatements (INSERT OR IGNORE, run on create and on every open, in a list apart from the question-type seed so the old test of 4 seed statements stays true).
+- Naming rule N-1 (44.3) checked: no function `setX` next to a property `x` was added. Lesson of P-54 applied: every write into an entity column of type Long uses .toLong() (year, sort_order, is_archived, sort_order of the catalog).
+
+50.4 DECISIONS by the assistant (owner may overrule)
+ B-1  Built-in boards: the nine general education boards plus মাদ্রাসা and কারিগরি, short names (ঢাকা, রাজশাহী, কুমিল্লা, যশোর, চট্টগ্রাম, বরিশাল, সিলেট, দিনাজপুর, ময়মনসিংহ, মাদ্রাসা, কারিগরি), codes DHA RAJ COM JES CTG BAR SYL DIN MYM MAD TEC. The reference design gave no list; the owner can name other boards and the list changes in one place.
+ B-2  Custom board code: A-Z, 0-9, "_" (1-20 characters), always upper case; name: any text up to 40 characters. Duplicate code or duplicate name (ignoring case) is refused.
+ B-3  Drafts carry boards only from C-2 (the draft format changes once, with the screen).
+ B-4  A board that questions use cannot be removed (foreign key RESTRICT stays); archive / rename of custom boards is a later, small step (no screen yet).
+
+50.5 Tests (expected, NOT run)
+- Unit: 13 new in BoardRulesTest -> 122 of 122 (109 + 13).
+- Emulator: 8 new in QuestionBoardTest -> 93 (85 + 8).
+- identityHash 786b471dfa14c9ae4739bb81479bab25 unchanged (no schema change); same debug key; versionCode 32, versionName 0.2.30c-boards-data.
+- The Kotlin code has NOT been compiled or run (no Gradle in the assistant environment). Risk points for the first CI run: the two new private extension functions at the top of TypeCqQuestionDao.kt (writeStimulusTags / writeQuestionTags) used inside @Transaction methods; the new parameters of insertGroup / updateGroup (all call sites are in the repository and were updated); Room reading BoardRowDb (year as Int). If CI fails, send the report and the plan will record it.
+
+50.6 UI inventory status (39.6)
+ UI-08 Boards + years, custom boards, year window: data layer WRITTEN (v0.2.30c-1, UNCONFIRMED); screens in C-2.
+ UI-05 In-topic search: CONFIRMED (v0.2.27); hashtag search CONFIRMED (v0.2.29); board / year search OPEN until C-3.
+ UI-07 Ratings: CONFIRMED (v0.2.30a + b).
+ UI-06, UI-09, UI-10: unchanged (parts D and E).
+
+50.7 Status and problem log
+PHASE 1: BUILD GATE PASSED, FOUNDATION INCOMPLETE (open: release signing). PHASE 2: DONE. PHASE 4/5: create / list / search / edit, edit drafts, hashtag search and ratings CONFIRMED on phone (owner report); boards data layer WRITTEN, UNCONFIRMED.
+P-54  CLOSED (fix confirmed by owner report on v0.2.30b-fix1).
+P-48  CLOSED (rating buttons confirmed).
+P-46, P-51, P-44, P-47, P-49, P-45, P-37: unchanged.
+
+50.8 Next steps (in order)
+1. Owner: push v0.2.30c (QuestionBank_v0_2_30c.zip) and send the CI report. Expect BUILD SUCCESSFUL, 122 unit tests (109 + 13), identityHash 786b471d... unchanged, same debug key. If it fails, send the new report.
+2. Owner: run the emulator workflow and send the report. Expect 93 tests (85 + 8).
+3. Owner: do the 3-step phone check list of VERSION_NOTES_0.2.30c.md (nothing visible changes) and report. Also say if the built-in board list (B-1) should change.
+4. Assistant: read the reports, issue plan v1.42 (v0.2.30c-1 CONFIRMED or corrected), then write C-2 (screens), again in small steps. If the owner prefers to wait for the screens before testing, the assistant can write C-2 on top of this package; then test C-1 and C-2 together.
+
+50.9 Change log addition
+- v1.41: v0.2.30a + b CONFIRMED by owner report (P-54 and P-48 closed); v0.2.30c split into C-1 / C-2 / C-3 (50.2); schema check done, no migration, board_catalog was empty and is now seeded; C-1 written (catalog, custom boards, boards + years in the data and rule layer, no screen change), expected 122 unit / 93 emulator tests, UNCONFIRMED; decisions B-1 to B-4.
+
+END OF VERSION 1.41 UPDATE

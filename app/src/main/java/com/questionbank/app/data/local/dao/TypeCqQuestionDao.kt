@@ -6,8 +6,11 @@ import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Transaction
 import com.questionbank.app.data.local.FtsIdAllocator
+import com.questionbank.app.data.local.entity.BoardCatalogEntity
+import com.questionbank.app.data.local.entity.TypeCqQuestionBoardsEntity
 import com.questionbank.app.data.local.entity.TypeCqQuestionsEntity
 import com.questionbank.app.data.local.entity.TypeCqStimuliEntity
+import com.questionbank.app.data.local.entity.TypeCqStimulusBoardsEntity
 import kotlinx.coroutines.flow.Flow
 
 /** One question row joined with its stimulus text (null when the question has no stimulus). */
@@ -46,6 +49,21 @@ data class NewQuestionRow(
     val answer: String,
     /** v0.2.30: 1-5 or null (the table has a CHECK for the range). */
     val rating: Int? = null,
+    /** v0.2.30c: board tags of this question, stored in the same transaction (the ids are decided by the caller). */
+    val tags: List<NewTagRow> = emptyList(),
+)
+
+/** One board tag to store (v0.2.30c). The position in the list becomes `sort_order`. */
+data class NewTagRow(val id: String, val boardCode: String, val year: Int)
+
+/** The wanted full tag list of one stored question (v0.2.30c); an empty list clears. */
+data class QuestionBoardsDb(val questionId: String, val tags: List<NewTagRow>)
+
+/** One stored board tag of a stimulus or a question ([ownerId] is the stimulus_id or the question_id). */
+data class BoardRowDb(
+    @ColumnInfo(name = "owner_id") val ownerId: String,
+    @ColumnInfo(name = "board_code") val boardCode: String,
+    @ColumnInfo(name = "year") val year: Int,
 )
 
 /** Values for one stored question whose rating changes (v0.2.30); [rating] null clears it. */
@@ -70,6 +88,23 @@ private const val GROUP_BY_STIMULUS_SQL =
 /** The row of ONE single question without a stimulus (v0.2.28). */
 private const val GROUP_BY_SINGLE_SQL =
     QUESTION_SELECT_SQL + "WHERE q.topic_id = :topicId AND q.question_id = :questionId AND q.stimulus_id IS NULL"
+
+private const val STIMULUS_BOARDS_SELECT =
+    "SELECT sb.stimulus_id AS owner_id, sb.board_code AS board_code, sb.year AS year FROM type_cq_stimulus_boards sb "
+private const val QUESTION_BOARDS_SELECT =
+    "SELECT qb.question_id AS owner_id, qb.board_code AS board_code, qb.year AS year FROM type_cq_question_boards qb "
+
+private suspend fun TypeCqQuestionDao.writeStimulusTags(stimulusId: String, tags: List<NewTagRow>) {
+    tags.forEachIndexed { index, tag ->
+        insertStimulusBoard(TypeCqStimulusBoardsEntity(tag.id, stimulusId, tag.boardCode, tag.year.toLong(), index.toLong()))
+    }
+}
+
+private suspend fun TypeCqQuestionDao.writeQuestionTags(questionId: String, tags: List<NewTagRow>) {
+    tags.forEachIndexed { index, tag ->
+        insertQuestionBoard(TypeCqQuestionBoardsEntity(tag.id, questionId, tag.boardCode, tag.year.toLong(), index.toLong()))
+    }
+}
 
 /**
  * Abstract class (not an interface) because [insertGroup] is a @Transaction method with a body.
@@ -127,6 +162,57 @@ abstract class TypeCqQuestionDao {
     @Query("UPDATE type_cq_stimuli SET rating = :rating, updated_at = :now WHERE stimulus_id = :stimulusId")
     abstract suspend fun updateStimulusRating(stimulusId: String, rating: Int?, now: Long): Int
 
+    @Query("UPDATE type_cq_stimuli SET updated_at = :now WHERE stimulus_id = :stimulusId")
+    abstract suspend fun touchStimulus(stimulusId: String, now: Long): Int
+
+    @Query("UPDATE type_cq_questions SET updated_at = :now WHERE question_id = :questionId")
+    abstract suspend fun touchQuestion(questionId: String, now: Long): Int
+
+    // ---- boards and years (v0.2.30c) ----
+
+    @Query("SELECT * FROM board_catalog ORDER BY is_archived, sort_order, display_name")
+    abstract fun observeBoards(): Flow<List<BoardCatalogEntity>>
+
+    @Query("SELECT * FROM board_catalog ORDER BY is_archived, sort_order, display_name")
+    abstract suspend fun boardsOnce(): List<BoardCatalogEntity>
+
+    @Query("SELECT code FROM board_catalog")
+    abstract suspend fun boardCodes(): List<String>
+
+    @Query("SELECT COALESCE(MAX(sort_order), 0) FROM board_catalog")
+    abstract suspend fun maxBoardSortOrder(): Long
+
+    @Insert
+    abstract suspend fun insertBoard(row: BoardCatalogEntity)
+
+    @Insert
+    abstract suspend fun insertStimulusBoard(row: TypeCqStimulusBoardsEntity)
+
+    @Insert
+    abstract suspend fun insertQuestionBoard(row: TypeCqQuestionBoardsEntity)
+
+    @Query("DELETE FROM type_cq_stimulus_boards WHERE stimulus_id = :stimulusId")
+    abstract suspend fun deleteStimulusBoards(stimulusId: String)
+
+    @Query("DELETE FROM type_cq_question_boards WHERE question_id = :questionId")
+    abstract suspend fun deleteQuestionBoards(questionId: String)
+
+    /** Tags of every stimulus of one topic, in the order they were chosen. */
+    @Query(STIMULUS_BOARDS_SELECT + "JOIN type_cq_stimuli s ON s.stimulus_id = sb.stimulus_id WHERE s.topic_id = :topicId ORDER BY sb.stimulus_id, sb.sort_order, sb.year, sb.board_code")
+    abstract suspend fun stimulusBoardsOfTopic(topicId: String): List<BoardRowDb>
+
+    /** Tags of every question of one topic, in the order they were chosen. */
+    @Query(QUESTION_BOARDS_SELECT + "JOIN type_cq_questions q ON q.question_id = qb.question_id WHERE q.topic_id = :topicId ORDER BY qb.question_id, qb.sort_order, qb.year, qb.board_code")
+    abstract suspend fun questionBoardsOfTopic(topicId: String): List<BoardRowDb>
+
+    /** For a few stimuli only (one card, the read-back): never call it with a topic-sized list. */
+    @Query(STIMULUS_BOARDS_SELECT + "WHERE sb.stimulus_id IN (:ids) ORDER BY sb.stimulus_id, sb.sort_order, sb.year, sb.board_code")
+    abstract suspend fun stimulusBoardsIn(ids: List<String>): List<BoardRowDb>
+
+    /** For a few questions only (one card, the read-back): never call it with a topic-sized list. */
+    @Query(QUESTION_BOARDS_SELECT + "WHERE qb.question_id IN (:ids) ORDER BY qb.question_id, qb.sort_order, qb.year, qb.board_code")
+    abstract suspend fun questionBoardsIn(ids: List<String>): List<BoardRowDb>
+
     @Insert
     abstract suspend fun insertStimulus(row: TypeCqStimuliEntity)
 
@@ -159,6 +245,7 @@ abstract class TypeCqQuestionDao {
         stimulusId: String?,
         stimulusText: String,
         stimulusRating: Int?,
+        stimulusTags: List<NewTagRow>,
         items: List<NewQuestionRow>,
         now: Long,
         draftKey: String,
@@ -166,6 +253,7 @@ abstract class TypeCqQuestionDao {
         if (countTopic(topicId) == 0) return false
         if (stimulusId != null) {
             insertStimulus(TypeCqStimuliEntity(stimulusId, topicId, stimulusText, stimulusRating?.toLong(), "", now, now))
+            writeStimulusTags(stimulusId, stimulusTags)
         }
         val ids = FtsIdAllocator(maxFtsId())
         var order = maxSortOrder(topicId)
@@ -188,6 +276,7 @@ abstract class TypeCqQuestionDao {
                     updatedAt = now,
                 )
             )
+            writeQuestionTags(item.id, item.tags)
         }
         deleteMeta(draftKey)
         return true
@@ -214,12 +303,17 @@ abstract class TypeCqQuestionDao {
         changeStimulusRating: Boolean,
         newStimulusRating: Int?,
         ratingUpdates: List<QuestionRatingDb>,
+        changeStimulusBoards: Boolean,
+        newStimulusBoards: List<NewTagRow>,
+        boardUpdates: List<QuestionBoardsDb>,
     ): Boolean {
         if (countTopic(topicId) == 0) return false
         if (stimulusId != null && countStimulus(stimulusId, topicId) == 0) return false
         if (updates.isNotEmpty() && countQuestionsIn(updates.map { it.questionId }, topicId) != updates.size) return false
         if (ratingUpdates.isNotEmpty() && countQuestionsIn(ratingUpdates.map { it.questionId }, topicId) != ratingUpdates.size) return false
         if (changeStimulusRating && stimulusId == null) return false
+        if (boardUpdates.isNotEmpty() && countQuestionsIn(boardUpdates.map { it.questionId }, topicId) != boardUpdates.size) return false
+        if (changeStimulusBoards && stimulusId == null) return false
         if (newStimulusText != null) {
             val sid = checkNotNull(stimulusId) { "stimulus text given for a group without a stimulus" }
             check(updateStimulusText(sid, newStimulusText, now) == 1) { "stimulus row was not updated" }
@@ -233,6 +327,17 @@ abstract class TypeCqQuestionDao {
         }
         for (r in ratingUpdates) {
             check(updateQuestionRating(r.questionId, r.rating, now) == 1) { "question rating was not updated" }
+        }
+        if (changeStimulusBoards) {
+            val sid = checkNotNull(stimulusId) { "stimulus boards given for a group without a stimulus" }
+            deleteStimulusBoards(sid)
+            writeStimulusTags(sid, newStimulusBoards)
+            check(touchStimulus(sid, now) == 1) { "stimulus row was not touched" }
+        }
+        for (b in boardUpdates) {
+            deleteQuestionBoards(b.questionId)
+            writeQuestionTags(b.questionId, b.tags)
+            check(touchQuestion(b.questionId, now) == 1) { "question row was not touched" }
         }
         if (adds.isNotEmpty()) {
             val sid = checkNotNull(stimulusId) { "new sub-question needs a stimulus" }
@@ -256,6 +361,7 @@ abstract class TypeCqQuestionDao {
                         updatedAt = now,
                     )
                 )
+                writeQuestionTags(item.id, item.tags)
             }
         }
         // v0.2.29: the edit draft of this card is removed in the same transaction, so a saved edit never leaves a draft behind.

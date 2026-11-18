@@ -49,6 +49,8 @@ data class QuestionGroupInput(
     val subQuestions: List<SubQuestionInput>,
     /** v0.2.30: null = no rating chosen. Ratings of a label without question text, and a stimulus rating without stimulus text, are not stored. */
     val ratings: RatingsInput? = null,
+    /** v0.2.30c: null = no boards chosen. Boards of a label without question text, and stimulus boards without stimulus text, are not stored. */
+    val boards: BoardsInput? = null,
 )
 
 /** Raw editor text, used for the automatic draft. Index 0..3 = ক, খ, গ, ঘ. */
@@ -73,6 +75,8 @@ data class SavedSubQuestion(
     val shortAnswer: String,
     /** The question's own rating 1-5, or null when none was saved (set in the editor since v0.2.30). */
     val rating: Int? = null,
+    /** v0.2.30c: boards and years of this question, in the order they were chosen. */
+    val boards: List<BoardTag> = emptyList(),
 )
 
 /** One stimulus with its sub-questions, or one single question without a stimulus. */
@@ -82,6 +86,8 @@ data class SavedGroup(
     val subQuestions: List<SavedSubQuestion>,
     /** The stimulus rating 1-5, or null. Together with the question ratings it gives the card rating (rule U-1). */
     val stimulusRating: Int? = null,
+    /** v0.2.30c: boards and years of the stimulus, in the order they were chosen. */
+    val stimulusBoards: List<BoardTag> = emptyList(),
 )
 
 sealed interface SaveResult {
@@ -117,6 +123,8 @@ data class GroupEditInput(
     val subQuestions: List<SubQuestionInput>,
     /** v0.2.30: null = leave every stored rating untouched (the older screens pass nothing). See [RatingsInput] for the meaning when given. */
     val ratings: RatingsInput? = null,
+    /** v0.2.30c: null = leave every stored board tag untouched. See [BoardsInput] for the meaning when given. */
+    val boards: BoardsInput? = null,
 )
 
 /** A rating that changes to [value] (null = cleared). Used where "no change" must be told apart from "cleared". */
