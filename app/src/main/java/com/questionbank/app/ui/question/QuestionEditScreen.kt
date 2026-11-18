@@ -18,6 +18,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -41,7 +42,7 @@ private fun editResultText(result: UpdateResult?): String? = when (result) {
     is UpdateResult.Failed -> "সংরক্ষণ করা যায়নি; আগের লেখা অক্ষত আছে। আবার চেষ্টা করুন।"
 }
 
-/** Edit screen of one existing card (v0.2.28; automatic edit draft v0.2.29; rating buttons v0.2.30b). Full screen like the new-question editor. */
+/** Edit screen of one existing card (v0.2.28; automatic edit draft v0.2.29; rating buttons v0.2.30b; board + year picker v0.2.30c-2). Full screen like the new-question editor. */
 @Composable
 fun QuestionEditScreen(
     viewModel: QuestionEditViewModel,
@@ -49,6 +50,7 @@ fun QuestionEditScreen(
     onBack: () -> Unit,
 ) {
     var askDiscard by rememberSaveable { mutableStateOf(false) }
+    val catalog by viewModel.boardCatalog.collectAsState()
     val needsAsk = viewModel.load == EditLoad.READY && viewModel.changed && !viewModel.saving
     val tryBack: () -> Unit = {
         if (needsAsk) {
@@ -127,6 +129,14 @@ fun QuestionEditScreen(
                         enabled = !viewModel.saving,
                         onSelect = viewModel::changeStimulusRating,
                     )
+                    BoardTagsEditor(
+                        title = "উদ্দীপকের বোর্ড ও সাল",
+                        tags = viewModel.stimulusBoards,
+                        boards = catalog,
+                        enabled = !viewModel.saving,
+                        onChange = viewModel::changeStimulusBoards,
+                        onAddBoard = viewModel::addBoard,
+                    )
                 }
                 viewModel.editableLabels.forEach { label ->
                     val i = label.sortOrder - 1
@@ -142,13 +152,21 @@ fun QuestionEditScreen(
                         minLines = 2,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    // The rating of a block is stored only with its question text.
+                    // The rating and the boards of a block are stored only with its question text.
                     if (viewModel.texts[i].isNotBlank()) {
                         RatingPicker(
                             title = "${label.letter}) প্রশ্নের রেটিং",
                             selected = viewModel.ratings[i],
                             enabled = !viewModel.saving,
                             onSelect = { viewModel.changeRating(label, it) },
+                        )
+                        BoardTagsEditor(
+                            title = "${label.letter}) প্রশ্নের বোর্ড ও সাল",
+                            tags = viewModel.boards[i],
+                            boards = catalog,
+                            enabled = !viewModel.saving,
+                            onChange = { viewModel.changeBoards(label, it) },
+                            onAddBoard = viewModel::addBoard,
                         )
                     }
                     OutlinedTextField(

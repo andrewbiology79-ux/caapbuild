@@ -19,6 +19,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -44,6 +46,7 @@ fun QuestionEditorScreen(
     onBack: () -> Unit,
 ) {
     val draft = viewModel.draft
+    val boards by viewModel.boardCatalog.collectAsState()
     Scaffold(
         topBar = {
             AppHeader(title = "প্রশ্ন যোগ করুন", onBack = onBack)
@@ -81,13 +84,21 @@ fun QuestionEditorScreen(
                 minLines = 3,
                 modifier = Modifier.fillMaxWidth(),
             )
-            // A stimulus rating is stored only with a stimulus text, so the buttons appear when there is one.
+            // A stimulus rating and its boards are stored only with a stimulus text, so the controls appear when there is one.
             if (draft.stimulus.isNotBlank()) {
                 RatingPicker(
                     title = "উদ্দীপকের রেটিং",
                     selected = draft.stimulusRating,
                     enabled = !viewModel.saving,
                     onSelect = viewModel::changeStimulusRating,
+                )
+                BoardTagsEditor(
+                    title = "উদ্দীপকের বোর্ড ও সাল",
+                    tags = draft.stimulusBoards,
+                    boards = boards,
+                    enabled = !viewModel.saving,
+                    onChange = viewModel::changeStimulusBoards,
+                    onAddBoard = viewModel::addBoard,
                 )
             }
 
@@ -104,13 +115,21 @@ fun QuestionEditorScreen(
                     minLines = 2,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                // Same for a question: its rating is stored only with its question text.
+                // Same for a question: its rating and its boards are stored only with its question text.
                 if (draft.texts[i].isNotBlank()) {
                     RatingPicker(
                         title = "${label.letter}) প্রশ্নের রেটিং",
                         selected = draft.ratings[i],
                         enabled = !viewModel.saving,
                         onSelect = { viewModel.changeRating(i, it) },
+                    )
+                    BoardTagsEditor(
+                        title = "${label.letter}) প্রশ্নের বোর্ড ও সাল",
+                        tags = draft.boards[i],
+                        boards = boards,
+                        enabled = !viewModel.saving,
+                        onChange = { viewModel.changeBoards(i, it) },
+                        onAddBoard = viewModel::addBoard,
                     )
                 }
                 OutlinedTextField(

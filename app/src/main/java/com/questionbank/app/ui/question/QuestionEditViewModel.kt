@@ -7,6 +7,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.questionbank.app.domain.question.AddBoardResult
+import com.questionbank.app.domain.question.BoardItem
+import com.questionbank.app.domain.question.BoardTag
+import com.questionbank.app.domain.question.BoardsInput
 import com.questionbank.app.domain.question.CqLabel
 import com.questionbank.app.domain.question.DraftText
 import com.questionbank.app.domain.question.GroupEditInput
@@ -21,6 +25,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -66,6 +73,14 @@ class QuestionEditViewModel(
         private set
     var ratings by mutableStateOf(List<Int?>(4) { null })
         private set
+    /** v0.2.30c-2: boards and years of the stimulus and of ক..ঘ as typed, in the order chosen. Changed with [changeStimulusBoards] / [changeBoards]. */
+    var stimulusBoards by mutableStateOf<List<BoardTag>>(emptyList())
+        private set
+    var boards by mutableStateOf<List<List<BoardTag>>>(List(4) { emptyList() })
+        private set
+    /** The board catalog for the picker. */
+    val boardCatalog: StateFlow<List<BoardItem>> =
+        repository.observeBoards().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     var saving by mutableStateOf(false)
         private set
     var result by mutableStateOf<UpdateResult?>(null)
@@ -92,11 +107,13 @@ class QuestionEditViewModel(
                 val t = MutableList(4) { "" }
                 val a = MutableList(4) { "" }
                 val r = MutableList<Int?>(4) { null }
+                val b = MutableList<List<BoardTag>>(4) { emptyList() }
                 for (sub in group.subQuestions) {
                     val label = sub.label ?: continue
                     t[label.sortOrder - 1] = sub.text
                     a[label.sortOrder - 1] = sub.shortAnswer
                     r[label.sortOrder - 1] = sub.rating
+                    b[label.sortOrder - 1] = sub.boards
                 }
                 original = group
                 stimulus = group.stimulusText
@@ -104,6 +121,8 @@ class QuestionEditViewModel(
                 answers = a
                 stimulusRating = group.stimulusRating
                 ratings = r
+                stimulusBoards = group.stimulusBoards
+                boards = b
                 load = EditLoad.READY
                 restoreDraft(group)
                 startWriter()
@@ -117,19 +136,23 @@ class QuestionEditViewModel(
         if (group.stimulusId != null) {
             stimulus = stored.stimulus
             stimulusRating = stored.stimulusRating
+            stimulusBoards = stored.stimulusBoards
         }
         val t = texts.toMutableList()
         val a = answers.toMutableList()
         val r = ratings.toMutableList()
+        val b = boards.toMutableList()
         for (label in editableLabels) {
             val i = label.sortOrder - 1
             t[i] = stored.texts[i]
             a[i] = stored.answers[i]
             r[i] = stored.ratings[i]
+            b[i] = stored.boards[i]
         }
         texts = t
         answers = a
         ratings = r
+        boards = b
         if (changed) {
             restoredFromDraft = true
             draftStatus = DraftStatus.SAVED
@@ -155,7 +178,10 @@ class QuestionEditViewModel(
     private fun currentDraft(): DraftText? = if (changed) draftOf() else null
 
     private fun draftOf(): DraftText =
-        DraftText(stimulus = stimulus, texts = texts, answers = answers, stimulusRating = stimulusRating, ratings = ratings)
+        DraftText(
+            stimulus = stimulus, texts = texts, answers = answers, stimulusRating = stimulusRating, ratings = ratings,
+            stimulusBoards = stimulusBoards, boards = boards,
+        )
 
     private fun queueDraft() {
         if (finished || load != EditLoad.READY) return
@@ -185,6 +211,11 @@ class QuestionEditViewModel(
             ratings = RatingsInput(
                 stimulus = if (hasStimulus) stimulusRating else null,
                 byLabel = editableLabels.associateWith { ratings[it.sortOrder - 1] },
+            ),
+            // The tags of exactly the blocks this screen shows; the stimulus tags only for a card that has a stimulus.
+            boards = BoardsInput(
+                stimulus = if (hasStimulus) stimulusBoards else emptyList(),
+                byLabel = editableLabels.associateWith { boards[it.sortOrder - 1] },
             ),
         )
 
@@ -230,6 +261,23 @@ class QuestionEditViewModel(
         result = null
         queueDraft()
     }
+
+    /** The full wanted tag list of the stimulus (an empty list clears). Only meaningful for a card with a stimulus. */
+    fun changeStimulusBoards(value: List<BoardTag>) {
+        if (saving || finished) return
+        stimulusBoards = value
+        result = null
+        queueDraft()
+    }
+
+    fun changeBoards(label: CqLabel, value: List<BoardTag>) {
+        if (saving || finished) return
+        boards = boards.toMutableList().also { it[label.sortOrder - 1] = value }
+        result = null
+        queueDraft()
+    }
+
+    suspend fun addBoard(code: String, name: String): AddBoardResult = repository.addCustomBoard(code, name)
 
     fun save(onSaved: () -> Unit) {
         if (saving || finished || load != EditLoad.READY) return

@@ -2,6 +2,7 @@ package com.questionbank.app
 
 import android.content.Context
 import androidx.room.useReaderConnection
+import androidx.room.useWriterConnection
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.questionbank.app.data.local.QuestionBankDatabase
@@ -13,6 +14,7 @@ import com.questionbank.app.domain.question.AddBoardResult
 import com.questionbank.app.domain.question.BoardTag
 import com.questionbank.app.domain.question.BoardsInput
 import com.questionbank.app.domain.question.CqLabel
+import com.questionbank.app.domain.question.DraftText
 import com.questionbank.app.domain.question.GroupEditInput
 import com.questionbank.app.domain.question.QuestionGroupInput
 import com.questionbank.app.domain.question.QuestionGroupKey
@@ -217,5 +219,51 @@ class QuestionBoardTest {
         assertEquals(1, groups.size)
         assertEquals(listOf(raj2020), groups[0].stimulusBoards)
         assertEquals(listOf(dhaka2019), groups[0].subQuestions[0].boards)
+    }
+
+    @Test
+    fun draftsCarryBoardsAndOldDraftsWithoutBoardsStillLoad() = runBlocking {
+        val key = "s-bd1"
+        val draft = DraftText(
+            stimulus = "উদ্দীপক",
+            texts = listOf("ক", "", "", "ঘ"),
+            stimulusBoards = listOf(ctg2021, dhaka2019),
+            boards = listOf(listOf(dhaka2019, raj2020), emptyList(), emptyList(), listOf(raj2020)),
+        )
+        repo.saveEditDraft(key, draft)
+        assertEquals(draft, repo.loadEditDraft(key))
+
+        // The new-question draft keeps the tags too (a blank draft is never stored, so the text is not blank here).
+        repo.saveDraft(topicId, draft)
+        assertEquals(draft, repo.loadDraft(topicId))
+
+        // A draft written by v0.2.30b has no board fields.
+        db.useWriterConnection {
+            it.exec(
+                "INSERT OR REPLACE INTO app_metadata(\"key\", value_json, updated_at) VALUES(?, ?, 1)",
+                TypeCqQuestionRepositoryImpl.editDraftKey("s-old"),
+                "{\"v\":1,\"stimulus\":\"পুরোনো\",\"texts\":[\"ক\",\"\",\"\",\"\"],\"answers\":[\"\",\"\",\"\",\"\"],\"stimulusRating\":4,\"ratings\":[2,0,0,0]}",
+            )
+        }
+        val old = repo.loadEditDraft("s-old")!!
+        assertEquals(emptyList<BoardTag>(), old.stimulusBoards)
+        assertEquals(List(4) { emptyList<BoardTag>() }, old.boards)
+        assertEquals(4, old.stimulusRating)
+    }
+
+    @Test
+    fun badTagsInADraftAreSkippedAndTheSameTagIsKeptOnce() = runBlocking {
+        db.useWriterConnection {
+            it.exec(
+                "INSERT OR REPLACE INTO app_metadata(\"key\", value_json, updated_at) VALUES(?, ?, 1)",
+                TypeCqQuestionRepositoryImpl.editDraftKey("s-bad"),
+                "{\"v\":1,\"stimulus\":\"উ\",\"texts\":[\"ক\",\"\",\"\",\"\"],\"answers\":[\"\",\"\",\"\",\"\"]," +
+                    "\"stimulusBoards\":[{\"b\":\"DHA\",\"y\":2019},{\"b\":\"DHA\",\"y\":2019},{\"b\":\"\",\"y\":2019},{\"b\":\"RAJ\",\"y\":1800}]," +
+                    "\"boards\":[[{\"b\":\"CTG\",\"y\":2021}],[],[],[]]}",
+            )
+        }
+        val d = repo.loadEditDraft("s-bad")!!
+        assertEquals(listOf(dhaka2019), d.stimulusBoards)
+        assertEquals(listOf(ctg2021), d.boards[0])
     }
 }

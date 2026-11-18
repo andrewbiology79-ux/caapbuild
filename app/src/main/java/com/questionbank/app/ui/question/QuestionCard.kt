@@ -33,6 +33,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.questionbank.app.domain.question.BoardItem
 import com.questionbank.app.domain.question.QuestionCardRules
 import com.questionbank.app.domain.question.SavedGroup
 import com.questionbank.app.ui.format.toBengali
@@ -44,12 +45,12 @@ import com.questionbank.app.ui.theme.LocalDarkTheme
  *
  * v0.2.28: the ribbon has a 3-dot menu with one item, "সম্পাদনা" ([onEdit]); the other items come with copy and delete.
  *
- * Not in this package on purpose: checkbox, board/paper chips (no boards or papers can be entered yet), the solution
- * toggle and pictures (solutions and pictures do not exist yet). The chip row shows "ট্যাগ নেই" until boards arrive.
+ * v0.2.30c-2: board + year chips (read only here). Not in this package on purpose: checkbox, paper chips, the solution
+ * toggle and pictures (do not exist yet), removing a chip on the card (chips are removed in the editor). The chip row shows "ট্যাগ নেই" when nothing is tagged.
  * [number] is the position in the list that is shown (also in search results).
  */
 @Composable
-fun QuestionCard(number: Int, group: SavedGroup, onEdit: (() -> Unit)? = null) {
+fun QuestionCard(number: Int, group: SavedGroup, boards: List<BoardItem> = emptyList(), onEdit: (() -> Unit)? = null) {
     var menuOpen by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -95,13 +96,25 @@ fun QuestionCard(number: Int, group: SavedGroup, onEdit: (() -> Unit)? = null) {
                 }
             }
         }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-        ) {
-            Text("ট্যাগ নেই", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        // Light chip row: "ট্যাগ নেই" only when nothing on the card has a tag; the tags of the sub-questions of a group with a
+        // stimulus are shown with each question below, so the row is left out when only those exist.
+        val top = cardTopTags(group)
+        if (cardHasNoTags(group)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            ) {
+                Text("ট্যাগ নেই", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        } else if (top.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            ) { TagChipRow(top, boards) }
         }
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (group.stimulusText.isNotEmpty()) {
@@ -116,6 +129,7 @@ fun QuestionCard(number: Int, group: SavedGroup, onEdit: (() -> Unit)? = null) {
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
                     )
+                    if (group.stimulusId != null && q.boards.isNotEmpty()) TagChipRow(q.boards, boards)
                     Text(q.text, style = MaterialTheme.typography.bodyLarge)
                     if (q.shortAnswer.isNotEmpty()) {
                         Text("উত্তর: ${q.shortAnswer}", style = MaterialTheme.typography.bodyMedium)

@@ -59,6 +59,24 @@ object BoardRules {
         return if (isValidYear(year)) year else null
     }
 
+    /** How many recent years the year window shows (v0.2.30c-2); other years are typed. */
+    const val YEAR_WINDOW_SIZE = 12
+
+    /** The year window of the picker: [count] years, newest first, ending at [currentYear] at the top. Never leaves 1900..2200. */
+    fun yearWindow(currentYear: Int, count: Int = YEAR_WINDOW_SIZE): List<Int> {
+        val top = currentYear.coerceIn(MIN_YEAR, MAX_YEAR)
+        return (0 until count).map { top - it }.filter { isValidYear(it) }
+    }
+
+    /** True when one more tag does not fit on a block. */
+    fun isFull(tags: List<BoardTag>): Boolean = tags.size >= MAX_TAGS_PER_BLOCK
+
+    /** Adds [tag] at the end. The same tag again, or a full list, leaves the list as it is. */
+    fun addTag(tags: List<BoardTag>, tag: BoardTag): List<BoardTag> =
+        if (tag in tags || isFull(tags)) tags else tags + tag
+
+    fun removeTag(tags: List<BoardTag>, tag: BoardTag): List<BoardTag> = tags.filter { it != tag }
+
     /** The same tag twice is stored once; the order the person chose is kept. */
     fun normalizeTags(tags: List<BoardTag>): List<BoardTag> = tags.distinct()
 

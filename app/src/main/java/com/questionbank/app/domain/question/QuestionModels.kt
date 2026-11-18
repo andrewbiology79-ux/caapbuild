@@ -61,6 +61,9 @@ data class DraftText(
     /** v0.2.30: the rating chosen for the stimulus and for ক..ঘ (1-5 or null). A rating alone is not content: see [isBlank]. */
     val stimulusRating: Int? = null,
     val ratings: List<Int?> = List(4) { null },
+    /** v0.2.30c-2: boards and years chosen for the stimulus and for ক..ঘ, in the order chosen. Tags alone are not content: see [isBlank]. */
+    val stimulusBoards: List<BoardTag> = emptyList(),
+    val boards: List<List<BoardTag>> = List(4) { emptyList() },
 ) {
     val isBlank: Boolean
         get() = stimulus.isBlank() && texts.all { it.isBlank() } && answers.all { it.isBlank() }

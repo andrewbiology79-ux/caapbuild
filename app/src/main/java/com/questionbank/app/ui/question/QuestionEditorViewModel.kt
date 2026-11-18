@@ -7,6 +7,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.questionbank.app.domain.question.AddBoardResult
+import com.questionbank.app.domain.question.BoardItem
+import com.questionbank.app.domain.question.BoardTag
+import com.questionbank.app.domain.question.BoardsInput
 import com.questionbank.app.domain.question.CqLabel
 import com.questionbank.app.domain.question.DraftText
 import com.questionbank.app.domain.question.QuestionGroupInput
@@ -19,6 +23,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -55,6 +62,10 @@ class QuestionEditorViewModel(
         private set
     var restoredFromDraft by mutableStateOf(false)
         private set
+
+    /** v0.2.30c-2: the board catalog for the picker (built-in boards and the custom ones). */
+    val boardCatalog: StateFlow<List<BoardItem>> =
+        repository.observeBoards().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private var pending = Channel<DraftText>(Channel.CONFLATED)
     private var writer: Job? = null
@@ -97,6 +108,14 @@ class QuestionEditorViewModel(
     fun changeRating(index: Int, value: Int?) =
         change(draft.copy(ratings = draft.ratings.toMutableList().also { it[index] = value }))
 
+    /** v0.2.30c-2: the full wanted tag list of the stimulus / of ক..ঘ (an empty list clears). */
+    fun changeStimulusBoards(value: List<BoardTag>) = change(draft.copy(stimulusBoards = value))
+
+    fun changeBoards(index: Int, value: List<BoardTag>) =
+        change(draft.copy(boards = draft.boards.toMutableList().also { it[index] = value }))
+
+    suspend fun addBoard(code: String, name: String): AddBoardResult = repository.addCustomBoard(code, name)
+
     fun clearAll() = change(DraftText())
 
     fun dismissResult() {
@@ -131,6 +150,10 @@ class QuestionEditorViewModel(
                         ratings = RatingsInput(
                             stimulus = snapshot.stimulusRating,
                             byLabel = CqLabel.entries.mapIndexed { i, label -> label to snapshot.ratings[i] }.toMap(),
+                        ),
+                        boards = BoardsInput(
+                            stimulus = snapshot.stimulusBoards,
+                            byLabel = CqLabel.entries.mapIndexed { i, label -> label to snapshot.boards[i] }.toMap(),
                         ),
                     )
                 )

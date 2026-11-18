@@ -13,8 +13,8 @@ android {
         applicationId = "com.questionbank.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 32
-        versionName = "0.2.30c-boards-data"
+        versionCode = 33
+        versionName = "0.2.30c2-boards-screens"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

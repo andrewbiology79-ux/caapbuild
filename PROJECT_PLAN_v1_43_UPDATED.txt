@@ -1,7 +1,7 @@
 QUESTION BANK ANDROID APP COMPLETE PROJECT DEVELOPMENT & DELIVERY PLAN
 ============================================================
 
-Document version: 1.42 (CI run for v0.2.30c failed with one compile error, fixed in v0.2.30c-fix1, section 51 added; before it: v1.41 = v0.2.30a + b CONFIRMED by owner report; v0.2.30c split into C-1 / C-2 / C-3; C-1 written = board catalog + boards and years in the data and rule layer, UNCONFIRMED; section 50 added; before it: v1.40 = CI run 42 compile error and fix, v1.39 = v0.2.30b, v1.38 = v0.2.30a, v1.37 = v0.2.29 written: edit drafts B-2 and hashtag search option A, UNCONFIRMED; section 46 added; before it: v1.36 = v0.2.28 CONFIRMED by owner report and hashtag finding P-53, v1.35 = CI run 39 compile failure and fix, v1.34 = v0.2.27 CONFIRMED, part B split into v0.2.28 = B-1 and v0.2.29 = B-2)
+Document version: 1.43 (v0.2.30c-1 + fix1 CONFIRMED by owner report; v0.2.30c-2 written = board + year picker, chips, new-board dialog, boards in drafts, UNCONFIRMED; section 52 added; before it: v1.42 = CI run for v0.2.30c failed with one compile error, fixed in v0.2.30c-fix1, section 51 added; before it: v1.41 = v0.2.30a + b CONFIRMED by owner report; v0.2.30c split into C-1 / C-2 / C-3; C-1 written = board catalog + boards and years in the data and rule layer, UNCONFIRMED; section 50 added; before it: v1.40 = CI run 42 compile error and fix, v1.39 = v0.2.30b, v1.38 = v0.2.30a, v1.37 = v0.2.29 written: edit drafts B-2 and hashtag search option A, UNCONFIRMED; section 46 added; before it: v1.36 = v0.2.28 CONFIRMED by owner report and hashtag finding P-53, v1.35 = CI run 39 compile failure and fix, v1.34 = v0.2.27 CONFIRMED, part B split into v0.2.28 = B-1 and v0.2.29 = B-2)
 Planning baseline: 16 November 2026
 Project status: Single-database architecture confirmed; canonical SQL and Room build harness prepared. CI run 11 (package v0.2.8) passed: KSP/Room generation, unit tests (5 of 5) and debug APK assembly. The package is still a build harness, not a complete application; Room-database runtime behaviour (CHECK emulation, Bengali FTS on the real database) is not yet device-tested.
 
@@ -3589,3 +3589,58 @@ All other items: as in 50.7.
 - v1.42: CI run for v0.2.30c failed with one compile error (missing BadBoard branch in updateGroup); fixed in v0.2.30c-fix1; P-55 added.
 
 END OF VERSION 1.42 UPDATE
+
+============================================================
+52. v0.2.30c-1 CONFIRMED; PART C-2 (BOARD + YEAR SCREENS) WRITTEN - VERSION 1.43
+============================================================
+
+Planning update date: 18 November 2026
+
+52.1 Basis (reports read)
+- Owner report for QuestionBank_v0_2_30c_fix1.zip: CI clean, instrumented (emulator) test clean, check list clean (the step-by-step results of the check list were not sent).
+- CI report read: run 45, BUILD SUCCESSFUL, Gradle exit code 0, 122 unit tests (0 failed, 0 skipped), identityHash 786b471dfa14c9ae4739bb81479bab25 unchanged, same debug key (CN=Android Debug).
+- Emulator report read: 94 tests, 0 failed, 0 skipped, 100 percent. Plan 50.5 / 51.3 expected 93 (85 + 8); the real count is 94. The expectation was one too low (the counting error is the assistant's); no test is missing. 94 is the new baseline.
+- Result: v0.2.30c-1 and v0.2.30c-fix1 are CONFIRMED by owner report. P-55 (non-exhaustive `when`) is CLOSED. The unit and emulator test code of C-1 compiled and passed, so the "next run may show a test compile error" risk of 51.1 is gone.
+- The owner said "start": the next step is C-2 (screens), as announced in 51.3 and 50.2.
+
+52.2 Part C-2, what was written (UI-08, screens)
+- Picker: a dialog with the board list (built-in + custom, archived ones left out), a year window of the 12 most recent years (newest first, from the phone's current year; BoardRules.yearWindow) and "অন্য সাল" (typed with Bengali or Latin digits, BoardRules.parseYear; error text while it is not a valid year). The add button is on only for a valid, new board + year pair.
+- Chips with remove in the editor (BoardTagsEditor): one editor per block (stimulus and ক..ঘ) on the new-question screen and the edit screen; tap a chip to remove it; at most 30 tags per block. Tag controls show only when the block has text (same rule as ratings, rule B-9).
+- "নতুন বোর্ড" dialog (code + name) with a message for each refusal (AddBoardResult); the new board is selected at once.
+- Card: the light chip row shows the stimulus tags (or the tags of a single question); tags of the sub-questions of a group with a stimulus show under their heading; "ট্যাগ নেই" only when nothing on the card is tagged (pure rules in BoardLabels.kt).
+- Drafts: DraftText has stimulusBoards and boards; the draft JSON has "stimulusBoards" and "boards" ([{"b":code,"y":year}]); an older draft without them loads as "no tags"; bad entries (empty code, year out of range, repeated tag, more than 30) are skipped on load. Tags alone are not draft content (isBlank unchanged). The same change detection as ratings: a tags-only edit counts as a change (save button, discard question).
+- ViewModels: QuestionEditorViewModel and QuestionEditViewModel carry the tags, pass them to saveGroup / updateGroup (the C-1 rule layer is unchanged) and expose the catalog (boardCatalog) and addBoard; QuestionListViewModel exposes the catalog for the card chips.
+- No domain / DAO / schema change: identityHash must stay 786b471d... , database version 1. versionCode 33, versionName 0.2.30c2-boards-screens. No new dependency.
+
+52.3 DECISIONS by the assistant (owner may overrule)
+ B-5  Chips are removed in the editor only. Removing a chip directly on a list card (named in 50.2) is NOT in C-2: it is a second write path from the list screen; it is a small separate step if the owner wants it.
+ B-6  Tapping a chip in the editor removes it at once, no question.
+ B-7  Year window = 12 most recent years.
+ B-8  Archived boards are not offered in the picker; the picker closes after each added tag.
+ B-9  A block without text stores no tags, so its tag controls are hidden until it has text.
+
+52.4 Tests (expected, NOT run)
+- Unit: 10 new in BoardPickerLogicTest -> 132 of 132 (122 + 10).
+- Emulator: 2 new in QuestionBoardTest (draft round trip with tags + old draft without tags; bad tags in a draft skipped, repeated tag once) -> 96 (94 + 2). The screens have no emulator test; they are checked by the 8-step phone list of VERSION_NOTES_0.2.30c2.md.
+- The Kotlin code has NOT been compiled or run (no Gradle in the assistant environment). Risk points for the first CI run: BoardTagsEditor.kt (new Compose code: InputChip, nested AlertDialogs, supportingText lambda), the new `boards` parameter of QuestionCard, the StateFlow of the catalog in three ViewModels, the draft codec. Lesson of P-54 / P-55 applied: no new sealed subtype, no new entity write; every changed call site was grepped (QuestionCard is called in one place, the three ViewModels have no other users of the new members). If CI fails, send the report and the plan will record it.
+
+52.5 UI inventory status (39.6)
+ UI-08 Boards + years, custom boards, year window: data layer CONFIRMED (v0.2.30c-1); screens WRITTEN (v0.2.30c-2), UNCONFIRMED.
+ UI-05: board / year search OPEN until C-3.
+ UI-07 Ratings: CONFIRMED. UI-06, UI-09, UI-10: unchanged (parts D and E).
+
+52.6 Status and problem log
+PHASE 1: BUILD GATE PASSED, FOUNDATION INCOMPLETE (open: release signing). PHASE 2: DONE. PHASE 4/5: create / list / search / edit, edit drafts, hashtag search, ratings and the boards data layer CONFIRMED; board + year screens WRITTEN, UNCONFIRMED.
+P-55  CLOSED (fix confirmed by owner report on v0.2.30c-fix1).
+P-46, P-51, P-44, P-47, P-49, P-45, P-37: unchanged.
+
+52.7 Next steps (in order)
+1. Owner: push v0.2.30c2 (QuestionBank_v0_2_30c2.zip) and send the CI report. Expect BUILD SUCCESSFUL, 132 unit tests (122 + 10), identityHash 786b471d... unchanged, same debug key. If it fails, send the new report.
+2. Owner: run the emulator workflow and send the report. Expect 96 tests (94 + 2).
+3. Owner: do the 8-step phone check list of VERSION_NOTES_0.2.30c2.md and report step by step. Also say if chip removal on the card (B-5) is wanted.
+4. Assistant: read the reports, issue plan v1.44 (C-2 CONFIRMED or corrected), then write C-3 (search by board / year), again in small steps. If the owner prefers, C-3 can be written on top of this package and tested together.
+
+52.8 Change log addition
+- v1.43: v0.2.30c-1 + fix1 CONFIRMED by owner report (CI run 45: 122 unit tests; emulator 94 of 94; check list clean; P-55 closed; the expected emulator count 93 was one too low); C-2 written (board + year picker, chips with remove in the editor, new-board dialog, tags on cards, tags in drafts), expected 132 unit / 96 emulator tests, UNCONFIRMED; decisions B-5 to B-9.
+
+END OF VERSION 1.43 UPDATE

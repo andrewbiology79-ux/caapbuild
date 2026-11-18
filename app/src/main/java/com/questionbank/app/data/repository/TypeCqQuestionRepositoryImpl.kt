@@ -379,7 +379,26 @@ class TypeCqQuestionRepositoryImpl(
             .put("answers", JSONArray(d.answers))
             .put("stimulusRating", d.stimulusRating ?: 0) // 0 = no rating (a rating is 1-5)
             .put("ratings", JSONArray(d.ratings.map { it ?: 0 }))
+            .put("stimulusBoards", tagsToJson(d.stimulusBoards))
+            .put("boards", JSONArray(d.boards.map { tagsToJson(it) }))
             .toString()
+
+        /** One tag list as `[{"b":"DHA","y":2019}, ...]` (v0.2.30c-2). */
+        private fun tagsToJson(tags: List<BoardTag>): JSONArray =
+            JSONArray(tags.map { JSONObject().put("b", it.boardCode).put("y", it.year) })
+
+        /** Bad entries are skipped; a missing array (a draft from before v0.2.30c-2) is an empty list. */
+        private fun tagsFromJson(a: JSONArray?): List<BoardTag> {
+            if (a == null) return emptyList()
+            val out = ArrayList<BoardTag>()
+            for (i in 0 until a.length()) {
+                val o = a.optJSONObject(i) ?: continue
+                val code = o.optString("b", "")
+                val year = o.optInt("y", 0)
+                if (code.isNotBlank() && BoardRules.isValidYear(year)) out.add(BoardTag(code, year))
+            }
+            return BoardRules.normalizeTags(out).take(BoardRules.MAX_TAGS_PER_BLOCK)
+        }
 
         internal fun decode(json: String): DraftText? = try {
             val o = JSONObject(json)
@@ -393,6 +412,8 @@ class TypeCqQuestionRepositoryImpl(
                 answers = List(4) { a.optString(it, "") },
                 stimulusRating = o.optInt("stimulusRating", 0).takeIf { it in RatingRules.MIN..RatingRules.MAX },
                 ratings = List(4) { i -> r?.optInt(i, 0)?.takeIf { it in RatingRules.MIN..RatingRules.MAX } },
+                stimulusBoards = tagsFromJson(o.optJSONArray("stimulusBoards")),
+                boards = o.optJSONArray("boards").let { b -> List(4) { i -> tagsFromJson(b?.optJSONArray(i)) } },
             )
         } catch (e: Exception) {
             null

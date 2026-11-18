@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.questionbank.app.domain.question.BoardItem
 import com.questionbank.app.domain.question.SavedGroup
 import com.questionbank.app.domain.question.SearchOutcome
 import com.questionbank.app.domain.question.TypeCqQuestionRepository
@@ -46,6 +47,10 @@ class QuestionListViewModel(private val topicId: String, private val repository:
 
     val topicName: StateFlow<String?> = repository.observeTopicName(topicId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** v0.2.30c-2: the board names for the chips on the cards. */
+    val boardCatalog: StateFlow<List<BoardItem>> = repository.observeBoards()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     var searchOpen by mutableStateOf(false)
         private set

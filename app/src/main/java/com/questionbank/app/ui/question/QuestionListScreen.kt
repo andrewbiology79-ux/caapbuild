@@ -42,6 +42,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.questionbank.app.domain.question.BoardItem
 import com.questionbank.app.domain.question.SavedGroup
 import com.questionbank.app.ui.components.AppHeader
 import com.questionbank.app.ui.format.toBengali
@@ -68,6 +69,7 @@ fun QuestionListScreen(
     val groups by viewModel.groups.collectAsState()
     val topicName by viewModel.topicName.collectAsState()
     val searchState by viewModel.searchState.collectAsState()
+    val boardCatalog by viewModel.boardCatalog.collectAsState()
     val snackbar = remember { SnackbarHostState() }
 
     val searchOpen = viewModel.searchOpen
@@ -122,16 +124,16 @@ fun QuestionListScreen(
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
             if (showSearch) {
-                SearchBody(searchState, onEdit)
+                SearchBody(searchState, boardCatalog, onEdit)
             } else {
-                ListBody(groups, onEdit)
+                ListBody(groups, boardCatalog, onEdit)
             }
         }
     }
 }
 
 @Composable
-private fun ListBody(current: List<SavedGroup>?, onEdit: (SavedGroup) -> Unit) {
+private fun ListBody(current: List<SavedGroup>?, boards: List<BoardItem>, onEdit: (SavedGroup) -> Unit) {
     when {
         current == null -> Box(Modifier.fillMaxSize()) { CircularProgressIndicator(modifier = Modifier.align(Alignment.Center)) }
         current.isEmpty() -> Box(Modifier.fillMaxSize()) {
@@ -141,18 +143,18 @@ private fun ListBody(current: List<SavedGroup>?, onEdit: (SavedGroup) -> Unit) {
                 style = MaterialTheme.typography.bodyLarge,
             )
         }
-        else -> CardList(current, totalLine(current), onEdit)
+        else -> CardList(current, totalLine(current), boards, onEdit)
     }
 }
 
 @Composable
-private fun SearchBody(state: SearchUiState, onEdit: (SavedGroup) -> Unit) {
+private fun SearchBody(state: SearchUiState, boards: List<BoardItem>, onEdit: (SavedGroup) -> Unit) {
     when (state) {
         SearchUiState.Idle -> Unit
         SearchUiState.NoTerms -> Message("খোঁজার জন্য অক্ষর বা সংখ্যা লিখুন।")
         is SearchUiState.Failed -> Message("খোঁজা যায়নি। আবার চেষ্টা করুন।", isError = true)
         is SearchUiState.Results ->
-            if (state.groups.isEmpty()) Message("কোনো প্রশ্ন পাওয়া যায়নি।") else CardList(state.groups, foundLine(state.groups), onEdit)
+            if (state.groups.isEmpty()) Message("কোনো প্রশ্ন পাওয়া যায়নি।") else CardList(state.groups, foundLine(state.groups), boards, onEdit)
     }
 }
 
@@ -169,7 +171,7 @@ private fun Message(text: String, isError: Boolean = false) {
 }
 
 @Composable
-private fun CardList(groups: List<SavedGroup>, headline: String, onEdit: (SavedGroup) -> Unit) {
+private fun CardList(groups: List<SavedGroup>, headline: String, boards: List<BoardItem>, onEdit: (SavedGroup) -> Unit) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
@@ -179,7 +181,7 @@ private fun CardList(groups: List<SavedGroup>, headline: String, onEdit: (SavedG
             Text(headline, style = MaterialTheme.typography.labelLarge)
         }
         itemsIndexed(groups, key = { _, group -> group.stimulusId ?: group.subQuestions.first().id }) { index, group ->
-            QuestionCard(number = index + 1, group = group, onEdit = { onEdit(group) })
+            QuestionCard(number = index + 1, group = group, boards = boards, onEdit = { onEdit(group) })
         }
     }
 }
