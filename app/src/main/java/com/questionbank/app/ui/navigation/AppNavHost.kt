@@ -47,6 +47,7 @@ import com.questionbank.app.ui.hierarchy.ReferenceRow
 import com.questionbank.app.ui.profile.ProfileScreen
 import com.questionbank.app.domain.question.QuestionGroupKey
 import com.questionbank.app.ui.question.QuestionEditScreen
+import com.questionbank.app.ui.question.ChapterCqWorkspaceScreen
 import com.questionbank.app.ui.question.QuestionEditViewModel
 import com.questionbank.app.ui.question.QuestionEditorScreen
 import com.questionbank.app.ui.question.QuestionEditorViewModel
@@ -333,7 +334,10 @@ fun AppNavHost() {
                     val topicId = entry.arguments?.getString("topicId").orEmpty()
                     val vm: QuestionEditorViewModel = viewModel(
                         factory = QuestionEditorViewModel.factory {
-                            QuestionEditorViewModel(topicId, questionRepo, container.appScope, container.typeCqData.observeQuestionTypes())
+                            QuestionEditorViewModel(
+                                topicId, questionRepo, container.appScope, container.typeCqData.observeQuestionTypes(),
+                                duplicateChecker = { text -> container.typeCqData.isDuplicate(topicId, text) },
+                            )
                         }
                     )
                     QuestionEditorScreen(
@@ -371,10 +375,12 @@ fun AppNavHost() {
 
             navigation(startDestination = Routes.CHAPTER_CQ_HOME, route = Routes.TAB_CHAPTER_CQ) {
                 composable(Routes.CHAPTER_CQ_HOME) {
-                    PlaceholderScreen(
-                        title = "Chapter CQ",
-                        subtitle = "অধ্যায়ভিত্তিক সৃজনশীল প্রশ্ন",
-                        message = "Chapter CQ-এর স্ক্রিন পরবর্তী ধাপে আসছে। এখন Type CQ ট্যাব ব্যবহার করুন।",
+                    ChapterCqWorkspaceScreen(
+                        repository = container.chapterCq,
+                        referenceRepository = container.typeCqData,
+                        draftRepository = container.editorDrafts,
+                        draftScope = container.appScope,
+                        onBack = null,
                     )
                 }
             }

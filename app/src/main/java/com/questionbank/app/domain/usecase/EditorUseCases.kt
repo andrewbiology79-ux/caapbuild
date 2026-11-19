@@ -39,7 +39,7 @@ class ValidateEditorDraft {
         val errors = buildList {
             if (draft.parentId.isBlank()) add("Parent selection is required")
             if (draft.questionText.isBlank()) add("Question text is required")
-            if (!draft.marks.isFinite() || draft.marks < 0.0) add("Marks must be a finite non-negative number")
+            if (!draft.marks.isFinite() || draft.marks <= 0.0) add("Marks must be a finite positive number")
             if (draft.scope == EditorDraft.Scope.TYPE_CQ && draft.questionTypeId.isNullOrBlank()) add("Question type is required for Type_CQ")
         }
         return DraftValidation(errors.isEmpty(), errors)

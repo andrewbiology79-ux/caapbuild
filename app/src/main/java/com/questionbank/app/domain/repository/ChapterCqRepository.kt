@@ -19,13 +19,30 @@ interface ChapterCqRepository {
     fun observeQuestions(chapterId: String): Flow<List<ChapterCqQuestionsEntity>>
     fun observeQuestionCards(chapterId: String): Flow<List<ChapterCqQuestionCardDb>>
     suspend fun loadQuestion(questionId: String): ChapterCqQuestionsEntity?
+    suspend fun loadStimulus(stimulusId: String): ChapterCqStimuliEntity?
+    suspend fun loadSolutionParts(questionId: String): List<ChapterCqSolutionPartsEntity>
+    suspend fun loadQuestionBoards(questionId: String): List<ChapterCqQuestionBoardsEntity>
+    suspend fun loadQuestionCategories(questionId: String): List<ChapterCqQuestionCategoryLinksEntity>
+    suspend fun addSubject(name: String): Boolean
+    suspend fun addChapter(subjectId: String, name: String): Boolean
+    suspend fun renameSubject(subjectId: String, name: String): Boolean
+    suspend fun renameChapter(chapterId: String, name: String): Boolean
+    suspend fun saveQuestionWithStimulus(
+        question: ChapterCqQuestionsEntity,
+        stimulus: ChapterCqStimuliEntity?,
+        solutionParts: List<ChapterCqSolutionPartsEntity> = emptyList(),
+        boards: List<ChapterCqQuestionBoardsEntity> = emptyList(),
+        categories: List<ChapterCqQuestionCategoryLinksEntity> = emptyList(),
+        mustUpdateExisting: Boolean,
+        draftOwnerId: String,
+    ): Boolean
     suspend fun saveQuestion(
         question: ChapterCqQuestionsEntity,
         solutionParts: List<ChapterCqSolutionPartsEntity> = emptyList(),
         boards: List<ChapterCqQuestionBoardsEntity> = emptyList(),
         categories: List<ChapterCqQuestionCategoryLinksEntity> = emptyList(),
     ): Boolean
-    suspend fun isDuplicate(chapterId: String, questionText: String): Boolean
+    suspend fun isDuplicate(chapterId: String, questionText: String, excludeQuestionId: String? = null): Boolean
     suspend fun replaceBoards(questionId: String, rows: List<ChapterCqQuestionBoardsEntity>)
     suspend fun replaceCategories(questionId: String, rows: List<ChapterCqQuestionCategoryLinksEntity>)
     suspend fun replaceSolutionParts(questionId: String, rows: List<ChapterCqSolutionPartsEntity>)

@@ -1,8 +1,8 @@
 package com.questionbank.app.domain.question
 
 /**
- * The four CQ sub-questions. Each label has a fixed question type and fixed marks (ক 1, খ 2, গ 3, ঘ 4).
- * [typeId] must equal the id seeded by `SeedData` (the foreign key needs it).
+ * The four CQ sub-questions. Each label has a default type and marks (ক 1, খ 2, গ 3, ঘ 4);
+ * Full Editor mode may change these values. [typeId] must match a seeded question-type id.
  */
 enum class CqLabel(val letter: String, val typeId: String, val typeCode: String, val typeLabel: String, val marks: Double, val sortOrder: Int) {
     KA("ক", "qt_knowledge", "KNOWLEDGE", "জ্ঞানমূলক", 1.0, 1),
@@ -16,7 +16,14 @@ enum class CqLabel(val letter: String, val typeId: String, val typeCode: String,
 }
 
 /** What the person typed for one sub-question (raw, not yet cleaned). */
-data class SubQuestionInput(val label: CqLabel, val text: String, val shortAnswer: String)
+data class SubQuestionInput(
+    val label: CqLabel,
+    val text: String,
+    val shortAnswer: String,
+    val questionTypeId: String = label.typeId,
+    val marks: Double = label.marks,
+    val solutionParts: List<String> = emptyList(),
+)
 
 /**
  * Ratings chosen in the editor (v0.2.30, UI-07). A rating is 1-5 or null (= not saved; the card then shows 3 by rule U-1).
@@ -51,6 +58,8 @@ data class QuestionGroupInput(
     val ratings: RatingsInput? = null,
     /** v0.2.30c: null = no boards chosen. Boards of a label without question text, and stimulus boards without stimulus text, are not stored. */
     val boards: BoardsInput? = null,
+    /** Reference text belongs to the stimulus record and is independent from its main text. */
+    val referenceText: String = "",
 )
 
 /** Raw editor text, used for the automatic draft. Index 0..3 = ক, খ, গ, ঘ. */
@@ -64,9 +73,13 @@ data class DraftText(
     /** v0.2.30c-2: boards and years chosen for the stimulus and for ক..ঘ, in the order chosen. Tags alone are not content: see [isBlank]. */
     val stimulusBoards: List<BoardTag> = emptyList(),
     val boards: List<List<BoardTag>> = List(4) { emptyList() },
+    val referenceText: String = "",
+    val questionTypeIds: List<String> = CqLabel.entries.map { it.typeId },
+    val marks: List<Double> = CqLabel.entries.map { it.marks },
+    val solutionTexts: List<List<String>> = List(4) { emptyList() },
 ) {
     val isBlank: Boolean
-        get() = stimulus.isBlank() && texts.all { it.isBlank() } && answers.all { it.isBlank() }
+        get() = stimulus.isBlank() && referenceText.isBlank() && texts.all { it.isBlank() } && answers.all { it.isBlank() } && solutionTexts.all { row -> row.all { it.isBlank() } }
 }
 
 /** One saved sub-question as the list shows it. */
@@ -80,6 +93,8 @@ data class SavedSubQuestion(
     val rating: Int? = null,
     /** v0.2.30c: boards and years of this question, in the order they were chosen. */
     val boards: List<BoardTag> = emptyList(),
+    val questionTypeId: String = label?.typeId.orEmpty(),
+    val solutionParts: List<String> = emptyList(),
 )
 
 /** One stimulus with its sub-questions, or one single question without a stimulus. */
@@ -91,6 +106,7 @@ data class SavedGroup(
     val stimulusRating: Int? = null,
     /** v0.2.30c: boards and years of the stimulus, in the order they were chosen. */
     val stimulusBoards: List<BoardTag> = emptyList(),
+    val referenceText: String = "",
 )
 
 sealed interface SaveResult {
@@ -128,7 +144,15 @@ data class GroupEditInput(
     val ratings: RatingsInput? = null,
     /** v0.2.30c: null = leave every stored board tag untouched. See [BoardsInput] for the meaning when given. */
     val boards: BoardsInput? = null,
+    /** null means keep the stored reference unchanged. */
+    val referenceText: String? = null,
+    val questionTypes: Map<CqLabel, String> = emptyMap(),
+    val marksByLabel: Map<CqLabel, Double> = emptyMap(),
+    val solutionsByLabel: Map<CqLabel, List<String>> = emptyMap(),
 )
+
+data class QuestionMetaUpdate(val questionId: String, val label: CqLabel, val questionTypeId: String, val marks: Double)
+data class QuestionSolutionUpdate(val questionId: String, val parts: List<String>)
 
 /** A rating that changes to [value] (null = cleared). Used where "no change" must be told apart from "cleared". */
 data class RatingChange(val value: Int?)

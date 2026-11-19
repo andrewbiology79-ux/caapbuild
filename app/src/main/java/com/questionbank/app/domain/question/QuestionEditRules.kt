@@ -4,8 +4,9 @@ package com.questionbank.app.domain.question
  * Pure rules for saving an EXISTING group (v0.2.28; no database, no Android classes).
  *
  * Same cleaning and limits as a new save ([QuestionRules]). What an edit may NOT do: blank the text of a stored sub-question or
- * the stimulus of a group that has one (that is a delete, a later package). What it may do: change texts and short answers, and
- * add a sub-question for a label that was empty (only in a group with a stimulus). Marks and types never change here. v0.2.30: ratings may change (see [RatingsInput]); a rating-only change is a real change.
+ * the stimulus of a group that has one (that is a delete, a later package). What it may do: change texts and short answers, add
+ * a sub-question for a label that was empty (only in a group with a stimulus), change question type/marks and ordered text
+ * solution parts. v0.2.30: ratings may change (see [RatingsInput]); a rating-only change is a real change.
  * Nothing that equals the stored value is written again, so a save without a real change is [Checked.NoChange].
  */
 object QuestionEditRules {
@@ -25,6 +26,9 @@ object QuestionEditRules {
             val stimulusBoards: BoardChange? = null,
             val boardUpdates: List<QuestionBoardsUpdate> = emptyList(),
             val addBoards: Map<CqLabel, List<BoardTag>> = emptyMap(),
+            val referenceText: String? = null,
+            val metadataUpdates: List<QuestionMetaUpdate> = emptyList(),
+            val solutionUpdates: List<QuestionSolutionUpdate> = emptyList(),
         ) : Checked
         data object NoChange : Checked
         data class BlankedQuestion(val label: CqLabel) : Checked
@@ -42,6 +46,12 @@ object QuestionEditRules {
         if (wantedBoards != null && !BoardRules.allValid(wantedBoards)) return Checked.BadBoard
         val hasStimulus = original.stimulusId != null
         var newStimulus: String? = null
+        var newReference: String? = null
+        if (hasStimulus && input.referenceText != null) {
+            val reference = QuestionRules.clean(input.referenceText)
+            if (reference.length > QuestionRules.MAX_TEXT_LENGTH) return Checked.TooLong("রেফারেন্স")
+            if (reference != original.referenceText) newReference = reference
+        }
         if (hasStimulus) {
             val stimulus = QuestionRules.clean(input.stimulusText)
             if (stimulus.isEmpty()) return Checked.BlankedStimulus
@@ -54,6 +64,8 @@ object QuestionEditRules {
         val addRatings = LinkedHashMap<CqLabel, Int?>()
         val boardUpdates = ArrayList<QuestionBoardsUpdate>()
         val addBoards = LinkedHashMap<CqLabel, List<BoardTag>>()
+        val metadataUpdates = ArrayList<QuestionMetaUpdate>()
+        val solutionUpdates = ArrayList<QuestionSolutionUpdate>()
         // A stimulus rating can only change on a group that has a stimulus.
         val stimulusRating: RatingChange? =
             if (hasStimulus && wanted != null && wanted.stimulus != original.stimulusRating) RatingChange(wanted.stimulus) else null
@@ -77,6 +89,18 @@ object QuestionEditRules {
                 if (wantedTags != null && BoardRules.normalizeTags(wantedTags) != stored.boards) {
                     boardUpdates.add(QuestionBoardsUpdate(stored.id, sub.label, BoardChange(BoardRules.normalizeTags(wantedTags))))
                 }
+                val wantedType = input.questionTypes[sub.label] ?: stored.questionTypeId
+                val wantedMarks = input.marksByLabel[sub.label] ?: stored.marks
+                if (wantedType.isBlank()) return Checked.TooLong("প্রশ্নের ধরন")
+                if (!wantedMarks.isFinite() || wantedMarks <= 0.0) return Checked.TooLong("নম্বর")
+                if (wantedType != stored.questionTypeId || wantedMarks != stored.marks) {
+                    metadataUpdates.add(QuestionMetaUpdate(stored.id, sub.label, wantedType, wantedMarks))
+                }
+                val desiredSolutions = input.solutionsByLabel[sub.label]?.map(QuestionRules::clean)?.filter { it.isNotEmpty() }
+                if (desiredSolutions != null) {
+                    if (desiredSolutions.any { it.length > QuestionRules.MAX_TEXT_LENGTH }) return Checked.TooLong("সমাধান")
+                    if (desiredSolutions != stored.solutionParts) solutionUpdates.add(QuestionSolutionUpdate(stored.id, desiredSolutions))
+                }
             } else {
                 if (text.isEmpty()) {
                     if (answer.isNotEmpty()) return Checked.MissingText(sub.label)
@@ -85,15 +109,21 @@ object QuestionEditRules {
                 if (!hasStimulus) continue // a single question never gains new sub-questions
                 if (text.length > QuestionRules.MAX_TEXT_LENGTH) return Checked.TooLong("${sub.label.letter}) প্রশ্ন")
                 if (answer.length > QuestionRules.MAX_TEXT_LENGTH) return Checked.TooLong("${sub.label.letter}) উত্তর")
-                adds.add(SubQuestionInput(sub.label, text, answer))
+                val wantedType = input.questionTypes[sub.label] ?: sub.questionTypeId
+                val wantedMarks = input.marksByLabel[sub.label] ?: sub.marks
+                if (wantedType.isBlank()) return Checked.TooLong("প্রশ্নের ধরন")
+                if (!wantedMarks.isFinite() || wantedMarks <= 0.0) return Checked.TooLong("নম্বর")
+                val solutions = input.solutionsByLabel[sub.label]?.map(QuestionRules::clean)?.filter { it.isNotEmpty() }.orEmpty()
+                if (solutions.any { it.length > QuestionRules.MAX_TEXT_LENGTH }) return Checked.TooLong("সমাধান")
+                adds.add(SubQuestionInput(sub.label, text, answer, wantedType, wantedMarks, solutions))
                 if (wanted != null && wanted.byLabel.containsKey(sub.label)) addRatings[sub.label] = wanted.byLabel[sub.label]
                 val newTags = wantedBoards?.byLabel?.get(sub.label)
                 if (newTags != null) addBoards[sub.label] = BoardRules.normalizeTags(newTags)
             }
         }
-        if (newStimulus == null && updates.isEmpty() && adds.isEmpty() && stimulusRating == null && ratingUpdates.isEmpty() &&
-            stimulusBoards == null && boardUpdates.isEmpty()
+        if (newStimulus == null && newReference == null && updates.isEmpty() && adds.isEmpty() && stimulusRating == null && ratingUpdates.isEmpty() &&
+            stimulusBoards == null && boardUpdates.isEmpty() && metadataUpdates.isEmpty() && solutionUpdates.isEmpty()
         ) return Checked.NoChange
-        return Checked.Ok(newStimulus, updates, adds, stimulusRating, ratingUpdates, addRatings, stimulusBoards, boardUpdates, addBoards)
+        return Checked.Ok(newStimulus, updates, adds, stimulusRating, ratingUpdates, addRatings, stimulusBoards, boardUpdates, addBoards, newReference, metadataUpdates, solutionUpdates)
     }
 }

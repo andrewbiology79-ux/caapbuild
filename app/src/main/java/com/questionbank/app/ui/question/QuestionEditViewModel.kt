@@ -40,6 +40,20 @@ enum class EditLoad { LOADING, READY, MISSING }
 /** One queued draft write: [text] null means "remove the draft" (the typed text equals the stored text again, or it was discarded). */
 private class EditDraftOp(val text: DraftText?)
 
+private data class EditSnapshot(
+    val stimulus: String = "",
+    val referenceText: String = "",
+    val texts: List<String> = List(4) { "" },
+    val answers: List<String> = List(4) { "" },
+    val ratings: List<Int?> = List(4) { null },
+    val stimulusRating: Int? = null,
+    val boards: List<List<BoardTag>> = List(4) { emptyList() },
+    val stimulusBoards: List<BoardTag> = emptyList(),
+    val questionTypeIds: List<String> = CqLabel.entries.map { it.typeId },
+    val marks: List<Double> = CqLabel.entries.map { it.marks },
+    val solutionTexts: List<List<String>> = List(4) { emptyList() },
+)
+
 /**
  * Edit screen of ONE existing card (v0.2.28 core, v0.2.29 drafts). The stored texts are loaded once; what the person types lives
  * in Compose snapshot state (typing never races with the keyboard, same choice as the new-question editor).
@@ -68,6 +82,19 @@ class QuestionEditViewModel(
         private set
     var stimulus by mutableStateOf("")
         private set
+    var referenceText by mutableStateOf("")
+        private set
+    var questionTypeIds by mutableStateOf(CqLabel.entries.map { it.typeId })
+        private set
+    var marks by mutableStateOf(CqLabel.entries.map { it.marks })
+        private set
+    var solutionTexts by mutableStateOf(List(4) { emptyList<String>() })
+        private set
+    var editorMode by mutableStateOf(EditorMode.MINIMUM)
+        private set
+    private val history = EditorHistory(EditSnapshot())
+    val canUndo: Boolean get() = history.canUndo
+    val canRedo: Boolean get() = history.canRedo
     var texts by mutableStateOf(List(4) { "" })
         private set
     var answers by mutableStateOf(List(4) { "" })
@@ -122,14 +149,22 @@ class QuestionEditViewModel(
                 }
                 original = group
                 stimulus = group.stimulusText
+                referenceText = group.referenceText
                 texts = t
                 answers = a
                 stimulusRating = group.stimulusRating
                 ratings = r
                 stimulusBoards = group.stimulusBoards
                 boards = b
+                val typeRows = CqLabel.entries.map { label -> group.subQuestions.firstOrNull { it.label == label }?.questionTypeId ?: label.typeId }
+                val markRows = CqLabel.entries.map { label -> group.subQuestions.firstOrNull { it.label == label }?.marks ?: label.marks }
+                val solutionRows = CqLabel.entries.map { label -> group.subQuestions.firstOrNull { it.label == label }?.solutionParts.orEmpty() }
+                questionTypeIds = typeRows
+                marks = markRows
+                solutionTexts = solutionRows
                 load = EditLoad.READY
                 restoreDraft(group)
+                history.reset(snapshot())
                 startWriter()
             }
         }
@@ -140,6 +175,7 @@ class QuestionEditViewModel(
         val stored = repository.loadEditDraft(groupKey) ?: return
         if (group.stimulusId != null) {
             stimulus = stored.stimulus
+            referenceText = stored.referenceText
             stimulusRating = stored.stimulusRating
             stimulusBoards = stored.stimulusBoards
         }
@@ -147,17 +183,26 @@ class QuestionEditViewModel(
         val a = answers.toMutableList()
         val r = ratings.toMutableList()
         val b = boards.toMutableList()
+        val qTypes = questionTypeIds.toMutableList()
+        val markValues = marks.toMutableList()
+        val solutionValues = solutionTexts.toMutableList()
         for (label in editableLabels) {
             val i = label.sortOrder - 1
             t[i] = stored.texts[i]
             a[i] = stored.answers[i]
             r[i] = stored.ratings[i]
             b[i] = stored.boards[i]
+            qTypes[i] = stored.questionTypeIds[i]
+            markValues[i] = stored.marks[i]
+            solutionValues[i] = stored.solutionTexts[i]
         }
         texts = t
         answers = a
         ratings = r
         boards = b
+        questionTypeIds = qTypes
+        marks = markValues
+        solutionTexts = solutionValues
         if (changed) {
             restoredFromDraft = true
             draftStatus = DraftStatus.SAVED
@@ -185,7 +230,8 @@ class QuestionEditViewModel(
     private fun draftOf(): DraftText =
         DraftText(
             stimulus = stimulus, texts = texts, answers = answers, stimulusRating = stimulusRating, ratings = ratings,
-            stimulusBoards = stimulusBoards, boards = boards,
+            stimulusBoards = stimulusBoards, boards = boards, referenceText = referenceText,
+            questionTypeIds = questionTypeIds, marks = marks, solutionTexts = solutionTexts,
         )
 
     private fun queueDraft() {
@@ -211,7 +257,10 @@ class QuestionEditViewModel(
             topicId = topicId,
             groupKey = groupKey,
             stimulusText = stimulus,
-            subQuestions = editableLabels.map { SubQuestionInput(it, texts[it.sortOrder - 1], answers[it.sortOrder - 1]) },
+            subQuestions = editableLabels.map { label ->
+                val i = label.sortOrder - 1
+                SubQuestionInput(label, texts[i], answers[i], questionTypeIds[i], marks[i], solutionTexts[i])
+            },
             // The ratings of exactly the blocks this screen shows; the stimulus rating only for a card that has a stimulus.
             ratings = RatingsInput(
                 stimulus = if (hasStimulus) stimulusRating else null,
@@ -222,7 +271,30 @@ class QuestionEditViewModel(
                 stimulus = if (hasStimulus) stimulusBoards else emptyList(),
                 byLabel = editableLabels.associateWith { boards[it.sortOrder - 1] },
             ),
+            referenceText = if (hasStimulus) referenceText else null,
+            questionTypes = editableLabels.associateWith { questionTypeIds[it.sortOrder - 1] },
+            marksByLabel = editableLabels.associateWith { marks[it.sortOrder - 1] },
+            solutionsByLabel = editableLabels.associateWith { solutionTexts[it.sortOrder - 1] },
         )
+
+    private fun snapshot() = EditSnapshot(
+        stimulus, referenceText, texts, answers, ratings, stimulusRating, boards, stimulusBoards,
+        questionTypeIds, marks, solutionTexts,
+    )
+
+    private fun record(group: String) { history.record(snapshot(), group) }
+
+    private fun applySnapshot(value: EditSnapshot) {
+        stimulus = value.stimulus; referenceText = value.referenceText; texts = value.texts; answers = value.answers
+        ratings = value.ratings; stimulusRating = value.stimulusRating; boards = value.boards; stimulusBoards = value.stimulusBoards
+        questionTypeIds = value.questionTypeIds; marks = value.marks; solutionTexts = value.solutionTexts
+        result = null
+        queueDraft()
+    }
+
+    fun setEditorMode(mode: EditorMode) { editorMode = mode }
+    fun undo() { if (!saving && !finished) history.undo()?.let(::applySnapshot) }
+    fun redo() { if (!saving && !finished) history.redo()?.let(::applySnapshot) }
 
     /** True when the typed text differs from what is stored (after the same cleaning a save does). Blanking something counts as a change. */
     val changed: Boolean
@@ -234,6 +306,7 @@ class QuestionEditViewModel(
     fun changeStimulus(value: String) {
         if (saving || finished) return
         stimulus = value
+        record("stimulus")
         result = null
         queueDraft()
     }
@@ -241,6 +314,7 @@ class QuestionEditViewModel(
     fun setText(label: CqLabel, value: String) {
         if (saving || finished) return
         texts = texts.toMutableList().also { it[label.sortOrder - 1] = value }
+        record("question-${label.sortOrder}")
         result = null
         queueDraft()
     }
@@ -248,6 +322,7 @@ class QuestionEditViewModel(
     fun setAnswer(label: CqLabel, value: String) {
         if (saving || finished) return
         answers = answers.toMutableList().also { it[label.sortOrder - 1] = value }
+        record("answer-${label.sortOrder}")
         result = null
         queueDraft()
     }
@@ -256,6 +331,7 @@ class QuestionEditViewModel(
     fun changeStimulusRating(value: Int?) {
         if (saving || finished) return
         stimulusRating = value
+        record("stimulus-rating")
         result = null
         queueDraft()
     }
@@ -263,6 +339,7 @@ class QuestionEditViewModel(
     fun changeRating(label: CqLabel, value: Int?) {
         if (saving || finished) return
         ratings = ratings.toMutableList().also { it[label.sortOrder - 1] = value }
+        record("rating-${label.sortOrder}")
         result = null
         queueDraft()
     }
@@ -271,6 +348,7 @@ class QuestionEditViewModel(
     fun changeStimulusBoards(value: List<BoardTag>) {
         if (saving || finished) return
         stimulusBoards = value
+        record("stimulus-boards")
         result = null
         queueDraft()
     }
@@ -278,8 +356,25 @@ class QuestionEditViewModel(
     fun changeBoards(label: CqLabel, value: List<BoardTag>) {
         if (saving || finished) return
         boards = boards.toMutableList().also { it[label.sortOrder - 1] = value }
+        record("boards-${label.sortOrder}")
         result = null
         queueDraft()
+    }
+
+    fun changeReferenceText(value: String) { if (saving || finished || !hasStimulus) return; referenceText = value; record("reference"); result = null; queueDraft() }
+    fun changeQuestionType(label: CqLabel, value: String) { if (saving || finished) return; questionTypeIds = questionTypeIds.toMutableList().also { it[label.sortOrder - 1] = value }; record("type-${label.sortOrder}"); result = null; queueDraft() }
+    fun changeMarks(label: CqLabel, value: Double) { if (saving || finished || !value.isFinite() || value <= 0.0) return; marks = marks.toMutableList().also { it[label.sortOrder - 1] = value }; record("marks-${label.sortOrder}"); result = null; queueDraft() }
+    fun changeSolutionText(label: CqLabel, part: Int, value: String) { if (saving || finished) return; solutionTexts = solutionTexts.toMutableList().also { rows -> rows[label.sortOrder - 1] = rows[label.sortOrder - 1].toMutableList().also { it[part] = value } }; record("solution-${label.sortOrder}-$part"); result = null; queueDraft() }
+    fun addSolutionText(label: CqLabel) { if (saving || finished) return; solutionTexts = solutionTexts.toMutableList().also { rows -> rows[label.sortOrder - 1] = rows[label.sortOrder - 1] + "" }; record("solution-add-${label.sortOrder}"); result = null; queueDraft() }
+    fun removeSolutionText(label: CqLabel, part: Int) { if (saving || finished) return; solutionTexts = solutionTexts.toMutableList().also { rows -> rows[label.sortOrder - 1] = rows[label.sortOrder - 1].toMutableList().also { if (part in it.indices) it.removeAt(part) } }; record("solution-remove-${label.sortOrder}"); result = null; queueDraft() }
+    fun moveSolutionText(label: CqLabel, from: Int, to: Int) {
+        if (saving || finished) return
+        val i = label.sortOrder - 1
+        val current = solutionTexts[i]
+        if (from !in current.indices || to !in current.indices || from == to) return
+        val moved = current.toMutableList().also { row -> val item = row.removeAt(from); row.add(to, item) }
+        solutionTexts = solutionTexts.toMutableList().also { it[i] = moved }
+        record("solution-order-${label.sortOrder}"); result = null; queueDraft()
     }
 
     suspend fun addBoard(code: String, name: String): AddBoardResult = repository.addCustomBoard(code, name)

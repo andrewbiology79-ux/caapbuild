@@ -1,7 +1,48 @@
-Question Bank Android - working package v0.2.31-phase5-wip2 (plan v1.48)
+Question Bank Android — coordinated Phase 6–8 implementation candidate
+Artifact filename: QuestionBank_v0_2_31_PHASE6_8_IMPLEMENTATION_CANDIDATE_UNVERIFIED.zip
+Source baseline: QuestionBank_v0_2_31_PHASE5_WIP2.zip
+Project plan: PROJECT_PLAN_v1_53_UPDATED.txt
 
-CURRENT STATE - NOT COMPILED, NOT RUN (Gradle 8.14.3 distribution unavailable offline). Phase 4 WIP1 + Phase 5 WIP1/WIP2 stack on the last CI-confirmed baseline v0.2.30c3 (run 47: 142/142 unit, 99/99 emulator). Next action: push and run CI before any new feature (plan 57.6, P-57).
+STATIC RECHECK v1.53 (SOURCE REVIEW ONLY)
+- Rechecked modified source files against the v0.2.31-phase5-wip2 baseline and plan v1.52.
+- Corrected the Type_CQ duplicate-checker repository call; archived question-type retention guard; Minimum/Full solution-control gating; exact-duplicate warning wording; and Chapter_CQ transactional read-back boundary. See STATIC_RECHECK_REPORT_v1_53.txt and plan section 62.
+- These corrections are SOURCE WRITTEN ONLY. No Gradle build, Kotlin/KSP compile, unit test, instrumented/emulator test, or phone test was run.
+- Phase 6, Phase 7 and Phase 8 remain PARTIAL / NOT VERIFIED. Phase 4/5 M0 remains NOT PASSED.
 
+OWNER DIRECTION FOR THIS ITERATION
+- The owner explicitly instructed: implement the coordinated Phase 6, Phase 7 and Phase 8 work in one combined delivery; do NOT run tests.
+- Accordingly, no Gradle build, Kotlin/KSP compilation, unit tests, instrumented/emulator tests, or phone tests were run for this candidate.
+- “Not run by owner instruction” is not a pass. This file does not claim that the candidate compiles or works at runtime.
+
+INHERITED BASELINE STATUS
+- Phase 4/5 WIP2 M0 gate has NOT passed. The inherited WIP2 package was not CI/build/emulator/phone verified. The prior local Gradle attempt could not acquire Gradle 8.14.3 because of unavailable network/DNS; Android SDK/adb and a Git remote were unavailable in that environment.
+- The owner then directed us to continue implementation without tests. The editor work is therefore layered on an unverified baseline. P-57 remains OPEN; Phase 4 and Phase 5 are NOT marked DONE.
+- Historical CI run #47 (142/142 unit, 99/99 emulator) belongs to v0.2.30c3, not WIP2 and not this candidate.
+
+IMPLEMENTATION STATUS (SOURCE WRITTEN, NOT COMPILED / NOT RUN)
+- Phase 6: PARTIAL. Added bounded undo/redo history, Minimum/Full mode controls, duplicate warning paths, editor draft extensions and reference/metadata fields. Type_CQ still uses the legacy DraftText/edit-draft storage; Chapter_CQ uses the generic opaque EditorDraftRepository. A single canonical cross-scope draft schema is NOT complete (P-55.4 remains OPEN).
+- Phase 7: PARTIAL. Type_CQ new/edit and Chapter_CQ create/edit text paths now expose reference, editable positive marks, rating and board/category controls as applicable. Type_CQ question type is editable in Full mode; Chapter_CQ intentionally has no question-type column or picker.
+- Phase 8: PARTIAL. Added ordered text-solution editing, math-symbol insert bar and plain-text preview. The symbol bar appends at the end of a text value; this is not cursor-aware equation editing and preview does not render mathematical notation.
+- Chapter_CQ screen now has a subject/chapter workspace, add/rename entry points and per-question create/edit flow. Existing multiple board/year links and archived reference links are preserved during a question edit; the UI edits only one primary board/year entry.
+
+IMPORTANT LIMITATIONS / STILL OPEN
+- Type_CQ editor category assignment controls are not included. The reusable history helper is present, but one canonical immutable/observable EditorState pipeline across Type_CQ and Chapter_CQ is not complete. Raw invalid marks text is local to the input control until it parses and is not draft/history state.
+- Chapter_CQ hierarchy delete/reorder/breadcrumb and category create/rename/archive management are not included.
+- Image/media add, replace, crop, order and upload pipeline are NOT implemented. Existing IMAGE solution rows are preserved by text edits where present, but cannot be edited in this UI. Phase 10 media work remains required.
+- Full formula rendering, cursor-aware symbol insertion, rich layout, and image+text mixed solution UI remain NOT IMPLEMENTED.
+- Type_CQ edit duplicate-warning flow is NOT implemented; the Type_CQ new editor performs an exact-text duplicate check. Chapter_CQ new/edit checks exact duplicate text and allows an explicit “save anyway” confirmation.
+- Question-block deletion and sub-question block reorder remain out of scope; fixed ক/খ/গ/ঘ labels remain.
+- Chapter_CQ exposes one primary board/year selection. Additional existing links are preserved but are not independently editable in this screen. Archived linked category rows are retained and displayed as disabled.
+- Chapter_CQ category creation/rename/archive is not included in this workspace; it uses existing category records.
+- The generic EditorDraft abstraction is not yet the canonical state engine for both scopes. Existing Type_CQ DraftText version-1 JSON remains backward-compatible through defaulted fields, but a full migration/reconciliation has not been completed.
+- P-18, P-32, P-55.4, P-56, P-57, P-62 and P-63 remain open. Version metadata was deliberately NOT incremented because P-56 has no approved version map.
+
+VERSION / DATABASE
+- app/build.gradle.kts remains versionCode 36 and versionName 0.2.31-phase5-wip2. The ZIP filename is an artifact label only, not a new app version/release.
+- No Room entity/table/schema migration was intentionally introduced. Room/KSP output and identityHash have NOT been checked for this candidate; do not claim schema parity until CI confirms it.
+- No APK or release artifact is included.
+
+--- Older notes (v0.2.30c3-phase4-wip1 and before) ---
 --- Older notes (v0.2.30c3-phase4-wip1 and before) ---
 
 Question Bank Android build foundation - working package v0.2.30c3-phase4-wip1 (plan v1.46)
@@ -75,3 +116,11 @@ Do not install the v0.2.21 APK (adding a subject would crash). Uninstall v0.2.22
 
 Open: confirm v0.2.26 (CI + emulator + phone), question card + search + edit (v0.2.27), keyset paging (P-20), rank-search cost (P-19, 10 ms at 20,000 rows),
 Phase 0 documents, release signing, AGP 9 / compileSdk 37 upgrade (later, separate step).
+
+
+DEEP STATIC RECHECK v1.54
+- Reopened source ZIP, v1.53 plan and v1.53 report; compared candidate tree with original WIP2. 235/235 original file paths preserved; no original path removed.
+- Additional static corrections: Chapter_CQ rapid-save/draft races; atomic draft metadata deletion; Type_CQ duplicate-check cancellation race; Type_CQ transaction-local read-back; text/image part-position preservation; Chapter_CQ single transaction body (no nested @Transaction call); stale edit-target guard; shared-stimulus copy-on-write; primary board/year replacement; cancellation propagation; root back action.
+- No Gradle build, Kotlin compile, KSP, unit/instrumented/emulator/phone tests run, as requested by owner. ZIP integrity is not app verification.
+- Phase 6/7/8 remain PARTIAL / UNVERIFIED. Phase 4/5 M0 NOT PASSED. Room identityHash not checked. Version remains code 36 / 0.2.31-phase5-wip2.
+- See PROJECT_PLAN_v1_54_UPDATED.txt and STATIC_RECHECK_REPORT_v1_54.txt.

@@ -1,0 +1,68 @@
+QUESTION BANK ANDROID APP — DEEP STATIC RECHECK REPORT v1.54
+Date: 2026-11-19
+Candidate source: QuestionBank_v0_2_31_PHASE6_8_IMPLEMENTATION_CANDIDATE_UNVERIFIED_v1_54.zip
+Baseline: QuestionBank_v0_2_31_PHASE5_WIP2.zip
+Plan reviewed: PROJECT_PLAN_v1_53_UPDATED.txt; updated to PROJECT_PLAN_v1_54_UPDATED.txt
+
+1. REVIEW SCOPE
+- Reopened the actual candidate ZIP, v1.53 Project Plan, v1.53 Static Recheck Report, BUILD_STATUS and Version Notes.
+- Compared the candidate tree to the original WIP2 baseline. At the start of this pass, 235/235 baseline file paths were preserved, no original path was removed, 15 existing source files differed, and three new Kotlin UI/helper source files were present.
+- Inspected Type_CQ and Chapter_CQ DAO, repository, ViewModel, screen and navigation code, including save/draft synchronization, transaction boundaries, read-back checks, cancellation, archived references, board/year link updates and preservation of image solution rows.
+- No Gradle build, Kotlin compile, KSP generation, unit test, instrumentation test, emulator test or phone test was run. This follows the owner's explicit instruction. ZIP integrity checks are archive checks only.
+
+2. ADDITIONAL DEFECTS FOUND AND CORRECTED
+A. Chapter_CQ rapid save tap race
+- Added a synchronous guard before starting the save coroutine and disables save/dismiss actions while saving.
+
+B. Chapter_CQ delayed draft writer race / stale draft resurrection
+- Added an owner-keyed process-wide draft coordinator with a shared Mutex, revision generation, cancel-and-join, and a serialized final snapshot write.
+- The same Room transaction now writes the optional stimulus, question, child rows, read-back checks and deletes the draft metadata key. A rollback retains the draft.
+
+C. Type_CQ duplicate checker cancellation and stale state
+- Rethrows CancellationException, verifies the active coroutine and job identity before changing warning/loading state.
+
+D. Type_CQ post-commit read-back
+- Moved insert/update group read-back checks inside DAO transactions and before draft deletion; removed repository-level post-commit result checks.
+
+E. Mixed text/image solution positions
+- Text-only replacement preserves non-TEXT solution part IDs and positions and appends any new text parts after existing positions. Image editing itself remains unimplemented.
+
+F. Chapter_CQ nested transaction
+- Replaced the inner public @Transaction call with a private shared DAO write body invoked by the outer transactional method. This removes reliance on nested @Transaction behavior.
+
+G. Stale Chapter_CQ edit ID
+- DAO distinguishes update-existing from insert-new and refuses an update if the row disappeared. The editor clears stale state and blocks Save if the selected question no longer exists.
+
+H. Shared Chapter_CQ stimulus mutation
+- When an edited stimulus is shared and content changes, DAO clones the stimulus and its existing image links and attaches only the edited question to the clone.
+
+I. Primary Chapter_CQ board/year replacement
+- When primary board/year changes, replace the old primary while preserving other secondary links; remove a secondary duplicate matching the new primary.
+
+J. Cancellation and root navigation
+- Chapter_CQ add/rename repository calls rethrow coroutine cancellation. Root Chapter_CQ screen no longer supplies a dead back arrow.
+
+3. SOURCE TREE / PACKAGE OBSERVATIONS
+- All 235 original WIP2 file paths were preserved; none were removed.
+- Before adding the v1.54 plan/report, the candidate had 243 files, 15 modified pre-existing files and three new Kotlin app source files.
+- No Room entity file or schema migration was intentionally changed. Room/KSP and identityHash parity remain unverified.
+- App version remains versionCode 36 / versionName 0.2.31-phase5-wip2; no new release version was assigned because P-56 is open.
+
+4. STILL INCOMPLETE — PHASES MUST REMAIN PARTIAL
+- Phase 6: canonical shared EditorState/reducer/draft engine across Type_CQ and Chapter_CQ, P-55.4 reconciliation, Type_CQ mode/raw invalid marks persistence and lifecycle completeness.
+- Phase 7: Type_CQ category picker, Type_CQ Edit duplicate warning, Chapter_CQ hierarchy delete/reorder/breadcrumb and complete category administration, independently editable secondary board/year links.
+- Phase 8: complete image/media editor, mixed image/text editing UI, cursor-aware symbol insertion, mathematical rendering and question-block delete/reorder.
+- Chapter_CQ add/rename error presentation remains basic.
+
+5. STATUS AND VERIFICATION BOUNDARY
+- Static review: COMPLETED for the paths enumerated above.
+- Source corrections: WRITTEN, NOT COMPILED.
+- Phase 6: PARTIAL / NOT VERIFIED.
+- Phase 7: PARTIAL / NOT VERIFIED.
+- Phase 8: PARTIAL / NOT VERIFIED.
+- Phase 4/5 M0: NOT PASSED.
+- Build/Compile/KSP/Unit/Instrumentation/Emulator/Phone: NOT RUN.
+- The report does not certify Kotlin syntax, Room/KSP generation, runtime transaction rollback, data migration, installation or release readiness.
+
+6. OVERALL CONCLUSION
+The v1.53 review was not sufficiently complete; this pass found additional race, transaction, stale-edit, shared-stimulus and board/year issues and corrected them in source. The v1.54 candidate is a more carefully reviewed static implementation, but compilation and runtime correctness remain unknown because no tests/builds were run. Do not mark Phases 6, 7 or 8 DONE, and do not mark Phase 4/5 M0 as passed.

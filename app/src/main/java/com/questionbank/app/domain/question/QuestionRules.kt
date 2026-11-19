@@ -17,6 +17,7 @@ object QuestionRules {
         data class Ok(
             val stimulusText: String,
             val items: List<SubQuestionInput>,
+            val referenceText: String = "",
             val stimulusRating: Int? = null,
             val ratings: Map<CqLabel, Int?> = emptyMap(),
             /** v0.2.30c: like the ratings, only the tags of blocks that are really stored (duplicates removed, chosen order kept). */
@@ -39,6 +40,8 @@ object QuestionRules {
         val wantedBoards = input.boards
         if (wantedBoards != null && !BoardRules.allValid(wantedBoards)) return Checked.BadBoard
         val stimulus = clean(input.stimulusText)
+        val reference = clean(input.referenceText)
+        if (reference.length > MAX_TEXT_LENGTH) return Checked.TooLong("রেফারেন্স")
         if (stimulus.length > MAX_TEXT_LENGTH) return Checked.TooLong("উদ্দীপক")
         val items = ArrayList<SubQuestionInput>()
         for (sub in input.subQuestions) {
@@ -50,18 +53,21 @@ object QuestionRules {
             }
             if (text.length > MAX_TEXT_LENGTH) return Checked.TooLong("${sub.label.letter}) প্রশ্ন")
             if (answer.length > MAX_TEXT_LENGTH) return Checked.TooLong("${sub.label.letter}) উত্তর")
-            items.add(SubQuestionInput(sub.label, text, answer))
+            if (sub.questionTypeId.isBlank()) return Checked.TooLong("প্রশ্নের ধরন")
+            if (!sub.marks.isFinite() || sub.marks <= 0.0) return Checked.TooLong("নম্বর")
+            if (sub.solutionParts.any { clean(it).length > MAX_TEXT_LENGTH }) return Checked.TooLong("সমাধান")
+            items.add(sub.copy(text = text, shortAnswer = answer, solutionParts = sub.solutionParts.map(::clean).filter { it.isNotEmpty() }))
         }
         if (items.isEmpty()) return Checked.Empty
         val wanted = input.ratings
-        val stimulusRating = if (stimulus.isNotEmpty()) wanted?.stimulus else null
+        val stimulusRating = if (stimulus.isNotEmpty() || reference.isNotEmpty()) wanted?.stimulus else null
         val ratings = LinkedHashMap<CqLabel, Int?>()
         if (wanted != null) {
             for (item in items) {
                 if (wanted.byLabel.containsKey(item.label)) ratings[item.label] = wanted.byLabel[item.label]
             }
         }
-        val stimulusBoards = if (stimulus.isNotEmpty() && wantedBoards != null) BoardRules.normalizeTags(wantedBoards.stimulus) else emptyList()
+        val stimulusBoards = if ((stimulus.isNotEmpty() || reference.isNotEmpty()) && wantedBoards != null) BoardRules.normalizeTags(wantedBoards.stimulus) else emptyList()
         val boards = LinkedHashMap<CqLabel, List<BoardTag>>()
         if (wantedBoards != null) {
             for (item in items) {
@@ -69,6 +75,6 @@ object QuestionRules {
                 if (tags != null) boards[item.label] = BoardRules.normalizeTags(tags)
             }
         }
-        return Checked.Ok(stimulus, items, stimulusRating, ratings, stimulusBoards, boards)
+        return Checked.Ok(stimulus, items, reference, stimulusRating, ratings, stimulusBoards, boards)
     }
 }

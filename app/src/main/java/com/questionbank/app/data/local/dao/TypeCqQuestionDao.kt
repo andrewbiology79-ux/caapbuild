@@ -11,6 +11,8 @@ import com.questionbank.app.data.local.entity.TypeCqQuestionBoardsEntity
 import com.questionbank.app.data.local.entity.TypeCqQuestionsEntity
 import com.questionbank.app.data.local.entity.TypeCqStimuliEntity
 import com.questionbank.app.data.local.entity.TypeCqStimulusBoardsEntity
+import com.questionbank.app.data.local.entity.TypeCqSolutionPartsEntity
+import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 
 /** One question row joined with its stimulus text (null when the question has no stimulus). */
@@ -24,6 +26,8 @@ data class QuestionRowDb(
     @ColumnInfo(name = "short_answer") val shortAnswer: String,
     @ColumnInfo(name = "rating") val rating: Int?,
     @ColumnInfo(name = "stimulus_rating") val stimulusRating: Int?,
+    @ColumnInfo(name = "question_type_id") val questionTypeId: String = "",
+    @ColumnInfo(name = "reference_text") val referenceText: String? = null,
 )
 
 /** A stimulus of one topic with its text, for the plain-text part of the search. */
@@ -37,6 +41,8 @@ data class StoredTextDb(
     @ColumnInfo(name = "question_text") val questionText: String,
     @ColumnInfo(name = "short_answer") val shortAnswer: String,
     @ColumnInfo(name = "rating") val rating: Int?,
+    @ColumnInfo(name = "question_type_id") val questionTypeId: String = "",
+    @ColumnInfo(name = "marks") val marks: Double = 0.0,
 )
 
 /** Values for one question to insert; ids and the fts_id are decided inside the transaction. */
@@ -51,6 +57,7 @@ data class NewQuestionRow(
     val rating: Int? = null,
     /** v0.2.30c: board tags of this question, stored in the same transaction (the ids are decided by the caller). */
     val tags: List<NewTagRow> = emptyList(),
+    val solutionParts: List<String> = emptyList(),
 )
 
 /** One board tag to store (v0.2.30c). The position in the list becomes `sort_order`. */
@@ -71,11 +78,14 @@ data class QuestionRatingDb(val questionId: String, val rating: Int?)
 
 /** Values for one stored question whose text and short answer change (v0.2.28). */
 data class QuestionTextUpdate(val questionId: String, val text: String, val answer: String)
+data class QuestionMetadataUpdate(val questionId: String, val typeId: String, val marks: Double)
+data class QuestionSolutionUpdate(val questionId: String, val parts: List<String>)
 
 private const val QUESTION_SELECT_SQL =
     "SELECT q.question_id AS question_id, q.stimulus_id AS stimulus_id, s.stimulus_text AS stimulus_text, " +
         "q.subquestion_label AS subquestion_label, q.marks AS marks, q.question_text AS question_text, " +
-        "q.short_answer AS short_answer, q.rating AS rating, s.rating AS stimulus_rating " +
+        "q.short_answer AS short_answer, q.rating AS rating, s.rating AS stimulus_rating, " +
+        "q.question_type_id AS question_type_id, s.reference_text AS reference_text " +
         "FROM type_cq_questions q LEFT JOIN type_cq_stimuli s ON s.stimulus_id = q.stimulus_id "
 
 /** Question rows of one topic with their stimulus, newest first. Shared by the live list and the search. */
@@ -104,6 +114,26 @@ private suspend fun TypeCqQuestionDao.writeQuestionTags(questionId: String, tags
     tags.forEachIndexed { index, tag ->
         insertQuestionBoard(TypeCqQuestionBoardsEntity(tag.id, questionId, tag.boardCode, tag.year.toLong(), index.toLong()))
     }
+}
+
+/** Read-back helper used from inside the write transaction, before the corresponding draft is removed. */
+private suspend fun TypeCqQuestionDao.boardTagsMatch(
+    wantedStimulus: Pair<String, List<NewTagRow>>?,
+    wantedQuestions: Map<String, List<NewTagRow>>,
+): Boolean {
+    fun same(actual: List<BoardRowDb>, expected: List<NewTagRow>): Boolean =
+        actual.map { it.boardCode to it.year } == expected.map { it.boardCode to it.year }
+
+    if (wantedStimulus != null) {
+        val actual = stimulusBoardsIn(listOf(wantedStimulus.first))
+            .filter { it.ownerId == wantedStimulus.first }
+        if (!same(actual, wantedStimulus.second)) return false
+    }
+    if (wantedQuestions.isNotEmpty()) {
+        val actual = questionBoardsIn(wantedQuestions.keys.toList()).groupBy { it.ownerId }
+        if (!wantedQuestions.all { (id, expected) -> same(actual[id].orEmpty(), expected) }) return false
+    }
+    return true
 }
 
 /**
@@ -135,6 +165,12 @@ abstract class TypeCqQuestionDao {
     @Query("SELECT COUNT(*) FROM type_cq_topics WHERE topic_id = :topicId")
     abstract suspend fun countTopic(topicId: String): Int
 
+    @Query("SELECT COUNT(*) FROM type_cq_question_types WHERE question_type_id = :typeId AND is_active = 1")
+    abstract suspend fun activeQuestionTypeExists(typeId: String): Int
+
+    @Query("SELECT question_type_id FROM type_cq_questions WHERE question_id = :questionId LIMIT 1")
+    abstract suspend fun questionTypeOf(questionId: String): String?
+
     @Query("SELECT COALESCE(MAX(fts_id), 0) FROM type_cq_questions")
     abstract suspend fun maxFtsId(): Long
 
@@ -152,6 +188,50 @@ abstract class TypeCqQuestionDao {
 
     @Query("UPDATE type_cq_stimuli SET stimulus_text = :text, updated_at = :now WHERE stimulus_id = :stimulusId")
     abstract suspend fun updateStimulusText(stimulusId: String, text: String, now: Long): Int
+
+    @Query("UPDATE type_cq_stimuli SET reference_text = :text, updated_at = :now WHERE stimulus_id = :stimulusId")
+    abstract suspend fun updateStimulusReference(stimulusId: String, text: String, now: Long): Int
+
+    @Query("UPDATE type_cq_questions SET question_type_id = :typeId, marks = :marks, updated_at = :now WHERE question_id = :questionId")
+    abstract suspend fun updateQuestionMetadata(questionId: String, typeId: String, marks: Double, now: Long): Int
+
+    @Query("SELECT * FROM type_cq_solution_parts WHERE question_id = :questionId ORDER BY position, part_id")
+    abstract suspend fun solutionParts(questionId: String): List<TypeCqSolutionPartsEntity>
+
+    @Query("SELECT * FROM type_cq_solution_parts WHERE question_id IN (:ids) ORDER BY question_id, position, part_id")
+    abstract suspend fun solutionPartsIn(ids: List<String>): List<TypeCqSolutionPartsEntity>
+
+    @Query("DELETE FROM type_cq_solution_parts WHERE question_id = :questionId")
+    abstract suspend fun deleteSolutionParts(questionId: String)
+
+    @Insert
+    abstract suspend fun insertSolutionPart(row: TypeCqSolutionPartsEntity)
+
+    // Called only from updateGroup(), whose enclosing Room transaction owns this write.
+    private suspend fun replaceTextSolutionPartsWithinUpdate(questionId: String, texts: List<String>, now: Long) {
+        val existing = solutionParts(questionId).sortedWith(compareBy<TypeCqSolutionPartsEntity> { it.position }.thenBy { it.partId })
+        val cleanTexts = texts.map { it.trim() }.filter { it.isNotEmpty() }
+        var textIndex = 0
+        val maxOldPosition = existing.maxOfOrNull { it.position } ?: -1L
+        val retained = existing.mapNotNull { part ->
+            if (part.partType == "TEXT") {
+                val value = cleanTexts.getOrNull(textIndex++)
+                value?.let { TypeCqSolutionPartsEntity(UUID.randomUUID().toString(), questionId, part.position, "TEXT", it, null, now) }
+            } else {
+                // A text-only edit must not move or otherwise rewrite a pre-existing image/media part.
+                part
+            }
+        }
+        val appended = cleanTexts.drop(textIndex).mapIndexed { index, value ->
+            TypeCqSolutionPartsEntity(UUID.randomUUID().toString(), questionId, maxOldPosition + index + 1L, "TEXT", value, null, now)
+        }
+        deleteSolutionParts(questionId)
+        (retained + appended).sortedBy { it.position }.forEach { insertSolutionPart(it) }
+        val storedNonText = solutionParts(questionId).filter { it.partType != "TEXT" }
+        check(storedNonText == existing.filter { it.partType != "TEXT" }) {
+            "Non-text solution parts changed during text-only edit"
+        }
+    }
 
     @Query("UPDATE type_cq_questions SET question_text = :text, short_answer = :answer, updated_at = :now WHERE question_id = :questionId")
     abstract suspend fun updateQuestionText(questionId: String, text: String, answer: String, now: Long): Int
@@ -219,11 +299,14 @@ abstract class TypeCqQuestionDao {
     @Insert
     abstract suspend fun insertQuestion(row: TypeCqQuestionsEntity)
 
-    @Query("SELECT question_id, question_text, short_answer, rating FROM type_cq_questions WHERE question_id IN (:ids)")
+    @Query("SELECT question_id, question_text, short_answer, rating, question_type_id, marks FROM type_cq_questions WHERE question_id IN (:ids)")
     abstract suspend fun readBack(ids: List<String>): List<StoredTextDb>
 
     @Query("SELECT stimulus_text FROM type_cq_stimuli WHERE stimulus_id = :stimulusId")
     abstract suspend fun readStimulusText(stimulusId: String): String?
+
+    @Query("SELECT reference_text FROM type_cq_stimuli WHERE stimulus_id = :stimulusId")
+    abstract suspend fun readStimulusReference(stimulusId: String): String?
 
     /** The stored stimulus rating (null when none, and also null when the stimulus does not exist: the callers check existence first). */
     @Query("SELECT rating FROM type_cq_stimuli WHERE stimulus_id = :stimulusId")
@@ -244,6 +327,7 @@ abstract class TypeCqQuestionDao {
         topicId: String,
         stimulusId: String?,
         stimulusText: String,
+        referenceText: String,
         stimulusRating: Int?,
         stimulusTags: List<NewTagRow>,
         items: List<NewQuestionRow>,
@@ -251,8 +335,9 @@ abstract class TypeCqQuestionDao {
         draftKey: String,
     ): Boolean {
         if (countTopic(topicId) == 0) return false
+        if (items.any { activeQuestionTypeExists(it.typeId) == 0 }) return false
         if (stimulusId != null) {
-            insertStimulus(TypeCqStimuliEntity(stimulusId, topicId, stimulusText, stimulusRating?.toLong(), "", now, now))
+            insertStimulus(TypeCqStimuliEntity(stimulusId, topicId, stimulusText, stimulusRating?.toLong(), referenceText, now, now))
             writeStimulusTags(stimulusId, stimulusTags)
         }
         val ids = FtsIdAllocator(maxFtsId())
@@ -277,6 +362,27 @@ abstract class TypeCqQuestionDao {
                 )
             )
             writeQuestionTags(item.id, item.tags)
+            item.solutionParts.forEachIndexed { index, text -> insertSolutionPart(TypeCqSolutionPartsEntity(UUID.randomUUID().toString(), item.id, index.toLong(), "TEXT", text, null, now)) }
+        }
+        val storedRows = readBack(items.map { it.id }).associateBy { it.questionId }
+        val questionsMatch = items.all { item ->
+            val stored = storedRows[item.id]
+            stored != null && stored.questionText == item.text && stored.shortAnswer == item.answer &&
+                stored.rating == item.rating && stored.questionTypeId == item.typeId && stored.marks == item.marks
+        }
+        val solutionsMatch = items.all { item ->
+            solutionParts(item.id).filter { it.partType == "TEXT" }.mapNotNull { it.textContent } == item.solutionParts
+        }
+        val stimulusMatch = stimulusId == null || (
+            readStimulusText(stimulusId) == stimulusText && readStimulusReference(stimulusId) == referenceText &&
+                readStimulusRating(stimulusId) == stimulusRating
+            )
+        val boardsMatch = boardTagsMatch(
+            if (stimulusId != null) stimulusId to stimulusTags else null,
+            items.associate { it.id to it.tags },
+        )
+        check(questionsMatch && solutionsMatch && stimulusMatch && boardsMatch) {
+            "Type_CQ insert read-back mismatch; transaction rolled back"
         }
         deleteMeta(draftKey)
         return true
@@ -296,7 +402,10 @@ abstract class TypeCqQuestionDao {
         topicId: String,
         stimulusId: String?,
         newStimulusText: String?,
+        newReferenceText: String?,
         updates: List<QuestionTextUpdate>,
+        metadataUpdates: List<QuestionMetadataUpdate>,
+        solutionUpdates: List<QuestionSolutionUpdate>,
         adds: List<NewQuestionRow>,
         now: Long,
         draftKey: String,
@@ -310,13 +419,21 @@ abstract class TypeCqQuestionDao {
         if (countTopic(topicId) == 0) return false
         if (stimulusId != null && countStimulus(stimulusId, topicId) == 0) return false
         if (updates.isNotEmpty() && countQuestionsIn(updates.map { it.questionId }, topicId) != updates.size) return false
+        if (metadataUpdates.isNotEmpty() && countQuestionsIn(metadataUpdates.map { it.questionId }, topicId) != metadataUpdates.size) return false
+        if (metadataUpdates.any { activeQuestionTypeExists(it.typeId) == 0 && questionTypeOf(it.questionId) != it.typeId }) return false
+        if (solutionUpdates.isNotEmpty() && countQuestionsIn(solutionUpdates.map { it.questionId }, topicId) != solutionUpdates.size) return false
         if (ratingUpdates.isNotEmpty() && countQuestionsIn(ratingUpdates.map { it.questionId }, topicId) != ratingUpdates.size) return false
         if (changeStimulusRating && stimulusId == null) return false
         if (boardUpdates.isNotEmpty() && countQuestionsIn(boardUpdates.map { it.questionId }, topicId) != boardUpdates.size) return false
+        if (adds.any { activeQuestionTypeExists(it.typeId) == 0 }) return false
         if (changeStimulusBoards && stimulusId == null) return false
         if (newStimulusText != null) {
             val sid = checkNotNull(stimulusId) { "stimulus text given for a group without a stimulus" }
             check(updateStimulusText(sid, newStimulusText, now) == 1) { "stimulus row was not updated" }
+        }
+        if (newReferenceText != null) {
+            val sid = checkNotNull(stimulusId) { "reference text given for a group without a stimulus" }
+            check(updateStimulusReference(sid, newReferenceText, now) == 1) { "stimulus reference was not updated" }
         }
         if (changeStimulusRating) {
             val sid = checkNotNull(stimulusId) { "stimulus rating given for a group without a stimulus" }
@@ -327,6 +444,14 @@ abstract class TypeCqQuestionDao {
         }
         for (r in ratingUpdates) {
             check(updateQuestionRating(r.questionId, r.rating, now) == 1) { "question rating was not updated" }
+        }
+        for (m in metadataUpdates) {
+            require(m.marks.isFinite() && m.marks > 0.0) { "marks out of range" }
+            check(updateQuestionMetadata(m.questionId, m.typeId, m.marks, now) == 1) { "question metadata was not updated" }
+        }
+        for (u in solutionUpdates) {
+            replaceTextSolutionPartsWithinUpdate(u.questionId, u.parts, now)
+            check(touchQuestion(u.questionId, now) == 1) { "question solution was not updated" }
         }
         if (changeStimulusBoards) {
             val sid = checkNotNull(stimulusId) { "stimulus boards given for a group without a stimulus" }
@@ -362,9 +487,45 @@ abstract class TypeCqQuestionDao {
                     )
                 )
                 writeQuestionTags(item.id, item.tags)
+                item.solutionParts.forEachIndexed { index, text -> insertSolutionPart(TypeCqSolutionPartsEntity(UUID.randomUUID().toString(), item.id, index.toLong(), "TEXT", text, null, now)) }
             }
         }
-        // v0.2.29: the edit draft of this card is removed in the same transaction, so a saved edit never leaves a draft behind.
+        val checkedIds = (updates.map { it.questionId } + metadataUpdates.map { it.questionId } +
+            solutionUpdates.map { it.questionId } + ratingUpdates.map { it.questionId } + adds.map { it.id }).distinct()
+        val storedRows = if (checkedIds.isEmpty()) emptyMap() else readBack(checkedIds).associateBy { it.questionId }
+        val textMatches = updates.all { update ->
+            val stored = storedRows[update.questionId]
+            stored != null && stored.questionText == update.text && stored.shortAnswer == update.answer
+        }
+        val metadataMatches = metadataUpdates.all { update ->
+            val stored = storedRows[update.questionId]
+            stored != null && stored.questionTypeId == update.typeId && stored.marks == update.marks
+        }
+        val ratingsMatch = ratingUpdates.all { update -> storedRows[update.questionId]?.rating == update.rating }
+        val addedRowsMatch = adds.all { item ->
+            val stored = storedRows[item.id]
+            stored != null && stored.questionText == item.text && stored.shortAnswer == item.answer &&
+                stored.rating == item.rating && stored.questionTypeId == item.typeId && stored.marks == item.marks
+        }
+        val solutionsMatch = solutionUpdates.all { update ->
+            solutionParts(update.questionId).filter { it.partType == "TEXT" }.mapNotNull { it.textContent } == update.parts
+        } && adds.all { item ->
+            solutionParts(item.id).filter { it.partType == "TEXT" }.mapNotNull { it.textContent } == item.solutionParts
+        }
+        val stimulusMatch = stimulusId == null || (
+            (newStimulusText == null || readStimulusText(stimulusId) == newStimulusText) &&
+                (newReferenceText == null || readStimulusReference(stimulusId) == newReferenceText) &&
+                (!changeStimulusRating || readStimulusRating(stimulusId) == newStimulusRating)
+            )
+        val wantedQuestionBoards = boardUpdates.associate { it.questionId to it.tags } + adds.associate { it.id to it.tags }
+        val boardsMatch = boardTagsMatch(
+            if (changeStimulusBoards && stimulusId != null) stimulusId to newStimulusBoards else null,
+            wantedQuestionBoards,
+        )
+        check(textMatches && metadataMatches && ratingsMatch && addedRowsMatch && solutionsMatch && stimulusMatch && boardsMatch) {
+            "Type_CQ update read-back mismatch; transaction rolled back"
+        }
+        // Draft deletion occurs only after every read-back check passed, in the same transaction.
         deleteMeta(draftKey)
         return true
     }

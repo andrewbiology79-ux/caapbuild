@@ -10,6 +10,7 @@ import androidx.room.Update
 import com.questionbank.app.data.local.entity.*
 import com.questionbank.app.data.local.FtsIdAllocator
 import kotlinx.coroutines.flow.Flow
+import java.util.UUID
 
 data class ChapterCqQuestionCardDb(
     @ColumnInfo(name = "question_id") val questionId: String,
@@ -67,8 +68,20 @@ abstract class ChapterCqDataDao {
     @Query("SELECT COUNT(*) FROM chapter_cq_chapters WHERE chapter_id = :chapterId AND subject_id = :subjectId")
     abstract suspend fun chapterBelongsToSubject(chapterId: String, subjectId: String): Int
 
+    @Query("UPDATE chapter_cq_subjects SET name = :name, updated_at = :now WHERE subject_id = :subjectId")
+    abstract suspend fun renameSubject(subjectId: String, name: String, now: Long): Int
+
+    @Query("UPDATE chapter_cq_chapters SET name = :name, updated_at = :now WHERE chapter_id = :chapterId")
+    abstract suspend fun renameChapter(chapterId: String, name: String, now: Long): Int
+
+    @Query("UPDATE chapter_cq_stimuli SET stimulus_text = :text, reference_text = :reference, rating = :rating, updated_at = :now WHERE stimulus_id = :stimulusId")
+    abstract suspend fun updateStimulusContent(stimulusId: String, text: String, reference: String, rating: Long?, now: Long): Int
+
     @Query("SELECT COUNT(*) FROM chapter_cq_questions WHERE chapter_id = :chapterId AND question_text = :text")
     abstract suspend fun countDuplicateQuestion(chapterId: String, text: String): Int
+
+    @Query("SELECT COUNT(*) FROM chapter_cq_questions WHERE chapter_id = :chapterId AND question_text = :text AND question_id <> :excludeQuestionId")
+    abstract suspend fun countDuplicateQuestionExcept(chapterId: String, text: String, excludeQuestionId: String): Int
 
     @Query("SELECT * FROM chapter_cq_solution_parts WHERE question_id = :questionId ORDER BY position, part_id")
     abstract suspend fun solutionParts(questionId: String): List<ChapterCqSolutionPartsEntity>
@@ -79,11 +92,26 @@ abstract class ChapterCqDataDao {
     @Query("SELECT * FROM chapter_cq_question_category_links WHERE question_id = :questionId ORDER BY assigned_at, category_id")
     abstract suspend fun questionCategories(questionId: String): List<ChapterCqQuestionCategoryLinksEntity>
 
+    @Query("SELECT COUNT(*) FROM chapter_cq_question_boards WHERE question_id = :questionId AND board_code = :boardCode AND year = :year")
+    abstract suspend fun boardAlreadyLinked(questionId: String, boardCode: String, year: Long): Int
+
+    @Query("SELECT COUNT(*) FROM chapter_cq_question_category_links WHERE question_id = :questionId AND category_id = :categoryId")
+    abstract suspend fun categoryAlreadyLinked(questionId: String, categoryId: String): Int
+
     @Query("SELECT * FROM chapter_cq_stimulus_images WHERE stimulus_id = :stimulusId ORDER BY position, image_id")
     abstract suspend fun stimulusImages(stimulusId: String): List<ChapterCqStimulusImagesEntity>
 
     @Transaction
     open suspend fun saveQuestionBundle(
+        question: ChapterCqQuestionsEntity,
+        parts: List<ChapterCqSolutionPartsEntity>,
+        boards: List<ChapterCqQuestionBoardsEntity>,
+        categories: List<ChapterCqQuestionCategoryLinksEntity>,
+    ): Boolean = saveQuestionBundleBody(question, parts, boards, categories)
+
+    // Internal transaction body. The two public transactional entry points call this helper
+    // directly so that the stimulus + question bundle is one transaction, not nested transactions.
+    private suspend fun saveQuestionBundleBody(
         question: ChapterCqQuestionsEntity,
         parts: List<ChapterCqSolutionPartsEntity>,
         boards: List<ChapterCqQuestionBoardsEntity>,
@@ -94,8 +122,11 @@ abstract class ChapterCqDataDao {
         val stimulusId = question.stimulusId
         if (stimulusId != null && stimulusBelongsToChapter(stimulusId, question.chapterId) == 0) return false
         if (parts.any { it.questionId != question.questionId } || boards.any { it.questionId != question.questionId } || categories.any { it.questionId != question.questionId }) return false
-        if (boards.any { activeBoard(it.boardCode) == 0 } || categories.any { activeCategory(it.categoryId) == 0 }) return false
         val existing = question(question.questionId)
+        if (existing != null && existing.chapterId != question.chapterId) return false
+        // Existing archived references may be retained while editing, but an archived reference cannot be newly assigned.
+        if (boards.any { activeBoard(it.boardCode) == 0 && boardAlreadyLinked(question.questionId, it.boardCode, it.year) == 0 }) return false
+        if (categories.any { activeCategory(it.categoryId) == 0 && categoryAlreadyLinked(question.questionId, it.categoryId) == 0 }) return false
         if (existing == null) {
             val allocator = FtsIdAllocator(maxFtsId())
             insertQuestion(question.copy(ftsId = allocator.next(), sortOrder = nextQuestionSortOrder(question.chapterId)))
@@ -111,8 +142,104 @@ abstract class ChapterCqDataDao {
         return true
     }
 
+    /** Creates or updates the optional stimulus and the question + linked child rows as one transaction. */
+    @Transaction
+    open suspend fun saveQuestionWithStimulusBundle(
+        question: ChapterCqQuestionsEntity,
+        stimulusRow: ChapterCqStimuliEntity?,
+        parts: List<ChapterCqSolutionPartsEntity>,
+        boards: List<ChapterCqQuestionBoardsEntity>,
+        categories: List<ChapterCqQuestionCategoryLinksEntity>,
+        mustUpdateExisting: Boolean,
+        draftKey: String,
+    ): Boolean {
+        // Validate every condition that could make saveQuestionBundle return false BEFORE writing a stimulus.
+        // Exceptions during later inserts still roll the enclosing Room transaction back.
+        if (chapterExists(question.chapterId) == 0) return false
+        if (!question.marks.isFinite() || question.marks <= 0.0 || question.subquestionLabel !in setOf("ক", "খ", "গ", "ঘ")) return false
+        val existingQuestion = question(question.questionId)
+        if (mustUpdateExisting && existingQuestion == null) return false
+        if (!mustUpdateExisting && existingQuestion != null) return false
+        if (existingQuestion != null && existingQuestion.chapterId != question.chapterId) return false
+        if (parts.any { it.questionId != question.questionId } || boards.any { it.questionId != question.questionId } || categories.any { it.questionId != question.questionId }) return false
+        if (boards.any { activeBoard(it.boardCode) == 0 && boardAlreadyLinked(question.questionId, it.boardCode, it.year) == 0 }) return false
+        if (categories.any { activeCategory(it.categoryId) == 0 && categoryAlreadyLinked(question.questionId, it.categoryId) == 0 }) return false
+        var target = question
+        var effectiveStimulus: ChapterCqStimuliEntity? = null
+        if (stimulusRow != null) {
+            if (stimulusRow.chapterId != question.chapterId) return false
+            val existingStimulus = stimulus(stimulusRow.stimulusId)
+            if (existingStimulus == null) {
+                insertStimulus(stimulusRow)
+                effectiveStimulus = stimulusRow
+            } else {
+                if (existingStimulus.chapterId != question.chapterId) return false
+                val contentChanged = existingStimulus.stimulusText != stimulusRow.stimulusText ||
+                    existingStimulus.referenceText != stimulusRow.referenceText || existingStimulus.rating != stimulusRow.rating
+                val sharedByOtherQuestions = countQuestionsForStimulus(existingStimulus.stimulusId) > 1
+                if (sharedByOtherQuestions && contentChanged) {
+                    // A per-question editor must not silently change the stimulus of other questions in the same group.
+                    // Clone the stimulus and its existing image links, then attach only this question to the clone.
+                    val clonedId = "ccs_${UUID.randomUUID()}"
+                    val cloned = stimulusRow.copy(stimulusId = clonedId, createdAt = stimulusRow.updatedAt, updatedAt = stimulusRow.updatedAt)
+                    insertStimulus(cloned)
+                    stimulusImages(existingStimulus.stimulusId).forEach { imageLink ->
+                        insertStimulusImage(imageLink.copy(stimulusId = clonedId))
+                    }
+                    effectiveStimulus = cloned
+                } else {
+                    if (!sharedByOtherQuestions && contentChanged) {
+                        check(updateStimulusContent(stimulusRow.stimulusId, stimulusRow.stimulusText, stimulusRow.referenceText, stimulusRow.rating, stimulusRow.updatedAt) == 1) {
+                            "Chapter_CQ stimulus was not updated"
+                        }
+                    }
+                    effectiveStimulus = existingStimulus
+                }
+            }
+            target = question.copy(stimulusId = effectiveStimulus!!.stimulusId)
+        } else if (question.stimulusId != null && stimulusBelongsToChapter(question.stimulusId, question.chapterId) == 0) {
+            return false
+        }
+        // If any bundle/read-back condition fails, throw so the enclosing transaction rolls back stimulus edits too.
+        check(saveQuestionBundleBody(target, parts, boards, categories)) { "Chapter_CQ question bundle was rejected" }
+        val expectedStimulusId = effectiveStimulus?.stimulusId ?: question.stimulusId
+        val storedQuestion = question(question.questionId)
+        check(storedQuestion != null && storedQuestion.chapterId == question.chapterId &&
+            storedQuestion.questionText == question.questionText && storedQuestion.shortAnswer == question.shortAnswer &&
+            storedQuestion.marks == question.marks && storedQuestion.subquestionLabel == question.subquestionLabel &&
+            storedQuestion.rating == question.rating && storedQuestion.stimulusId == expectedStimulusId) {
+            "Chapter_CQ question read-back mismatch"
+        }
+        val savedParts = solutionParts(question.questionId).sortedWith(compareBy<ChapterCqSolutionPartsEntity> { it.position }.thenBy { it.partId })
+        val expectedParts = parts.sortedWith(compareBy<ChapterCqSolutionPartsEntity> { it.position }.thenBy { it.partId })
+        check(savedParts.map { Triple(it.partType, it.textContent, it.imageId) } ==
+            expectedParts.map { Triple(it.partType, it.textContent, it.imageId) }) { "Chapter_CQ solution read-back mismatch" }
+        val savedBoards = questionBoards(question.questionId).sortedWith(compareBy<ChapterCqQuestionBoardsEntity> { it.sortOrder }.thenBy { it.year }.thenBy { it.boardCode })
+        val expectedBoards = boards.sortedWith(compareBy<ChapterCqQuestionBoardsEntity> { it.sortOrder }.thenBy { it.year }.thenBy { it.boardCode })
+        check(savedBoards.map { it.boardCode to it.year } == expectedBoards.map { it.boardCode to it.year }) { "Chapter_CQ board read-back mismatch" }
+        check(questionCategories(question.questionId).map { it.categoryId }.toSet() == categories.map { it.categoryId }.toSet()) {
+            "Chapter_CQ category read-back mismatch"
+        }
+        if (effectiveStimulus != null) {
+            val savedStimulus = stimulus(effectiveStimulus!!.stimulusId)
+            check(savedStimulus != null && savedStimulus.stimulusText == effectiveStimulus!!.stimulusText &&
+                savedStimulus.referenceText == effectiveStimulus!!.referenceText && savedStimulus.rating == effectiveStimulus!!.rating) {
+                "Chapter_CQ stimulus read-back mismatch"
+            }
+        }
+        // Remove the editor draft in this very same transaction. A crash/rollback must leave the draft intact.
+        deleteEditorDraftMetadata(draftKey)
+        return true
+    }
+
+    @Query("DELETE FROM app_metadata WHERE `key` = :draftKey")
+    abstract suspend fun deleteEditorDraftMetadata(draftKey: String): Int
+
     @Query("SELECT COUNT(*) FROM chapter_cq_chapters WHERE chapter_id = :chapterId")
     abstract suspend fun chapterExists(chapterId: String): Int
+
+    @Query("SELECT COUNT(*) FROM chapter_cq_questions WHERE stimulus_id = :stimulusId")
+    abstract suspend fun countQuestionsForStimulus(stimulusId: String): Int
 
     @Query("SELECT COALESCE(MAX(fts_id), 0) FROM chapter_cq_questions")
     abstract suspend fun maxFtsId(): Long

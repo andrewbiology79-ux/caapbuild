@@ -7,6 +7,8 @@ import com.questionbank.app.data.local.dao.QuestionBoardsDb
 import com.questionbank.app.data.local.dao.QuestionRatingDb
 import com.questionbank.app.data.local.dao.QuestionRowDb
 import com.questionbank.app.data.local.dao.QuestionTextUpdate
+import com.questionbank.app.data.local.dao.QuestionMetadataUpdate as DbQuestionMetadataUpdate
+import com.questionbank.app.data.local.dao.QuestionSolutionUpdate as DbQuestionSolutionUpdate
 import com.questionbank.app.data.local.dao.TypeCqQuestionDao
 import com.questionbank.app.data.local.entity.BoardCatalogEntity
 import com.questionbank.app.domain.question.AddBoardResult
@@ -71,35 +73,19 @@ class TypeCqQuestionRepositoryImpl(
             val unknownBoard = unknownBoardCode(ok.stimulusBoards + ok.boards.values.flatten())
             if (unknownBoard != null) return SaveResult.Failed("অজানা বোর্ড: $unknownBoard")
             beforeWrite()
-            val stimulusId = if (ok.stimulusText.isNotEmpty()) newId() else null
+            val stimulusId = if (ok.stimulusText.isNotEmpty() || ok.referenceText.isNotEmpty()) newId() else null
             val rows = ok.items.map {
                 NewQuestionRow(
-                    newId(), it.label.typeId, it.label.letter, it.label.marks, it.text, it.shortAnswer, ok.ratings[it.label],
-                    tagRows(ok.boards[it.label].orEmpty()),
+                    newId(), it.questionTypeId, it.label.letter, it.marks, it.text, it.shortAnswer, ok.ratings[it.label],
+                    tagRows(ok.boards[it.label].orEmpty()), it.solutionParts,
                 )
             }
             val stimulusRating = if (stimulusId != null) ok.stimulusRating else null
             val stimulusTags = if (stimulusId != null) tagRows(ok.stimulusBoards) else emptyList()
-            val written = dao.insertGroup(input.topicId, stimulusId, ok.stimulusText, stimulusRating, stimulusTags, rows, clock(), draftKey(input.topicId))
+            val written = dao.insertGroup(input.topicId, stimulusId, ok.stimulusText, ok.referenceText, stimulusRating, stimulusTags, rows, clock(), draftKey(input.topicId))
             if (!written) return SaveResult.TopicMissing
-
-            // Read-back: "saved" is reported only when the rows are really in the database with the same text.
-            val stored = dao.readBack(rows.map { it.id }).associateBy { it.questionId }
-            val questionsOk = rows.all { r ->
-                val s = stored[r.id]
-                s != null && s.questionText == r.text && s.shortAnswer == r.answer && s.rating == r.rating
-            }
-            val stimulusOk = stimulusId == null ||
-                (dao.readStimulusText(stimulusId) == ok.stimulusText && dao.readStimulusRating(stimulusId) == stimulusRating)
-            val boardsOk = boardsMatch(
-                stimulusId?.let { it to ok.stimulusBoards },
-                ok.items.zip(rows).associate { (item, row) -> row.id to ok.boards[item.label].orEmpty() },
-            )
-            if (questionsOk && stimulusOk && boardsOk) {
-                SaveResult.Saved(stimulusId, rows.map { it.id })
-            } else {
-                SaveResult.Failed("read-back mismatch")
-            }
+            // The DAO performs all read-back checks before removing the draft, inside the same Room transaction.
+            SaveResult.Saved(stimulusId, rows.map { it.id })
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -164,7 +150,10 @@ class TypeCqQuestionRepositoryImpl(
             stimulus = if (stimulusIds.isEmpty()) emptyMap() else toTags(dao.stimulusBoardsIn(stimulusIds)),
             question = if (questionIds.isEmpty()) emptyMap() else toTags(dao.questionBoardsIn(questionIds)),
         )
-        return group(rows, tags).firstOrNull()
+        val solutions = if (questionIds.isEmpty()) emptyMap() else dao.solutionPartsIn(questionIds)
+            .filter { it.partType == "TEXT" && it.textContent != null }
+            .groupBy({ it.questionId }, { it.textContent.orEmpty() })
+        return group(rows, tags, solutions).firstOrNull()
     }
 
     override suspend fun updateGroup(input: GroupEditInput): UpdateResult {
@@ -186,15 +175,18 @@ class TypeCqQuestionRepositoryImpl(
             beforeWrite()
             val rows = ok.adds.map {
                 NewQuestionRow(
-                    newId(), it.label.typeId, it.label.letter, it.label.marks, it.text, it.shortAnswer, ok.addRatings[it.label],
-                    tagRows(ok.addBoards[it.label].orEmpty()),
+                    newId(), it.questionTypeId, it.label.letter, it.marks, it.text, it.shortAnswer, ok.addRatings[it.label],
+                    tagRows(ok.addBoards[it.label].orEmpty()), it.solutionParts,
                 )
             }
             val written = dao.updateGroup(
                 topicId = input.topicId,
                 stimulusId = original.stimulusId,
                 newStimulusText = ok.stimulusText,
+                newReferenceText = ok.referenceText,
                 updates = ok.updates.map { QuestionTextUpdate(it.questionId, it.text, it.answer) },
+                metadataUpdates = ok.metadataUpdates.map { DbQuestionMetadataUpdate(it.questionId, it.questionTypeId, it.marks) },
+                solutionUpdates = ok.solutionUpdates.map { DbQuestionSolutionUpdate(it.questionId, it.parts) },
                 adds = rows,
                 now = clock(),
                 draftKey = editDraftKey(input.groupKey),
@@ -206,31 +198,9 @@ class TypeCqQuestionRepositoryImpl(
                 boardUpdates = ok.boardUpdates.map { QuestionBoardsDb(it.questionId, tagRows(it.change.tags)) },
             )
             if (!written) return UpdateResult.GroupMissing
-
-            // Read-back: "updated" is reported only when the rows really hold the new text.
-            val expected = ok.updates.associate { it.questionId to (it.text to it.answer) } +
-                rows.associate { it.id to (it.text to it.answer) }
-            val stored = dao.readBack(expected.keys.toList()).associateBy { it.questionId }
-            val wantRating = ok.ratingUpdates.associate { it.questionId to it.change.value } +
-                rows.associate { it.id to it.rating }
-            val ratingIds = wantRating.keys - expected.keys
-            val storedRatingOnly = if (ratingIds.isEmpty()) emptyMap() else dao.readBack(ratingIds.toList()).associateBy { it.questionId }
-            val questionsOk = expected.all { (id, want) ->
-                val s = stored[id]
-                s != null && s.questionText == want.first && s.shortAnswer == want.second &&
-                    (!wantRating.containsKey(id) || s.rating == wantRating[id])
-            } && ratingIds.all { id -> storedRatingOnly[id] != null && storedRatingOnly[id]!!.rating == wantRating[id] }
-            val stimulusId = original.stimulusId
-            val stimulusTextOk = ok.stimulusText == null || (stimulusId != null && dao.readStimulusText(stimulusId) == ok.stimulusText)
-            val stimulusRatingOk = ok.stimulusRating == null || (stimulusId != null && dao.readStimulusRating(stimulusId) == ok.stimulusRating.value)
-            val stimulusOk = stimulusTextOk && stimulusRatingOk
-            val wantedQuestionTags = ok.boardUpdates.associate { it.questionId to it.change.tags } +
-                ok.adds.zip(rows).associate { (add, row) -> row.id to ok.addBoards[add.label].orEmpty() }
-            val boardsOk = boardsMatch(
-                if (stimulusId != null && ok.stimulusBoards != null) stimulusId to ok.stimulusBoards.tags else null,
-                wantedQuestionTags,
-            )
-            if (questionsOk && stimulusOk && boardsOk) UpdateResult.Updated else UpdateResult.Failed("read-back mismatch")
+            // The DAO verifies the updated question/metadata/solution/stimulus/board rows before deleting the draft,
+            // all inside the same Room transaction. No post-commit check can now report failure after a committed save.
+            UpdateResult.Updated
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -337,22 +307,9 @@ class TypeCqQuestionRepositoryImpl(
         return tags.firstOrNull { it.boardCode !in known }?.boardCode
     }
 
-    /** Read-back of board tags: every wanted list must be stored exactly (same tags, same order). */
-    private suspend fun boardsMatch(wantStimulus: Pair<String, List<BoardTag>>?, wantQuestions: Map<String, List<BoardTag>>): Boolean {
-        if (wantStimulus != null) {
-            val got = toTags(dao.stimulusBoardsIn(listOf(wantStimulus.first)))[wantStimulus.first].orEmpty()
-            if (got != wantStimulus.second) return false
-        }
-        if (wantQuestions.isNotEmpty()) {
-            val got = toTags(dao.questionBoardsIn(wantQuestions.keys.toList()))
-            if (!wantQuestions.all { (id, want) -> got[id].orEmpty() == want }) return false
-        }
-        return true
-    }
-
     private fun toItem(e: BoardCatalogEntity) = BoardItem(e.code, e.displayName, e.boardKind == "CUSTOM", e.isArchived == 1L)
 
-    private fun group(rows: List<QuestionRowDb>, tags: Tags): List<SavedGroup> {
+    private fun group(rows: List<QuestionRowDb>, tags: Tags, solutions: Map<String, List<String>> = emptyMap()): List<SavedGroup> {
         val buckets = LinkedHashMap<String, MutableList<QuestionRowDb>>()
         for (row in rows) {
             val key = row.stimulusId ?: ("single:" + row.questionId)
@@ -369,10 +326,11 @@ class TypeCqQuestionRepositoryImpl(
                     .map {
                         SavedSubQuestion(
                             it.questionId, CqLabel.fromLetter(it.label), it.marks, it.questionText, it.shortAnswer, it.rating,
-                            tags.question[it.questionId].orEmpty(),
+                            tags.question[it.questionId].orEmpty(), it.questionTypeId, solutions[it.questionId].orEmpty(),
                         )
                     },
                 stimulusBoards = first.stimulusId?.let { tags.stimulus[it] }.orEmpty(),
+                referenceText = first.referenceText.orEmpty(),
             )
         }
     }
@@ -386,8 +344,12 @@ class TypeCqQuestionRepositoryImpl(
         fun editDraftKey(groupKey: String) = "draft:type_cq:edit:$groupKey"
 
         internal fun encode(d: DraftText): String = JSONObject()
-            .put("v", 1)
+            .put("v", 2)
             .put("stimulus", d.stimulus)
+            .put("referenceText", d.referenceText)
+            .put("questionTypeIds", JSONArray(d.questionTypeIds))
+            .put("marks", JSONArray(d.marks))
+            .put("solutionTexts", JSONArray(d.solutionTexts.map { JSONArray(it) }))
             .put("texts", JSONArray(d.texts))
             .put("answers", JSONArray(d.answers))
             .put("stimulusRating", d.stimulusRating ?: 0) // 0 = no rating (a rating is 1-5)
@@ -427,6 +389,10 @@ class TypeCqQuestionRepositoryImpl(
                 ratings = List(4) { i -> r?.optInt(i, 0)?.takeIf { it in RatingRules.MIN..RatingRules.MAX } },
                 stimulusBoards = tagsFromJson(o.optJSONArray("stimulusBoards")),
                 boards = o.optJSONArray("boards").let { b -> List(4) { i -> tagsFromJson(b?.optJSONArray(i)) } },
+                referenceText = o.optString("referenceText", ""),
+                questionTypeIds = o.optJSONArray("questionTypeIds").let { a -> List(4) { i -> a?.optString(i, CqLabel.entries[i].typeId)?.takeIf { it.isNotBlank() } ?: CqLabel.entries[i].typeId } },
+                marks = o.optJSONArray("marks").let { a -> List(4) { i -> a?.optDouble(i, CqLabel.entries[i].marks) ?: CqLabel.entries[i].marks } },
+                solutionTexts = o.optJSONArray("solutionTexts").let { a -> List(4) { i -> a?.optJSONArray(i).let { row -> List(row?.length() ?: 0) { j -> row?.optString(j, "").orEmpty() } } } },
             )
         } catch (e: Exception) {
             null

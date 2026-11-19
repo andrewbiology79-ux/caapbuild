@@ -3,6 +3,7 @@ package com.questionbank.app.data.repository
 import com.questionbank.app.data.local.dao.ChapterCqDataDao
 import com.questionbank.app.data.local.entity.*
 import com.questionbank.app.domain.repository.ChapterCqRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 
 class ChapterCqRepositoryImpl(
@@ -16,6 +17,50 @@ class ChapterCqRepositoryImpl(
     override fun observeQuestions(chapterId: String): Flow<List<ChapterCqQuestionsEntity>> = dao.observeQuestions(chapterId)
     override fun observeQuestionCards(chapterId: String) = dao.observeQuestionCards(chapterId)
     override suspend fun loadQuestion(questionId: String): ChapterCqQuestionsEntity? = dao.question(questionId)
+    override suspend fun loadStimulus(stimulusId: String): ChapterCqStimuliEntity? = dao.stimulus(stimulusId)
+    override suspend fun loadSolutionParts(questionId: String): List<ChapterCqSolutionPartsEntity> = dao.solutionParts(questionId)
+    override suspend fun loadQuestionBoards(questionId: String): List<ChapterCqQuestionBoardsEntity> = dao.questionBoards(questionId)
+    override suspend fun loadQuestionCategories(questionId: String): List<ChapterCqQuestionCategoryLinksEntity> = dao.questionCategories(questionId)
+    override suspend fun addSubject(name: String): Boolean {
+        val value = name.trim(); if (value.isBlank()) return false
+        val now = System.currentTimeMillis(); beforeWrite()
+        return try { dao.insertSubject(ChapterCqSubjectsEntity("cqs_${java.util.UUID.randomUUID()}", value, 999, now, now)); true } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { false }
+    }
+    override suspend fun addChapter(subjectId: String, name: String): Boolean {
+        val value = name.trim(); if (value.isBlank()) return false
+        val now = System.currentTimeMillis(); beforeWrite()
+        return try { dao.insertChapter(ChapterCqChaptersEntity("cqc_${java.util.UUID.randomUUID()}", subjectId, value, 999, now, now)); true } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { false }
+    }
+    override suspend fun renameSubject(subjectId: String, name: String): Boolean {
+        val value = name.trim(); if (value.isBlank()) return false
+        beforeWrite(); return try { dao.renameSubject(subjectId, value, System.currentTimeMillis()) > 0 } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { false }
+    }
+    override suspend fun renameChapter(chapterId: String, name: String): Boolean {
+        val value = name.trim(); if (value.isBlank()) return false
+        beforeWrite(); return try { dao.renameChapter(chapterId, value, System.currentTimeMillis()) > 0 } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { false }
+    }
+    override suspend fun saveQuestionWithStimulus(
+        question: ChapterCqQuestionsEntity, stimulus: ChapterCqStimuliEntity?, solutionParts: List<ChapterCqSolutionPartsEntity>,
+        boards: List<ChapterCqQuestionBoardsEntity>, categories: List<ChapterCqQuestionCategoryLinksEntity>,
+        mustUpdateExisting: Boolean, draftOwnerId: String,
+    ): Boolean {
+        require(draftOwnerId.isNotBlank()) { "Chapter_CQ draft owner is required" }
+        beforeWrite()
+        // The DAO owns the whole Room transaction, including all validation and read-back checks.
+        // Do not perform a second post-commit read-back here: a late mismatch could otherwise report
+        // failure after the write had already committed and could not be rolled back.
+        return try {
+            dao.saveQuestionWithStimulusBundle(
+                question, stimulus, solutionParts, boards, categories,
+                mustUpdateExisting = mustUpdateExisting,
+                draftKey = "draft:chapter_cq:editor:$draftOwnerId",
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            false
+        }
+    }
     override suspend fun saveQuestion(
         question: ChapterCqQuestionsEntity,
         solutionParts: List<ChapterCqSolutionPartsEntity>,
@@ -25,8 +70,9 @@ class ChapterCqRepositoryImpl(
         beforeWrite()
         return dao.saveQuestionBundle(question, solutionParts, boards, categories)
     }
-    override suspend fun isDuplicate(chapterId: String, questionText: String): Boolean =
-        dao.countDuplicateQuestion(chapterId, questionText.trim()) > 0
+    override suspend fun isDuplicate(chapterId: String, questionText: String, excludeQuestionId: String?): Boolean =
+        if (excludeQuestionId == null) dao.countDuplicateQuestion(chapterId, questionText.trim()) > 0
+        else dao.countDuplicateQuestionExcept(chapterId, questionText.trim(), excludeQuestionId) > 0
     override suspend fun replaceBoards(questionId: String, rows: List<ChapterCqQuestionBoardsEntity>) { beforeWrite(); dao.replaceQuestionBoards(questionId, rows) }
     override suspend fun replaceCategories(questionId: String, rows: List<ChapterCqQuestionCategoryLinksEntity>) { beforeWrite(); dao.replaceQuestionCategories(questionId, rows) }
     override suspend fun replaceSolutionParts(questionId: String, rows: List<ChapterCqSolutionPartsEntity>) { beforeWrite(); dao.replaceSolutionParts(questionId, rows) }
