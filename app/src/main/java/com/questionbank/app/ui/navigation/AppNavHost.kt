@@ -337,6 +337,7 @@ fun AppNavHost() {
                             QuestionEditorViewModel(
                                 topicId, questionRepo, container.appScope, container.typeCqData.observeQuestionTypes(),
                                 duplicateChecker = { text -> container.typeCqData.isDuplicate(topicId, text) },
+                                editorDraftRepository = container.editorDrafts,
                             )
                         }
                     )
@@ -360,7 +361,13 @@ fun AppNavHost() {
                     val topicId = entry.arguments?.getString("topicId").orEmpty()
                     val groupKey = entry.arguments?.getString("groupKey").orEmpty()
                     val vm: QuestionEditViewModel = viewModel(
-                        factory = QuestionEditViewModel.factory { QuestionEditViewModel(topicId, groupKey, questionRepo, container.appScope, container.typeCqData.observeQuestionTypes()) }
+                        factory = QuestionEditViewModel.factory {
+                            QuestionEditViewModel(
+                                topicId, groupKey, questionRepo, container.appScope,
+                                container.typeCqData.observeQuestionTypes(),
+                                editorDraftRepository = container.editorDrafts,
+                            )
+                        }
                     )
                     QuestionEditScreen(
                         viewModel = vm,

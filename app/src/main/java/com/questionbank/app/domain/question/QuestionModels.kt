@@ -60,6 +60,8 @@ data class QuestionGroupInput(
     val boards: BoardsInput? = null,
     /** Reference text belongs to the stimulus record and is independent from its main text. */
     val referenceText: String = "",
+    /** Optional canonical Phase 6 draft key, removed in the same Room transaction as the content save. */
+    val editorDraftKey: String? = null,
 )
 
 /** Raw editor text, used for the automatic draft. Index 0..3 = ক, খ, গ, ঘ. */
@@ -149,6 +151,8 @@ data class GroupEditInput(
     val questionTypes: Map<CqLabel, String> = emptyMap(),
     val marksByLabel: Map<CqLabel, Double> = emptyMap(),
     val solutionsByLabel: Map<CqLabel, List<String>> = emptyMap(),
+    /** Optional canonical Phase 6 draft key, removed in the same Room transaction as the content save. */
+    val editorDraftKey: String? = null,
 )
 
 data class QuestionMetaUpdate(val questionId: String, val label: CqLabel, val questionTypeId: String, val marks: Double)

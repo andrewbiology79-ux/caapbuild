@@ -19,6 +19,12 @@ import com.questionbank.app.domain.question.RatingsInput
 import com.questionbank.app.domain.question.SavedGroup
 import com.questionbank.app.domain.question.SubQuestionInput
 import com.questionbank.app.domain.question.TypeCqQuestionRepository
+import com.questionbank.app.domain.editor.EditorSessionDraft
+import com.questionbank.app.domain.editor.EditorSessionDraftCodec
+import com.questionbank.app.domain.editor.EditorScope as CanonicalEditorScope
+import com.questionbank.app.domain.editor.EditorMode as CanonicalEditorMode
+import com.questionbank.app.domain.editor.TypeCqDraftAdapter
+import com.questionbank.app.domain.repository.EditorDraftRepository
 import com.questionbank.app.domain.question.UpdateResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -74,6 +80,7 @@ class QuestionEditViewModel(
     private val repository: TypeCqQuestionRepository,
     private val draftScope: CoroutineScope,
     questionTypesFlow: Flow<List<com.questionbank.app.data.local.entity.TypeCqQuestionTypesEntity>> = flowOf(emptyList()),
+    private val editorDraftRepository: EditorDraftRepository? = null,
 ) : ViewModel() {
 
     var load by mutableStateOf(EditLoad.LOADING)
@@ -125,6 +132,8 @@ class QuestionEditViewModel(
 
     private var pending = Channel<EditDraftOp>(Channel.CONFLATED)
     private var writer: Job? = null
+    private var canonicalDraftTemplate: EditorSessionDraft? = null
+    private val canonicalDraftOwnerId: String get() = "edit:$groupKey"
     /** Set after a successful save or a discard: the screen is finished and no draft may be written any more. */
     private var finished = false
 
@@ -134,6 +143,7 @@ class QuestionEditViewModel(
             if (group == null) {
                 // The card is gone: an old draft for it can never be used again.
                 repository.discardEditDraft(groupKey)
+                runCatching { editorDraftRepository?.discard("type_cq", canonicalDraftOwnerId) }
                 load = EditLoad.MISSING
             } else {
                 val t = MutableList(4) { "" }
@@ -166,13 +176,18 @@ class QuestionEditViewModel(
                 restoreDraft(group)
                 history.reset(snapshot())
                 startWriter()
+                if (canonicalDraftTemplate == null && changed) pending.trySend(EditDraftOp(draftOf()))
             }
         }
     }
 
     /** Puts a saved edit draft on top of the stored text. Only the blocks this screen can edit are taken from it. */
     private suspend fun restoreDraft(group: SavedGroup) {
-        val stored = repository.loadEditDraft(groupKey) ?: return
+        val canonical = runCatching { editorDraftRepository?.load("type_cq", canonicalDraftOwnerId)?.let(EditorSessionDraftCodec::decode) }
+            .getOrNull()?.takeIf { it.scope == CanonicalEditorScope.TYPE_CQ && it.ownerId == canonicalDraftOwnerId }
+        canonicalDraftTemplate = canonical
+        val stored = canonical?.let(TypeCqDraftAdapter::toLegacy) ?: repository.loadEditDraft(groupKey) ?: return
+        if (canonical != null && canonical.mode == CanonicalEditorMode.FULL) editorMode = EditorMode.FULL
         if (group.stimulusId != null) {
             stimulus = stored.stimulus
             referenceText = stored.referenceText
@@ -203,12 +218,14 @@ class QuestionEditViewModel(
         questionTypeIds = qTypes
         marks = markValues
         solutionTexts = solutionValues
-        if (changed) {
+        if (changed || canonical != null) {
             restoredFromDraft = true
             draftStatus = DraftStatus.SAVED
         } else {
             // The draft says the same as the stored question (for example the same text was typed back): nothing to keep.
             repository.discardEditDraft(groupKey)
+            runCatching { editorDraftRepository?.discard("type_cq", canonicalDraftOwnerId) }
+            canonicalDraftTemplate = null
         }
     }
 
@@ -218,14 +235,32 @@ class QuestionEditViewModel(
         writer = draftScope.launch {
             for (op in queue) {
                 val text = op.text
-                if (text == null) repository.discardEditDraft(groupKey) else repository.saveEditDraft(groupKey, text)
+                if (text == null) {
+                    repository.discardEditDraft(groupKey)
+                    try { editorDraftRepository?.discard("type_cq", canonicalDraftOwnerId) } catch (_: Exception) { }
+                } else {
+                    repository.saveEditDraft(groupKey, text)
+                    val prior = canonicalDraftTemplate
+                    val ids = original?.subQuestions?.sortedBy { it.label?.sortOrder ?: Int.MAX_VALUE }?.map { it.id }.orEmpty()
+                    val canonical = TypeCqDraftAdapter.fromLegacy(
+                        ownerId = canonicalDraftOwnerId,
+                        draft = text,
+                        mode = if (editorMode == EditorMode.FULL) CanonicalEditorMode.FULL else CanonicalEditorMode.MINIMUM,
+                        existingStimulusId = original?.stimulusId,
+                        existingQuestionIds = ids,
+                        questionIdsByLabel = original?.subQuestions?.mapNotNull { sub -> sub.label?.let { it.letter to sub.id } }?.toMap(),
+                        previous = prior,
+                    )
+                    canonicalDraftTemplate = canonical
+                    try { editorDraftRepository?.save("type_cq", canonicalDraftOwnerId, EditorSessionDraftCodec.encode(canonical)) } catch (_: Exception) { }
+                }
                 if (text == currentDraft()) draftStatus = if (text == null) DraftStatus.NONE else DraftStatus.SAVED
             }
         }
     }
 
     /** The typed text as a draft, or null while it equals the stored text. */
-    private fun currentDraft(): DraftText? = if (changed) draftOf() else null
+    private fun currentDraft(): DraftText? = if (changed || canonicalDraftTemplate != null) draftOf() else null
 
     private fun draftOf(): DraftText =
         DraftText(
@@ -275,6 +310,7 @@ class QuestionEditViewModel(
             questionTypes = editableLabels.associateWith { questionTypeIds[it.sortOrder - 1] },
             marksByLabel = editableLabels.associateWith { marks[it.sortOrder - 1] },
             solutionsByLabel = editableLabels.associateWith { solutionTexts[it.sortOrder - 1] },
+            editorDraftKey = if (editorDraftRepository != null) "draft:type_cq:editor:$canonicalDraftOwnerId" else null,
         )
 
     private fun snapshot() = EditSnapshot(
@@ -293,7 +329,11 @@ class QuestionEditViewModel(
     }
 
     @JvmName("applyEditorMode")
-    fun setEditorMode(mode: EditorMode) { editorMode = mode }
+    fun setEditorMode(mode: EditorMode) {
+        if (saving || finished || editorMode == mode) return
+        editorMode = mode
+        queueDraft()
+    }
     fun undo() { if (!saving && !finished) history.undo()?.let(::applySnapshot) }
     fun redo() { if (!saving && !finished) history.redo()?.let(::applySnapshot) }
 
@@ -396,6 +436,7 @@ class QuestionEditViewModel(
             if (outcome is UpdateResult.Updated) {
                 // The repository removed the draft in the same transaction.
                 finished = true
+                canonicalDraftTemplate = null
                 draftStatus = DraftStatus.NONE
                 saving = false
                 if (isActive) onSaved()
@@ -403,7 +444,19 @@ class QuestionEditViewModel(
                 // Nothing was stored: keep every typed character and write the draft again right now.
                 startWriter()
                 if (outcome != UpdateResult.NoChange && outcome != UpdateResult.GroupMissing) {
-                    withContext(NonCancellable) { repository.saveEditDraft(groupKey, snapshot) }
+                    withContext(NonCancellable) {
+                        repository.saveEditDraft(groupKey, snapshot)
+                        val canonical = TypeCqDraftAdapter.fromLegacy(
+                            ownerId = canonicalDraftOwnerId,
+                            draft = snapshot,
+                            mode = if (editorMode == EditorMode.FULL) CanonicalEditorMode.FULL else CanonicalEditorMode.MINIMUM,
+                            existingStimulusId = original?.stimulusId,
+                            existingQuestionIds = original?.subQuestions?.map { it.id }.orEmpty(),
+                            previous = canonicalDraftTemplate,
+                        )
+                        canonicalDraftTemplate = canonical
+                        try { editorDraftRepository?.save("type_cq", canonicalDraftOwnerId, EditorSessionDraftCodec.encode(canonical)) } catch (_: Exception) { }
+                    }
                     draftStatus = DraftStatus.SAVED
                 }
                 saving = false
@@ -418,7 +471,11 @@ class QuestionEditViewModel(
         viewModelScope.launch {
             pending.close()
             writer?.cancelAndJoin()
-            withContext(NonCancellable) { repository.discardEditDraft(groupKey) }
+            withContext(NonCancellable) {
+                repository.discardEditDraft(groupKey)
+                try { editorDraftRepository?.discard("type_cq", canonicalDraftOwnerId) } catch (_: Exception) { }
+            }
+            canonicalDraftTemplate = null
             draftStatus = DraftStatus.NONE
             onDone()
         }

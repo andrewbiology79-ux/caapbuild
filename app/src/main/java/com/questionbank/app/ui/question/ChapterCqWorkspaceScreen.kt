@@ -38,6 +38,15 @@ import com.questionbank.app.data.local.entity.ChapterCqQuestionCategoryLinksEnti
 import com.questionbank.app.data.local.entity.ChapterCqQuestionsEntity
 import com.questionbank.app.data.local.entity.ChapterCqSolutionPartsEntity
 import com.questionbank.app.data.local.entity.ChapterCqStimuliEntity
+import com.questionbank.app.domain.editor.EditorBoardYear
+import com.questionbank.app.domain.editor.EditorPartKind
+import com.questionbank.app.domain.editor.EditorQuestionBlockDraft
+import com.questionbank.app.domain.editor.EditorSessionDraft
+import com.questionbank.app.domain.editor.EditorSessionDraftCodec
+import com.questionbank.app.domain.editor.EditorSolutionPart
+import com.questionbank.app.domain.editor.EditorStimulusDraft
+import com.questionbank.app.domain.editor.EditorScope as CanonicalEditorScope
+import com.questionbank.app.domain.editor.EditorMode as CanonicalEditorMode
 import com.questionbank.app.domain.repository.ChapterCqRepository
 import com.questionbank.app.domain.repository.TypeCqRepository
 import com.questionbank.app.domain.repository.EditorDraftRepository
@@ -133,28 +142,110 @@ private data class ChapterCqEditorSnapshot(
     val editorMode: EditorMode = EditorMode.MINIMUM,
 )
 
-private fun ChapterCqEditorSnapshot.toDraftJson(): String = JSONObject()
-    .put("stimulus", stimulus).put("reference", reference).put("stimulusRating", stimulusRating)
-    .put("label", label).put("marks", marks).put("questionText", questionText).put("shortAnswer", shortAnswer)
-    .put("rating", rating).put("solutionTexts", JSONArray(solutionTexts)).put("boardCode", boardCode)
-    .put("boardYear", boardYear).put("categories", JSONArray(categories)).put("editorMode", editorMode.name).toString()
-
-private fun chapterCqSnapshotFromJson(raw: String): ChapterCqEditorSnapshot? = runCatching {
-    val value = JSONObject(raw)
-    fun strings(key: String): List<String> {
-        val array = value.optJSONArray(key) ?: return emptyList()
-        return List(array.length()) { index -> array.optString(index) }
+private fun ChapterCqEditorSnapshot.toCanonicalDraft(
+    ownerId: String,
+    chapterId: String,
+    questionId: String?,
+    stimulusId: String?,
+    previous: EditorSessionDraft?,
+): EditorSessionDraft {
+    val previousBlock = previous?.questionBlocks?.firstOrNull()
+    val year = boardYear.toIntOrNull()
+    // The form edits only the FIRST board/year (the same one it loads from the database). It replaces that tag and
+    // keeps the others, so a changed or cleared board is not resurrected from the previous draft on restore.
+    val selectedTags = buildList {
+        if (boardCode.isNotBlank() && year != null) add(EditorBoardYear(boardCode, year))
+        previousBlock?.boardYears.orEmpty().drop(1).filterNot { it.boardCode == boardCode }.forEach { add(it) }
     }
-    ChapterCqEditorSnapshot(
-        stimulus = value.optString("stimulus"), reference = value.optString("reference"),
-        stimulusRating = value.optString("stimulusRating"), label = value.optString("label", "ক"),
-        marks = value.optString("marks", "1"), questionText = value.optString("questionText"),
-        shortAnswer = value.optString("shortAnswer"), rating = value.optString("rating"),
-        solutionTexts = strings("solutionTexts").ifEmpty { listOf("") }, boardCode = value.optString("boardCode"),
-        boardYear = value.optString("boardYear"), categories = strings("categories"),
-        editorMode = runCatching { EditorMode.valueOf(value.optString("editorMode", "MINIMUM")) }.getOrDefault(EditorMode.MINIMUM),
+    val parts = buildList {
+        var textIndex = 0
+        previousBlock?.solutionParts.orEmpty().sortedBy { it.position }.forEach { oldPart ->
+            if (oldPart.kind == EditorPartKind.IMAGE) add(oldPart)
+            else if (textIndex < solutionTexts.size) {
+                add(oldPart.copy(text = solutionTexts[textIndex], position = size.toLong()))
+                textIndex++
+            }
+        }
+        while (textIndex < solutionTexts.size) {
+            add(EditorSolutionPart("$ownerId:solution:$textIndex", EditorPartKind.TEXT, size.toLong(), text = solutionTexts[textIndex]))
+            textIndex++
+        }
+    }.mapIndexed { index, part -> part.copy(position = index.toLong()) }
+    return EditorSessionDraft(
+        scope = CanonicalEditorScope.CHAPTER_CQ,
+        ownerId = ownerId,
+        parentId = chapterId,
+        hierarchyIds = previous?.hierarchyIds.orEmpty().ifEmpty { listOf(chapterId) },
+        existingStimulusId = stimulusId ?: previous?.existingStimulusId,
+        existingQuestionIds = questionId?.let { listOf(it) } ?: previous?.existingQuestionIds.orEmpty(),
+        stimulus = (previous?.stimulus ?: EditorStimulusDraft()).copy(
+            text = stimulus, referenceText = reference, rating = stimulusRating.toIntOrNull(),
+        ),
+        questionBlocks = listOf(EditorQuestionBlockDraft(
+            blockId = previousBlock?.blockId ?: "$ownerId:block:$label",
+            questionId = questionId ?: previousBlock?.questionId,
+            label = label,
+            questionText = questionText,
+            shortAnswer = shortAnswer,
+            rawMarks = marks,
+            rating = rating.toIntOrNull(),
+            boardYears = selectedTags,
+            categoryIds = categories,
+            solutionParts = parts,
+        )),
+        deletedQuestionIds = previous?.deletedQuestionIds.orEmpty(),
+        mode = if (editorMode == EditorMode.FULL) CanonicalEditorMode.FULL else CanonicalEditorMode.MINIMUM,
+        preservedJson = previous?.preservedJson,
     )
-}.getOrNull()
+}
+
+private fun ChapterCqEditorSnapshot.toDraftJson(
+    ownerId: String,
+    chapterId: String,
+    questionId: String?,
+    stimulusId: String?,
+    previous: EditorSessionDraft?,
+): String = EditorSessionDraftCodec.encode(toCanonicalDraft(ownerId, chapterId, questionId, stimulusId, previous))
+
+private fun chapterCqSnapshotFromJson(raw: String): ChapterCqEditorSnapshot? {
+    val canonical = EditorSessionDraftCodec.decode(raw)
+    if (canonical != null && canonical.scope == CanonicalEditorScope.CHAPTER_CQ) {
+        val block = canonical.questionBlocks.firstOrNull()
+        val primaryBoard = block?.boardYears?.firstOrNull()
+        return ChapterCqEditorSnapshot(
+            stimulus = canonical.stimulus.text,
+            reference = canonical.stimulus.referenceText,
+            stimulusRating = canonical.stimulus.rating?.toString().orEmpty(),
+            label = block?.label ?: "ক",
+            marks = block?.rawMarks ?: "1",
+            questionText = block?.questionText.orEmpty(),
+            shortAnswer = block?.shortAnswer.orEmpty(),
+            rating = block?.rating?.toString().orEmpty(),
+            solutionTexts = block?.solutionParts.orEmpty().filter { it.kind == EditorPartKind.TEXT }.sortedBy { it.position }.mapNotNull { it.text }.ifEmpty { listOf("") },
+            boardCode = primaryBoard?.boardCode.orEmpty(),
+            boardYear = primaryBoard?.year?.toString().orEmpty(),
+            categories = block?.categoryIds.orEmpty(),
+            editorMode = if (canonical.mode == CanonicalEditorMode.FULL) EditorMode.FULL else EditorMode.MINIMUM,
+        )
+    }
+    // Backward-compatible reader for the pre-v2 Chapter_CQ snapshot format.
+    return runCatching {
+        val value = JSONObject(raw)
+        fun strings(key: String): List<String> {
+            val array = value.optJSONArray(key) ?: return emptyList()
+            return List(array.length()) { index -> array.optString(index) }
+        }
+        ChapterCqEditorSnapshot(
+            stimulus = value.optString("stimulus"), reference = value.optString("reference"),
+            stimulusRating = value.optString("stimulusRating"), label = value.optString("label", "ক"),
+            marks = value.optString("marks", "1"), questionText = value.optString("questionText"),
+            shortAnswer = value.optString("shortAnswer"), rating = value.optString("rating"),
+            solutionTexts = strings("solutionTexts").ifEmpty { listOf("") }, boardCode = value.optString("boardCode"),
+            boardYear = value.optString("boardYear"), categories = strings("categories"),
+            editorMode = runCatching { EditorMode.valueOf(value.optString("editorMode", "MINIMUM")) }.getOrDefault(EditorMode.MINIMUM),
+        )
+    }.getOrNull()
+}
 
 /** Chapter_CQ has its own repository and schema; it intentionally has no Type_CQ question-type field. */
 @Composable
@@ -205,6 +296,7 @@ fun ChapterCqWorkspaceScreen(
     var previousBoards by remember { mutableStateOf(emptyList<ChapterCqQuestionBoardsEntity>()) }
     var previousParts by remember { mutableStateOf(emptyList<ChapterCqSolutionPartsEntity>()) }
     var editorMode by rememberSaveable { mutableStateOf(EditorMode.MINIMUM) }
+    var canonicalDraftTemplate by remember { mutableStateOf<EditorSessionDraft?>(null) }
     val history = remember { EditorHistory(ChapterCqEditorSnapshot()) }
 
     fun snapshotForm() = ChapterCqEditorSnapshot(
@@ -215,7 +307,9 @@ fun ChapterCqWorkspaceScreen(
         val owner = draftOwnerId
         if (!editorOpen || owner.isBlank()) return
         val snapshot = snapshotForm()
-        ChapterCqDraftWriteCoordinator.schedule(draftScope, draftRepository, owner, snapshot.toDraftJson()) { saved ->
+        val canonical = snapshot.toCanonicalDraft(owner, chapterId, editingId, stimulusId, canonicalDraftTemplate)
+        canonicalDraftTemplate = canonical
+        ChapterCqDraftWriteCoordinator.schedule(draftScope, draftRepository, owner, EditorSessionDraftCodec.encode(canonical)) { saved ->
             if (draftOwnerId == owner) draftSaved = saved
         }
         draftSaved = false
@@ -283,7 +377,16 @@ fun ChapterCqWorkspaceScreen(
             }
         }
         val rawDraft = runCatching { draftRepository.load("chapter_cq", draftOwnerId) }.getOrNull()
-        rawDraft?.let { chapterCqSnapshotFromJson(it)?.let(::restoreForm); draftSaved = true }
+        rawDraft?.let {
+            canonicalDraftTemplate = EditorSessionDraftCodec.decode(it)
+            chapterCqSnapshotFromJson(it)?.let { restored ->
+                restoreForm(restored)
+                if (canonicalDraftTemplate == null) {
+                    canonicalDraftTemplate = restored.toCanonicalDraft(draftOwnerId, chapterId, editingId, stimulusId, null).copy(preservedJson = it)
+                }
+            }
+            draftSaved = true
+        }
         editorMode = if (rawDraft == null) EditorMode.MINIMUM else editorMode
         history.reset(snapshotForm())
         editorLoading = false
@@ -297,6 +400,7 @@ fun ChapterCqWorkspaceScreen(
         selectedCategories.clear(); previousBoards = emptyList(); previousParts = emptyList(); saveError = ""
         editorMode = EditorMode.MINIMUM
         draftOwnerId = "new:$chapterId"
+        canonicalDraftTemplate = null
         draftSaved = false
         editorLoading = true
         editorOpen = true
@@ -336,7 +440,7 @@ fun ChapterCqWorkspaceScreen(
                 draftWriterStopped = true
                 // Persist the exact frozen form before the transaction. If the question transaction rolls back,
                 // this draft remains recoverable; if it commits, the DAO deletes the key atomically.
-                val saveSnapshot = snapshotForm().toDraftJson()
+                val saveSnapshot = snapshotForm().toDraftJson(draftOwnerId, chapterId, editingId, stimulusId, canonicalDraftTemplate)
                 // Complete the save even if the owner navigates away mid-transaction, matching Type_CQ save semantics.
                 val ok = withContext(NonCancellable) {
                     ChapterCqDraftWriteCoordinator.withLock {

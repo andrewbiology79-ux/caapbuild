@@ -115,7 +115,7 @@ class TypeCqHierarchyRepositoryImpl(
         guardedDelete { chapters.deleteIfEmpty(chapterId) }
 
     override suspend fun deleteTopic(topicId: String): EditResult =
-        guardedDelete { topics.deleteIfEmpty(topicId, TypeCqQuestionRepositoryImpl.draftKey(topicId)) }
+        guardedDelete { topics.deleteIfEmpty(topicId, TypeCqQuestionRepositoryImpl.draftKey(topicId), "draft:type_cq:editor:$topicId") }
 
     override suspend fun reorderSubjects(orderedIds: List<String>): EditResult =
         guardedReorder { subjects.reorder(orderedIds, clock()) }

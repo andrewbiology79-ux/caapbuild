@@ -333,6 +333,7 @@ abstract class TypeCqQuestionDao {
         items: List<NewQuestionRow>,
         now: Long,
         draftKey: String,
+        editorDraftKey: String? = null,
     ): Boolean {
         if (countTopic(topicId) == 0) return false
         if (items.any { activeQuestionTypeExists(it.typeId) == 0 }) return false
@@ -385,6 +386,7 @@ abstract class TypeCqQuestionDao {
             "Type_CQ insert read-back mismatch; transaction rolled back"
         }
         deleteMeta(draftKey)
+        editorDraftKey?.let { deleteMeta(it) }
         return true
     }
     /**
@@ -415,6 +417,7 @@ abstract class TypeCqQuestionDao {
         changeStimulusBoards: Boolean,
         newStimulusBoards: List<NewTagRow>,
         boardUpdates: List<QuestionBoardsDb>,
+        editorDraftKey: String? = null,
     ): Boolean {
         if (countTopic(topicId) == 0) return false
         if (stimulusId != null && countStimulus(stimulusId, topicId) == 0) return false
@@ -527,6 +530,7 @@ abstract class TypeCqQuestionDao {
         }
         // Draft deletion occurs only after every read-back check passed, in the same transaction.
         deleteMeta(draftKey)
+        editorDraftKey?.let { deleteMeta(it) }
         return true
     }
 }

@@ -82,7 +82,10 @@ class TypeCqQuestionRepositoryImpl(
             }
             val stimulusRating = if (stimulusId != null) ok.stimulusRating else null
             val stimulusTags = if (stimulusId != null) tagRows(ok.stimulusBoards) else emptyList()
-            val written = dao.insertGroup(input.topicId, stimulusId, ok.stimulusText, ok.referenceText, stimulusRating, stimulusTags, rows, clock(), draftKey(input.topicId))
+            val written = dao.insertGroup(
+                input.topicId, stimulusId, ok.stimulusText, ok.referenceText, stimulusRating, stimulusTags,
+                rows, clock(), draftKey(input.topicId), input.editorDraftKey,
+            )
             if (!written) return SaveResult.TopicMissing
             // The DAO performs all read-back checks before removing the draft, inside the same Room transaction.
             SaveResult.Saved(stimulusId, rows.map { it.id })
@@ -196,6 +199,7 @@ class TypeCqQuestionRepositoryImpl(
                 changeStimulusBoards = ok.stimulusBoards != null,
                 newStimulusBoards = ok.stimulusBoards?.let { tagRows(it.tags) } ?: emptyList(),
                 boardUpdates = ok.boardUpdates.map { QuestionBoardsDb(it.questionId, tagRows(it.change.tags)) },
+                editorDraftKey = input.editorDraftKey,
             )
             if (!written) return UpdateResult.GroupMissing
             // The DAO verifies the updated question/metadata/solution/stimulus/board rows before deleting the draft,

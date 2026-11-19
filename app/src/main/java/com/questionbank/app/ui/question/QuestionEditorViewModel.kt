@@ -18,6 +18,12 @@ import com.questionbank.app.domain.question.RatingsInput
 import com.questionbank.app.domain.question.SaveResult
 import com.questionbank.app.domain.question.SubQuestionInput
 import com.questionbank.app.domain.question.TypeCqQuestionRepository
+import com.questionbank.app.domain.editor.EditorSessionDraft
+import com.questionbank.app.domain.editor.EditorSessionDraftCodec
+import com.questionbank.app.domain.editor.EditorScope as CanonicalEditorScope
+import com.questionbank.app.domain.editor.EditorMode as CanonicalEditorMode
+import com.questionbank.app.domain.editor.TypeCqDraftAdapter
+import com.questionbank.app.domain.repository.EditorDraftRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -56,6 +62,7 @@ class QuestionEditorViewModel(
     private val draftScope: CoroutineScope,
     questionTypesFlow: Flow<List<com.questionbank.app.data.local.entity.TypeCqQuestionTypesEntity>> = flowOf(emptyList()),
     private val duplicateChecker: suspend (String) -> Boolean = { false },
+    private val editorDraftRepository: EditorDraftRepository? = null,
 ) : ViewModel() {
 
     var loaded by mutableStateOf(false)
@@ -78,6 +85,7 @@ class QuestionEditorViewModel(
         private set
     private val history = EditorHistory(DraftText())
     private var duplicateJob: Job? = null
+    private var canonicalDraftTemplate: EditorSessionDraft? = null
     val canUndo: Boolean get() = history.canUndo
     val canRedo: Boolean get() = history.canRedo
 
@@ -92,13 +100,19 @@ class QuestionEditorViewModel(
     init {
         startWriter()
         viewModelScope.launch {
-            val stored = repository.loadDraft(topicId)
-            if (stored != null && !stored.isBlank) {
+            val canonical = runCatching { editorDraftRepository?.load("type_cq", topicId)?.let(EditorSessionDraftCodec::decode) }
+                .getOrNull()?.takeIf { it.scope == CanonicalEditorScope.TYPE_CQ && it.ownerId == topicId }
+            canonicalDraftTemplate = canonical
+            val stored = canonical?.let(TypeCqDraftAdapter::toLegacy) ?: repository.loadDraft(topicId)
+            if (stored != null && (!stored.isBlank || canonical != null)) {
                 draft = stored
                 history.reset(stored)
                 restoredFromDraft = true
                 draftStatus = DraftStatus.SAVED
+                // Migrate a legacy DraftText payload to the shared schema without removing the old recovery copy.
+                if (canonical == null) pending.trySend(stored)
             }
+            if (canonical != null) editorMode = if (canonical.mode == CanonicalEditorMode.FULL) EditorMode.FULL else EditorMode.MINIMUM
             loaded = true
             scheduleDuplicateCheck()
         }
@@ -110,6 +124,18 @@ class QuestionEditorViewModel(
         writer = draftScope.launch {
             for (text in queue) {
                 repository.saveDraft(topicId, text)
+                val previous = canonicalDraftTemplate
+                val canonical = TypeCqDraftAdapter.fromLegacy(
+                    ownerId = topicId,
+                    draft = text,
+                    mode = if (editorMode == EditorMode.FULL) CanonicalEditorMode.FULL else CanonicalEditorMode.MINIMUM,
+                    previous = previous,
+                )
+                canonicalDraftTemplate = canonical
+                try {
+                    if (text.isBlank && canonical.questionBlocks.all { it.categoryIds.isEmpty() && it.solutionParts.isEmpty() } && canonical.stimulus.images.isEmpty()) editorDraftRepository?.discard("type_cq", topicId)
+                    else editorDraftRepository?.save("type_cq", topicId, EditorSessionDraftCodec.encode(canonical))
+                } catch (_: Exception) { /* legacy draft remains recoverable */ }
                 if (text == draft) draftStatus = if (text.isBlank) DraftStatus.NONE else DraftStatus.SAVED
             }
         }
@@ -162,7 +188,12 @@ class QuestionEditorViewModel(
     fun clearAll() = change(DraftText(), "clear")
 
     @JvmName("applyEditorMode")
-    fun setEditorMode(mode: EditorMode) { editorMode = mode }
+    fun setEditorMode(mode: EditorMode) {
+        if (saving || !loaded || editorMode == mode) return
+        editorMode = mode
+        // Mode is part of the durable editor session, not the question record.
+        pending.trySend(draft)
+    }
 
     fun undo() {
         if (saving || !loaded) return
@@ -240,6 +271,7 @@ class QuestionEditorViewModel(
                         topicId = topicId,
                         stimulusText = snapshot.stimulus,
                         referenceText = snapshot.referenceText,
+                        editorDraftKey = if (editorDraftRepository != null) "draft:type_cq:editor:$topicId" else null,
                         subQuestions = CqLabel.entries.mapIndexed { i, label ->
                             SubQuestionInput(
                                 label, snapshot.texts[i], snapshot.answers[i],
@@ -260,6 +292,7 @@ class QuestionEditorViewModel(
             if (outcome is SaveResult.Saved) {
                 draft = DraftText()
                 history.reset(draft)
+                canonicalDraftTemplate = null
                 duplicateWarning = false
                 checkingDuplicate = false
                 draftStatus = DraftStatus.NONE
@@ -272,6 +305,8 @@ class QuestionEditorViewModel(
                 result = outcome
                 startWriter()
                 withContext(NonCancellable) { repository.saveDraft(topicId, snapshot) }
+                // Also refresh the canonical copy: restore prefers it, and the cancelled writer may have left an older one.
+                pending.trySend(snapshot)
                 draftStatus = DraftStatus.SAVED
                 saving = false
             }

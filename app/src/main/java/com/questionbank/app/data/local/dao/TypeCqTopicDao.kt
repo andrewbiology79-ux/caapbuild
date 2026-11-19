@@ -61,12 +61,13 @@ abstract class TypeCqTopicDao {
 
     /** Deletes only a topic without questions (its unsaved draft goes with it). Check and delete are one transaction. */
     @Transaction
-    open suspend fun deleteIfEmpty(topicId: String, draftKey: String): DeleteOutcome {
+    open suspend fun deleteIfEmpty(topicId: String, draftKey: String, editorDraftKey: String? = null): DeleteOutcome {
         if (countById(topicId) == 0) return DeleteOutcome.NotFound
         val questions = countQuestions(topicId)
         if (questions > 0) return DeleteOutcome.NotEmpty(0, questions)
         deleteById(topicId)
         deleteMeta(draftKey)
+        editorDraftKey?.let { deleteMeta(it) }
         return DeleteOutcome.Deleted
     }
 

@@ -52,3 +52,18 @@ A source-level recheck found and corrected the following issues: (1) Type_CQ New
 A second detailed source review found and corrected additional issues: Chapter_CQ duplicate-save taps, delayed draft writer/save synchronization and atomic draft cleanup, Type_CQ duplicate-check cancellation/stale results, Type_CQ post-commit read-back, mixed text/image part position preservation, Chapter_CQ nested transaction usage, stale edit-target handling, shared-stimulus copy-on-write and primary board/year replacement. Cancellation propagation and the root header back action were also corrected.
 
 No Gradle build, Kotlin/KSP compile, unit test, instrumented/emulator test or phone test was run (owner instruction). The app still has no claim of compile or runtime verification. Phases 6, 7 and 8 remain PARTIAL. M0 Phase 4/5 remains NOT PASSED. Full canonical shared EditorState/draft migration, Type_CQ category picker/Edit duplicate warning, Chapter_CQ hierarchy/category admin, full media/image editing, formula rendering/cursor-aware insertion and block delete/reorder remain incomplete. See `PROJECT_PLAN_v1_54_UPDATED.txt` and `STATIC_RECHECK_REPORT_v1_54.txt`.
+
+
+## v1.58 coordinated canonical-draft integration (source update)
+
+This source package has been extended after the v1.57 candidate review:
+
+- Added `EditorSessionDraft` schema v2, a compatibility-preserving JSON codec, an immutable event/reducer model, and bounded shared session history.
+- Added an adapter from the existing Type_CQ `DraftText` model to/from the canonical model.
+- Connected Type_CQ New/Edit draft restore and autosave to the canonical repository while retaining legacy recovery data.
+- Added canonical draft key cleanup inside the same Type_CQ Room transaction as a successful content save.
+- Connected Chapter_CQ's draft JSON writer/reader to the canonical schema while retaining its previous snapshot JSON compatibility.
+
+**This does not complete Phases 6–8.** The common reducer is not yet the single observable state source used by both scopes; Type_CQ categories, complete dirty/back semantics, full image/media operations, multi-block add/remove/reorder UX, full Chapter_CQ multi-tag/category controls, formula rendering/live preview and legacy marker import remain outstanding. Raw marks text is represented in the canonical schema, but the current Type_CQ legacy editor path still maps it through numeric `DraftText`.
+
+**Status:** Phase 6 PARTIAL / WRITTEN / UNVERIFIED; Phase 7 PARTIAL / WRITTEN / UNVERIFIED; Phase 8 PARTIAL / WRITTEN / UNVERIFIED. No Gradle build, Kotlin/KSP compile, unit test, instrumented/emulator test or phone test was run, as explicitly requested. Existing app version metadata (`versionCode=36`, `versionName=0.2.31-phase5-wip2`) is unchanged; P-56 remains open. See `PROJECT_PLAN_v1_58_UPDATED.txt`, section 67.
