@@ -92,6 +92,7 @@ class QuestionEditViewModel(
         private set
     var editorMode by mutableStateOf(EditorMode.MINIMUM)
         private set
+        private set
     private val history = EditorHistory(EditSnapshot())
     val canUndo: Boolean get() = history.canUndo
     val canRedo: Boolean get() = history.canRedo
