@@ -1,6 +1,6 @@
 # Phase 4 data-layer implementation notes
 
-Base package: `QuestionBank_v0_2_30c3` (plan baseline `PROJECT_PLAN_v1_45_UPDATED.txt`).
+Base package: `QuestionBank_v0_2_30c3` (plan baseline `PROJECT_PLAN_v1_45_UPDATED.txt`). Current state: WIP2 (plan v1.47).
 
 ## Added in this working package
 
@@ -23,6 +23,14 @@ Base package: `QuestionBank_v0_2_30c3` (plan baseline `PROJECT_PLAN_v1_45_UPDATE
 
 ## Verification status
 
-- SQLite validation: 85 DAO `@Query` statements were checked against `database/QuestionBank_SQLite_Schema_v1_1.sql` with SQLite `EXPLAIN`; all 77 parsed successfully before the final small validation additions. Re-run after final edits is recorded in the handoff report.
+- SQLite validation: 87 DAO `@Query` statements (24 + 23 + 26 + 8 + 6) were checked against `database/QuestionBank_SQLite_Schema_v1_1.sql` with SQLite `EXPLAIN`; 0 SQL errors (WIP2 corrects the earlier "85 / 77" wording). The seed SQL of the WIP2 tests was also executed against the schema (OK). This is not a Room/KSP compile.
 - Gradle / KSP / JVM tests / Android instrumentation: **NOT RUN** in this environment. `./gradlew --offline testDebugUnitTest` still attempted to download Gradle 8.14.3 and failed with `UnknownHostException: services.gradle.org`. Therefore Kotlin compilation, Room KSP validation, test outcomes and generated schema identity remain unconfirmed.
 - Phase 4 is **IN PROGRESS, not closed** until CI compiles the package, all JVM and emulator tests pass, and the owner completes a device smoke check. The previous Run #47 (142 unit / 99 emulator) belongs to the unmodified baseline and is not evidence for this package.
+
+## WIP2 additions (plan v1.47, section 56)
+
+- `EditorWorkflowUseCasesTest` (JVM, 8 tests, in-memory fakes): solution-part renumbering and rejection, category / board-link ownership checks, scope routing, duplicate check scope, paper snapshot rules, draft scope separation.
+- `SharedCategoryPaperRepositoryTest` (emulator, 4 tests): editor-draft round trip, category reassign + archive with Chapter_CQ untouched, reassign rejection, paper snapshot accept / reject of invalid references.
+- Housekeeping: stale `PROJECT_PLAN_v1_44_UPDATED.txt` removed; four empty folders removed; notes corrected.
+- DAO layout decision recorded in plan section 56.2: five consolidated DAOs instead of one DAO per table.
+- NOT changed: domain-model mapping (Room entities still cross the repository boundary), draft-format reconciliation, TypeCq / Media repository tests. See plan 56.4.
