@@ -72,7 +72,6 @@ class QuestionEditorViewModel(
         private set
     var editorMode by mutableStateOf(EditorMode.MINIMUM)
         private set
-        private set
     var duplicateWarning by mutableStateOf(false)
         private set
     var checkingDuplicate by mutableStateOf(false)
@@ -162,6 +161,7 @@ class QuestionEditorViewModel(
 
     fun clearAll() = change(DraftText(), "clear")
 
+    @JvmName("applyEditorMode")
     fun setEditorMode(mode: EditorMode) { editorMode = mode }
 
     fun undo() {

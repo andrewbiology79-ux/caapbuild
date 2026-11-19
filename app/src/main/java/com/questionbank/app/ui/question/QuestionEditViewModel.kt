@@ -92,7 +92,6 @@ class QuestionEditViewModel(
         private set
     var editorMode by mutableStateOf(EditorMode.MINIMUM)
         private set
-        private set
     private val history = EditorHistory(EditSnapshot())
     val canUndo: Boolean get() = history.canUndo
     val canRedo: Boolean get() = history.canRedo
@@ -293,6 +292,7 @@ class QuestionEditViewModel(
         queueDraft()
     }
 
+    @JvmName("applyEditorMode")
     fun setEditorMode(mode: EditorMode) { editorMode = mode }
     fun undo() { if (!saving && !finished) history.undo()?.let(::applySnapshot) }
     fun redo() { if (!saving && !finished) history.redo()?.let(::applySnapshot) }
