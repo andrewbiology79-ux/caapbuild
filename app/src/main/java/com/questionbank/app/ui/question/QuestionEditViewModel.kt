@@ -26,6 +26,9 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
@@ -56,6 +59,7 @@ class QuestionEditViewModel(
     private val groupKey: String,
     private val repository: TypeCqQuestionRepository,
     private val draftScope: CoroutineScope,
+    questionTypesFlow: Flow<List<com.questionbank.app.data.local.entity.TypeCqQuestionTypesEntity>> = flowOf(emptyList()),
 ) : ViewModel() {
 
     var load by mutableStateOf(EditLoad.LOADING)
@@ -81,6 +85,7 @@ class QuestionEditViewModel(
     /** The board catalog for the picker. */
     val boardCatalog: StateFlow<List<BoardItem>> =
         repository.observeBoards().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val questionTypeLabels: StateFlow<Map<String, String>> = questionTypesFlow.map { rows -> rows.associate { it.questionTypeId to it.label } }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
     var saving by mutableStateOf(false)
         private set
     var result by mutableStateOf<UpdateResult?>(null)

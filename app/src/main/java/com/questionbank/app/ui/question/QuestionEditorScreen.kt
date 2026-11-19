@@ -47,6 +47,7 @@ fun QuestionEditorScreen(
 ) {
     val draft = viewModel.draft
     val boards by viewModel.boardCatalog.collectAsState()
+    val typeLabels by viewModel.questionTypeLabels.collectAsState()
     Scaffold(
         topBar = {
             AppHeader(title = "প্রশ্ন যোগ করুন", onBack = onBack)
@@ -104,7 +105,7 @@ fun QuestionEditorScreen(
 
             CqLabel.entries.forEachIndexed { i, label ->
                 Text(
-                    "${label.letter}) ${label.typeLabel} · ${marksText(label.marks)} নম্বর",
+                    "${label.letter}) ${typeLabels[label.typeId] ?: label.typeLabel} · ${marksText(label.marks)} নম্বর",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                 )

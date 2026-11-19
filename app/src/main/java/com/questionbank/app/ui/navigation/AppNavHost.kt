@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -40,6 +41,9 @@ import com.questionbank.app.ui.components.PlaceholderScreen
 import com.questionbank.app.ui.hierarchy.HierarchyLabels
 import com.questionbank.app.ui.hierarchy.HierarchyListScreen
 import com.questionbank.app.ui.hierarchy.HierarchyListViewModel
+import com.questionbank.app.ui.hierarchy.ReferenceHomeScreen
+import com.questionbank.app.ui.hierarchy.ReferenceCatalogScreen
+import com.questionbank.app.ui.hierarchy.ReferenceRow
 import com.questionbank.app.ui.profile.ProfileScreen
 import com.questionbank.app.domain.question.QuestionGroupKey
 import com.questionbank.app.ui.question.QuestionEditScreen
@@ -72,6 +76,11 @@ object Routes {
     const val QUESTIONS = "type_cq/topics/{topicId}/questions"
     const val QUESTION_EDITOR = "type_cq/topics/{topicId}/questions/new"
     const val QUESTION_EDIT = "type_cq/topics/{topicId}/questions/edit/{groupKey}"
+    const val REFERENCE_HOME = "type_cq/references"
+    const val QUESTION_TYPES = "type_cq/references/question_types"
+    const val BOARDS = "type_cq/references/boards"
+    const val TYPE_CATEGORIES = "type_cq/references/categories/type"
+    const val CHAPTER_CATEGORIES = "type_cq/references/categories/chapter"
     const val SAVED_COUNT_KEY = "savedCount"
     const val EDITED_KEY = "questionEdited"
 
@@ -178,7 +187,58 @@ fun AppNavHost() {
                         labels = SUBJECT_LABELS,
                         onItemClick = { navController.navigate(Routes.chapters(it.id)) },
                         onBack = null,
+                        onManageReferences = { navController.navigate(Routes.REFERENCE_HOME) },
                     )
+                }
+
+                composable(
+                    route = Routes.REFERENCE_HOME,
+                ) {
+                    ReferenceHomeScreen(
+                        onQuestionTypes = { navController.navigate(Routes.QUESTION_TYPES) },
+                        onBoards = { navController.navigate(Routes.BOARDS) },
+                        onCategories = { navController.navigate(Routes.TYPE_CATEGORIES) },
+                        onChapterCategories = { navController.navigate(Routes.CHAPTER_CATEGORIES) },
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+
+                composable(Routes.QUESTION_TYPES) {
+                    val flow = remember { container.typeCqData.observeAllQuestionTypes().map { list -> list.map { ReferenceRow(it.questionTypeId, it.label, it.code, it.isActive == 0L) } } }
+                    ReferenceCatalogScreen("Question Type", flow, true, allowAdd = false, allowArchive = false,
+                        onAdd = { code, label -> container.typeCqData.addQuestionType(code, label) },
+                        onRename = { id, label -> container.typeCqData.renameQuestionType(id, label) },
+                        onArchive = { id, archived -> container.typeCqData.setQuestionTypeActive(id, !archived) },
+                        onBack = { navController.popBackStack() })
+                }
+
+                composable(Routes.BOARDS) {
+                    val flow = remember { container.typeCqData.observeBoards().map { list -> list.map { ReferenceRow(it.boardId, it.displayName, it.code, it.isArchived != 0L) } } }
+                    ReferenceCatalogScreen("Board ও Year", flow, true,
+                        onAdd = { code, label -> container.typeCqData.addBoard(code, label) },
+                        onRename = { id, label -> container.typeCqData.renameBoard(id, label) },
+                        onArchive = { id, archived -> container.typeCqData.setBoardArchived(id, archived) },
+                        onBack = { navController.popBackStack() })
+                }
+
+                composable(Routes.TYPE_CATEGORIES) {
+                    val flow = remember { container.typeCqData.observeCategories().map { list -> list.map { ReferenceRow(it.categoryId, it.name, archived = it.isArchived != 0L) } } }
+                    ReferenceCatalogScreen("Type_CQ Category", flow, false,
+                        onAdd = { _, label -> container.typeCqData.addCategory(label) },
+                        onRename = { id, label -> container.typeCqData.renameCategory(id, label) },
+                        onArchive = { id, archived -> container.typeCqData.setCategoryArchived(id, archived) },
+                        onReassign = { source, target -> container.categories.reassignAndArchiveTypeCategory(source, target, System.currentTimeMillis()) },
+                        onBack = { navController.popBackStack() })
+                }
+
+                composable(Routes.CHAPTER_CATEGORIES) {
+                    val flow = remember { container.chapterCq.observeCategories().map { list -> list.map { ReferenceRow(it.categoryId, it.name, archived = it.isArchived != 0L) } } }
+                    ReferenceCatalogScreen("Chapter_CQ Category", flow, false,
+                        onAdd = { _, label -> container.categories.addChapterCategory(label) },
+                        onRename = { id, label -> container.categories.renameChapterCategory(id, label, System.currentTimeMillis()) },
+                        onArchive = { id, archived -> container.categories.setChapterCategoryArchived(id, archived, System.currentTimeMillis()) },
+                        onReassign = { source, target -> container.categories.reassignAndArchiveChapterCategory(source, target, System.currentTimeMillis()) },
+                        onBack = { navController.popBackStack() })
                 }
 
                 composable(
@@ -273,7 +333,7 @@ fun AppNavHost() {
                     val topicId = entry.arguments?.getString("topicId").orEmpty()
                     val vm: QuestionEditorViewModel = viewModel(
                         factory = QuestionEditorViewModel.factory {
-                            QuestionEditorViewModel(topicId, questionRepo, container.appScope)
+                            QuestionEditorViewModel(topicId, questionRepo, container.appScope, container.typeCqData.observeQuestionTypes())
                         }
                     )
                     QuestionEditorScreen(
@@ -296,7 +356,7 @@ fun AppNavHost() {
                     val topicId = entry.arguments?.getString("topicId").orEmpty()
                     val groupKey = entry.arguments?.getString("groupKey").orEmpty()
                     val vm: QuestionEditViewModel = viewModel(
-                        factory = QuestionEditViewModel.factory { QuestionEditViewModel(topicId, groupKey, questionRepo, container.appScope) }
+                        factory = QuestionEditViewModel.factory { QuestionEditViewModel(topicId, groupKey, questionRepo, container.appScope, container.typeCqData.observeQuestionTypes()) }
                     )
                     QuestionEditScreen(
                         viewModel = vm,

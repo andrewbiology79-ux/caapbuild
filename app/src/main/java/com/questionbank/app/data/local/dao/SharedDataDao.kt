@@ -23,6 +23,9 @@ abstract class SharedDataDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     abstract suspend fun insertBoard(row: BoardCatalogEntity)
 
+    @Query("SELECT COUNT(*) FROM board_catalog WHERE code = :code")
+    abstract suspend fun boardCodeExists(code: String): Int
+
     @Query("UPDATE board_catalog SET display_name = :name, updated_at = :now WHERE board_id = :id")
     abstract suspend fun renameBoard(id: String, name: String, now: Long): Int
 

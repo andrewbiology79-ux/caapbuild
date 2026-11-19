@@ -88,6 +88,7 @@ fun HierarchyListScreen(
     onBack: (() -> Unit)?,
     onCrumbClick: (Int) -> Unit = {},
     rootCrumb: String = "বিষয় তালিকা",
+    onManageReferences: (() -> Unit)? = null,
 ) {
     val listState by viewModel.items.collectAsState()
     val ancestors by viewModel.ancestors.collectAsState()
@@ -135,6 +136,11 @@ fun HierarchyListScreen(
     ) { innerPadding ->
         val current = listState
         Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+            if (onManageReferences != null) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onManageReferences) { Text("রেফারেন্স ডেটা ⚙") }
+                }
+            }
             Breadcrumb(crumbs = listOf(rootCrumb) + ancestors, onCrumbClick = onCrumbClick)
 
             if (current != null) {

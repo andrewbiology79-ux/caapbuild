@@ -30,6 +30,18 @@ abstract class TypeCqReferenceDao {
     @Query("SELECT * FROM type_cq_question_types ORDER BY sort_order, label, question_type_id")
     abstract suspend fun questionTypes(): List<TypeCqQuestionTypesEntity>
 
+    @Query("SELECT * FROM type_cq_question_types ORDER BY is_active DESC, sort_order, label, question_type_id")
+    abstract fun observeAllQuestionTypes(): Flow<List<TypeCqQuestionTypesEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    abstract suspend fun insertQuestionType(row: TypeCqQuestionTypesEntity)
+    @Query("SELECT COUNT(*) FROM type_cq_question_types WHERE code = :code")
+    abstract suspend fun questionTypeCodeExists(code: String): Int
+    @Query("UPDATE type_cq_question_types SET label = :label WHERE question_type_id = :id")
+    abstract suspend fun renameQuestionType(id: String, label: String): Int
+    @Query("UPDATE type_cq_question_types SET is_active = :active WHERE question_type_id = :id")
+    abstract suspend fun setQuestionTypeActive(id: String, active: Long): Int
+
     @Query("SELECT * FROM type_cq_stimuli WHERE topic_id = :topicId ORDER BY created_at, stimulus_id")
     abstract fun observeStimuli(topicId: String): Flow<List<TypeCqStimuliEntity>>
 

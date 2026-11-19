@@ -51,6 +51,7 @@ fun QuestionEditScreen(
 ) {
     var askDiscard by rememberSaveable { mutableStateOf(false) }
     val catalog by viewModel.boardCatalog.collectAsState()
+    val typeLabels by viewModel.questionTypeLabels.collectAsState()
     val needsAsk = viewModel.load == EditLoad.READY && viewModel.changed && !viewModel.saving
     val tryBack: () -> Unit = {
         if (needsAsk) {
@@ -141,7 +142,7 @@ fun QuestionEditScreen(
                 viewModel.editableLabels.forEach { label ->
                     val i = label.sortOrder - 1
                     Text(
-                        "${label.letter}) ${label.typeLabel} · ${marksText(label.marks)} নম্বর",
+                        "${label.letter}) ${typeLabels[label.typeId] ?: label.typeLabel} · ${marksText(label.marks)} নম্বর",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                     )

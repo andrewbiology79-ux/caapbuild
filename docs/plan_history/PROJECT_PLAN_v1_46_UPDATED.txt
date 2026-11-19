@@ -1,7 +1,7 @@
 QUESTION BANK ANDROID APP COMPLETE PROJECT DEVELOPMENT & DELIVERY PLAN
 ============================================================
 
-Document version: 1.47 (Phase 4 WIP2: use-case and repository tests added, package cleaned, DAO layout decision recorded; build and tests still pending; see section 56. v1.46 and v1.45 content preserved.)
+Document version: 1.46 (Phase 4 data-layer implementation package WIP1 added; build and tests pending; see section 55. Historical plan baseline and confirmations are preserved from v1.45.)
 Planning baseline: 16 November 2026
 Project status: Single-database architecture confirmed; canonical SQL and Room build harness prepared. CI run 11 (package v0.2.8) passed: KSP/Room generation, unit tests (5 of 5) and debug APK assembly. The package is still a build harness, not a complete application; Room-database runtime behaviour (CHECK emulation, Bengali FTS on the real database) is not yet device-tested.
 
@@ -3795,45 +3795,4 @@ Close only after: (1) CI Gradle/KSP build succeeds; (2) all JVM and Android test
 55.7 Change log addition
 - v1.46: Phase 4 data-layer implementation package WIP1 added; 87 DAO SQL queries checked with SQLite EXPLAIN; no intended schema change; build and test verification blocked by unavailable Gradle distribution; Phase 4 remains OPEN.
 
-END OF VERSION 1.46 UPDATE (section 55 continues in section 56)
-
-
-============================================================
-56. PHASE 4 WORKING PACKAGE WIP2 - VERSION 1.47
-============================================================
-
-Planning update date: 19 November 2026
-
-56.1 Review of WIP1 against section 5 (PHASE 4)
-- Checked in the WIP1 zip: zip intact; 146 text file identical to the copy in the zip; no entity or schema file changed; 87 DAO queries (24+23+26+8+6); all 29 entities used by the new DAOs exist and are registered in @Database; all new imports resolve; all 5 required repository implementations and all 9 required use cases exist; no UI-to-DAO calls; Type_CQ and Chapter_CQ DAOs do not read each other's tables.
-- Not compiled: Gradle is unavailable in the working environment, so this review is static only.
-
-56.2 Decision: consolidated DAOs (deviation from the per-table DAO list in section 5)
-- Section 5 lists one DAO per table family (BoardCatalogDao, PaperDao, PaperSectionDao ...). WIP1 / WIP2 use five consolidated DAOs: SharedDataDao, TypeCqReferenceDao (plus the existing Subject / Chapter / Topic / Question DAOs), ChapterCqDataDao, CategoryDataDao, MediaDataDao.
-- Reason: fewer Room classes, one transaction boundary per workflow, scope isolation kept by file (Type_CQ and Chapter_CQ never share a DAO). The functions required by section 5 are all present.
-- Owner may overrule; splitting later is a mechanical change and does not touch the schema.
-
-56.3 Changes in WIP2
-- Added 8 JVM tests (EditorWorkflowUseCasesTest) and 4 emulator tests (SharedCategoryPaperRepositoryTest).
-- Removed the superseded plan file v1.44 from the zip; removed 4 empty source folders; corrected the query-count wording in PHASE4_DATA_LAYER_NOTES.md (87 queries, 0 SQL errors).
-- Seed SQL of the new emulator tests was executed against the canonical SQLite schema (OK).
-- versionCode 34 / versionName 0.2.30c3-board-search unchanged (not a release). No schema change.
-- Expected totals, NOT confirmed: 153 unit (142 + 3 + 8) and 106 emulator (99 + 3 + 4).
-
-56.4 Still open before Phase 4 can be closed
-1. CI: Gradle / KSP compile, all unit tests, all emulator tests; identityHash must stay 786b471dfa14c9ae4739bb81479bab25.
-2. Domain models: repository contracts still expose Room entities and DAO projection types; a mapping pass is required (Deliverable "Domain models" of section 5). The folder domain/editor was removed because it was empty; recreate it when this pass starts.
-3. Repository tests still missing: TypeCqRepositoryImpl (invalid references, scope isolation), MediaRepositoryImpl, observable-query ordering tests.
-4. Editor-draft format: the generic draft store (app_metadata) is not reconciled with the existing Type_CQ DraftText serialization; add a migration / read-back test before any screen uses it.
-5. Check the remaining section 5 items one by one (custom board policies, category archive for Type_CQ and Chapter_CQ in the UI is Phase 5, not here).
-6. Owner device smoke test.
-
-56.5 Next steps
-1. Push WIP2, run the existing CI (android-build.yml, android-instrumented.yml). Send the reports if anything fails; fix the first diagnostic first.
-2. After CI is green: do 56.4 items 3 and 2 (tests, then domain mapping), then item 4.
-3. Only then owner smoke test and mark Phase 4 DONE.
-
-56.6 Change log addition
-- v1.47: Phase 4 WIP2: 12 new tests, package cleaned, DAO layout decision (56.2) recorded, remaining gaps listed (56.4); no schema change; build and tests still NOT RUN; Phase 4 remains OPEN.
-
-END OF VERSION 1.47 UPDATE
+END OF VERSION 1.46 UPDATE

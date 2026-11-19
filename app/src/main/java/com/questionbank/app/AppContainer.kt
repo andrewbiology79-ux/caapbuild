@@ -91,7 +91,7 @@ class AppContainer(private val appContext: Context) {
     }
 
     /** Separate repositories preserve the Type_CQ / Chapter_CQ write boundary. */
-    val typeCqData: TypeCqRepository by lazy { TypeCqRepositoryImpl(database.typeCqReferenceDao()) }
+    val typeCqData: TypeCqRepository by lazy { TypeCqRepositoryImpl(database.typeCqReferenceDao(), database.categoryDataDao(), database.sharedDataDao()) { database.forceFullSync() } }
     val chapterCq: ChapterCqRepository by lazy { ChapterCqRepositoryImpl(database.chapterCqDataDao()) { database.forceFullSync() } }
     val papers: PaperRepository by lazy { PaperRepositoryImpl(database.sharedDataDao()) { database.forceFullSync() } }
     val editorDrafts: EditorDraftRepository by lazy { EditorDraftRepositoryImpl(database.sharedDataDao()) { database.forceFullSync() } }

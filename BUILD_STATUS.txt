@@ -1,14 +1,19 @@
-Question Bank Android build foundation - working package v0.2.30c3-phase4-wip2 (plan v1.47)
+Question Bank Android - working package v0.2.31-phase5-wip2 (plan v1.48)
+
+CURRENT STATE - NOT COMPILED, NOT RUN (Gradle 8.14.3 distribution unavailable offline). Phase 4 WIP1 + Phase 5 WIP1/WIP2 stack on the last CI-confirmed baseline v0.2.30c3 (run 47: 142/142 unit, 99/99 emulator). Next action: push and run CI before any new feature (plan 57.6, P-57).
+
+--- Older notes (v0.2.30c3-phase4-wip1 and before) ---
+
+Question Bank Android build foundation - working package v0.2.30c3-phase4-wip1 (plan v1.46)
 
 CURRENT WORKING PACKAGE - PHASE 4 DATA LAYER (NOT VERIFIED / NOT RELEASED)
-- WIP1 content kept: shared, Type_CQ, Chapter_CQ, category, media and paper DAO / repository / use-case work (PHASE4_DATA_LAYER_NOTES.md, PROJECT_PLAN_v1_47_UPDATED.txt sections 55 and 56).
-- WIP2 adds 8 JVM tests (EditorWorkflowUseCasesTest) and 4 emulator tests (SharedCategoryPaperRepositoryTest). Housekeeping: stale plan v1.44 file and empty folders removed, notes corrected.
-- SQLite static query check: 87 DAO @Query statements, 0 errors. Not a Room/KSP compile.
-- No Room Entity/schema/database-version change: 35 entities, version 1, expected identityHash 786b471dfa14c9ae4739bb81479bab25. Must be reconfirmed by CI. versionCode 34 / versionName 0.2.30c3-board-search deliberately NOT bumped (not a release).
-- Expected totals (NOT confirmed): 153 unit (142 + 3 + 8) / 106 emulator (99 + 3 + 4). Actual totals are unknown until CI / emulator runs.
-- Local Gradle run BLOCKED (services.gradle.org unreachable). Kotlin compile, KSP, unit and emulator tests are NOT CONFIRMED.
+- Added shared, Type_CQ, Chapter_CQ, category, media and paper DAO/repository/use-case work. See PHASE4_DATA_LAYER_NOTES.md and PROJECT_PLAN_v1_46_UPDATED.txt section 55.
+- SQLite static query check: 87 newly added DAO @Query statements passed EXPLAIN against the canonical schema. This is not a Room/KSP compile.
+- No Room Entity/schema/database-version change intended: 35 Room entities, database version 1, expected identityHash 786b471dfa14c9ae4739bb81479bab25. Must be reconfirmed by CI.
+- Added 3 JVM tests and 3 Android instrumentation tests. Expected totals based on the prior baseline: 145 unit / 102 emulator; actual totals are unknown until CI/emulator runs.
+- Local Gradle run BLOCKED: Gradle 8.14.3 distribution is not cached and services.gradle.org cannot be resolved (UnknownHostException). Kotlin compile, KSP, unit tests and emulator tests are therefore NOT CONFIRMED.
 - Previous CI Run #47 (142/142 unit, 99/99 emulator) is for the unchanged v0.2.30c3 baseline, not this package.
-- PHASE 4 remains IN PROGRESS.
+- PHASE 4 remains IN PROGRESS. Do not ship as a release or call the phase complete until CI, emulator, domain-boundary/draft reconciliation and owner device smoke checks pass.
 
 --- Historical build notes from the v0.2.30c3 base package ---
 

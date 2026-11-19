@@ -24,6 +24,9 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
@@ -48,6 +51,7 @@ class QuestionEditorViewModel(
     private val topicId: String,
     private val repository: TypeCqQuestionRepository,
     private val draftScope: CoroutineScope,
+    questionTypesFlow: Flow<List<com.questionbank.app.data.local.entity.TypeCqQuestionTypesEntity>> = flowOf(emptyList()),
 ) : ViewModel() {
 
     var loaded by mutableStateOf(false)
@@ -66,6 +70,7 @@ class QuestionEditorViewModel(
     /** v0.2.30c-2: the board catalog for the picker (built-in boards and the custom ones). */
     val boardCatalog: StateFlow<List<BoardItem>> =
         repository.observeBoards().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val questionTypeLabels: StateFlow<Map<String, String>> = questionTypesFlow.map { rows -> rows.associate { it.questionTypeId to it.label } }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
     private var pending = Channel<DraftText>(Channel.CONFLATED)
     private var writer: Job? = null
