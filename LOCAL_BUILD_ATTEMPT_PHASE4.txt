@@ -1,0 +1,7 @@
+Local verification attempt for Phase 4 WIP1
+Date: 2026-11-19
+Command: ./gradlew --offline testDebugUnitTest
+Result: BLOCKED before Gradle configuration/build.
+Reason: Gradle wrapper tried to download https://services.gradle.org/distributions/gradle-8.14.3-bin.zip; DNS resolution failed with java.net.UnknownHostException: services.gradle.org.
+Consequences: no Kotlin compile, no KSP/Room DAO validation, no JVM test execution, no APK assembly, no emulator test execution. Do not interpret as a test failure or pass; status is NOT RUN.
+Additional local check: 87 new @Query SQL statements were parsed with SQLite EXPLAIN against database/QuestionBank_SQLite_Schema_v1_1.sql; 0 SQL errors. This does not replace Gradle/KSP validation.

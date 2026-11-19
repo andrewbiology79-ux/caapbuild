@@ -1,3 +1,16 @@
+Question Bank Android build foundation - working package v0.2.30c3-phase4-wip1 (plan v1.46)
+
+CURRENT WORKING PACKAGE - PHASE 4 DATA LAYER (NOT VERIFIED / NOT RELEASED)
+- Added shared, Type_CQ, Chapter_CQ, category, media and paper DAO/repository/use-case work. See PHASE4_DATA_LAYER_NOTES.md and PROJECT_PLAN_v1_46_UPDATED.txt section 55.
+- SQLite static query check: 87 newly added DAO @Query statements passed EXPLAIN against the canonical schema. This is not a Room/KSP compile.
+- No Room Entity/schema/database-version change intended: 35 Room entities, database version 1, expected identityHash 786b471dfa14c9ae4739bb81479bab25. Must be reconfirmed by CI.
+- Added 3 JVM tests and 3 Android instrumentation tests. Expected totals based on the prior baseline: 145 unit / 102 emulator; actual totals are unknown until CI/emulator runs.
+- Local Gradle run BLOCKED: Gradle 8.14.3 distribution is not cached and services.gradle.org cannot be resolved (UnknownHostException). Kotlin compile, KSP, unit tests and emulator tests are therefore NOT CONFIRMED.
+- Previous CI Run #47 (142/142 unit, 99/99 emulator) is for the unchanged v0.2.30c3 baseline, not this package.
+- PHASE 4 remains IN PROGRESS. Do not ship as a release or call the phase complete until CI, emulator, domain-boundary/draft reconciliation and owner device smoke checks pass.
+
+--- Historical build notes from the v0.2.30c3 base package ---
+
 Question Bank Android build foundation - package version 0.2.30c-fix1 (plan v1.42)
 
 v0.2.30a + b (b-fix1) are CONFIRMED by owner report (CI clean, instrumented test clean, phone check list clean; the counts were not sent to the assistant).

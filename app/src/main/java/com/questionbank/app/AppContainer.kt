@@ -9,6 +9,18 @@ import com.questionbank.app.data.local.typeCqFtsMatch
 import com.questionbank.app.data.repository.TypeCqHierarchyRepositoryImpl
 import com.questionbank.app.data.settings.AppSettings
 import com.questionbank.app.data.repository.TypeCqQuestionRepositoryImpl
+import com.questionbank.app.data.repository.ChapterCqRepositoryImpl
+import com.questionbank.app.data.repository.PaperRepositoryImpl
+import com.questionbank.app.data.repository.CategoryRepositoryImpl
+import com.questionbank.app.data.repository.MediaRepositoryImpl
+import com.questionbank.app.data.repository.TypeCqRepositoryImpl
+import com.questionbank.app.data.repository.EditorDraftRepositoryImpl
+import com.questionbank.app.domain.repository.ChapterCqRepository
+import com.questionbank.app.domain.repository.PaperRepository
+import com.questionbank.app.domain.repository.CategoryRepository
+import com.questionbank.app.domain.repository.MediaRepository
+import com.questionbank.app.domain.repository.TypeCqRepository
+import com.questionbank.app.domain.repository.EditorDraftRepository
 import com.questionbank.app.domain.hierarchy.TypeCqHierarchyRepository
 import com.questionbank.app.domain.question.TypeCqQuestionRepository
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -77,4 +89,12 @@ class AppContainer(private val appContext: Context) {
             ftsMatch = { topicId, match -> database.typeCqFtsMatch(topicId, match) },
         )
     }
+
+    /** Separate repositories preserve the Type_CQ / Chapter_CQ write boundary. */
+    val typeCqData: TypeCqRepository by lazy { TypeCqRepositoryImpl(database.typeCqReferenceDao()) }
+    val chapterCq: ChapterCqRepository by lazy { ChapterCqRepositoryImpl(database.chapterCqDataDao()) { database.forceFullSync() } }
+    val papers: PaperRepository by lazy { PaperRepositoryImpl(database.sharedDataDao()) { database.forceFullSync() } }
+    val editorDrafts: EditorDraftRepository by lazy { EditorDraftRepositoryImpl(database.sharedDataDao()) { database.forceFullSync() } }
+    val categories: CategoryRepository by lazy { CategoryRepositoryImpl(database.categoryDataDao()) { database.forceFullSync() } }
+    val media: MediaRepository by lazy { MediaRepositoryImpl(database.mediaDataDao()) { database.forceFullSync() } }
 }

@@ -94,6 +94,11 @@ abstract class QuestionBankDatabase : RoomDatabase() {
     abstract fun typeCqChapterDao(): TypeCqChapterDao
     abstract fun typeCqTopicDao(): TypeCqTopicDao
     abstract fun typeCqQuestionDao(): TypeCqQuestionDao
+    abstract fun typeCqReferenceDao(): com.questionbank.app.data.local.dao.TypeCqReferenceDao
+    abstract fun chapterCqDataDao(): com.questionbank.app.data.local.dao.ChapterCqDataDao
+    abstract fun sharedDataDao(): com.questionbank.app.data.local.dao.SharedDataDao
+    abstract fun categoryDataDao(): com.questionbank.app.data.local.dao.CategoryDataDao
+    abstract fun mediaDataDao(): com.questionbank.app.data.local.dao.MediaDataDao
 
     companion object {
         /**
