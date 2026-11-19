@@ -366,11 +366,13 @@ fun AppNavHost() {
                                 topicId, groupKey, questionRepo, container.appScope,
                                 container.typeCqData.observeQuestionTypes(),
                                 editorDraftRepository = container.editorDrafts,
+                                categoriesFlow = container.typeCqData.observeCategories(),
                             )
                         }
                     )
                     QuestionEditScreen(
                         viewModel = vm,
+                        onManageCategories = { navController.navigate(Routes.TYPE_CATEGORIES) },
                         onSaved = {
                             navController.previousBackStackEntry?.savedStateHandle?.set(Routes.EDITED_KEY, true)
                             navController.popBackStack()

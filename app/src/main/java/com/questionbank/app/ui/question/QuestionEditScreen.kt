@@ -13,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -37,7 +38,7 @@ import com.questionbank.app.ui.components.AppHeader
 private fun editResultText(result: UpdateResult?): String? = when (result) {
     null, UpdateResult.Updated -> null
     UpdateResult.NoChange -> "কোনো পরিবর্তন নেই।"
-    is UpdateResult.BlankedQuestion -> "${result.label.letter}) এর প্রশ্ন খালি করা যাবে না। মুছে ফেলার সুবিধা পরের সংস্করণে আসছে; এখন নতুন লেখা দিন।"
+    is UpdateResult.BlankedQuestion -> "${result.label.letter}) এর প্রশ্ন খালি রাখা যাবে না। নতুন লেখা দিন; উদ্দীপক-গ্রুপে ব্লক সরাতে ‘এই প্রশ্নটি মুছুন’ ব্যবহার করুন।"
     UpdateResult.BlankedStimulus -> "উদ্দীপক খালি করা যাবে না। নতুন লেখা দিন।"
     is UpdateResult.MissingQuestionText -> "${result.label.letter}) এর উত্তর লেখা আছে, কিন্তু প্রশ্ন খালি। প্রশ্ন লিখুন বা উত্তরটি মুছুন।"
     is UpdateResult.TooLong -> "${result.field} অনেক বড় (সর্বোচ্চ ${QuestionRules.MAX_TEXT_LENGTH} অক্ষর)।"
@@ -51,12 +52,15 @@ fun QuestionEditScreen(
     viewModel: QuestionEditViewModel,
     onSaved: () -> Unit,
     onBack: () -> Unit,
+    onManageCategories: () -> Unit,
 ) {
     var askDiscard by rememberSaveable { mutableStateOf(false) }
     var showPreview by rememberSaveable { mutableStateOf(false) }
+    var pendingDeleteLabel by remember { mutableStateOf<com.questionbank.app.domain.question.CqLabel?>(null) }
     val invalidMarkFields = remember { mutableStateListOf<Int>() }
     val catalog by viewModel.boardCatalog.collectAsState()
     val typeLabels by viewModel.questionTypeLabels.collectAsState()
+    val categories by viewModel.categoryCatalog.collectAsState()
     val needsAsk = viewModel.load == EditLoad.READY && viewModel.changed && !viewModel.saving
     val tryBack: () -> Unit = {
         if (needsAsk) {
@@ -87,6 +91,21 @@ fun QuestionEditScreen(
             confirmButton = { TextButton(onClick = { showPreview = false }) { Text("বন্ধ") } },
         )
     }
+    pendingDeleteLabel?.let { label ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteLabel = null },
+            title = { Text("প্রশ্ন মুছে ফেলবেন?") },
+            text = { Text("${label.letter}) প্রশ্নটি সংরক্ষণ করলে এই উদ্দীপক-গ্রুপ থেকে মুছে যাবে। অন্য প্রশ্নগুলো অক্ষত থাকবে।") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteQuestion(label)
+                    pendingDeleteLabel = null
+                }) { Text("মুছে দিন") }
+            },
+            dismissButton = { TextButton(onClick = { pendingDeleteLabel = null }) { Text("বাতিল") } },
+        )
+    }
+
     if (askDiscard) {
         AlertDialog(
             onDismissRequest = { askDiscard = false },
@@ -147,6 +166,18 @@ fun QuestionEditScreen(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = viewModel::undo, enabled = !viewModel.saving && viewModel.canUndo) { Text("↶ Undo") }
                     TextButton(onClick = viewModel::redo, enabled = !viewModel.saving && viewModel.canRedo) { Text("↷ Redo") }
+                }
+                if (viewModel.deletedQuestionLabels.isNotEmpty()) {
+                    Text(
+                        "সংরক্ষণের পর মুছে যাবে: ${viewModel.deletedQuestionLabels.joinToString { it.letter }}",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    viewModel.deletedQuestionLabels.forEach { label ->
+                        TextButton(onClick = { viewModel.restoreDeletedQuestion(label) }, enabled = !viewModel.saving) {
+                            Text("${label.letter}) মুছে ফেলা বাতিল")
+                        }
+                    }
                 }
                 if (viewModel.hasStimulus) {
                     OutlinedTextField(
@@ -219,6 +250,35 @@ fun QuestionEditScreen(
                             onChange = { viewModel.changeBoards(label, it) },
                             onAddBoard = viewModel::addBoard,
                         )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text("${label.letter}) ক্যাটাগরি", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                            TextButton(onClick = onManageCategories, enabled = !viewModel.saving) { Text("ক্যাটাগরি পরিচালনা") }
+                        }
+                        val selectedCategoryIds = viewModel.categoryIdsByLabel[i]
+                        val availableCategories = categories.filter { it.isArchived == 0L || it.categoryId in selectedCategoryIds }
+                        if (availableCategories.isEmpty()) {
+                            Text("কোনো ক্যাটাগরি নেই। রেফারেন্স থেকে ক্যাটাগরি যোগ করুন।", style = MaterialTheme.typography.bodySmall)
+                        }
+                        availableCategories.forEach { category ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = category.categoryId in selectedCategoryIds,
+                                    enabled = !viewModel.saving && (category.isArchived == 0L || category.categoryId in selectedCategoryIds),
+                                    onCheckedChange = { checked -> viewModel.changeCategory(label, category.categoryId, checked) },
+                                )
+                                Text(if (category.isArchived != 0L) "${category.name} (আর্কাইভড—আগের লিংক রাখা হয়েছে)" else category.name)
+                            }
+                        }
+                    }
+                    if (viewModel.hasStimulus && viewModel.original?.subQuestions?.any { it.label == label } == true) {
+                        TextButton(
+                            onClick = { pendingDeleteLabel = label },
+                            enabled = !viewModel.saving && viewModel.canDeleteQuestion(label),
+                        ) { Text("এই প্রশ্নটি মুছুন") }
                     }
                     OutlinedTextField(
                         value = viewModel.answers[i],

@@ -4,6 +4,7 @@ import com.questionbank.app.data.local.dao.BoardRowDb
 import com.questionbank.app.data.local.dao.NewQuestionRow
 import com.questionbank.app.data.local.dao.NewTagRow
 import com.questionbank.app.data.local.dao.QuestionBoardsDb
+import com.questionbank.app.data.local.dao.QuestionCategoriesDb
 import com.questionbank.app.data.local.dao.QuestionRatingDb
 import com.questionbank.app.data.local.dao.QuestionRowDb
 import com.questionbank.app.data.local.dao.QuestionTextUpdate
@@ -23,6 +24,7 @@ import com.questionbank.app.domain.question.QuestionEditRules
 import com.questionbank.app.domain.question.QuestionGroupKey
 import com.questionbank.app.domain.question.UpdateResult
 import com.questionbank.app.domain.question.QuestionGroupInput
+import com.questionbank.app.domain.question.QuestionCategoryUpdate
 import com.questionbank.app.domain.question.QuestionRules
 import com.questionbank.app.domain.question.RatingRules
 import com.questionbank.app.domain.question.QuestionSearchRules
@@ -61,12 +63,18 @@ class TypeCqQuestionRepositoryImpl(
         dao.observeByTopic(topicId).map { rows -> group(rows, tagsOfTopic(topicId)) }
 
     override suspend fun saveGroup(input: QuestionGroupInput): SaveResult {
-        val ok = when (val checked = QuestionRules.check(input)) {
+        val snapshot = try {
+            com.questionbank.app.domain.editor.EditorSaveCommand.typeCqCreate(input).input
+        } catch (e: Exception) {
+            return SaveResult.Failed(e.message ?: "Invalid Type_CQ save scope")
+        }
+        val ok = when (val checked = QuestionRules.check(snapshot)) {
             QuestionRules.Checked.Empty -> return SaveResult.Empty
             is QuestionRules.Checked.MissingText -> return SaveResult.MissingQuestionText(checked.label)
             is QuestionRules.Checked.TooLong -> return SaveResult.TooLong(checked.field)
             QuestionRules.Checked.BadRating -> return SaveResult.Failed("রেটিং ১ থেকে ৫-এর মধ্যে হতে হবে")
             QuestionRules.Checked.BadBoard -> return SaveResult.Failed(BAD_BOARD_MESSAGE)
+            QuestionRules.Checked.BadCategories -> return SaveResult.Failed("ক্যাটাগরি আইডি সঠিক নয়")
             is QuestionRules.Checked.Ok -> checked
         }
         return try {
@@ -77,14 +85,14 @@ class TypeCqQuestionRepositoryImpl(
             val rows = ok.items.map {
                 NewQuestionRow(
                     newId(), it.questionTypeId, it.label.letter, it.marks, it.text, it.shortAnswer, ok.ratings[it.label],
-                    tagRows(ok.boards[it.label].orEmpty()), it.solutionParts,
+                    tagRows(ok.boards[it.label].orEmpty()), it.solutionParts, ok.categories[it.label].orEmpty(),
                 )
             }
             val stimulusRating = if (stimulusId != null) ok.stimulusRating else null
             val stimulusTags = if (stimulusId != null) tagRows(ok.stimulusBoards) else emptyList()
             val written = dao.insertGroup(
-                input.topicId, stimulusId, ok.stimulusText, ok.referenceText, stimulusRating, stimulusTags,
-                rows, clock(), draftKey(input.topicId), input.editorDraftKey,
+                snapshot.topicId, stimulusId, ok.stimulusText, ok.referenceText, stimulusRating, stimulusTags,
+                rows, clock(), draftKey(snapshot.topicId), snapshot.editorDraftKey,
             )
             if (!written) return SaveResult.TopicMissing
             // The DAO performs all read-back checks before removing the draft, inside the same Room transaction.
@@ -156,13 +164,16 @@ class TypeCqQuestionRepositoryImpl(
         val solutions = if (questionIds.isEmpty()) emptyMap() else dao.solutionPartsIn(questionIds)
             .filter { it.partType == "TEXT" && it.textContent != null }
             .groupBy({ it.questionId }, { it.textContent.orEmpty() })
-        return group(rows, tags, solutions).firstOrNull()
+        val categories = if (questionIds.isEmpty()) emptyMap() else dao.categoryLinksIn(questionIds)
+            .groupBy({ it.questionId }, { it.categoryId })
+        return group(rows, tags, solutions, categories).firstOrNull()
     }
 
     override suspend fun updateGroup(input: GroupEditInput): UpdateResult {
         return try {
-            val original = loadOriginal(input.topicId, input.groupKey) ?: return UpdateResult.GroupMissing
-            val ok = when (val checked = QuestionEditRules.check(original, input)) {
+            val snapshot = com.questionbank.app.domain.editor.EditorSaveCommand.typeCqEdit(input).input
+            val original = loadOriginal(snapshot.topicId, snapshot.groupKey) ?: return UpdateResult.GroupMissing
+            val ok = when (val checked = QuestionEditRules.check(original, snapshot)) {
                 QuestionEditRules.Checked.NoChange -> return UpdateResult.NoChange
                 QuestionEditRules.Checked.BlankedStimulus -> return UpdateResult.BlankedStimulus
                 is QuestionEditRules.Checked.BlankedQuestion -> return UpdateResult.BlankedQuestion(checked.label)
@@ -170,6 +181,8 @@ class TypeCqQuestionRepositoryImpl(
                 is QuestionEditRules.Checked.TooLong -> return UpdateResult.TooLong(checked.field)
                 QuestionEditRules.Checked.BadRating -> return UpdateResult.Failed("রেটিং ১ থেকে ৫-এর মধ্যে হতে হবে")
                 QuestionEditRules.Checked.BadBoard -> return UpdateResult.Failed(BAD_BOARD_MESSAGE)
+                QuestionEditRules.Checked.BadCategories -> return UpdateResult.Failed("ক্যাটাগরি আইডি সঠিক নয়")
+                QuestionEditRules.Checked.BadDeletion -> return UpdateResult.Failed("যে প্রশ্নটি মুছতে বলা হয়েছে সেটি এই গ্রুপে নেই অথবা গ্রুপ খালি হয়ে যাবে")
                 is QuestionEditRules.Checked.Ok -> checked
             }
             val wantedTags = (ok.stimulusBoards?.tags.orEmpty()) + ok.boardUpdates.flatMap { it.change.tags } + ok.addBoards.values.flatten()
@@ -179,11 +192,12 @@ class TypeCqQuestionRepositoryImpl(
             val rows = ok.adds.map {
                 NewQuestionRow(
                     newId(), it.questionTypeId, it.label.letter, it.marks, it.text, it.shortAnswer, ok.addRatings[it.label],
-                    tagRows(ok.addBoards[it.label].orEmpty()), it.solutionParts,
+                    tagRows(ok.addBoards[it.label].orEmpty()), it.solutionParts, ok.addCategories[it.label].orEmpty(),
                 )
             }
+            val categoryUpdates = ok.categoryUpdates.map { QuestionCategoriesDb(it.questionId, it.categoryIds) }
             val written = dao.updateGroup(
-                topicId = input.topicId,
+                topicId = snapshot.topicId,
                 stimulusId = original.stimulusId,
                 newStimulusText = ok.stimulusText,
                 newReferenceText = ok.referenceText,
@@ -192,14 +206,16 @@ class TypeCqQuestionRepositoryImpl(
                 solutionUpdates = ok.solutionUpdates.map { DbQuestionSolutionUpdate(it.questionId, it.parts) },
                 adds = rows,
                 now = clock(),
-                draftKey = editDraftKey(input.groupKey),
+                draftKey = editDraftKey(snapshot.groupKey),
                 changeStimulusRating = ok.stimulusRating != null,
                 newStimulusRating = ok.stimulusRating?.value,
                 ratingUpdates = ok.ratingUpdates.map { QuestionRatingDb(it.questionId, it.change.value) },
                 changeStimulusBoards = ok.stimulusBoards != null,
                 newStimulusBoards = ok.stimulusBoards?.let { tagRows(it.tags) } ?: emptyList(),
                 boardUpdates = ok.boardUpdates.map { QuestionBoardsDb(it.questionId, tagRows(it.change.tags)) },
-                editorDraftKey = input.editorDraftKey,
+                deletes = ok.deletes,
+                categoryUpdates = categoryUpdates,
+                editorDraftKey = snapshot.editorDraftKey,
             )
             if (!written) return UpdateResult.GroupMissing
             // The DAO verifies the updated question/metadata/solution/stimulus/board rows before deleting the draft,
@@ -313,7 +329,12 @@ class TypeCqQuestionRepositoryImpl(
 
     private fun toItem(e: BoardCatalogEntity) = BoardItem(e.code, e.displayName, e.boardKind == "CUSTOM", e.isArchived == 1L)
 
-    private fun group(rows: List<QuestionRowDb>, tags: Tags, solutions: Map<String, List<String>> = emptyMap()): List<SavedGroup> {
+    private fun group(
+        rows: List<QuestionRowDb>,
+        tags: Tags,
+        solutions: Map<String, List<String>> = emptyMap(),
+        categories: Map<String, List<String>> = emptyMap(),
+    ): List<SavedGroup> {
         val buckets = LinkedHashMap<String, MutableList<QuestionRowDb>>()
         for (row in rows) {
             val key = row.stimulusId ?: ("single:" + row.questionId)
@@ -330,7 +351,7 @@ class TypeCqQuestionRepositoryImpl(
                     .map {
                         SavedSubQuestion(
                             it.questionId, CqLabel.fromLetter(it.label), it.marks, it.questionText, it.shortAnswer, it.rating,
-                            tags.question[it.questionId].orEmpty(), it.questionTypeId, solutions[it.questionId].orEmpty(),
+                            tags.question[it.questionId].orEmpty(), it.questionTypeId, solutions[it.questionId].orEmpty(), categories[it.questionId].orEmpty(),
                         )
                     },
                 stimulusBoards = first.stimulusId?.let { tags.stimulus[it] }.orEmpty(),

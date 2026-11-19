@@ -23,6 +23,7 @@ object QuestionRules {
             /** v0.2.30c: like the ratings, only the tags of blocks that are really stored (duplicates removed, chosen order kept). */
             val stimulusBoards: List<BoardTag> = emptyList(),
             val boards: Map<CqLabel, List<BoardTag>> = emptyMap(),
+            val categories: Map<CqLabel, List<String>> = emptyMap(),
         ) : Checked
         data object Empty : Checked
         data class MissingText(val label: CqLabel) : Checked
@@ -31,6 +32,8 @@ object QuestionRules {
         data object BadRating : Checked
         /** A board tag with an empty code or a year outside 1900-2200, or too many tags on one block (the editor cannot produce one; this guards the data). */
         data object BadBoard : Checked
+        /** Category IDs must be nonblank and unique within a question block. */
+        data object BadCategories : Checked
     }
 
     fun clean(raw: String): String = BanglaText.normalize(raw).trim()
@@ -39,6 +42,7 @@ object QuestionRules {
         if (input.ratings != null && !RatingRules.allValid(input.ratings)) return Checked.BadRating
         val wantedBoards = input.boards
         if (wantedBoards != null && !BoardRules.allValid(wantedBoards)) return Checked.BadBoard
+        if (input.categoriesByLabel.any { (_, ids) -> ids.any(String::isBlank) || ids.distinct().size != ids.size }) return Checked.BadCategories
         val stimulus = clean(input.stimulusText)
         val reference = clean(input.referenceText)
         if (reference.length > MAX_TEXT_LENGTH) return Checked.TooLong("রেফারেন্স")
@@ -75,6 +79,7 @@ object QuestionRules {
                 if (tags != null) boards[item.label] = BoardRules.normalizeTags(tags)
             }
         }
-        return Checked.Ok(stimulus, items, reference, stimulusRating, ratings, stimulusBoards, boards)
+        val categories = items.associate { item -> item.label to input.categoriesByLabel[item.label].orEmpty().toList() }
+        return Checked.Ok(stimulus, items, reference, stimulusRating, ratings, stimulusBoards, boards, categories)
     }
 }

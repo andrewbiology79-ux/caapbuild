@@ -12,6 +12,7 @@ import com.questionbank.app.data.local.entity.TypeCqQuestionsEntity
 import com.questionbank.app.data.local.entity.TypeCqStimuliEntity
 import com.questionbank.app.data.local.entity.TypeCqStimulusBoardsEntity
 import com.questionbank.app.data.local.entity.TypeCqSolutionPartsEntity
+import com.questionbank.app.data.local.entity.TypeCqQuestionCategoryLinksEntity
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 
@@ -58,6 +59,7 @@ data class NewQuestionRow(
     /** v0.2.30c: board tags of this question, stored in the same transaction (the ids are decided by the caller). */
     val tags: List<NewTagRow> = emptyList(),
     val solutionParts: List<String> = emptyList(),
+    val categoryIds: List<String> = emptyList(),
 )
 
 /** One board tag to store (v0.2.30c). The position in the list becomes `sort_order`. */
@@ -80,6 +82,7 @@ data class QuestionRatingDb(val questionId: String, val rating: Int?)
 data class QuestionTextUpdate(val questionId: String, val text: String, val answer: String)
 data class QuestionMetadataUpdate(val questionId: String, val typeId: String, val marks: Double)
 data class QuestionSolutionUpdate(val questionId: String, val parts: List<String>)
+data class QuestionCategoriesDb(val questionId: String, val categoryIds: List<String>)
 
 private const val QUESTION_SELECT_SQL =
     "SELECT q.question_id AS question_id, q.stimulus_id AS stimulus_id, s.stimulus_text AS stimulus_text, " +
@@ -168,6 +171,21 @@ abstract class TypeCqQuestionDao {
     @Query("SELECT COUNT(*) FROM type_cq_question_types WHERE question_type_id = :typeId AND is_active = 1")
     abstract suspend fun activeQuestionTypeExists(typeId: String): Int
 
+    @Query("SELECT COUNT(*) FROM type_cq_question_categories WHERE category_id = :categoryId AND is_archived = 0")
+    abstract suspend fun activeCategory(categoryId: String): Int
+
+    @Query("SELECT COUNT(*) FROM type_cq_question_category_links WHERE question_id = :questionId AND category_id = :categoryId")
+    abstract suspend fun categoryAlreadyLinked(questionId: String, categoryId: String): Int
+
+    @Query("SELECT * FROM type_cq_question_category_links WHERE question_id IN (:ids) ORDER BY question_id, assigned_at, category_id")
+    abstract suspend fun categoryLinksIn(ids: List<String>): List<TypeCqQuestionCategoryLinksEntity>
+
+    @Insert
+    abstract suspend fun insertCategoryLink(row: TypeCqQuestionCategoryLinksEntity)
+
+    @Query("DELETE FROM type_cq_question_category_links WHERE question_id = :questionId")
+    abstract suspend fun deleteQuestionCategories(questionId: String)
+
     @Query("SELECT question_type_id FROM type_cq_questions WHERE question_id = :questionId LIMIT 1")
     abstract suspend fun questionTypeOf(questionId: String): String?
 
@@ -182,6 +200,18 @@ abstract class TypeCqQuestionDao {
 
     @Query("SELECT COUNT(*) FROM type_cq_questions WHERE question_id IN (:ids) AND topic_id = :topicId")
     abstract suspend fun countQuestionsIn(ids: List<String>, topicId: String): Int
+
+    @Query("SELECT COUNT(*) FROM type_cq_questions WHERE question_id IN (:ids) AND topic_id = :topicId AND stimulus_id IS :stimulusId")
+    abstract suspend fun countQuestionsInGroup(ids: List<String>, topicId: String, stimulusId: String?): Int
+
+    @Query("SELECT COUNT(*) FROM type_cq_questions WHERE topic_id = :topicId AND stimulus_id IS :stimulusId")
+    abstract suspend fun countQuestionsInTargetGroup(topicId: String, stimulusId: String?): Int
+
+    @Query("SELECT COUNT(*) FROM type_cq_questions WHERE question_id IN (:ids)")
+    abstract suspend fun countQuestionIds(ids: List<String>): Int
+
+    @Query("DELETE FROM type_cq_questions WHERE question_id IN (:ids) AND topic_id = :topicId AND stimulus_id IS :stimulusId")
+    abstract suspend fun deleteQuestionsInGroup(ids: List<String>, topicId: String, stimulusId: String?): Int
 
     @Query("SELECT COALESCE(MAX(sort_order), 0) FROM type_cq_questions WHERE stimulus_id = :stimulusId")
     abstract suspend fun maxSortOrderOfStimulus(stimulusId: String): Long
@@ -335,8 +365,10 @@ abstract class TypeCqQuestionDao {
         draftKey: String,
         editorDraftKey: String? = null,
     ): Boolean {
-        if (countTopic(topicId) == 0) return false
+        if (topicId.isBlank() || countTopic(topicId) == 0) return false
+        if (items.map { it.label }.distinct().size != items.size) return false
         if (items.any { activeQuestionTypeExists(it.typeId) == 0 }) return false
+        if (items.any { item -> item.categoryIds.any(String::isBlank) || item.categoryIds.distinct().size != item.categoryIds.size || item.categoryIds.any { activeCategory(it) == 0 } }) return false
         if (stimulusId != null) {
             insertStimulus(TypeCqStimuliEntity(stimulusId, topicId, stimulusText, stimulusRating?.toLong(), referenceText, now, now))
             writeStimulusTags(stimulusId, stimulusTags)
@@ -363,6 +395,7 @@ abstract class TypeCqQuestionDao {
                 )
             )
             writeQuestionTags(item.id, item.tags)
+            item.categoryIds.forEach { categoryId -> insertCategoryLink(TypeCqQuestionCategoryLinksEntity(item.id, categoryId, now)) }
             item.solutionParts.forEachIndexed { index, text -> insertSolutionPart(TypeCqSolutionPartsEntity(UUID.randomUUID().toString(), item.id, index.toLong(), "TEXT", text, null, now)) }
         }
         val storedRows = readBack(items.map { it.id }).associateBy { it.questionId }
@@ -382,7 +415,9 @@ abstract class TypeCqQuestionDao {
             if (stimulusId != null) stimulusId to stimulusTags else null,
             items.associate { it.id to it.tags },
         )
-        check(questionsMatch && solutionsMatch && stimulusMatch && boardsMatch) {
+        val categoriesByQuestion = categoryLinksIn(items.map { it.id }).groupBy({ it.questionId }, { it.categoryId })
+        val categoriesMatch = items.all { item -> categoriesByQuestion[item.id].orEmpty().toSet() == item.categoryIds.toSet() }
+        check(questionsMatch && solutionsMatch && stimulusMatch && boardsMatch && categoriesMatch) {
             "Type_CQ insert read-back mismatch; transaction rolled back"
         }
         deleteMeta(draftKey)
@@ -417,18 +452,33 @@ abstract class TypeCqQuestionDao {
         changeStimulusBoards: Boolean,
         newStimulusBoards: List<NewTagRow>,
         boardUpdates: List<QuestionBoardsDb>,
+        deletes: List<String> = emptyList(),
+        categoryUpdates: List<QuestionCategoriesDb> = emptyList(),
         editorDraftKey: String? = null,
     ): Boolean {
-        if (countTopic(topicId) == 0) return false
+        if (topicId.isBlank() || countTopic(topicId) == 0) return false
         if (stimulusId != null && countStimulus(stimulusId, topicId) == 0) return false
-        if (updates.isNotEmpty() && countQuestionsIn(updates.map { it.questionId }, topicId) != updates.size) return false
-        if (metadataUpdates.isNotEmpty() && countQuestionsIn(metadataUpdates.map { it.questionId }, topicId) != metadataUpdates.size) return false
+        if (stimulusId == null && deletes.isNotEmpty()) return false
+        if (deletes.distinct().size != deletes.size || deletes.any(String::isBlank)) return false
+        val editedIds = (updates.map { it.questionId } + metadataUpdates.map { it.questionId } + solutionUpdates.map { it.questionId } +
+            ratingUpdates.map { it.questionId } + boardUpdates.map { it.questionId } + categoryUpdates.map { it.questionId }).toSet()
+        if (deletes.any { it in editedIds }) return false
+        val affectedIds = (editedIds + deletes).toList()
+        if (affectedIds.isNotEmpty() && countQuestionsInGroup(affectedIds, topicId, stimulusId) != affectedIds.size) return false
+        if (deletes.isNotEmpty() && countQuestionsInTargetGroup(topicId, stimulusId) - deletes.size + adds.size <= 0) return false
+        if (updates.isNotEmpty() && countQuestionsInGroup(updates.map { it.questionId }, topicId, stimulusId) != updates.size) return false
+        if (metadataUpdates.isNotEmpty() && countQuestionsInGroup(metadataUpdates.map { it.questionId }, topicId, stimulusId) != metadataUpdates.size) return false
         if (metadataUpdates.any { activeQuestionTypeExists(it.typeId) == 0 && questionTypeOf(it.questionId) != it.typeId }) return false
-        if (solutionUpdates.isNotEmpty() && countQuestionsIn(solutionUpdates.map { it.questionId }, topicId) != solutionUpdates.size) return false
-        if (ratingUpdates.isNotEmpty() && countQuestionsIn(ratingUpdates.map { it.questionId }, topicId) != ratingUpdates.size) return false
+        if (solutionUpdates.isNotEmpty() && countQuestionsInGroup(solutionUpdates.map { it.questionId }, topicId, stimulusId) != solutionUpdates.size) return false
+        if (ratingUpdates.isNotEmpty() && countQuestionsInGroup(ratingUpdates.map { it.questionId }, topicId, stimulusId) != ratingUpdates.size) return false
         if (changeStimulusRating && stimulusId == null) return false
-        if (boardUpdates.isNotEmpty() && countQuestionsIn(boardUpdates.map { it.questionId }, topicId) != boardUpdates.size) return false
+        if (boardUpdates.isNotEmpty() && countQuestionsInGroup(boardUpdates.map { it.questionId }, topicId, stimulusId) != boardUpdates.size) return false
+        if (categoryUpdates.isNotEmpty() && countQuestionsInGroup(categoryUpdates.map { it.questionId }, topicId, stimulusId) != categoryUpdates.size) return false
+        if (adds.isNotEmpty() && stimulusId == null) return false
         if (adds.any { activeQuestionTypeExists(it.typeId) == 0 }) return false
+        if (adds.any { item -> item.categoryIds.any(String::isBlank) || item.categoryIds.distinct().size != item.categoryIds.size || item.categoryIds.any { activeCategory(it) == 0 } }) return false
+        if (categoryUpdates.any { update -> update.categoryIds.any(String::isBlank) || update.categoryIds.distinct().size != update.categoryIds.size }) return false
+        if (categoryUpdates.any { update -> update.categoryIds.any { activeCategory(it) == 0 && categoryAlreadyLinked(update.questionId, it) == 0 } }) return false
         if (changeStimulusBoards && stimulusId == null) return false
         if (newStimulusText != null) {
             val sid = checkNotNull(stimulusId) { "stimulus text given for a group without a stimulus" }
@@ -467,6 +517,13 @@ abstract class TypeCqQuestionDao {
             writeQuestionTags(b.questionId, b.tags)
             check(touchQuestion(b.questionId, now) == 1) { "question row was not touched" }
         }
+        for (categoryUpdate in categoryUpdates) {
+            deleteQuestionCategories(categoryUpdate.questionId)
+            categoryUpdate.categoryIds.sorted().forEach { categoryId ->
+                insertCategoryLink(TypeCqQuestionCategoryLinksEntity(categoryUpdate.questionId, categoryId, now))
+            }
+            check(touchQuestion(categoryUpdate.questionId, now) == 1) { "question categories were not updated" }
+        }
         if (adds.isNotEmpty()) {
             val sid = checkNotNull(stimulusId) { "new sub-question needs a stimulus" }
             val ids = FtsIdAllocator(maxFtsId())
@@ -490,11 +547,16 @@ abstract class TypeCqQuestionDao {
                     )
                 )
                 writeQuestionTags(item.id, item.tags)
+                item.categoryIds.forEach { categoryId -> insertCategoryLink(TypeCqQuestionCategoryLinksEntity(item.id, categoryId, now)) }
                 item.solutionParts.forEachIndexed { index, text -> insertSolutionPart(TypeCqSolutionPartsEntity(UUID.randomUUID().toString(), item.id, index.toLong(), "TEXT", text, null, now)) }
             }
         }
+        if (deletes.isNotEmpty()) {
+            check(deleteQuestionsInGroup(deletes, topicId, stimulusId) == deletes.size) { "explicit question deletion failed" }
+            check(countQuestionIds(deletes) == 0) { "deleted question is still present" }
+        }
         val checkedIds = (updates.map { it.questionId } + metadataUpdates.map { it.questionId } +
-            solutionUpdates.map { it.questionId } + ratingUpdates.map { it.questionId } + adds.map { it.id }).distinct()
+            solutionUpdates.map { it.questionId } + ratingUpdates.map { it.questionId } + categoryUpdates.map { it.questionId } + adds.map { it.id }).distinct()
         val storedRows = if (checkedIds.isEmpty()) emptyMap() else readBack(checkedIds).associateBy { it.questionId }
         val textMatches = updates.all { update ->
             val stored = storedRows[update.questionId]
@@ -520,12 +582,16 @@ abstract class TypeCqQuestionDao {
                 (newReferenceText == null || readStimulusReference(stimulusId) == newReferenceText) &&
                 (!changeStimulusRating || readStimulusRating(stimulusId) == newStimulusRating)
             )
+        val categoryRows = if (checkedIds.isEmpty()) emptyList() else categoryLinksIn(checkedIds)
+        val storedCategories = categoryRows.groupBy({ it.questionId }, { it.categoryId })
+        val categoriesMatch = categoryUpdates.all { storedCategories[it.questionId].orEmpty().toSet() == it.categoryIds.toSet() } &&
+            adds.all { storedCategories[it.id].orEmpty().toSet() == it.categoryIds.toSet() }
         val wantedQuestionBoards = boardUpdates.associate { it.questionId to it.tags } + adds.associate { it.id to it.tags }
         val boardsMatch = boardTagsMatch(
             if (changeStimulusBoards && stimulusId != null) stimulusId to newStimulusBoards else null,
             wantedQuestionBoards,
         )
-        check(textMatches && metadataMatches && ratingsMatch && addedRowsMatch && solutionsMatch && stimulusMatch && boardsMatch) {
+        check(textMatches && metadataMatches && ratingsMatch && addedRowsMatch && solutionsMatch && stimulusMatch && boardsMatch && categoriesMatch) {
             "Type_CQ update read-back mismatch; transaction rolled back"
         }
         // Draft deletion occurs only after every read-back check passed, in the same transaction.

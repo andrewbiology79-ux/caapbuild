@@ -60,6 +60,8 @@ data class QuestionGroupInput(
     val boards: BoardsInput? = null,
     /** Reference text belongs to the stimulus record and is independent from its main text. */
     val referenceText: String = "",
+    /** Category IDs for each created question block. Omitted labels receive no category links. */
+    val categoriesByLabel: Map<CqLabel, List<String>> = emptyMap(),
     /** Optional canonical Phase 6 draft key, removed in the same Room transaction as the content save. */
     val editorDraftKey: String? = null,
 )
@@ -97,6 +99,8 @@ data class SavedSubQuestion(
     val boards: List<BoardTag> = emptyList(),
     val questionTypeId: String = label?.typeId.orEmpty(),
     val solutionParts: List<String> = emptyList(),
+    /** Type_CQ category links loaded for edit validation and preserved when no replacement is supplied. */
+    val categoryIds: List<String> = emptyList(),
 )
 
 /** One stimulus with its sub-questions, or one single question without a stimulus. */
@@ -151,12 +155,17 @@ data class GroupEditInput(
     val questionTypes: Map<CqLabel, String> = emptyMap(),
     val marksByLabel: Map<CqLabel, Double> = emptyMap(),
     val solutionsByLabel: Map<CqLabel, List<String>> = emptyMap(),
+    /** null = preserve category links; a label entry replaces the complete category set for that question. */
+    val categoriesByLabel: Map<CqLabel, List<String>>? = null,
+    /** Explicit question IDs selected for deletion; empty means no deletions. */
+    val deletedQuestionIds: Set<String> = emptySet(),
     /** Optional canonical Phase 6 draft key, removed in the same Room transaction as the content save. */
     val editorDraftKey: String? = null,
 )
 
 data class QuestionMetaUpdate(val questionId: String, val label: CqLabel, val questionTypeId: String, val marks: Double)
 data class QuestionSolutionUpdate(val questionId: String, val parts: List<String>)
+data class QuestionCategoryUpdate(val questionId: String, val categoryIds: List<String>)
 
 /** A rating that changes to [value] (null = cleared). Used where "no change" must be told apart from "cleared". */
 data class RatingChange(val value: Int?)
@@ -172,7 +181,7 @@ sealed interface UpdateResult {
     data object Updated : UpdateResult
     /** Nothing differs from what is stored; nothing was written. */
     data object NoChange : UpdateResult
-    /** The text of a stored sub-question was blanked. That would be a delete (a later package), so nothing was written. */
+    /** The text of a stored sub-question was blanked; use explicit deletedQuestionIds for an intentional group deletion. */
     data class BlankedQuestion(val label: CqLabel) : UpdateResult
     /** The stimulus of a group that has one was blanked. Nothing was written. */
     data object BlankedStimulus : UpdateResult

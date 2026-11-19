@@ -3,11 +3,10 @@ package com.questionbank.app.domain.question
 /**
  * Pure rules for saving an EXISTING group (v0.2.28; no database, no Android classes).
  *
- * Same cleaning and limits as a new save ([QuestionRules]). What an edit may NOT do: blank the text of a stored sub-question or
- * the stimulus of a group that has one (that is a delete, a later package). What it may do: change texts and short answers, add
- * a sub-question for a label that was empty (only in a group with a stimulus), change question type/marks and ordered text
- * solution parts. v0.2.30: ratings may change (see [RatingsInput]); a rating-only change is a real change.
- * Nothing that equals the stored value is written again, so a save without a real change is [Checked.NoChange].
+ * Same cleaning and limits as a new save ([QuestionRules]). Blanking a stored question or stimulus remains invalid.
+ * A stored sub-question can be removed only by supplying its explicit ID in [GroupEditInput.deletedQuestionIds];
+ * deletion is limited to stimulus groups and cannot leave the group empty. Other edits can change text/answers,
+ * add a sub-question to an empty label, change metadata, ratings, board/category links and ordered text solution parts.
  */
 object QuestionEditRules {
     sealed interface Checked {
@@ -29,6 +28,9 @@ object QuestionEditRules {
             val referenceText: String? = null,
             val metadataUpdates: List<QuestionMetaUpdate> = emptyList(),
             val solutionUpdates: List<QuestionSolutionUpdate> = emptyList(),
+            val deletes: List<String> = emptyList(),
+            val categoryUpdates: List<QuestionCategoryUpdate> = emptyList(),
+            val addCategories: Map<CqLabel, List<String>> = emptyMap(),
         ) : Checked
         data object NoChange : Checked
         data class BlankedQuestion(val label: CqLabel) : Checked
@@ -37,6 +39,8 @@ object QuestionEditRules {
         data class TooLong(val field: String) : Checked
         data object BadRating : Checked
         data object BadBoard : Checked
+        data object BadCategories : Checked
+        data object BadDeletion : Checked
     }
 
     fun check(original: SavedGroup, input: GroupEditInput): Checked {
@@ -44,6 +48,11 @@ object QuestionEditRules {
         if (wanted != null && !RatingRules.allValid(wanted)) return Checked.BadRating
         val wantedBoards = input.boards
         if (wantedBoards != null && !BoardRules.allValid(wantedBoards)) return Checked.BadBoard
+        val wantedCategories = input.categoriesByLabel
+        if (wantedCategories != null && wantedCategories.any { (_, ids) -> ids.any(String::isBlank) || ids.distinct().size != ids.size }) return Checked.BadCategories
+        val deleteIds = input.deletedQuestionIds.toList()
+        val existingIds = original.subQuestions.map { it.id }.toSet()
+        if (deleteIds.any { it.isBlank() || it !in existingIds } || (deleteIds.isNotEmpty() && original.stimulusId == null)) return Checked.BadDeletion
         val hasStimulus = original.stimulusId != null
         var newStimulus: String? = null
         var newReference: String? = null
@@ -66,6 +75,8 @@ object QuestionEditRules {
         val addBoards = LinkedHashMap<CqLabel, List<BoardTag>>()
         val metadataUpdates = ArrayList<QuestionMetaUpdate>()
         val solutionUpdates = ArrayList<QuestionSolutionUpdate>()
+        val categoryUpdates = ArrayList<QuestionCategoryUpdate>()
+        val addCategories = LinkedHashMap<CqLabel, List<String>>()
         // A stimulus rating can only change on a group that has a stimulus.
         val stimulusRating: RatingChange? =
             if (hasStimulus && wanted != null && wanted.stimulus != original.stimulusRating) RatingChange(wanted.stimulus) else null
@@ -78,6 +89,7 @@ object QuestionEditRules {
             val answer = QuestionRules.clean(sub.shortAnswer)
             val stored = original.subQuestions.firstOrNull { it.label == sub.label }
             if (stored != null) {
+                if (stored.id in input.deletedQuestionIds) continue
                 if (text.isEmpty()) return Checked.BlankedQuestion(sub.label)
                 if (text.length > QuestionRules.MAX_TEXT_LENGTH) return Checked.TooLong("${sub.label.letter}) প্রশ্ন")
                 if (answer.length > QuestionRules.MAX_TEXT_LENGTH) return Checked.TooLong("${sub.label.letter}) উত্তর")
@@ -101,6 +113,10 @@ object QuestionEditRules {
                     if (desiredSolutions.any { it.length > QuestionRules.MAX_TEXT_LENGTH }) return Checked.TooLong("সমাধান")
                     if (desiredSolutions != stored.solutionParts) solutionUpdates.add(QuestionSolutionUpdate(stored.id, desiredSolutions))
                 }
+                val desiredCategories = wantedCategories?.get(sub.label)
+                if (desiredCategories != null && desiredCategories.toSet() != stored.categoryIds.toSet()) {
+                    categoryUpdates.add(QuestionCategoryUpdate(stored.id, desiredCategories.toList()))
+                }
             } else {
                 if (text.isEmpty()) {
                     if (answer.isNotEmpty()) return Checked.MissingText(sub.label)
@@ -119,11 +135,14 @@ object QuestionEditRules {
                 if (wanted != null && wanted.byLabel.containsKey(sub.label)) addRatings[sub.label] = wanted.byLabel[sub.label]
                 val newTags = wantedBoards?.byLabel?.get(sub.label)
                 if (newTags != null) addBoards[sub.label] = BoardRules.normalizeTags(newTags)
+                wantedCategories?.get(sub.label)?.let { addCategories[sub.label] = it.toList() }
             }
         }
+        if (deleteIds.size >= original.subQuestions.size + adds.size) return Checked.BadDeletion
         if (newStimulus == null && newReference == null && updates.isEmpty() && adds.isEmpty() && stimulusRating == null && ratingUpdates.isEmpty() &&
-            stimulusBoards == null && boardUpdates.isEmpty() && metadataUpdates.isEmpty() && solutionUpdates.isEmpty()
+            stimulusBoards == null && boardUpdates.isEmpty() && metadataUpdates.isEmpty() && solutionUpdates.isEmpty() &&
+            deleteIds.isEmpty() && categoryUpdates.isEmpty()
         ) return Checked.NoChange
-        return Checked.Ok(newStimulus, updates, adds, stimulusRating, ratingUpdates, addRatings, stimulusBoards, boardUpdates, addBoards, newReference, metadataUpdates, solutionUpdates)
+        return Checked.Ok(newStimulus, updates, adds, stimulusRating, ratingUpdates, addRatings, stimulusBoards, boardUpdates, addBoards, newReference, metadataUpdates, solutionUpdates, deleteIds, categoryUpdates, addCategories)
     }
 }

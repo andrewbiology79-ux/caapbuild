@@ -44,16 +44,18 @@ class ChapterCqRepositoryImpl(
         boards: List<ChapterCqQuestionBoardsEntity>, categories: List<ChapterCqQuestionCategoryLinksEntity>,
         mustUpdateExisting: Boolean, draftOwnerId: String,
     ): Boolean {
-        require(draftOwnerId.isNotBlank()) { "Chapter_CQ draft owner is required" }
-        beforeWrite()
         // The DAO owns the whole Room transaction, including all validation and read-back checks.
         // Do not perform a second post-commit read-back here: a late mismatch could otherwise report
         // failure after the write had already committed and could not be rolled back.
         return try {
+            val command = com.questionbank.app.domain.editor.EditorSaveCommand.chapterCqBundle(
+                question, stimulus, solutionParts, boards, categories, mustUpdateExisting, draftOwnerId,
+            )
+            beforeWrite()
             dao.saveQuestionWithStimulusBundle(
-                question, stimulus, solutionParts, boards, categories,
-                mustUpdateExisting = mustUpdateExisting,
-                draftKey = "draft:chapter_cq:editor:$draftOwnerId",
+                command.question, command.stimulus, command.solutionParts, command.boards, command.categories,
+                mustUpdateExisting = command.mustUpdateExisting,
+                draftKey = "draft:chapter_cq:editor:${command.draftOwnerId}",
             )
         } catch (cancelled: CancellationException) {
             throw cancelled

@@ -26,6 +26,7 @@ import com.questionbank.app.domain.editor.EditorMode as CanonicalEditorMode
 import com.questionbank.app.domain.editor.TypeCqDraftAdapter
 import com.questionbank.app.domain.repository.EditorDraftRepository
 import com.questionbank.app.domain.question.UpdateResult
+import com.questionbank.app.data.local.entity.TypeCqQuestionCategoriesEntity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -43,8 +44,16 @@ import kotlinx.coroutines.withContext
 
 enum class EditLoad { LOADING, READY, MISSING }
 
-/** One queued draft write: [text] null means "remove the draft" (the typed text equals the stored text again, or it was discarded). */
-private class EditDraftOp(val text: DraftText?)
+/** Complete immutable payload queued to the application-scope draft writer. */
+private data class EditDraftSnapshot(
+    val text: DraftText,
+    val categoryIdsByLabel: List<List<String>>,
+    val deletedQuestionIds: Set<String>,
+    val mode: EditorMode,
+)
+
+/** A null snapshot means "remove the draft" because the editor has returned to its stored state. */
+private class EditDraftOp(val snapshot: EditDraftSnapshot?)
 
 private data class EditSnapshot(
     val stimulus: String = "",
@@ -58,6 +67,8 @@ private data class EditSnapshot(
     val questionTypeIds: List<String> = CqLabel.entries.map { it.typeId },
     val marks: List<Double> = CqLabel.entries.map { it.marks },
     val solutionTexts: List<List<String>> = List(4) { emptyList() },
+    val categoryIdsByLabel: List<List<String>> = List(4) { emptyList() },
+    val deletedQuestionIds: Set<String> = emptySet(),
 )
 
 /**
@@ -81,6 +92,7 @@ class QuestionEditViewModel(
     private val draftScope: CoroutineScope,
     questionTypesFlow: Flow<List<com.questionbank.app.data.local.entity.TypeCqQuestionTypesEntity>> = flowOf(emptyList()),
     private val editorDraftRepository: EditorDraftRepository? = null,
+    categoriesFlow: Flow<List<TypeCqQuestionCategoriesEntity>> = flowOf(emptyList()),
 ) : ViewModel() {
 
     var load by mutableStateOf(EditLoad.LOADING)
@@ -116,10 +128,16 @@ class QuestionEditViewModel(
         private set
     var boards by mutableStateOf<List<List<BoardTag>>>(List(4) { emptyList() })
         private set
+    var categoryIdsByLabel by mutableStateOf(List(4) { emptyList<String>() })
+        private set
+    var deletedQuestionIds by mutableStateOf<Set<String>>(emptySet())
+        private set
     /** The board catalog for the picker. */
     val boardCatalog: StateFlow<List<BoardItem>> =
         repository.observeBoards().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val questionTypeLabels: StateFlow<Map<String, String>> = questionTypesFlow.map { rows -> rows.associate { it.questionTypeId to it.label } }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+    val categoryCatalog: StateFlow<List<TypeCqQuestionCategoriesEntity>> =
+        categoriesFlow.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     var saving by mutableStateOf(false)
         private set
     var result by mutableStateOf<UpdateResult?>(null)
@@ -150,12 +168,14 @@ class QuestionEditViewModel(
                 val a = MutableList(4) { "" }
                 val r = MutableList<Int?>(4) { null }
                 val b = MutableList<List<BoardTag>>(4) { emptyList() }
+                val categoryRows = MutableList(4) { emptyList<String>() }
                 for (sub in group.subQuestions) {
                     val label = sub.label ?: continue
                     t[label.sortOrder - 1] = sub.text
                     a[label.sortOrder - 1] = sub.shortAnswer
                     r[label.sortOrder - 1] = sub.rating
                     b[label.sortOrder - 1] = sub.boards
+                    categoryRows[label.sortOrder - 1] = sub.categoryIds
                 }
                 original = group
                 stimulus = group.stimulusText
@@ -166,6 +186,7 @@ class QuestionEditViewModel(
                 ratings = r
                 stimulusBoards = group.stimulusBoards
                 boards = b
+                categoryIdsByLabel = categoryRows
                 val typeRows = CqLabel.entries.map { label -> group.subQuestions.firstOrNull { it.label == label }?.questionTypeId ?: label.typeId }
                 val markRows = CqLabel.entries.map { label -> group.subQuestions.firstOrNull { it.label == label }?.marks ?: label.marks }
                 val solutionRows = CqLabel.entries.map { label -> group.subQuestions.firstOrNull { it.label == label }?.solutionParts.orEmpty() }
@@ -176,7 +197,7 @@ class QuestionEditViewModel(
                 restoreDraft(group)
                 history.reset(snapshot())
                 startWriter()
-                if (canonicalDraftTemplate == null && changed) pending.trySend(EditDraftOp(draftOf()))
+                if (canonicalDraftTemplate == null && changed) pending.trySend(EditDraftOp(currentDraft()))
             }
         }
     }
@@ -201,7 +222,8 @@ class QuestionEditViewModel(
         val qTypes = questionTypeIds.toMutableList()
         val markValues = marks.toMutableList()
         val solutionValues = solutionTexts.toMutableList()
-        for (label in editableLabels) {
+        val categoryValues = categoryIdsByLabel.toMutableList()
+        for (label in CqLabel.entries) {
             val i = label.sortOrder - 1
             t[i] = stored.texts[i]
             a[i] = stored.answers[i]
@@ -210,6 +232,8 @@ class QuestionEditViewModel(
             qTypes[i] = stored.questionTypeIds[i]
             markValues[i] = stored.marks[i]
             solutionValues[i] = stored.solutionTexts[i]
+            val draftBlock = canonical?.questionBlocks?.firstOrNull { it.label == label.letter }
+            if (draftBlock != null) categoryValues[i] = draftBlock.categoryIds
         }
         texts = t
         answers = a
@@ -218,6 +242,8 @@ class QuestionEditViewModel(
         questionTypeIds = qTypes
         marks = markValues
         solutionTexts = solutionValues
+        categoryIdsByLabel = categoryValues
+        deletedQuestionIds = canonical?.deletedQuestionIds?.toSet().orEmpty()
         if (changed || canonical != null) {
             restoredFromDraft = true
             draftStatus = DraftStatus.SAVED
@@ -234,33 +260,51 @@ class QuestionEditViewModel(
         pending = queue
         writer = draftScope.launch {
             for (op in queue) {
-                val text = op.text
-                if (text == null) {
+                val snapshot = op.snapshot
+                if (snapshot == null) {
                     repository.discardEditDraft(groupKey)
                     try { editorDraftRepository?.discard("type_cq", canonicalDraftOwnerId) } catch (_: Exception) { }
                 } else {
-                    repository.saveEditDraft(groupKey, text)
+                    repository.saveEditDraft(groupKey, snapshot.text)
                     val prior = canonicalDraftTemplate
                     val ids = original?.subQuestions?.sortedBy { it.label?.sortOrder ?: Int.MAX_VALUE }?.map { it.id }.orEmpty()
-                    val canonical = TypeCqDraftAdapter.fromLegacy(
-                        ownerId = canonicalDraftOwnerId,
-                        draft = text,
-                        mode = if (editorMode == EditorMode.FULL) CanonicalEditorMode.FULL else CanonicalEditorMode.MINIMUM,
-                        existingStimulusId = original?.stimulusId,
-                        existingQuestionIds = ids,
-                        questionIdsByLabel = original?.subQuestions?.mapNotNull { sub -> sub.label?.let { it.letter to sub.id } }?.toMap(),
-                        previous = prior,
-                    )
+                    val canonical = canonicalDraft(snapshot, prior, ids)
                     canonicalDraftTemplate = canonical
                     try { editorDraftRepository?.save("type_cq", canonicalDraftOwnerId, EditorSessionDraftCodec.encode(canonical)) } catch (_: Exception) { }
                 }
-                if (text == currentDraft()) draftStatus = if (text == null) DraftStatus.NONE else DraftStatus.SAVED
+                if (snapshot == currentDraft()) draftStatus = if (snapshot == null) DraftStatus.NONE else DraftStatus.SAVED
             }
         }
     }
 
-    /** The typed text as a draft, or null while it equals the stored text. */
-    private fun currentDraft(): DraftText? = if (changed || canonicalDraftTemplate != null) draftOf() else null
+    private fun canonicalDraft(draft: EditDraftSnapshot, previous: EditorSessionDraft?, ids: List<String>): EditorSessionDraft {
+        val base = TypeCqDraftAdapter.fromLegacy(
+            ownerId = canonicalDraftOwnerId,
+            draft = draft.text,
+            mode = if (draft.mode == EditorMode.FULL) CanonicalEditorMode.FULL else CanonicalEditorMode.MINIMUM,
+            existingStimulusId = original?.stimulusId,
+            existingQuestionIds = ids,
+            questionIdsByLabel = original?.subQuestions?.mapNotNull { sub -> sub.label?.let { it.letter to sub.id } }?.toMap(),
+            previous = previous,
+        )
+        return base.copy(
+            questionBlocks = base.questionBlocks.map { block ->
+                val label = CqLabel.fromLetter(block.label)
+                if (label == null) block else block.copy(categoryIds = draft.categoryIdsByLabel[label.sortOrder - 1].toList())
+            },
+            deletedQuestionIds = draft.deletedQuestionIds.toList().sorted(),
+        )
+    }
+
+    private fun currentDraft(): EditDraftSnapshot? =
+        if (changed || canonicalDraftTemplate != null) {
+            EditDraftSnapshot(
+                text = draftOf(),
+                categoryIdsByLabel = categoryIdsByLabel.map { it.toList() },
+                deletedQuestionIds = deletedQuestionIds.toSet(),
+                mode = editorMode,
+            )
+        } else null
 
     private fun draftOf(): DraftText =
         DraftText(
@@ -283,9 +327,25 @@ class QuestionEditViewModel(
     val editableLabels: List<CqLabel>
         get() {
             val group = original ?: return emptyList()
-            if (group.stimulusId != null) return CqLabel.entries
-            return group.subQuestions.mapNotNull { it.label }
+            val labels = if (group.stimulusId != null) CqLabel.entries else group.subQuestions.mapNotNull { it.label }
+            return labels.filter { label ->
+                val savedId = group.subQuestions.firstOrNull { it.label == label }?.id
+                savedId == null || savedId !in deletedQuestionIds
+            }
         }
+
+    val deletedQuestionLabels: List<CqLabel>
+        get() = original?.subQuestions.orEmpty().filter { it.id in deletedQuestionIds }.mapNotNull { it.label }
+
+    fun canDeleteQuestion(label: CqLabel): Boolean {
+        val group = original ?: return false
+        val row = group.subQuestions.firstOrNull { it.label == label } ?: return false
+        val remainingStored = group.subQuestions.count { it.id !in deletedQuestionIds }
+        val pendingNew = editableLabels.count { candidate ->
+            group.subQuestions.none { it.label == candidate } && texts[candidate.sortOrder - 1].isNotBlank()
+        }
+        return group.stimulusId != null && row.id !in deletedQuestionIds && remainingStored + pendingNew > 1
+    }
 
     private fun buildInput(): GroupEditInput =
         GroupEditInput(
@@ -310,12 +370,14 @@ class QuestionEditViewModel(
             questionTypes = editableLabels.associateWith { questionTypeIds[it.sortOrder - 1] },
             marksByLabel = editableLabels.associateWith { marks[it.sortOrder - 1] },
             solutionsByLabel = editableLabels.associateWith { solutionTexts[it.sortOrder - 1] },
+            categoriesByLabel = editableLabels.associateWith { categoryIdsByLabel[it.sortOrder - 1] },
+            deletedQuestionIds = deletedQuestionIds,
             editorDraftKey = if (editorDraftRepository != null) "draft:type_cq:editor:$canonicalDraftOwnerId" else null,
         )
 
     private fun snapshot() = EditSnapshot(
         stimulus, referenceText, texts, answers, ratings, stimulusRating, boards, stimulusBoards,
-        questionTypeIds, marks, solutionTexts,
+        questionTypeIds, marks, solutionTexts, categoryIdsByLabel, deletedQuestionIds,
     )
 
     private fun record(group: String) { history.record(snapshot(), group) }
@@ -324,6 +386,7 @@ class QuestionEditViewModel(
         stimulus = value.stimulus; referenceText = value.referenceText; texts = value.texts; answers = value.answers
         ratings = value.ratings; stimulusRating = value.stimulusRating; boards = value.boards; stimulusBoards = value.stimulusBoards
         questionTypeIds = value.questionTypeIds; marks = value.marks; solutionTexts = value.solutionTexts
+        categoryIdsByLabel = value.categoryIdsByLabel; deletedQuestionIds = value.deletedQuestionIds
         result = null
         queueDraft()
     }
@@ -402,6 +465,37 @@ class QuestionEditViewModel(
         queueDraft()
     }
 
+    fun changeCategory(label: CqLabel, categoryId: String, checked: Boolean) {
+        if (saving || finished || label !in editableLabels || categoryId.isBlank()) return
+        val index = label.sortOrder - 1
+        val current = categoryIdsByLabel[index]
+        val next = if (checked) (current + categoryId).distinct() else current.filterNot { it == categoryId }
+        if (next == current) return
+        categoryIdsByLabel = categoryIdsByLabel.toMutableList().also { it[index] = next }
+        record("categories-${label.sortOrder}")
+        result = null
+        queueDraft()
+    }
+
+    fun deleteQuestion(label: CqLabel) {
+        if (saving || finished || !canDeleteQuestion(label)) return
+        val rowId = original?.subQuestions?.firstOrNull { it.label == label }?.id ?: return
+        deletedQuestionIds = deletedQuestionIds + rowId
+        record("delete-${label.sortOrder}")
+        result = null
+        queueDraft()
+    }
+
+    fun restoreDeletedQuestion(label: CqLabel) {
+        if (saving || finished) return
+        val rowId = original?.subQuestions?.firstOrNull { it.label == label }?.id ?: return
+        if (rowId !in deletedQuestionIds) return
+        deletedQuestionIds = deletedQuestionIds - rowId
+        record("restore-delete-${label.sortOrder}")
+        result = null
+        queueDraft()
+    }
+
     fun changeReferenceText(value: String) { if (saving || finished || !hasStimulus) return; referenceText = value; record("reference"); result = null; queueDraft() }
     fun changeQuestionType(label: CqLabel, value: String) { if (saving || finished) return; questionTypeIds = questionTypeIds.toMutableList().also { it[label.sortOrder - 1] = value }; record("type-${label.sortOrder}"); result = null; queueDraft() }
     fun changeMarks(label: CqLabel, value: Double) { if (saving || finished || !value.isFinite() || value <= 0.0) return; marks = marks.toMutableList().also { it[label.sortOrder - 1] = value }; record("marks-${label.sortOrder}"); result = null; queueDraft() }
@@ -425,7 +519,12 @@ class QuestionEditViewModel(
         saving = true
         result = null
         val input = buildInput()
-        val snapshot = draftOf()
+        val snapshot = currentDraft() ?: EditDraftSnapshot(
+            text = draftOf(),
+            categoryIdsByLabel = categoryIdsByLabel.map { it.toList() },
+            deletedQuestionIds = deletedQuestionIds.toSet(),
+            mode = editorMode,
+        )
         viewModelScope.launch {
             // No draft write may run or follow the save: stop the writer first.
             pending.close()
@@ -445,14 +544,11 @@ class QuestionEditViewModel(
                 startWriter()
                 if (outcome != UpdateResult.NoChange && outcome != UpdateResult.GroupMissing) {
                     withContext(NonCancellable) {
-                        repository.saveEditDraft(groupKey, snapshot)
-                        val canonical = TypeCqDraftAdapter.fromLegacy(
-                            ownerId = canonicalDraftOwnerId,
-                            draft = snapshot,
-                            mode = if (editorMode == EditorMode.FULL) CanonicalEditorMode.FULL else CanonicalEditorMode.MINIMUM,
-                            existingStimulusId = original?.stimulusId,
-                            existingQuestionIds = original?.subQuestions?.map { it.id }.orEmpty(),
-                            previous = canonicalDraftTemplate,
+                        repository.saveEditDraft(groupKey, snapshot.text)
+                        val canonical = canonicalDraft(
+                            snapshot,
+                            canonicalDraftTemplate,
+                            original?.subQuestions?.map { it.id }.orEmpty(),
                         )
                         canonicalDraftTemplate = canonical
                         try { editorDraftRepository?.save("type_cq", canonicalDraftOwnerId, EditorSessionDraftCodec.encode(canonical)) } catch (_: Exception) { }
