@@ -1,3 +1,17 @@
+Question Bank Android - coordinated Phase 6-8 implementation candidate + CI run 51 fix (plan v1.55)
+Artifact filename: QuestionBank_v0_2_31_PHASE6_8_IMPLEMENTATION_CANDIDATE_UNVERIFIED_v1_55.zip
+Project plan: PROJECT_PLAN_v1_55_UPDATED.txt
+
+FIX FOR CI RUN 51 (SOURCE EDIT ONLY, NOT COMPILED)
+- CI run 51 (commit fef46c8) failed at :app:compileDebugKotlin with 2 errors, both "Unresolved reference 'KeyboardOptions'" in QuestionEditorScreen.kt (lines 39 and 103).
+- Fix: the import on line 39 changed from androidx.compose.ui.text.input.KeyboardOptions to androidx.compose.foundation.text.KeyboardOptions. No other file under app/src was changed.
+- Static checks only (no Gradle or Kotlin compiler available here): the internal imports of all 157 Kotlin files resolve to a declaration; 126 common Compose imports were compared with their expected packages and none is wrong.
+- NOT verified: Kotlin compile, KSP, unit tests, emulator tests, phone. More compile errors may appear on the next CI run. After a green build the Room identityHash must still be 786b471dfa14c9ae4739bb81479bab25.
+- versionCode / versionName are unchanged (36 / 0.2.31-phase5-wip2; P-56 still open).
+- Added PROJECT_PLAN_v1_55_UPDATED.txt: master checklist reconciled with evidence (section 6) and section 64.
+
+--- Notes of the Phase 6-8 candidate (unchanged below) ---
+
 Question Bank Android — coordinated Phase 6–8 implementation candidate
 Artifact filename: QuestionBank_v0_2_31_PHASE6_8_IMPLEMENTATION_CANDIDATE_UNVERIFIED.zip
 Source baseline: QuestionBank_v0_2_31_PHASE5_WIP2.zip
