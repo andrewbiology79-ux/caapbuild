@@ -306,6 +306,8 @@ class BackupService(
         candidateMediaCount = 0
     }
 
+    private fun sha256(file: File): String = file.inputStream().use { sha256(it) }
+
     private fun sha256(input: InputStream): String {
         val digest = MessageDigest.getInstance("SHA-256")
         val buffer = ByteArray(64 * 1024)

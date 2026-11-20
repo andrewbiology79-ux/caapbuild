@@ -26,6 +26,7 @@ interface PaperRepository {
     suspend fun renamePaper(paperId: String, title: String): Boolean
     suspend fun updatePaperMetadata(paperId: String, subjectLine: String, durationText: String, noteText: String, totalMarks: Double?): Boolean
     suspend fun addQuestionSnapshot(paperId: String, sectionId: String?, scope: String, questionId: String): Boolean
+    suspend fun addSnapshotItem(item: PaperQuestionItemsEntity): Boolean
     suspend fun updateItemMarks(paperId: String, itemId: String, marks: Double?): Boolean
     suspend fun removeItem(paperId: String, itemId: String): Boolean
     suspend fun updateItemOverride(paperId: String, itemId: String, questionText: String?, stimulusText: String?, shortAnswer: String?, solutionJson: String?): Boolean

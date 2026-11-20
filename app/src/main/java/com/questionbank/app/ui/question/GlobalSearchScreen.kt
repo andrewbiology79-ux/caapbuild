@@ -107,7 +107,7 @@ fun GlobalSearchScreen(
         Column(Modifier.fillMaxSize().padding(padding).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
                 value = filters.query,
-                onValueChange = { vm.update { it.copy(query = it) } },
+                onValueChange = { text -> vm.update { current -> current.copy(query = text) } },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 label = { Text("বাংলা বা English প্রশ্ন লিখুন") },

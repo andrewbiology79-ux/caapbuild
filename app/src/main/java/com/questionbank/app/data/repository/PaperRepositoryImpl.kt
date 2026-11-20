@@ -193,13 +193,16 @@ class PaperRepositoryImpl(
             rows.sortedBy { it.third }.forEach { sourceImages += it }
         }
         solutionRows.forEachIndexed { index, row ->
-            if (row.first.equals("IMAGE", true) && row.third != null) sourceImages += Triple(row.third, "SOLUTION", index.toLong())
+            val solutionImageId = row.third
+            if (row.first.equals("IMAGE", true) && solutionImageId != null) {
+                sourceImages.add(Triple(solutionImageId, "SOLUTION", index.toLong()))
+            }
         }
 
         val paperImageRows = mutableListOf<PaperImagesEntity>()
         val paperItemImageRows = mutableListOf<PaperItemImagesEntity>()
         val copiedFiles = mutableListOf<String>()
-        try {
+        return try {
             sourceImages.forEachIndexed { position, sourceImage ->
                 val paperImageId = "paper_image_${UUID.randomUUID()}"
                 val asset = imagePipeline.copyImageToPaperStorage(
@@ -234,6 +237,11 @@ class PaperRepositoryImpl(
             copiedFiles.forEach { path -> runCatching { imagePipeline.deletePaperStorageAsset(path) } }
             throw error
         }
+    }
+
+    override suspend fun addSnapshotItem(item: PaperQuestionItemsEntity): Boolean {
+        beforeWrite()
+        return dao.addSnapshotItem(item)
     }
 
     override suspend fun updateItemMarks(paperId: String, itemId: String, marks: Double?): Boolean {

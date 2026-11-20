@@ -301,3 +301,13 @@ private fun SearchHeader(query: String, onQueryChange: (String) -> Unit, onClose
         }
     }
 }
+
+@Composable
+private fun Message(text: String, isError: Boolean = false) {
+    Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+        Text(
+            text,
+            color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
