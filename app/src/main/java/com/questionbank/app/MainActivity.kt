@@ -21,6 +21,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val dark = settings.darkTheme
             val textSize = settings.textSize
+            val highContrast = settings.highContrast
             // The header bar is always dark enough for light status-bar icons; the navigation bar follows the owner's theme.
             SideEffect {
                 enableEdgeToEdge(
@@ -32,7 +33,7 @@ class MainActivity : ComponentActivity() {
                     },
                 )
             }
-            QuestionBankTheme(darkTheme = dark, textSize = textSize) {
+            QuestionBankTheme(darkTheme = dark, textSize = textSize, highContrast = highContrast) {
                 AppNavHost()
             }
         }

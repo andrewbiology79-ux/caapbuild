@@ -37,14 +37,20 @@ object BackupInspector {
             if (expectedHash != null && hash != expectedHash) {
                 return InspectResult.bad("ব্যাকআপটি অ্যাপের অন্য সংস্করণের ডাটাবেস কাঠামোর; এই অ্যাপে রিস্টোর করা যাবে না।")
             }
+            val databaseVersion = connection.firstLong("PRAGMA user_version").toInt()
+            if (databaseVersion <= 0) return InspectResult.bad("ডাটাবেসের সংস্করণ নম্বর পাওয়া যায়নি।")
             val counts = DbCounts(
                 subjects = connection.firstLong("SELECT COUNT(*) FROM type_cq_subjects"),
                 chapters = connection.firstLong("SELECT COUNT(*) FROM type_cq_chapters"),
                 topics = connection.firstLong("SELECT COUNT(*) FROM type_cq_topics"),
                 stimuli = connection.firstLong("SELECT COUNT(*) FROM type_cq_stimuli"),
                 questions = connection.firstLong("SELECT COUNT(*) FROM type_cq_questions"),
+                chapterSubjects = connection.firstLong("SELECT COUNT(*) FROM chapter_cq_subjects"),
+                chapterChapters = connection.firstLong("SELECT COUNT(*) FROM chapter_cq_chapters"),
+                chapterStimuli = connection.firstLong("SELECT COUNT(*) FROM chapter_cq_stimuli"),
+                chapterQuestions = connection.firstLong("SELECT COUNT(*) FROM chapter_cq_questions"),
             )
-            return InspectResult(true, null, hash, counts)
+            return InspectResult(true, null, hash, counts, databaseVersion)
         } catch (e: Exception) {
             return InspectResult.bad("ফাইলটি খোলা বা পরীক্ষা করা যায়নি।")
         } finally {

@@ -13,6 +13,8 @@ import com.questionbank.app.domain.question.BoardTag
 import com.questionbank.app.domain.question.BoardsInput
 import com.questionbank.app.domain.question.CqLabel
 import com.questionbank.app.domain.question.DraftText
+import com.questionbank.app.domain.question.QuestionStimulusImage
+import com.questionbank.app.domain.question.QuestionSolutionPart
 import com.questionbank.app.domain.question.GroupEditInput
 import com.questionbank.app.domain.question.QuestionEditRules
 import com.questionbank.app.domain.question.RatingsInput
@@ -69,6 +71,8 @@ private data class EditSnapshot(
     val solutionTexts: List<List<String>> = List(4) { emptyList() },
     val categoryIdsByLabel: List<List<String>> = List(4) { emptyList() },
     val deletedQuestionIds: Set<String> = emptySet(),
+    val stimulusImages: List<QuestionStimulusImage> = emptyList(),
+    val solutionPartsByLabel: List<List<QuestionSolutionPart>> = List(4) { emptyList() },
 )
 
 /**
@@ -93,6 +97,7 @@ class QuestionEditViewModel(
     questionTypesFlow: Flow<List<com.questionbank.app.data.local.entity.TypeCqQuestionTypesEntity>> = flowOf(emptyList()),
     private val editorDraftRepository: EditorDraftRepository? = null,
     categoriesFlow: Flow<List<TypeCqQuestionCategoriesEntity>> = flowOf(emptyList()),
+    defaultEditorMode: EditorMode = EditorMode.MINIMUM,
 ) : ViewModel() {
 
     var load by mutableStateOf(EditLoad.LOADING)
@@ -109,7 +114,11 @@ class QuestionEditViewModel(
         private set
     var solutionTexts by mutableStateOf(List(4) { emptyList<String>() })
         private set
-    var editorMode by mutableStateOf(EditorMode.MINIMUM)
+    var stimulusImages by mutableStateOf<List<QuestionStimulusImage>>(emptyList())
+        private set
+    var solutionPartsByLabel by mutableStateOf(List(4) { emptyList<QuestionSolutionPart>() })
+        private set
+    var editorMode by mutableStateOf(defaultEditorMode)
         private set
     private val history = EditorHistory(EditSnapshot())
     val canUndo: Boolean get() = history.canUndo
@@ -193,6 +202,14 @@ class QuestionEditViewModel(
                 questionTypeIds = typeRows
                 marks = markRows
                 solutionTexts = solutionRows
+                stimulusImages = group.stimulusImages
+                solutionPartsByLabel = CqLabel.entries.map { label ->
+                    group.subQuestions.firstOrNull { it.label == label }?.orderedSolutionParts.orEmpty().ifEmpty {
+                        group.subQuestions.firstOrNull { it.label == label }?.solutionParts.orEmpty().mapIndexed { index, value ->
+                            QuestionSolutionPart("type_cq:$groupKey:${label.letter}:text:$index", "TEXT", index.toLong(), textContent = value)
+                        }
+                    }
+                }
                 load = EditLoad.READY
                 restoreDraft(group)
                 history.reset(snapshot())
@@ -208,12 +225,13 @@ class QuestionEditViewModel(
             .getOrNull()?.takeIf { it.scope == CanonicalEditorScope.TYPE_CQ && it.ownerId == canonicalDraftOwnerId }
         canonicalDraftTemplate = canonical
         val stored = canonical?.let(TypeCqDraftAdapter::toLegacy) ?: repository.loadEditDraft(groupKey) ?: return
-        if (canonical != null && canonical.mode == CanonicalEditorMode.FULL) editorMode = EditorMode.FULL
+        if (canonical != null) editorMode = if (canonical.mode == CanonicalEditorMode.FULL) EditorMode.FULL else EditorMode.MINIMUM
         if (group.stimulusId != null) {
             stimulus = stored.stimulus
             referenceText = stored.referenceText
             stimulusRating = stored.stimulusRating
             stimulusBoards = stored.stimulusBoards
+            stimulusImages = stored.stimulusImages ?: group.stimulusImages
         }
         val t = texts.toMutableList()
         val a = answers.toMutableList()
@@ -242,6 +260,7 @@ class QuestionEditViewModel(
         questionTypeIds = qTypes
         marks = markValues
         solutionTexts = solutionValues
+        if (stored.solutionPartsByLabel != null) solutionPartsByLabel = stored.solutionPartsByLabel
         categoryIdsByLabel = categoryValues
         deletedQuestionIds = canonical?.deletedQuestionIds?.toSet().orEmpty()
         if (changed || canonical != null) {
@@ -311,6 +330,8 @@ class QuestionEditViewModel(
             stimulus = stimulus, texts = texts, answers = answers, stimulusRating = stimulusRating, ratings = ratings,
             stimulusBoards = stimulusBoards, boards = boards, referenceText = referenceText,
             questionTypeIds = questionTypeIds, marks = marks, solutionTexts = solutionTexts,
+            stimulusImages = stimulusImages,
+            solutionPartsByLabel = solutionPartsByLabel,
         )
 
     private fun queueDraft() {
@@ -373,11 +394,13 @@ class QuestionEditViewModel(
             categoriesByLabel = editableLabels.associateWith { categoryIdsByLabel[it.sortOrder - 1] },
             deletedQuestionIds = deletedQuestionIds,
             editorDraftKey = if (editorDraftRepository != null) "draft:type_cq:editor:$canonicalDraftOwnerId" else null,
+            stimulusImages = if (hasStimulus) stimulusImages else null,
+            solutionPartsByLabel = editableLabels.associateWith { label -> solutionPartsByLabel[label.sortOrder - 1] },
         )
 
     private fun snapshot() = EditSnapshot(
         stimulus, referenceText, texts, answers, ratings, stimulusRating, boards, stimulusBoards,
-        questionTypeIds, marks, solutionTexts, categoryIdsByLabel, deletedQuestionIds,
+        questionTypeIds, marks, solutionTexts, categoryIdsByLabel, deletedQuestionIds, stimulusImages, solutionPartsByLabel,
     )
 
     private fun record(group: String) { history.record(snapshot(), group) }
@@ -387,6 +410,7 @@ class QuestionEditViewModel(
         ratings = value.ratings; stimulusRating = value.stimulusRating; boards = value.boards; stimulusBoards = value.stimulusBoards
         questionTypeIds = value.questionTypeIds; marks = value.marks; solutionTexts = value.solutionTexts
         categoryIdsByLabel = value.categoryIdsByLabel; deletedQuestionIds = value.deletedQuestionIds
+        stimulusImages = value.stimulusImages; solutionPartsByLabel = value.solutionPartsByLabel
         result = null
         queueDraft()
     }
@@ -404,7 +428,11 @@ class QuestionEditViewModel(
     val changed: Boolean
         get() {
             val group = original ?: return false
-            return QuestionEditRules.check(group, buildInput()) != QuestionEditRules.Checked.NoChange
+            val relationalChange = stimulusImages != group.stimulusImages || editableLabels.any { label ->
+                solutionPartsByLabel[label.sortOrder - 1].sortedBy { it.position } !=
+                    group.subQuestions.firstOrNull { it.label == label }?.orderedSolutionParts.orEmpty().sortedBy { it.position }
+            }
+            return relationalChange || QuestionEditRules.check(group, buildInput()) != QuestionEditRules.Checked.NoChange
         }
 
     fun changeStimulus(value: String) {
@@ -496,12 +524,21 @@ class QuestionEditViewModel(
         queueDraft()
     }
 
+    fun changeStimulusImages(value: List<QuestionStimulusImage>) { if (saving || finished || !hasStimulus) return; stimulusImages = value.mapIndexed { index, row -> row.copy(position = index.toLong()) }; record("stimulus-images"); result = null; queueDraft() }
+    fun changeSolutionImageParts(label: CqLabel, value: List<QuestionSolutionPart>) {
+        if (saving || finished) return
+        val index = label.sortOrder - 1
+        val ordered = value.sortedBy { it.position }.mapIndexed { position, part -> part.copy(position = position.toLong()) }
+        solutionPartsByLabel = solutionPartsByLabel.toMutableList().also { it[index] = ordered }
+        solutionTexts = solutionTexts.toMutableList().also { rows -> rows[index] = ordered.filter { it.partType == "TEXT" }.mapNotNull { it.textContent } }
+        record("solution-mixed-${label.sortOrder}"); result = null; queueDraft()
+    }
     fun changeReferenceText(value: String) { if (saving || finished || !hasStimulus) return; referenceText = value; record("reference"); result = null; queueDraft() }
     fun changeQuestionType(label: CqLabel, value: String) { if (saving || finished) return; questionTypeIds = questionTypeIds.toMutableList().also { it[label.sortOrder - 1] = value }; record("type-${label.sortOrder}"); result = null; queueDraft() }
     fun changeMarks(label: CqLabel, value: Double) { if (saving || finished || !value.isFinite() || value <= 0.0) return; marks = marks.toMutableList().also { it[label.sortOrder - 1] = value }; record("marks-${label.sortOrder}"); result = null; queueDraft() }
-    fun changeSolutionText(label: CqLabel, part: Int, value: String) { if (saving || finished) return; solutionTexts = solutionTexts.toMutableList().also { rows -> rows[label.sortOrder - 1] = rows[label.sortOrder - 1].toMutableList().also { it[part] = value } }; record("solution-${label.sortOrder}-$part"); result = null; queueDraft() }
-    fun addSolutionText(label: CqLabel) { if (saving || finished) return; solutionTexts = solutionTexts.toMutableList().also { rows -> rows[label.sortOrder - 1] = rows[label.sortOrder - 1] + "" }; record("solution-add-${label.sortOrder}"); result = null; queueDraft() }
-    fun removeSolutionText(label: CqLabel, part: Int) { if (saving || finished) return; solutionTexts = solutionTexts.toMutableList().also { rows -> rows[label.sortOrder - 1] = rows[label.sortOrder - 1].toMutableList().also { if (part in it.indices) it.removeAt(part) } }; record("solution-remove-${label.sortOrder}"); result = null; queueDraft() }
+    fun changeSolutionText(label: CqLabel, part: Int, value: String) { if (saving || finished) return; val i = label.sortOrder - 1; solutionTexts = solutionTexts.toMutableList().also { rows -> rows[i] = rows[i].toMutableList().also { if (part in it.indices) it[part] = value } }; syncMixedSolutionText(i); record("solution-${label.sortOrder}-$part"); result = null; queueDraft() }
+    fun addSolutionText(label: CqLabel) { if (saving || finished) return; val i = label.sortOrder - 1; solutionTexts = solutionTexts.toMutableList().also { rows -> rows[i] = rows[i] + "" }; syncMixedSolutionText(i); record("solution-add-${label.sortOrder}"); result = null; queueDraft() }
+    fun removeSolutionText(label: CqLabel, part: Int) { if (saving || finished) return; val i = label.sortOrder - 1; solutionTexts = solutionTexts.toMutableList().also { rows -> rows[i] = rows[i].toMutableList().also { if (part in it.indices) it.removeAt(part) } }; syncMixedSolutionText(i); record("solution-remove-${label.sortOrder}"); result = null; queueDraft() }
     fun moveSolutionText(label: CqLabel, from: Int, to: Int) {
         if (saving || finished) return
         val i = label.sortOrder - 1
@@ -509,7 +546,28 @@ class QuestionEditViewModel(
         if (from !in current.indices || to !in current.indices || from == to) return
         val moved = current.toMutableList().also { row -> val item = row.removeAt(from); row.add(to, item) }
         solutionTexts = solutionTexts.toMutableList().also { it[i] = moved }
+        syncMixedSolutionText(i)
         record("solution-order-${label.sortOrder}"); result = null; queueDraft()
+    }
+
+    /** Reconcile legacy text controls with the ordered mixed parts while retaining IMAGE rows and their IDs. */
+    private fun syncMixedSolutionText(index: Int) {
+        val previous = solutionPartsByLabel.getOrNull(index).orEmpty().sortedBy { it.position }
+        val textsForLabel = solutionTexts.getOrNull(index).orEmpty()
+        val next = mutableListOf<QuestionSolutionPart>()
+        var textIndex = 0
+        previous.forEach { part ->
+            if (part.partType == "IMAGE") next += part.copy(position = next.size.toLong())
+            else if (textIndex < textsForLabel.size) {
+                next += part.copy(textContent = textsForLabel[textIndex], imageId = null, position = next.size.toLong())
+                textIndex++
+            }
+        }
+        while (textIndex < textsForLabel.size) {
+            next += QuestionSolutionPart("type_cq:$groupKey:${CqLabel.entries[index].letter}:text:$textIndex", "TEXT", next.size.toLong(), textContent = textsForLabel[textIndex])
+            textIndex++
+        }
+        solutionPartsByLabel = solutionPartsByLabel.toMutableList().also { it[index] = next }
     }
 
     suspend fun addBoard(code: String, name: String): AddBoardResult = repository.addCustomBoard(code, name)

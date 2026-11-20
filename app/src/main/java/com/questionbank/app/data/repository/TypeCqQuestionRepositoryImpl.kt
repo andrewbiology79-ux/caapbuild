@@ -10,6 +10,9 @@ import com.questionbank.app.data.local.dao.QuestionRowDb
 import com.questionbank.app.data.local.dao.QuestionTextUpdate
 import com.questionbank.app.data.local.dao.QuestionMetadataUpdate as DbQuestionMetadataUpdate
 import com.questionbank.app.data.local.dao.QuestionSolutionUpdate as DbQuestionSolutionUpdate
+import com.questionbank.app.data.local.dao.NewSolutionPartRow
+import com.questionbank.app.data.local.dao.NewStimulusImageRow
+import com.questionbank.app.data.local.dao.QuestionSolutionPartsDb
 import com.questionbank.app.data.local.dao.TypeCqQuestionDao
 import com.questionbank.app.data.local.entity.BoardCatalogEntity
 import com.questionbank.app.domain.question.AddBoardResult
@@ -24,6 +27,9 @@ import com.questionbank.app.domain.question.QuestionEditRules
 import com.questionbank.app.domain.question.QuestionGroupKey
 import com.questionbank.app.domain.question.UpdateResult
 import com.questionbank.app.domain.question.QuestionGroupInput
+import com.questionbank.app.domain.question.RatingsInput
+import com.questionbank.app.domain.question.BoardsInput
+import com.questionbank.app.domain.question.QuestionSolutionPart
 import com.questionbank.app.domain.question.QuestionCategoryUpdate
 import com.questionbank.app.domain.question.QuestionRules
 import com.questionbank.app.domain.question.RatingRules
@@ -81,11 +87,14 @@ class TypeCqQuestionRepositoryImpl(
             val unknownBoard = unknownBoardCode(ok.stimulusBoards + ok.boards.values.flatten())
             if (unknownBoard != null) return SaveResult.Failed("অজানা বোর্ড: $unknownBoard")
             beforeWrite()
-            val stimulusId = if (ok.stimulusText.isNotEmpty() || ok.referenceText.isNotEmpty()) newId() else null
+            val stimulusId = if (ok.stimulusText.isNotEmpty() || ok.referenceText.isNotEmpty() || snapshot.stimulusImages.isNotEmpty()) newId() else null
             val rows = ok.items.map {
                 NewQuestionRow(
                     newId(), it.questionTypeId, it.label.letter, it.marks, it.text, it.shortAnswer, ok.ratings[it.label],
                     tagRows(ok.boards[it.label].orEmpty()), it.solutionParts, ok.categories[it.label].orEmpty(),
+                    snapshot.solutionPartsByLabel[it.label].orEmpty().map { part ->
+                        NewSolutionPartRow(part.partId, part.partType, part.position, part.textContent, part.imageId)
+                    },
                 )
             }
             val stimulusRating = if (stimulusId != null) ok.stimulusRating else null
@@ -93,6 +102,7 @@ class TypeCqQuestionRepositoryImpl(
             val written = dao.insertGroup(
                 snapshot.topicId, stimulusId, ok.stimulusText, ok.referenceText, stimulusRating, stimulusTags,
                 rows, clock(), draftKey(snapshot.topicId), snapshot.editorDraftKey,
+                snapshot.stimulusImages.map { NewStimulusImageRow(it.imageId, it.placement, it.position) },
             )
             if (!written) return SaveResult.TopicMissing
             // The DAO performs all read-back checks before removing the draft, inside the same Room transaction.
@@ -149,6 +159,53 @@ class TypeCqQuestionRepositoryImpl(
         null
     }
 
+    override suspend fun deleteGroup(topicId: String, groupKey: String): Boolean = try {
+        val current = loadOriginal(topicId, groupKey) ?: return false
+        val ids = current.subQuestions.map { it.id }
+        if (ids.isEmpty()) return false
+        beforeWrite()
+        dao.deleteGroup(topicId, current.stimulusId, ids)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        false
+    }
+
+    override suspend fun deleteGroups(topicId: String, groupKeys: List<String>): Boolean = try {
+        if (groupKeys.isEmpty() || groupKeys.distinct().size != groupKeys.size) return false
+        val targets = groupKeys.map { key -> loadOriginal(topicId, key) ?: return false }
+        val ids = targets.flatMap { it.subQuestions.map(SavedSubQuestion::id) }
+        if (ids.isEmpty() || ids.distinct().size != ids.size) return false
+        beforeWrite()
+        dao.deleteQuestionGroups(topicId, ids)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        false
+    }
+
+    override suspend fun duplicateGroup(topicId: String, groupKey: String): SaveResult {
+        val original = loadOriginal(topicId, groupKey) ?: return SaveResult.Failed("প্রশ্ন কার্ডটি আর পাওয়া যাচ্ছে না")
+        val subQuestions = original.subQuestions.mapNotNull { question ->
+            val label = question.label ?: return@mapNotNull null
+            com.questionbank.app.domain.question.SubQuestionInput(
+                label = label, text = question.text, shortAnswer = question.shortAnswer,
+                questionTypeId = question.questionTypeId, marks = question.marks, solutionParts = question.solutionParts,
+            )
+        }
+        if (subQuestions.isEmpty()) return SaveResult.Failed("নকল করার মতো প্রশ্ন পাওয়া যায়নি")
+        val input = QuestionGroupInput(
+            topicId = topicId, stimulusText = original.stimulusText, subQuestions = subQuestions,
+            ratings = RatingsInput(original.stimulusRating, original.subQuestions.mapNotNull { q -> q.label?.let { it to q.rating } }.toMap()),
+            boards = BoardsInput(original.stimulusBoards, original.subQuestions.mapNotNull { q -> q.label?.let { it to q.boards } }.toMap()),
+            referenceText = original.referenceText,
+            categoriesByLabel = original.subQuestions.mapNotNull { q -> q.label?.let { it to q.categoryIds } }.toMap(),
+            stimulusImages = original.stimulusImages,
+            solutionPartsByLabel = original.subQuestions.mapNotNull { q -> q.label?.let { it to q.orderedSolutionParts.map { part -> part.copy(partId = newId()) } } }.toMap(),
+        )
+        return saveGroup(input)
+    }
+
     private suspend fun loadOriginal(topicId: String, groupKey: String): SavedGroup? {
         val rows = when (val key = QuestionGroupKey.parse(groupKey)) {
             null -> return null
@@ -160,13 +217,23 @@ class TypeCqQuestionRepositoryImpl(
         val tags = Tags(
             stimulus = if (stimulusIds.isEmpty()) emptyMap() else toTags(dao.stimulusBoardsIn(stimulusIds)),
             question = if (questionIds.isEmpty()) emptyMap() else toTags(dao.questionBoardsIn(questionIds)),
+            categories = if (questionIds.isEmpty()) emptyMap() else dao.categoryLinksIn(questionIds).groupBy({ it.questionId }, { it.categoryId }),
         )
         val solutions = if (questionIds.isEmpty()) emptyMap() else dao.solutionPartsIn(questionIds)
             .filter { it.partType == "TEXT" && it.textContent != null }
             .groupBy({ it.questionId }, { it.textContent.orEmpty() })
         val categories = if (questionIds.isEmpty()) emptyMap() else dao.categoryLinksIn(questionIds)
             .groupBy({ it.questionId }, { it.categoryId })
-        return group(rows, tags, solutions, categories).firstOrNull()
+        val base = group(rows, tags, solutions, categories).firstOrNull() ?: return null
+        val stimulusImageRows = stimulusIds.firstOrNull()?.let { dao.stimulusImagesFor(it) }.orEmpty()
+            .map { com.questionbank.app.domain.question.QuestionStimulusImage(it.imageId, it.placement, it.position) }
+        val orderedParts = if (questionIds.isEmpty()) emptyMap() else dao.solutionPartsIn(questionIds).groupBy({ it.questionId }, { part ->
+            com.questionbank.app.domain.question.QuestionSolutionPart(part.partId, part.partType, part.position, part.textContent, part.imageId)
+        })
+        return base.copy(
+            stimulusImages = stimulusImageRows,
+            subQuestions = base.subQuestions.map { sub -> sub.copy(orderedSolutionParts = orderedParts[sub.id].orEmpty()) },
+        )
     }
 
     override suspend fun updateGroup(input: GroupEditInput): UpdateResult {
@@ -193,6 +260,9 @@ class TypeCqQuestionRepositoryImpl(
                 NewQuestionRow(
                     newId(), it.questionTypeId, it.label.letter, it.marks, it.text, it.shortAnswer, ok.addRatings[it.label],
                     tagRows(ok.addBoards[it.label].orEmpty()), it.solutionParts, ok.addCategories[it.label].orEmpty(),
+                    snapshot.solutionPartsByLabel?.get(it.label).orEmpty().map { part ->
+                        NewSolutionPartRow(part.partId, part.partType, part.position, part.textContent, part.imageId)
+                    },
                 )
             }
             val categoryUpdates = ok.categoryUpdates.map { QuestionCategoriesDb(it.questionId, it.categoryIds) }
@@ -216,6 +286,13 @@ class TypeCqQuestionRepositoryImpl(
                 deletes = ok.deletes,
                 categoryUpdates = categoryUpdates,
                 editorDraftKey = snapshot.editorDraftKey,
+                solutionPartUpdates = snapshot.solutionPartsByLabel.orEmpty().mapNotNull { (label, parts) ->
+                    val questionId = original.subQuestions.firstOrNull { it.label == label }?.id
+                    questionId?.let { id -> QuestionSolutionPartsDb(id, parts.map { part ->
+                        NewSolutionPartRow(part.partId, part.partType, part.position, part.textContent, part.imageId)
+                    }) }
+                },
+                stimulusImageReplacement = snapshot.stimulusImages?.map { NewStimulusImageRow(it.imageId, it.placement, it.position) },
             )
             if (!written) return UpdateResult.GroupMissing
             // The DAO verifies the updated question/metadata/solution/stimulus/board rows before deleting the draft,
@@ -310,13 +387,19 @@ class TypeCqQuestionRepositoryImpl(
         }
     }
 
-    private class Tags(val stimulus: Map<String, List<BoardTag>>, val question: Map<String, List<BoardTag>>)
+    private class Tags(
+        val stimulus: Map<String, List<BoardTag>>,
+        val question: Map<String, List<BoardTag>>,
+        val categories: Map<String, List<String>> = emptyMap(),
+    )
 
     private fun toTags(rows: List<BoardRowDb>): Map<String, List<BoardTag>> =
         rows.groupBy({ it.ownerId }, { BoardTag(it.boardCode, it.year) })
 
-    private suspend fun tagsOfTopic(topicId: String): Tags =
-        Tags(toTags(dao.stimulusBoardsOfTopic(topicId)), toTags(dao.questionBoardsOfTopic(topicId)))
+    private suspend fun tagsOfTopic(topicId: String): Tags {
+        val categories = dao.categoryLinksOfTopic(topicId).groupBy({ it.questionId }, { it.categoryId })
+        return Tags(toTags(dao.stimulusBoardsOfTopic(topicId)), toTags(dao.questionBoardsOfTopic(topicId)), categories)
+    }
 
     private fun tagRows(tags: List<BoardTag>): List<NewTagRow> = tags.map { NewTagRow(newId(), it.boardCode, it.year) }
 
@@ -333,7 +416,7 @@ class TypeCqQuestionRepositoryImpl(
         rows: List<QuestionRowDb>,
         tags: Tags,
         solutions: Map<String, List<String>> = emptyMap(),
-        categories: Map<String, List<String>> = emptyMap(),
+        categories: Map<String, List<String>> = tags.categories,
     ): List<SavedGroup> {
         val buckets = LinkedHashMap<String, MutableList<QuestionRowDb>>()
         for (row in rows) {

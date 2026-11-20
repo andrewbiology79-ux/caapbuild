@@ -5,6 +5,7 @@ import com.questionbank.app.data.local.entity.ChapterCqQuestionCategoryLinksEnti
 import com.questionbank.app.data.local.entity.ChapterCqQuestionsEntity
 import com.questionbank.app.data.local.entity.ChapterCqSolutionPartsEntity
 import com.questionbank.app.data.local.entity.ChapterCqStimuliEntity
+import com.questionbank.app.data.local.entity.ChapterCqStimulusImagesEntity
 import com.questionbank.app.domain.question.BoardsInput
 import com.questionbank.app.domain.question.GroupEditInput
 import com.questionbank.app.domain.question.QuestionGroupInput
@@ -44,6 +45,7 @@ sealed interface EditorSaveCommand {
         val solutionParts: List<ChapterCqSolutionPartsEntity>,
         val boards: List<ChapterCqQuestionBoardsEntity>,
         val categories: List<ChapterCqQuestionCategoryLinksEntity>,
+        val stimulusImages: List<ChapterCqStimulusImagesEntity>?,
         val mustUpdateExisting: Boolean,
         val draftOwnerId: String,
     ) : EditorSaveCommand {
@@ -59,6 +61,8 @@ sealed interface EditorSaveCommand {
                 ratings = source.ratings?.copy(byLabel = immutableMap(source.ratings.byLabel)),
                 boards = source.boards?.let { copyBoards(it) },
                 categoriesByLabel = immutableMap(source.categoriesByLabel.mapValues { (_, ids) -> immutableList(ids) }),
+                stimulusImages = immutableList(source.stimulusImages),
+                solutionPartsByLabel = immutableMap(source.solutionPartsByLabel.mapValues { (_, parts) -> immutableList(parts) }),
             )
             return TypeCqCreate(snapshot)
         }
@@ -75,6 +79,8 @@ sealed interface EditorSaveCommand {
                 solutionsByLabel = immutableMap(source.solutionsByLabel.mapValues { (_, parts) -> immutableList(parts) }),
                 categoriesByLabel = source.categoriesByLabel?.let { immutableMap(it.mapValues { (_, ids) -> immutableList(ids) }) },
                 deletedQuestionIds = Collections.unmodifiableSet(LinkedHashSet(source.deletedQuestionIds)),
+                stimulusImages = source.stimulusImages?.let(::immutableList),
+                solutionPartsByLabel = source.solutionPartsByLabel?.let { map -> immutableMap(map.mapValues { (_, parts) -> immutableList(parts) }) },
             )
             return TypeCqEdit(snapshot)
         }
@@ -85,6 +91,7 @@ sealed interface EditorSaveCommand {
             solutionParts: List<ChapterCqSolutionPartsEntity>,
             boards: List<ChapterCqQuestionBoardsEntity>,
             categories: List<ChapterCqQuestionCategoryLinksEntity>,
+            stimulusImages: List<ChapterCqStimulusImagesEntity>? = null,
             mustUpdateExisting: Boolean,
             draftOwnerId: String,
         ): ChapterCqBundle {
@@ -98,6 +105,7 @@ sealed interface EditorSaveCommand {
                 solutionParts = immutableList(solutionParts),
                 boards = immutableList(boards),
                 categories = immutableList(categories),
+                stimulusImages = stimulusImages?.let(::immutableList),
                 mustUpdateExisting = mustUpdateExisting,
                 draftOwnerId = draftOwnerId,
             )

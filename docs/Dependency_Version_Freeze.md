@@ -47,3 +47,11 @@ v0.2.25: no dependency changed (versionCode 25). Used from existing libraries on
 v0.2.26: no dependency changed (versionCode 26). Only existing Compose Material 3 components were added to the list screen (DropdownMenu, SnackbarHost); no schema change, database version 1.
 
 v0.2.27: no dependency changed (versionCode 27). Used from existing libraries only: Compose Material 3 `TextField` / `TextFieldDefaults.colors`, `androidx.activity.compose.BackHandler`, `kotlinx.coroutines.flow` (`debounce`, `mapLatest`, both opt-in preview APIs), Compose `snapshotFlow`. No schema change, database version 1.
+
+v1.67 (source-only, UNCONFIRMED): `androidx.work:work-runtime-ktx:2.12.0` was added for unique one-time startup image recovery. Dependency resolution and compatibility with the frozen AGP/compileSdk toolchain were not checked because builds/tests were explicitly not run. Do not treat this version as CI-verified.
+
+
+v1.69 (source-only): no dependency version was changed. `androidx.work:work-runtime-ktx:2.12.0` remains UNCONFIRMED; it is used by periodic backup and startup recovery source, but dependency resolution, compileSdk compatibility, KSP/Room processing and runtime scheduling were not checked because builds/tests remain prohibited by owner instruction.
+
+
+v1.70 (source-only): no dependency version was changed. WorkManager 2.12.0 remains UNCONFIRMED. No dependency resolution, Gradle build or compile was run.

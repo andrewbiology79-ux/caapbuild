@@ -87,10 +87,15 @@ object QuestionSearchRules {
         groups.mapNotNull { group ->
             val stimulusId = group.stimulusId
             val stimulusTextOk = stimulusId != null && stimulusId in textMatchedStimulusIds
-            val stimulusTagOk = stimulusId != null && filter.matches(group.stimulusBoards)
+            val hasBoardFilter = filter.boardCode != null || filter.year != null
+            val stimulusTagOk = hasBoardFilter && stimulusId != null && filter.matches(group.stimulusBoards)
             val kept = group.subQuestions.filter { q ->
                 val textOk = textMatchedQuestionIds == null || q.id in textMatchedQuestionIds || stimulusTextOk
-                textOk && (stimulusTagOk || filter.matches(q.boards))
+                val boardOk = !hasBoardFilter || stimulusTagOk || filter.matches(q.boards)
+                val categoryOk = filter.categoryId == null || filter.categoryId in q.categoryIds
+                val ratingOk = filter.rating == null || q.rating == filter.rating
+                val typeOk = filter.questionTypeId == null || q.questionTypeId == filter.questionTypeId
+                textOk && boardOk && categoryOk && ratingOk && typeOk
             }
             if (kept.isEmpty()) null else group.copy(subQuestions = kept)
         }

@@ -14,6 +14,8 @@ import com.questionbank.app.domain.question.BoardsInput
 import com.questionbank.app.domain.question.CqLabel
 import com.questionbank.app.domain.question.DraftText
 import com.questionbank.app.domain.question.QuestionGroupInput
+import com.questionbank.app.domain.question.QuestionStimulusImage
+import com.questionbank.app.domain.question.QuestionSolutionPart
 import com.questionbank.app.domain.question.RatingsInput
 import com.questionbank.app.domain.question.SaveResult
 import com.questionbank.app.domain.question.SubQuestionInput
@@ -63,6 +65,7 @@ class QuestionEditorViewModel(
     questionTypesFlow: Flow<List<com.questionbank.app.data.local.entity.TypeCqQuestionTypesEntity>> = flowOf(emptyList()),
     private val duplicateChecker: suspend (String) -> Boolean = { false },
     private val editorDraftRepository: EditorDraftRepository? = null,
+    defaultEditorMode: EditorMode = EditorMode.MINIMUM,
 ) : ViewModel() {
 
     var loaded by mutableStateOf(false)
@@ -77,7 +80,7 @@ class QuestionEditorViewModel(
         private set
     var restoredFromDraft by mutableStateOf(false)
         private set
-    var editorMode by mutableStateOf(EditorMode.MINIMUM)
+    var editorMode by mutableStateOf(defaultEditorMode)
         private set
     var duplicateWarning by mutableStateOf(false)
         private set
@@ -143,25 +146,75 @@ class QuestionEditorViewModel(
 
     fun setStimulus(value: String) = change(draft.copy(stimulus = value), "stimulus")
     fun setReferenceText(value: String) = change(draft.copy(referenceText = value), "reference")
+    fun setStimulusImages(value: List<QuestionStimulusImage>) = change(
+        draft.copy(stimulusImages = value.mapIndexed { index, row -> row.copy(position = index.toLong()) }),
+        "stimulus-images",
+    )
+    fun setSolutionImageParts(index: Int, value: List<QuestionSolutionPart>) {
+        val rows = (draft.solutionPartsByLabel ?: CqLabel.entries.mapIndexed { i, _ ->
+            draft.solutionTexts.getOrNull(i).orEmpty().mapIndexed { partIndex, text ->
+                QuestionSolutionPart("type_cq:$topicId:${CqLabel.entries[i].letter}:text:$partIndex", "TEXT", partIndex.toLong(), textContent = text)
+            }
+        }).toMutableList()
+        if (index !in rows.indices) return
+        val ordered = value.sortedBy { it.position }.mapIndexed { position, part -> part.copy(position = position.toLong()) }
+        rows[index] = ordered
+        val texts = draft.solutionTexts.toMutableList().also { list -> list[index] = ordered.filter { it.partType == "TEXT" }.mapNotNull { it.textContent } }
+        change(draft.copy(solutionTexts = texts, solutionPartsByLabel = rows), "solution-mixed-$index")
+    }
     fun setQuestionType(index: Int, value: String) = change(draft.copy(questionTypeIds = draft.questionTypeIds.toMutableList().also { it[index] = value }), "type-$index")
     fun setMarks(index: Int, value: Double) = change(draft.copy(marks = draft.marks.toMutableList().also { it[index] = value }), "marks-$index")
-    fun setSolutionText(index: Int, part: Int, value: String) = change(
-        draft.copy(solutionTexts = draft.solutionTexts.toMutableList().also { rows -> rows[index] = rows[index].toMutableList().also { it[part] = value } }),
-        "solution-$index-$part",
-    )
-    fun addSolutionText(index: Int) = change(
-        draft.copy(solutionTexts = draft.solutionTexts.toMutableList().also { rows -> rows[index] = rows[index] + "" }),
-        "solution-add-$index",
-    )
-    fun removeSolutionText(index: Int, part: Int) = change(
-        draft.copy(solutionTexts = draft.solutionTexts.toMutableList().also { rows -> rows[index] = rows[index].toMutableList().also { it.removeAt(part) } }),
-        "solution-remove-$index",
-    )
+    private fun syncDraftSolutionParts(source: DraftText, index: Int, nextTexts: List<String>): DraftText {
+        val labels = CqLabel.entries
+        if (index !in labels.indices) return source
+        val existing = source.solutionPartsByLabel?.getOrNull(index) ?: source.solutionTexts.getOrNull(index).orEmpty().mapIndexed { partIndex, text ->
+            QuestionSolutionPart("type_cq:$topicId:${labels[index].letter}:text:$partIndex", "TEXT", partIndex.toLong(), textContent = text)
+        }
+        val next = mutableListOf<QuestionSolutionPart>()
+        var textIndex = 0
+        existing.sortedBy { it.position }.forEach { part ->
+            if (part.partType == "IMAGE") next += part.copy(position = next.size.toLong())
+            else if (textIndex < nextTexts.size) {
+                next += part.copy(textContent = nextTexts[textIndex], imageId = null, position = next.size.toLong())
+                textIndex++
+            }
+        }
+        while (textIndex < nextTexts.size) {
+            next += QuestionSolutionPart("type_cq:$topicId:${labels[index].letter}:text:$textIndex", "TEXT", next.size.toLong(), textContent = nextTexts[textIndex])
+            textIndex++
+        }
+        val allRows = (source.solutionPartsByLabel ?: labels.mapIndexed { i, _ ->
+            source.solutionTexts.getOrNull(i).orEmpty().mapIndexed { partIndex, text ->
+                QuestionSolutionPart("type_cq:$topicId:${labels[i].letter}:text:$partIndex", "TEXT", partIndex.toLong(), textContent = text)
+            }
+        }).toMutableList()
+        allRows[index] = next
+        val texts = source.solutionTexts.toMutableList().also { it[index] = next.filter { part -> part.partType == "TEXT" }.mapNotNull { it.textContent } }
+        return source.copy(solutionTexts = texts, solutionPartsByLabel = allRows)
+    }
+
+    fun setSolutionText(index: Int, part: Int, value: String) {
+        val rows = draft.solutionTexts.toMutableList()
+        if (index !in rows.indices || part !in rows[index].indices) return
+        rows[index] = rows[index].toMutableList().also { it[part] = value }
+        change(syncDraftSolutionParts(draft.copy(solutionTexts = rows), index, rows[index]), "solution-$index-$part")
+    }
+    fun addSolutionText(index: Int) {
+        if (index !in draft.solutionTexts.indices) return
+        val rows = draft.solutionTexts.toMutableList().also { it[index] = it[index] + "" }
+        change(syncDraftSolutionParts(draft.copy(solutionTexts = rows), index, rows[index]), "solution-add-$index")
+    }
+    fun removeSolutionText(index: Int, part: Int) {
+        if (index !in draft.solutionTexts.indices || part !in draft.solutionTexts[index].indices) return
+        val rows = draft.solutionTexts.toMutableList().also { it[index] = it[index].toMutableList().also { it.removeAt(part) } }
+        change(syncDraftSolutionParts(draft.copy(solutionTexts = rows), index, rows[index]), "solution-remove-$index")
+    }
     fun moveSolutionText(index: Int, from: Int, to: Int) {
+        if (index !in draft.solutionTexts.indices) return
         val current = draft.solutionTexts[index]
         if (from !in current.indices || to !in current.indices || from == to) return
-        val moved = current.toMutableList().also { row -> val item = row.removeAt(from); row.add(to, item) }
-        change(draft.copy(solutionTexts = draft.solutionTexts.toMutableList().also { it[index] = moved }), "solution-order-$index")
+        val rows = draft.solutionTexts.toMutableList().also { list -> list[index] = list[index].toMutableList().also { row -> val item = row.removeAt(from); row.add(to, item) } }
+        change(syncDraftSolutionParts(draft.copy(solutionTexts = rows), index, rows[index]), "solution-order-$index")
     }
 
     fun setText(index: Int, value: String) =
@@ -185,7 +238,7 @@ class QuestionEditorViewModel(
 
     suspend fun addBoard(code: String, name: String): AddBoardResult = repository.addCustomBoard(code, name)
 
-    fun clearAll() = change(DraftText(), "clear")
+    fun clearAll() = change(DraftText(stimulusImages = emptyList(), solutionPartsByLabel = List(4) { emptyList() }), "clear")
 
     @JvmName("applyEditorMode")
     fun setEditorMode(mode: EditorMode) {
@@ -286,6 +339,12 @@ class QuestionEditorViewModel(
                             stimulus = snapshot.stimulusBoards,
                             byLabel = CqLabel.entries.mapIndexed { i, label -> label to snapshot.boards[i] }.toMap(),
                         ),
+                        stimulusImages = snapshot.stimulusImages.orEmpty(),
+                        solutionPartsByLabel = snapshot.solutionPartsByLabel?.let { rows ->
+                            CqLabel.entries.mapIndexedNotNull { index, label -> label to rows.getOrNull(index).orEmpty().map {
+                                QuestionSolutionPart(it.partId, it.partType, it.position, it.textContent, it.imageId)
+                            } }.toMap()
+                        }.orEmpty(),
                     )
                 )
             }

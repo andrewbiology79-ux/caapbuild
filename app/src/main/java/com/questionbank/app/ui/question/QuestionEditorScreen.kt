@@ -41,6 +41,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import com.questionbank.app.domain.question.CqLabel
 import com.questionbank.app.domain.question.QuestionRules
 import com.questionbank.app.domain.question.SaveResult
+import com.questionbank.app.domain.question.QuestionSolutionPart
+import com.questionbank.app.media.ImagePipeline
+import com.questionbank.app.media.ImageScope
 
 private fun resultText(result: SaveResult?): String? = when (result) {
     null, is SaveResult.Saved -> null
@@ -111,6 +114,7 @@ fun TypeAndMarksControls(
 @Composable
 fun QuestionEditorScreen(
     viewModel: QuestionEditorViewModel,
+    imagePipeline: ImagePipeline,
     onSaved: (Int) -> Unit,
     onBack: () -> Unit,
 ) {
@@ -203,6 +207,13 @@ fun QuestionEditorScreen(
                 minLines = 3,
                 modifier = Modifier.fillMaxWidth(),
             )
+            StimulusImageAttachments(
+                pipeline = imagePipeline,
+                imageScope = ImageScope.TYPE_CQ,
+                images = draft.stimulusImages.orEmpty(),
+                enabled = !viewModel.saving,
+                onChange = viewModel::setStimulusImages,
+            )
             // A stimulus rating and its boards are stored only with a stimulus text, so the controls appear when there is one.
             if (draft.stimulus.isNotBlank() || draft.referenceText.isNotBlank()) {
                 RatingPicker(
@@ -293,6 +304,16 @@ fun QuestionEditorScreen(
                         }
                     }
                     TextButton(onClick = { viewModel.addSolutionText(i) }, enabled = !viewModel.saving) { Text("+ সমাধানের অংশ যোগ করুন") }
+                    val mixedParts = draft.solutionPartsByLabel?.getOrNull(i) ?: draft.solutionTexts[i].mapIndexed { partIndex, text ->
+                        QuestionSolutionPart("type_cq:new:${label.letter}:text:$partIndex", "TEXT", partIndex.toLong(), textContent = text)
+                    }
+                    SolutionImageAttachments(
+                        pipeline = imagePipeline,
+                        imageScope = ImageScope.TYPE_CQ,
+                        parts = mixedParts,
+                        enabled = !viewModel.saving,
+                        onChange = { viewModel.setSolutionImageParts(i, it) },
+                    )
                 }
             }
 

@@ -139,9 +139,17 @@ object QuestionEditRules {
             }
         }
         if (deleteIds.size >= original.subQuestions.size + adds.size) return Checked.BadDeletion
+        val stimulusImagesChanged = hasStimulus && input.stimulusImages != null &&
+            input.stimulusImages.sortedWith(compareBy<QuestionStimulusImage> { it.position }.thenBy { it.imageId }) !=
+            original.stimulusImages.sortedWith(compareBy<QuestionStimulusImage> { it.position }.thenBy { it.imageId })
+        val mixedSolutionsChanged = input.solutionPartsByLabel?.any { (label, wantedParts) ->
+            val stored = original.subQuestions.firstOrNull { it.label == label }?.orderedSolutionParts.orEmpty()
+            wantedParts.sortedWith(compareBy<QuestionSolutionPart> { it.position }.thenBy { it.partId }) !=
+                stored.sortedWith(compareBy<QuestionSolutionPart> { it.position }.thenBy { it.partId })
+        } == true
         if (newStimulus == null && newReference == null && updates.isEmpty() && adds.isEmpty() && stimulusRating == null && ratingUpdates.isEmpty() &&
             stimulusBoards == null && boardUpdates.isEmpty() && metadataUpdates.isEmpty() && solutionUpdates.isEmpty() &&
-            deleteIds.isEmpty() && categoryUpdates.isEmpty()
+            deleteIds.isEmpty() && categoryUpdates.isEmpty() && !stimulusImagesChanged && !mixedSolutionsChanged
         ) return Checked.NoChange
         return Checked.Ok(newStimulus, updates, adds, stimulusRating, ratingUpdates, addRatings, stimulusBoards, boardUpdates, addBoards, newReference, metadataUpdates, solutionUpdates, deleteIds, categoryUpdates, addCategories)
     }

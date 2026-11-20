@@ -62,8 +62,70 @@ abstract class ChapterCqDataDao {
     @Query("SELECT * FROM chapter_cq_questions WHERE question_id = :questionId LIMIT 1")
     abstract suspend fun question(questionId: String): ChapterCqQuestionsEntity?
 
+
+    @Query("""
+        SELECT 'CHAPTER_CQ' AS scope, q.question_id AS question_id,
+               sb.subject_id AS subject_id, sb.name AS subject_name,
+               ch.chapter_id AS chapter_id, ch.name AS chapter_name,
+               ch.chapter_id AS container_id, ch.name AS container_name,
+               q.stimulus_id AS stimulus_id, COALESCE(st.stimulus_text,'') AS stimulus_text,
+               COALESCE(st.reference_text,'') AS reference_text,
+               q.subquestion_label AS label, q.marks AS marks, q.question_text AS question_text,
+               q.short_answer AS short_answer, q.rating AS rating, NULL AS question_type_id
+        FROM chapter_cq_questions q
+        JOIN chapter_cq_chapters ch ON ch.chapter_id=q.chapter_id
+        JOIN chapter_cq_subjects sb ON sb.subject_id=ch.subject_id
+        LEFT JOIN chapter_cq_stimuli st ON st.stimulus_id=q.stimulus_id
+        WHERE q.question_id=:questionId LIMIT 1
+    """)
+    abstract suspend fun paperSource(questionId: String): PaperSourceRowDb?
+
     @Query("SELECT * FROM chapter_cq_stimuli WHERE stimulus_id = :stimulusId LIMIT 1")
     abstract suspend fun stimulus(stimulusId: String): ChapterCqStimuliEntity?
+
+    @Query("DELETE FROM chapter_cq_questions WHERE question_id = :questionId AND chapter_id = :chapterId")
+    abstract suspend fun deleteQuestionRow(questionId: String, chapterId: String): Int
+
+    @Query("SELECT COUNT(*) FROM chapter_cq_questions WHERE stimulus_id = :stimulusId")
+    abstract suspend fun countQuestionsForStimulusId(stimulusId: String): Int
+
+    @Query("DELETE FROM chapter_cq_stimuli WHERE stimulus_id = :stimulusId AND chapter_id = :chapterId")
+    abstract suspend fun deleteStimulusRow(stimulusId: String, chapterId: String): Int
+
+    @Query("SELECT DISTINCT stimulus_id FROM chapter_cq_questions WHERE question_id IN (:questionIds) AND chapter_id = :chapterId AND stimulus_id IS NOT NULL")
+    abstract suspend fun stimulusIdsForQuestionIds(questionIds: List<String>, chapterId: String): List<String>
+
+    @Query("SELECT COUNT(*) FROM chapter_cq_questions WHERE question_id IN (:questionIds) AND chapter_id = :chapterId")
+    abstract suspend fun countQuestionIdsInChapter(questionIds: List<String>, chapterId: String): Int
+
+    @Query("DELETE FROM chapter_cq_questions WHERE question_id IN (:questionIds) AND chapter_id = :chapterId")
+    abstract suspend fun deleteQuestionRows(questionIds: List<String>, chapterId: String): Int
+
+    /** Atomically removes selected questions and only the stimuli no longer referenced by any question. */
+    @Transaction
+    open suspend fun deleteQuestionBatchAndUnusedStimuli(questionIds: List<String>, chapterId: String): Boolean {
+        if (chapterId.isBlank() || questionIds.isEmpty() || questionIds.any(String::isBlank) || questionIds.distinct().size != questionIds.size) return false
+        if (countQuestionIdsInChapter(questionIds, chapterId) != questionIds.size) return false
+        val stimuli = stimulusIdsForQuestionIds(questionIds, chapterId).distinct()
+        check(deleteQuestionRows(questionIds, chapterId) == questionIds.size) { "Chapter_CQ bulk delete failed" }
+        if (countQuestionIdsInChapter(questionIds, chapterId) != 0) error("Chapter_CQ bulk delete read-back failed")
+        stimuli.forEach { stimulusId ->
+            if (countQuestionsForStimulusId(stimulusId) == 0) deleteStimulusRow(stimulusId, chapterId)
+        }
+        return true
+    }
+
+    /** Delete a single Chapter_CQ source question and remove its now-unused stimulus, all in one transaction. */
+    @Transaction
+    open suspend fun deleteQuestionAndUnusedStimulus(questionId: String, chapterId: String): Boolean {
+        val existing = question(questionId) ?: return false
+        if (existing.chapterId != chapterId) return false
+        check(deleteQuestionRow(questionId, chapterId) == 1) { "Chapter_CQ question delete failed" }
+        if (existing.stimulusId != null && countQuestionsForStimulusId(existing.stimulusId) == 0) {
+            deleteStimulusRow(existing.stimulusId, chapterId)
+        }
+        return question(questionId) == null
+    }
 
     @Query("SELECT COUNT(*) FROM chapter_cq_chapters WHERE chapter_id = :chapterId AND subject_id = :subjectId")
     abstract suspend fun chapterBelongsToSubject(chapterId: String, subjectId: String): Int
@@ -152,6 +214,7 @@ abstract class ChapterCqDataDao {
         categories: List<ChapterCqQuestionCategoryLinksEntity>,
         mustUpdateExisting: Boolean,
         draftKey: String,
+        stimulusImageRows: List<ChapterCqStimulusImagesEntity>? = null,
     ): Boolean {
         // Validate every condition that could make saveQuestionBundle return false BEFORE writing a stimulus.
         // Exceptions during later inserts still roll the enclosing Room transaction back.
@@ -164,6 +227,8 @@ abstract class ChapterCqDataDao {
         if (parts.any { it.questionId != question.questionId } || boards.any { it.questionId != question.questionId } || categories.any { it.questionId != question.questionId }) return false
         if (boards.any { activeBoard(it.boardCode) == 0 && boardAlreadyLinked(question.questionId, it.boardCode, it.year) == 0 }) return false
         if (categories.any { activeCategory(it.categoryId) == 0 && categoryAlreadyLinked(question.questionId, it.categoryId) == 0 }) return false
+        if (stimulusImageRows != null && stimulusImageRows.any { it.imageId.isBlank() || it.placement !in setOf("TOP", "BOTTOM") || imageExists(it.imageId) == 0 }) return false
+        if (stimulusRow == null && stimulusImageRows.orEmpty().isNotEmpty()) return false
         var target = question
         var effectiveStimulus: ChapterCqStimuliEntity? = null
         if (stimulusRow != null) {
@@ -200,6 +265,15 @@ abstract class ChapterCqDataDao {
         } else if (question.stimulusId != null && stimulusBelongsToChapter(question.stimulusId, question.chapterId) == 0) {
             return false
         }
+        if (effectiveStimulus != null && stimulusImageRows != null) {
+            val effectiveId = effectiveStimulus!!.stimulusId
+            val orderedImages = stimulusImageRows.sortedWith(compareBy<ChapterCqStimulusImagesEntity> { it.position }.thenBy { it.imageId })
+            require(orderedImages.map { it.imageId }.distinct().size == orderedImages.size) { "Duplicate Chapter_CQ stimulus image link" }
+            clearStimulusImages(effectiveId)
+            orderedImages.forEachIndexed { index, row ->
+                insertStimulusImage(row.copy(stimulusId = effectiveId, position = index.toLong()))
+            }
+        }
         // If any bundle/read-back condition fails, throw so the enclosing transaction rolls back stimulus edits too.
         check(saveQuestionBundleBody(target, parts, boards, categories)) { "Chapter_CQ question bundle was rejected" }
         val expectedStimulusId = effectiveStimulus?.stimulusId ?: question.stimulusId
@@ -221,6 +295,13 @@ abstract class ChapterCqDataDao {
             "Chapter_CQ category read-back mismatch"
         }
         if (effectiveStimulus != null) {
+            if (stimulusImageRows != null) {
+                val savedImages = stimulusImages(effectiveStimulus!!.stimulusId).sortedWith(compareBy<ChapterCqStimulusImagesEntity> { it.position }.thenBy { it.imageId })
+                val wantedImages = stimulusImageRows.sortedWith(compareBy<ChapterCqStimulusImagesEntity> { it.position }.thenBy { it.imageId })
+                check(savedImages.map { Triple(it.imageId, it.placement, it.position) } == wantedImages.mapIndexed { index, row -> Triple(row.imageId, row.placement, index.toLong()) }) {
+                    "Chapter_CQ stimulus image read-back mismatch"
+                }
+            }
             val savedStimulus = stimulus(effectiveStimulus!!.stimulusId)
             check(savedStimulus != null && savedStimulus.stimulusText == effectiveStimulus!!.stimulusText &&
                 savedStimulus.referenceText == effectiveStimulus!!.referenceText && savedStimulus.rating == effectiveStimulus!!.rating) {

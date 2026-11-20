@@ -54,6 +54,33 @@ private val DarkColors = darkColorScheme(
     errorContainer = Color(0xFF450A0A),
 )
 
+
+private val HighContrastLightColors = lightColorScheme(
+    primary = Color.Black, onPrimary = Color.White,
+    primaryContainer = Color.White, onPrimaryContainer = Color.Black,
+    secondary = Color.Black, onSecondary = Color.White,
+    secondaryContainer = Color.White, onSecondaryContainer = Color.Black,
+    background = Color.White, onBackground = Color.Black,
+    surface = Color.White, onSurface = Color.Black,
+    surfaceVariant = Color.White, onSurfaceVariant = Color.Black,
+    surfaceContainer = Color.White, surfaceContainerHighest = Color.White,
+    outline = Color.Black, outlineVariant = Color.Black,
+    error = Color(0xFF8B0000), onError = Color.White,
+)
+
+private val HighContrastDarkColors = darkColorScheme(
+    primary = Color.White, onPrimary = Color.Black,
+    primaryContainer = Color.Black, onPrimaryContainer = Color.White,
+    secondary = Color.White, onSecondary = Color.Black,
+    secondaryContainer = Color.Black, onSecondaryContainer = Color.White,
+    background = Color.Black, onBackground = Color.White,
+    surface = Color.Black, onSurface = Color.White,
+    surfaceVariant = Color.Black, onSurfaceVariant = Color.White,
+    surfaceContainer = Color.Black, surfaceContainerHighest = Color.Black,
+    outline = Color.White, outlineVariant = Color.White,
+    error = Color(0xFFFF8A80), onError = Color.Black,
+)
+
 /** Cards and dialogs use 16 dp corners (design 39.4). */
 private val AppShapes = Shapes(medium = RoundedCornerShape(16.dp))
 
@@ -70,7 +97,7 @@ val LocalDarkTheme = staticCompositionLocalOf { false }
  * Fixed brand colours (no dynamic colour) so screens look the same on every device.
  */
 @Composable
-fun QuestionBankTheme(darkTheme: Boolean, textSize: Int, content: @Composable () -> Unit) {
+fun QuestionBankTheme(darkTheme: Boolean, textSize: Int, highContrast: Boolean = false, content: @Composable () -> Unit) {
     val base = LocalDensity.current
     val scaled = Density(base.density, base.fontScale * TextSizePolicy.scale(textSize))
     CompositionLocalProvider(
@@ -78,7 +105,12 @@ fun QuestionBankTheme(darkTheme: Boolean, textSize: Int, content: @Composable ()
         LocalDarkTheme provides darkTheme,
     ) {
         MaterialTheme(
-            colorScheme = if (darkTheme) DarkColors else LightColors,
+            colorScheme = when {
+                highContrast && darkTheme -> HighContrastDarkColors
+                highContrast -> HighContrastLightColors
+                darkTheme -> DarkColors
+                else -> LightColors
+            },
             shapes = AppShapes,
             content = content,
         )

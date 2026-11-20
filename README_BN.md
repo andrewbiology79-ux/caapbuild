@@ -1,4 +1,10 @@
-# Question Bank — Android Build Foundation v0.2.30c
+# সর্বশেষ সোর্স প্রার্থী — v1.70 (Phase 0–16, source-only)
+
+এই প্যাকেজে Phase 0–15-এর source/documentation অগ্রগতি এবং Phase 16-এর static integration review আছে। Phase 0–15-এর একাধিক exit criterion এখনও বাকি; Phase 16 test ও 146-item audit ছাড়া সম্পন্ন বলা যাচ্ছে না। Phase 17 ইচ্ছাকৃতভাবে শুরু করা হয়নি। **কোনো Gradle build/compile/KSP, test, APK/AAB build বা device run করা হয়নি।** বিস্তারিত: `PROJECT_PLAN_v1_70_PHASE0_16_SOURCE_UNVERIFIED.txt`, `PHASE0_16_IMPLEMENTATION_STATUS_v1_70_SOURCE_UNVERIFIED.md`, `PHASE0_16_STATIC_RECHECK_REPORT_v1_70.md`।
+
+---
+
+# ঐতিহাসিক build-foundation নোট — v0.2.30c ও তার আগের সংস্করণ
 
 এটি সম্পূর্ণ অ্যাপ নয়; এটি Android/Room build foundation-এর ধাপে ধাপে আপডেট।
 

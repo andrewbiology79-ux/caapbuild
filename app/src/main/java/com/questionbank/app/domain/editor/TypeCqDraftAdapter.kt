@@ -3,6 +3,8 @@ package com.questionbank.app.domain.editor
 import com.questionbank.app.domain.question.BoardTag
 import com.questionbank.app.domain.question.CqLabel
 import com.questionbank.app.domain.question.DraftText
+import com.questionbank.app.domain.question.QuestionStimulusImage
+import com.questionbank.app.domain.question.QuestionSolutionPart
 
 /** Backward-compatible bridge from the original Type_CQ DraftText shape to the canonical shared schema. */
 object TypeCqDraftAdapter {
@@ -20,7 +22,20 @@ object TypeCqDraftAdapter {
         val blocks = CqLabel.entries.mapIndexed { index, label ->
             val prior = priorByLabel[label.letter]
             val textParts = draft.solutionTexts.getOrNull(index).orEmpty()
-            val parts = preserveImageParts(prior?.solutionParts.orEmpty(), textParts, "type_cq:$ownerId:${label.letter}")
+            val requestedParts = draft.solutionPartsByLabel?.getOrNull(index)
+            val parts = if (requestedParts != null) {
+                requestedParts.sortedBy { it.position }.map { part ->
+                    EditorSolutionPart(
+                        partId = part.partId,
+                        kind = if (part.partType == "IMAGE") EditorPartKind.IMAGE else EditorPartKind.TEXT,
+                        position = part.position,
+                        text = part.textContent,
+                        imageId = part.imageId,
+                    )
+                }
+            } else {
+                preserveImageParts(prior?.solutionParts.orEmpty(), textParts, "type_cq:$ownerId:${label.letter}")
+            }
             EditorQuestionBlockDraft(
                 blockId = prior?.blockId ?: "type_cq:$ownerId:${label.letter}",
                 questionId = (if (questionIdsByLabel != null) questionIdsByLabel[label.letter] else existingQuestionIds.getOrNull(index)) ?: prior?.questionId,
@@ -48,6 +63,9 @@ object TypeCqDraftAdapter {
                 referenceText = draft.referenceText,
                 rating = draft.stimulusRating,
                 boardYears = draft.stimulusBoards.map { EditorBoardYear(it.boardCode, it.year) },
+                images = draft.stimulusImages?.map {
+                    EditorImageRef(it.imageId, it.placement, it.position)
+                } ?: previousStimulus.images,
             ),
             questionBlocks = blocks,
             deletedQuestionIds = previous?.deletedQuestionIds.orEmpty(),
@@ -70,6 +88,12 @@ object TypeCqDraftAdapter {
             questionTypeIds = CqLabel.entries.map { rows[it.letter]?.questionTypeId ?: it.typeId },
             marks = CqLabel.entries.map { label -> rows[label.letter]?.rawMarks?.toDoubleOrNull() ?: label.marks },
             solutionTexts = CqLabel.entries.map { label -> rows[label.letter]?.solutionParts.orEmpty().filter { it.kind == EditorPartKind.TEXT }.sortedBy { it.position }.mapNotNull { it.text } },
+            stimulusImages = draft.stimulus.images.sortedBy { it.position }.map { QuestionStimulusImage(it.imageId, it.placement, it.position) },
+            solutionPartsByLabel = CqLabel.entries.map { label ->
+                rows[label.letter]?.solutionParts.orEmpty().sortedBy { it.position }.map { part ->
+                    QuestionSolutionPart(part.partId, part.kind.name, part.position, part.text, part.imageId)
+                }
+            },
         )
     }
 

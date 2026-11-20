@@ -1,0 +1,40 @@
+STATIC RECHECK REPORT — v1.65
+Date: 20 November 2026
+Source baseline: QuestionBank_PHASE10_12_v1_64_SOURCE_UNVERIFIED.zip
+Output: QuestionBank_PHASE10_12_v1_65_RECHECKED_SOURCE_UNVERIFIED.zip
+
+A. Package checks
+- v1.64 ZIP extracted successfully; archive integrity check returned no compressed-data errors.
+- Source-tree comparison against v1.63 found 6 added files, 18 changed files and 0 removed files in v1.64.
+- The v1.64 standalone Project Plan matched the plan embedded inside the ZIP byte-for-byte.
+- Project Plan v1.65 and the new status/version/recheck notes are included in the updated candidate.
+- A static internal-import package-path scan covered 129 app-main Kotlin source files and found no missing `com.questionbank.app` package paths; this is not a Kotlin symbol-resolution or compiler check.
+- Four pre-existing files were changed during the v1.65 correction pass: ImagePipeline.kt, ImageLibraryScreen.kt, QuestionCard.kt and BUILD_STATUS.txt.
+
+B. Static findings corrected
+1. Media orphan collector used to sweep all of filesDir/media. It is now limited to media/type_cq and media/chapter_cq; Paper/other namespaces are preserved.
+2. Media journal recovery now ignores non-image operation types.
+3. Pending journal-owned file IDs are protected during media cleanup; stale private staging items are scoped to media/.pending.
+4. Media delete now requires confirmation.
+5. Image import uses the scope selected when the picker was launched.
+6. Media controls are gated until recovery/reconciliation succeeds.
+7. QuestionCard deletion warning now states the entire group is deleted, including from partial search results.
+
+C. Features statically traced
+- Phase 10: ImagePipeline, MediaDataDao, AppContainer, ImageLibraryScreen, Profile route, image metadata and operation journal tables.
+- Phase 11: Type_CQ group delete and Chapter_CQ single-question delete DAO/repository/UI paths.
+- Phase 12: BoardFilter, QuestionSearchRules, Type_CQ repository group projection, category link query, ViewModel, FilterBar, QuestionListScreen and Navigation wiring.
+
+D. Explicitly not performed
+- No Gradle build or Kotlin compilation.
+- No KSP/Room code generation.
+- No unit/instrumented/UI test.
+- No APK assembly/signing.
+- No emulator/device/runtime execution.
+
+E. Remaining scope
+- Phase 10 editor attachment/placement/order/replace/unlink, interactive crop, camera, startup recovery, paper asset lifecycle and backup/restore.
+- Phase 11 detail, copy/cut/paste, multi-select, bulk operations, reorder/sorting/pagination and Chapter_CQ multi-block groups.
+- Phase 12 global cross-scope and Chapter_CQ search/filter, expanded language acceptance and performance verification.
+
+Conclusion: static safety corrections have been applied, but v1.65 is still a source-only candidate. Phase 9–12 are not build/test verified and must not be marked PASSED or COMPLETED.

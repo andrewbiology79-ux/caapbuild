@@ -10,7 +10,7 @@ object BackupNames {
     fun fileName(timeMillis: Long, zone: TimeZone = TimeZone.getDefault()): String {
         val format = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US)
         format.timeZone = zone
-        return "QuestionBank-backup-${format.format(Date(timeMillis))}.db"
+        return "QuestionBank-backup-${format.format(Date(timeMillis))}.qbbak"
     }
 
     /** Human readable time for the screen, in the phone's time zone, ASCII digits. */

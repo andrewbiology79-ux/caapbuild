@@ -16,10 +16,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,8 +52,16 @@ import com.questionbank.app.ui.theme.LocalDarkTheme
  * [number] is the position in the list that is shown (also in search results).
  */
 @Composable
-fun QuestionCard(number: Int, group: SavedGroup, boards: List<BoardItem> = emptyList(), onEdit: (() -> Unit)? = null) {
+fun QuestionCard(number: Int, group: SavedGroup, boards: List<BoardItem> = emptyList(), onEdit: (() -> Unit)? = null, onDelete: (() -> Unit)? = null, onCopy: (() -> Unit)? = null, onView: (() -> Unit)? = null) {
     var menuOpen by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    if (confirmDelete) AlertDialog(
+        onDismissRequest = { confirmDelete = false },
+        title = { Text("প্রশ্ন কার্ড মুছবেন?") },
+        text = { Text("এই কার্ডের অন্তর্ভুক্ত সব প্রশ্ন মুছে যাবে। সার্চের ফলাফলে কিছু প্রশ্ন দেখা গেলেও পুরো কার্ডটি মুছবে। সংরক্ষিত প্রশ্নপত্রে ব্যবহৃত প্রশ্ন হলে ডাটাবেস মুছতে বাধা দিতে পারে।") },
+        confirmButton = { TextButton(onClick = { confirmDelete = false; onDelete?.invoke() }) { Text("মুছুন") } },
+        dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("বাতিল") } },
+    )
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -61,7 +71,7 @@ fun QuestionCard(number: Int, group: SavedGroup, boards: List<BoardItem> = empty
             modifier = Modifier
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.primary)
-                .padding(start = 12.dp, end = if (onEdit != null) 4.dp else 12.dp, top = 4.dp, bottom = 4.dp),
+                .padding(start = 12.dp, end = if (onEdit != null || onDelete != null || onCopy != null) 4.dp else 12.dp, top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
@@ -72,7 +82,7 @@ fun QuestionCard(number: Int, group: SavedGroup, boards: List<BoardItem> = empty
                 fontSize = 14.sp,
             )
             RatingBadge(QuestionCardRules.rating(group))
-            if (onEdit != null) {
+            if (onEdit != null || onDelete != null || onCopy != null) {
                 Spacer(Modifier.width(4.dp))
                 Box {
                     Box(
@@ -85,12 +95,17 @@ fun QuestionCard(number: Int, group: SavedGroup, boards: List<BoardItem> = empty
                         Text("⋮", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                     }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        DropdownMenuItem(
+                        if (onEdit != null) DropdownMenuItem(
                             text = { Text("সম্পাদনা") },
-                            onClick = {
-                                menuOpen = false
-                                onEdit()
-                            },
+                            onClick = { menuOpen = false; onEdit() },
+                        )
+                        if (onCopy != null) DropdownMenuItem(
+                            text = { Text("সম্পূর্ণ কপি তৈরি") },
+                            onClick = { menuOpen = false; onCopy() },
+                        )
+                        if (onDelete != null) DropdownMenuItem(
+                            text = { Text("কার্ড মুছুন") },
+                            onClick = { menuOpen = false; confirmDelete = true },
                         )
                     }
                 }
@@ -120,6 +135,9 @@ fun QuestionCard(number: Int, group: SavedGroup, boards: List<BoardItem> = empty
             if (group.stimulusText.isNotEmpty()) {
                 Text(group.stimulusText, style = MaterialTheme.typography.bodyLarge)
             }
+            if (group.stimulusImages.isNotEmpty()) {
+                Text("ছবি ${group.stimulusImages.size.toBengali()} টি", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+            }
             group.subQuestions.forEach { q ->
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     val head = (q.label?.let { "${it.letter}) ${it.typeLabel}" } ?: "প্রশ্ন") + " · ${marksText(q.marks)} নম্বর"
@@ -134,8 +152,11 @@ fun QuestionCard(number: Int, group: SavedGroup, boards: List<BoardItem> = empty
                     if (q.shortAnswer.isNotEmpty()) {
                         Text("উত্তর: ${q.shortAnswer}", style = MaterialTheme.typography.bodyMedium)
                     }
+                    val imageCount = q.orderedSolutionParts.count { it.partType == "IMAGE" }
+                    if (imageCount > 0) Text("সমাধানে ছবি ${imageCount.toBengali()} টি", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
                 }
             }
+            if (onView != null) TextButton(onClick = onView) { Text("বিস্তারিত দেখুন") }
         }
     }
 }

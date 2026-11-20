@@ -39,6 +39,10 @@ object DatabaseSnapshot {
         topics = scalar("SELECT COUNT(*) FROM type_cq_topics"),
         stimuli = scalar("SELECT COUNT(*) FROM type_cq_stimuli"),
         questions = scalar("SELECT COUNT(*) FROM type_cq_questions"),
+        chapterSubjects = scalar("SELECT COUNT(*) FROM chapter_cq_subjects"),
+        chapterChapters = scalar("SELECT COUNT(*) FROM chapter_cq_chapters"),
+        chapterStimuli = scalar("SELECT COUNT(*) FROM chapter_cq_stimuli"),
+        chapterQuestions = scalar("SELECT COUNT(*) FROM chapter_cq_questions"),
     )
 
     private suspend fun PooledConnection.scalar(sql: String): Long =

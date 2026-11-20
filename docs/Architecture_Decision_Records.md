@@ -138,3 +138,103 @@ PROPOSED 18 November 2026 (assistant decision inside the owner's delegation; the
 8. The in-topic search is combined with `observeGroups(topicId)`: whenever the topic's rows change the same text is searched again without the 300 ms wait, so a result never shows text that was just edited.
 9. Leaving the edit screen with unsaved changes asks first. B-1 has no edit draft (open problem P-50, by design until v0.2.29).
 10. No schema change: database version 1, identityHash must remain 786b471dfa14c9ae4739bb81479bab25. No new dependency.
+
+## ADR-013 - Image storage, export and ownership boundaries (v1.67 candidate)
+
+STATUS: ACCEPTED FOR THIS SOURCE CANDIDATE — NOT RUNTIME VERIFIED
+Date: 20 November 2026
+
+1. New question-scope image imports and transforms remain JPEG, maximum edge 2048 px, quality 88. This is an explicit decision to retain the source baseline's higher-resolution policy rather than the earlier WebP/800 px text in the plan. The reason is legibility for small text, diagrams and paper figures.
+2. Export writes PNG. The in-app stored representation is not copied byte-for-byte to the exported target; the image is decoded and encoded as PNG.
+3. Existing decodable JPEG, PNG and WebP media remains eligible for reading and backup. Existing files are not batch-converted by this decision.
+4. Question image roots are `media/type_cq` and `media/chapter_cq`. The separate `paper_media` root is owned by immutable paper snapshots and MUST NOT be passed to the question-scope orphan collector.
+5. The media backup archive includes these three namespaces and records SHA-256 and byte length per asset.
+6. This ADR changes no SQLite table, Room Entity, database version or schema identity.
+
+## ADR-014 - Paper snapshots own independent media assets (v1.67 candidate)
+
+STATUS: ACCEPTED FOR THIS SOURCE CANDIDATE — NOT RUNTIME VERIFIED
+Date: 20 November 2026
+
+1. A paper item stores a versioned JSON snapshot (`schemaVersion`) of source text and metadata at insertion time. Subsequent source edits must not rewrite the snapshot.
+2. Paper Builder resolves Type_CQ and Chapter_CQ via separate source-specific DAO queries/projections; scope-specific question IDs are never treated as globally unique.
+3. Source images needed by a paper are copied into `paper_media` and described by the existing `paper_images` and `paper_item_images` tables. A paper snapshot therefore does not depend on the continued existence of the source image row/file.
+4. Question-scope image cleanup is restricted to its own scope roots and pending import storage. It must never delete `paper_media`.
+5. Source-question deletion uses the existing FK SET NULL behavior for the optional source reference; the serialized snapshot and independent paper media remain the historical content.
+6. The Builder now displays paper-owned image thumbnails and exposes per-item text/stimulus/answer/solution overrides. The PDF source path renders stored image placements and reads only snapshot data. The preview dialog itself remains text-oriented, Bengali font embedding is not guaranteed, and the full visual output is not runtime verified.
+7. No database schema or version change is made.
+
+## ADR-015 - Media-inclusive manual backup archive (v1.67 candidate)
+
+STATUS: ACCEPTED FOR THIS SOURCE CANDIDATE — NOT RUNTIME VERIFIED
+Date: 20 November 2026
+
+1. The manual backup format is `.qbbak`, a ZIP archive containing `manifest.json`, `database/QuestionBank.db`, `media/type_cq`, `media/chapter_cq` and `paper_media`.
+2. The manifest records archive format version, created timestamp, app version/versionCode, database version, Room identity hash and the size/SHA-256 inventory of the database and each media asset.
+3. Restore first extracts into a private staging directory, rejects unsafe/unlisted/duplicate archive paths, checks hashes/lengths, inspects the DB and compares database version/Room identity metadata before presenting confirmation.
+4. A confirmed restore swaps the staged database and media at startup before Room opens. The previous DB/media paths are preserved as `.replaced` safety copies; a marker supports rollback after an interrupted swap.
+5. Legacy raw `.db` backups remain accepted as database-only input and do not claim to replace media.
+6. Automatic app-private backup policy, a unique periodic BackupWorker, media snapshot mutual exclusion and a read-only post-swap inspection worker are now source-wired. The actual DB/media swap remains a cold-start Application operation before Room opens. Encryption, cloud/off-device retention and cross-process file locking remain outside this candidate; WorkManager compatibility is unconfirmed until a build is authorized.
+7. No database schema or version change is made.
+
+## ADR-016 - Startup media recovery through WorkManager (v1.67 candidate)
+
+STATUS: ACCEPTED FOR THIS SOURCE CANDIDATE — NOT RUNTIME VERIFIED
+Date: 20 November 2026
+
+1. `ImagePipeline` remains the app-facing media façade. Integrity checking, reference resolution and orphan collection are separated into dedicated source classes.
+2. `ImageRecoveryWorker` is scheduled as unique one-time WorkManager work with retry behavior after pending restore-swap handling and AppContainer creation.
+3. Media mutation/deletion paths await a process-local recovery gate. The media library uses the same gate before enabling controls.
+4. Paper media cleanup uses a separate metadata-driven path and remains outside question-scope orphan collection. Untracked paper files have a 24-hour grace period to avoid racing the copy/metadata-commit window.
+5. WorkManager execution, process-death recovery, filesystem rollback and concurrency are unverified until the relevant test/device evidence is explicitly authorized and recorded.
+
+
+
+## ADR-017 - Media snapshot exclusion and automatic local backup (v1.69 candidate)
+
+STATUS: ACCEPTED FOR THIS SOURCE CANDIDATE — NOT RUNTIME VERIFIED
+Date: 20 November 2026
+
+1. One process-wide `MediaSnapshotCoordinator` serializes all `ImagePipeline` mutations and backup snapshots.
+2. Backup acquires the snapshot lock after waiting for startup media recovery. It holds the lock from the database `VACUUM INTO` snapshot through media inventory, ZIP creation, archive extraction and self-validation. The archive stream is flushed and `FileDescriptor.sync()` is called before the ZIP is accepted.
+3. Automatic backups use a unique periodic WorkManager policy with app-private retention. This is only an accidental-edit safety net; manual off-device copies remain necessary for uninstall, Clear data, phone loss or device failure.
+4. This lock is process-local. It does not coordinate a separate process, external file editor or a second app instance. Such workflows need a separate cross-process lock/maintenance protocol.
+5. WorkManager 2.12.0 remains UNCONFIRMED; no dependency resolution or build was run.
+
+## ADR-018 - Snapshot-based PDF export (v1.69 candidate)
+
+STATUS: ACCEPTED FOR THIS SOURCE CANDIDATE — NOT RUNTIME VERIFIED
+Date: 20 November 2026
+
+1. PDF export reads persisted paper snapshot JSON, per-item overrides, marks and independently retained `paper_media` assets. It does not re-query live question text during export.
+2. Paper media path ownership and SHA-256 are checked before a bitmap is embedded. Stored placement values (STIMULUS_TOP, STIMULUS_BOTTOM, SOLUTION) guide the output order.
+3. Android default Typeface is used; no bundled Bengali font is promised. Layout, page breaks, glyph rendering and PDF-viewer compatibility remain unverified until explicitly tested.
+4. Export does not alter the canonical database schema or app version.
+
+## ADR-019 - High-contrast presentation preference (v1.69 candidate)
+
+STATUS: ACCEPTED FOR THIS SOURCE CANDIDATE — NOT ACCESSIBILITY VERIFIED
+Date: 20 November 2026
+
+1. A persistent High Contrast toggle selects high-contrast Light or Dark Material color schemes.
+2. The preference is stored in SharedPreferences so it is available before Room opens, like theme and text size.
+3. This is a presentation aid, not a claim of WCAG conformance. Screen-reader, keyboard, focus-order, touch-target and contrast-acceptance reviews remain open.
+
+
+## ADR-020 — Recovery gate before media snapshot mutex (v1.70)
+
+**Status:** Accepted for source candidate; concurrency remains unverified.
+
+1. A media mutation or export must await `ImagePipeline.recoveryGate` before acquiring `MediaSnapshotCoordinator`.
+2. `runStartupRecovery()` acquires the coordinator lock, replays the journal, reconciles managed folders, and completes the gate only after successful recovery.
+3. No operation may hold the coordinator lock while waiting for the gate, because that creates a lock-order cycle that can prevent recovery from acquiring the lock required to complete the gate.
+4. Read-only metadata/file lookups may await the gate without taking the coordinator lock.
+5. This decision is process-local. It does not provide cross-process locking or concurrency-test evidence.
+
+## ADR-021 — Finite paper marks (v1.70)
+
+**Status:** Accepted for source candidate; runtime and database enforcement remain unverified.
+
+1. Repository writes reject negative, NaN and infinite per-item/declared paper marks.
+2. Paper validation reports non-finite values and excludes them from the computed total.
+3. No database schema, table, Room Entity or database version is changed.

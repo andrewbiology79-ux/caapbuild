@@ -45,6 +45,8 @@ import com.questionbank.app.ui.hierarchy.ReferenceHomeScreen
 import com.questionbank.app.ui.hierarchy.ReferenceCatalogScreen
 import com.questionbank.app.ui.hierarchy.ReferenceRow
 import com.questionbank.app.ui.profile.ProfileScreen
+import com.questionbank.app.ui.paper.PaperBuilderScreen
+import com.questionbank.app.ui.media.ImageLibraryScreen
 import com.questionbank.app.domain.question.QuestionGroupKey
 import com.questionbank.app.ui.question.QuestionEditScreen
 import com.questionbank.app.ui.question.ChapterCqWorkspaceScreen
@@ -53,6 +55,8 @@ import com.questionbank.app.ui.question.QuestionEditorScreen
 import com.questionbank.app.ui.question.QuestionEditorViewModel
 import com.questionbank.app.ui.question.QuestionListScreen
 import com.questionbank.app.ui.question.QuestionListViewModel
+import com.questionbank.app.ui.question.QuestionDetailScreen
+import com.questionbank.app.ui.question.GlobalSearchScreen
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
@@ -70,6 +74,7 @@ object Routes {
     const val FILTER_HOME = "filter/home"
     const val PROFILE_HOME = "profile/home"
     const val BACKUP = "profile/backup"
+    const val MEDIA_LIBRARY = "profile/media"
 
     const val SUBJECTS = "type_cq/subjects"
     const val CHAPTERS = "type_cq/subjects/{subjectId}/chapters"
@@ -77,6 +82,7 @@ object Routes {
     const val QUESTIONS = "type_cq/topics/{topicId}/questions"
     const val QUESTION_EDITOR = "type_cq/topics/{topicId}/questions/new"
     const val QUESTION_EDIT = "type_cq/topics/{topicId}/questions/edit/{groupKey}"
+    const val QUESTION_DETAIL = "type_cq/topics/{topicId}/questions/detail/{groupKey}"
     const val REFERENCE_HOME = "type_cq/references"
     const val QUESTION_TYPES = "type_cq/references/question_types"
     const val BOARDS = "type_cq/references/boards"
@@ -90,6 +96,7 @@ object Routes {
     fun questions(topicId: String) = "type_cq/topics/$topicId/questions"
     fun questionEditor(topicId: String) = "type_cq/topics/$topicId/questions/new"
     fun questionEdit(topicId: String, groupKey: String) = "type_cq/topics/$topicId/questions/edit/$groupKey"
+    fun questionDetail(topicId: String, groupKey: String) = "type_cq/topics/$topicId/questions/detail/$groupKey"
 }
 
 private val SUBJECT_LABELS = HierarchyLabels(
@@ -161,11 +168,7 @@ fun AppNavHost() {
         ) {
             navigation(startDestination = Routes.CREATE_HOME, route = Routes.TAB_CREATE) {
                 composable(Routes.CREATE_HOME) {
-                    PlaceholderScreen(
-                        title = "তৈরি (Create)",
-                        subtitle = "পরীক্ষা ও প্রশ্নপত্র ব্যবস্থাপনা",
-                        message = "প্রশ্নপত্র তৈরি পরবর্তী সংস্করণে আসছে।",
-                    )
+                    PaperBuilderScreen(repository = container.papers)
                 }
             }
 
@@ -309,7 +312,7 @@ fun AppNavHost() {
                 ) { entry ->
                     val topicId = entry.arguments?.getString("topicId").orEmpty()
                     val vm: QuestionListViewModel = viewModel(
-                        factory = QuestionListViewModel.factory { QuestionListViewModel(topicId, questionRepo) }
+                        factory = QuestionListViewModel.factory { QuestionListViewModel(topicId, questionRepo, container.typeCqData.observeCategories(), container.typeCqData.observeQuestionTypes()) }
                     )
                     val savedCount by entry.savedStateHandle.getStateFlow(Routes.SAVED_COUNT_KEY, 0).collectAsState()
                     val edited by entry.savedStateHandle.getStateFlow(Routes.EDITED_KEY, false).collectAsState()
@@ -323,6 +326,23 @@ fun AppNavHost() {
                         onEdit = { group ->
                             QuestionGroupKey.of(group)?.let { navController.navigate(Routes.questionEdit(topicId, it)) }
                         },
+                        onDelete = vm::deleteGroup,
+                        onCopy = vm::duplicateGroup,
+                        onBulkDelete = vm::deleteGroups,
+                        onView = { group -> QuestionGroupKey.of(group)?.let { navController.navigate(Routes.questionDetail(topicId, it)) } },
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+
+                composable(
+                    route = Routes.QUESTION_DETAIL,
+                    arguments = listOf(navArgument("topicId") { type = NavType.StringType }, navArgument("groupKey") { type = NavType.StringType }),
+                ) { entry ->
+                    val topicId = entry.arguments?.getString("topicId").orEmpty()
+                    val groupKey = entry.arguments?.getString("groupKey").orEmpty()
+                    QuestionDetailScreen(
+                        topicId = topicId, groupKey = groupKey, repository = questionRepo, imagePipeline = container.imagePipeline,
+                        onEdit = { navController.navigate(Routes.questionEdit(topicId, groupKey)) },
                         onBack = { navController.popBackStack() },
                     )
                 }
@@ -338,11 +358,13 @@ fun AppNavHost() {
                                 topicId, questionRepo, container.appScope, container.typeCqData.observeQuestionTypes(),
                                 duplicateChecker = { text -> container.typeCqData.isDuplicate(topicId, text) },
                                 editorDraftRepository = container.editorDrafts,
+                                defaultEditorMode = container.appSettings.defaultEditorMode,
                             )
                         }
                     )
                     QuestionEditorScreen(
                         viewModel = vm,
+                        imagePipeline = container.imagePipeline,
                         onSaved = { count ->
                             navController.previousBackStackEntry?.savedStateHandle?.set(Routes.SAVED_COUNT_KEY, count)
                             navController.popBackStack()
@@ -366,12 +388,14 @@ fun AppNavHost() {
                                 topicId, groupKey, questionRepo, container.appScope,
                                 container.typeCqData.observeQuestionTypes(),
                                 editorDraftRepository = container.editorDrafts,
+                                defaultEditorMode = container.appSettings.defaultEditorMode,
                                 categoriesFlow = container.typeCqData.observeCategories(),
                             )
                         }
                     )
                     QuestionEditScreen(
                         viewModel = vm,
+                        imagePipeline = container.imagePipeline,
                         onManageCategories = { navController.navigate(Routes.TYPE_CATEGORIES) },
                         onSaved = {
                             navController.previousBackStackEntry?.savedStateHandle?.set(Routes.EDITED_KEY, true)
@@ -389,6 +413,8 @@ fun AppNavHost() {
                         referenceRepository = container.typeCqData,
                         draftRepository = container.editorDrafts,
                         draftScope = container.appScope,
+                        imagePipeline = container.imagePipeline,
+                        defaultEditorMode = container.appSettings.defaultEditorMode,
                         onBack = null,
                     )
                 }
@@ -396,10 +422,20 @@ fun AppNavHost() {
 
             navigation(startDestination = Routes.FILTER_HOME, route = Routes.TAB_FILTER) {
                 composable(Routes.FILTER_HOME) {
-                    PlaceholderScreen(
-                        title = "ফিল্টার (Filter)",
-                        subtitle = "সব প্রশ্নে খুঁজুন ও ছাঁকুন",
-                        message = "খোঁজা ও ফিল্টার পরবর্তী সংস্করণে আসছে।",
+                    GlobalSearchScreen(
+                        searchUseCase = container.globalQuestionSearch,
+                        boardsFlow = container.typeCqQuestions.observeBoards(),
+                        typeCategoriesFlow = container.typeCqData.observeCategories(),
+                        chapterCategoriesFlow = container.chapterCq.observeCategories(),
+                        questionTypesFlow = container.typeCqData.observeQuestionTypes(),
+                        chapterRepository = container.chapterCq,
+                        typeHierarchy = container.typeCqHierarchy,
+                        highlightSearchTerms = container.appSettings.highlightSearchTerms,
+                        imagePipeline = container.imagePipeline,
+                        onOpenTypeCq = { hit ->
+                            val groupKey = hit.stimulusId?.let { "s-$it" } ?: "q-${hit.questionId}"
+                            navController.navigate(Routes.questionDetail(hit.containerId, groupKey))
+                        },
                     )
                 }
             }
@@ -410,6 +446,16 @@ fun AppNavHost() {
                         settings = container.appSettings,
                         backupStatus = backupStatusLine(container.backupPrefs),
                         onOpenBackup = { navController.navigate(Routes.BACKUP) },
+                        onOpenMedia = { navController.navigate(Routes.MEDIA_LIBRARY) },
+                    )
+                }
+
+                composable(Routes.MEDIA_LIBRARY) {
+                    ImageLibraryScreen(
+                        pipeline = container.imagePipeline,
+                        typeImagesFlow = container.media.observeTypeImages(),
+                        chapterImagesFlow = container.media.observeChapterImages(),
+                        onBack = { navController.popBackStack() },
                     )
                 }
 

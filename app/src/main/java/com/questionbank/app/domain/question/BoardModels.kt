@@ -19,8 +19,14 @@ data class BoardsInput(
  * The board / year filter of the search (v0.2.30c-3). [boardCode] and [year] are each optional; when both are given they must be on
  * the SAME tag ("ঢাকা" and 2019 means a tag ঢাকা 2019, not ঢাকা 2015 plus some other board 2019). Both null = no filter.
  */
-data class BoardFilter(val boardCode: String? = null, val year: Int? = null) {
-    val isEmpty: Boolean get() = boardCode == null && year == null
+data class BoardFilter(
+    val boardCode: String? = null,
+    val year: Int? = null,
+    val categoryId: String? = null,
+    val rating: Int? = null,
+    val questionTypeId: String? = null,
+) {
+    val isEmpty: Boolean get() = boardCode == null && year == null && categoryId == null && rating == null && questionTypeId == null
 
     /** True when one of [tags] fits the filter. Callers test [isEmpty] first: an empty filter fits any non-empty list. */
     fun matches(tags: List<BoardTag>): Boolean =

@@ -13,6 +13,7 @@ import com.questionbank.app.data.local.entity.TypeCqStimuliEntity
 import com.questionbank.app.data.local.entity.TypeCqStimulusBoardsEntity
 import com.questionbank.app.data.local.entity.TypeCqSolutionPartsEntity
 import com.questionbank.app.data.local.entity.TypeCqQuestionCategoryLinksEntity
+import com.questionbank.app.data.local.entity.TypeCqStimulusImagesEntity
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 
@@ -60,7 +61,20 @@ data class NewQuestionRow(
     val tags: List<NewTagRow> = emptyList(),
     val solutionParts: List<String> = emptyList(),
     val categoryIds: List<String> = emptyList(),
+    /** Complete mixed TEXT/IMAGE sequence. Empty means use the legacy text-only list above. */
+    val orderedSolutionParts: List<NewSolutionPartRow> = emptyList(),
 )
+
+data class NewSolutionPartRow(
+    val partId: String,
+    val partType: String,
+    val position: Long,
+    val textContent: String?,
+    val imageId: String?,
+)
+
+data class NewStimulusImageRow(val imageId: String, val placement: String, val position: Long)
+data class QuestionSolutionPartsDb(val questionId: String, val parts: List<NewSolutionPartRow>)
 
 /** One board tag to store (v0.2.30c). The position in the list becomes `sort_order`. */
 data class NewTagRow(val id: String, val boardCode: String, val year: Int)
@@ -149,6 +163,25 @@ abstract class TypeCqQuestionDao {
     @Query("SELECT name FROM type_cq_topics WHERE topic_id = :topicId")
     abstract fun observeTopicName(topicId: String): Flow<String?>
 
+
+    @Query("""
+        SELECT 'TYPE_CQ' AS scope, q.question_id AS question_id,
+               sb.subject_id AS subject_id, sb.name AS subject_name,
+               ch.chapter_id AS chapter_id, ch.name AS chapter_name,
+               tp.topic_id AS container_id, tp.name AS container_name,
+               q.stimulus_id AS stimulus_id, COALESCE(st.stimulus_text,'') AS stimulus_text,
+               COALESCE(st.reference_text,'') AS reference_text,
+               q.subquestion_label AS label, q.marks AS marks, q.question_text AS question_text,
+               q.short_answer AS short_answer, q.rating AS rating, q.question_type_id AS question_type_id
+        FROM type_cq_questions q
+        JOIN type_cq_topics tp ON tp.topic_id=q.topic_id
+        JOIN type_cq_chapters ch ON ch.chapter_id=tp.chapter_id
+        JOIN type_cq_subjects sb ON sb.subject_id=ch.subject_id
+        LEFT JOIN type_cq_stimuli st ON st.stimulus_id=q.stimulus_id
+        WHERE q.question_id=:questionId LIMIT 1
+    """)
+    abstract suspend fun paperSource(questionId: String): PaperSourceRowDb?
+
     @Query(QUESTION_ROWS_SQL)
     abstract fun observeByTopic(topicId: String): Flow<List<QuestionRowDb>>
 
@@ -179,6 +212,9 @@ abstract class TypeCqQuestionDao {
 
     @Query("SELECT * FROM type_cq_question_category_links WHERE question_id IN (:ids) ORDER BY question_id, assigned_at, category_id")
     abstract suspend fun categoryLinksIn(ids: List<String>): List<TypeCqQuestionCategoryLinksEntity>
+
+    @Query("SELECT * FROM type_cq_question_category_links WHERE question_id IN (SELECT question_id FROM type_cq_questions WHERE topic_id = :topicId) ORDER BY question_id, assigned_at, category_id")
+    abstract suspend fun categoryLinksOfTopic(topicId: String): List<TypeCqQuestionCategoryLinksEntity>
 
     @Insert
     abstract suspend fun insertCategoryLink(row: TypeCqQuestionCategoryLinksEntity)
@@ -213,6 +249,39 @@ abstract class TypeCqQuestionDao {
     @Query("DELETE FROM type_cq_questions WHERE question_id IN (:ids) AND topic_id = :topicId AND stimulus_id IS :stimulusId")
     abstract suspend fun deleteQuestionsInGroup(ids: List<String>, topicId: String, stimulusId: String?): Int
 
+    @Query("DELETE FROM type_cq_stimuli WHERE stimulus_id = :stimulusId AND topic_id = :topicId AND NOT EXISTS (SELECT 1 FROM type_cq_questions WHERE stimulus_id = :stimulusId)")
+    abstract suspend fun deleteStimulusIfUnused(stimulusId: String, topicId: String): Int
+
+
+    @Query("SELECT DISTINCT stimulus_id FROM type_cq_questions WHERE question_id IN (:ids) AND topic_id = :topicId AND stimulus_id IS NOT NULL")
+    abstract suspend fun stimulusIdsForQuestions(ids: List<String>, topicId: String): List<String>
+
+    @Query("DELETE FROM type_cq_questions WHERE question_id IN (:ids) AND topic_id = :topicId")
+    abstract suspend fun deleteQuestionRowsByIds(ids: List<String>, topicId: String): Int
+
+    /** Deletes all selected complete card contents atomically. A foreign-key restriction rolls the complete selection back. */
+    @Transaction
+    open suspend fun deleteQuestionGroups(topicId: String, questionIds: List<String>): Boolean {
+        if (topicId.isBlank() || questionIds.isEmpty() || questionIds.any(String::isBlank) || questionIds.distinct().size != questionIds.size) return false
+        if (countQuestionsIn(questionIds, topicId) != questionIds.size) return false
+        val stimulusIds = stimulusIdsForQuestions(questionIds, topicId).distinct()
+        val deleted = deleteQuestionRowsByIds(questionIds, topicId)
+        if (deleted != questionIds.size || countQuestionIds(questionIds) != 0) error("Bulk question delete read-back failed")
+        stimulusIds.forEach { deleteStimulusIfUnused(it, topicId) }
+        return true
+    }
+
+    /** Card-level delete: all question rows and their cascade-owned children are removed atomically. */
+    @Transaction
+    open suspend fun deleteGroup(topicId: String, stimulusId: String?, questionIds: List<String>): Boolean {
+        if (topicId.isBlank() || questionIds.isEmpty() || questionIds.distinct().size != questionIds.size) return false
+        if (countQuestionsInGroup(questionIds, topicId, stimulusId) != questionIds.size) return false
+        val deleted = deleteQuestionsInGroup(questionIds, topicId, stimulusId)
+        if (deleted != questionIds.size || countQuestionIds(questionIds) != 0) error("Question group delete read-back failed")
+        if (stimulusId != null) deleteStimulusIfUnused(stimulusId, topicId)
+        return true
+    }
+
     @Query("SELECT COALESCE(MAX(sort_order), 0) FROM type_cq_questions WHERE stimulus_id = :stimulusId")
     abstract suspend fun maxSortOrderOfStimulus(stimulusId: String): Long
 
@@ -230,6 +299,18 @@ abstract class TypeCqQuestionDao {
 
     @Query("SELECT * FROM type_cq_solution_parts WHERE question_id IN (:ids) ORDER BY question_id, position, part_id")
     abstract suspend fun solutionPartsIn(ids: List<String>): List<TypeCqSolutionPartsEntity>
+
+    @Query("SELECT * FROM type_cq_stimulus_images WHERE stimulus_id = :stimulusId ORDER BY position, image_id")
+    abstract suspend fun stimulusImagesFor(stimulusId: String): List<TypeCqStimulusImagesEntity>
+
+    @Query("SELECT COUNT(*) FROM type_cq_images WHERE image_id = :imageId")
+    abstract suspend fun imageExistsForQuestion(imageId: String): Int
+
+    @Insert
+    abstract suspend fun insertStimulusImageLink(row: TypeCqStimulusImagesEntity)
+
+    @Query("DELETE FROM type_cq_stimulus_images WHERE stimulus_id = :stimulusId")
+    abstract suspend fun clearStimulusImages(stimulusId: String)
 
     @Query("DELETE FROM type_cq_solution_parts WHERE question_id = :questionId")
     abstract suspend fun deleteSolutionParts(questionId: String)
@@ -364,14 +445,25 @@ abstract class TypeCqQuestionDao {
         now: Long,
         draftKey: String,
         editorDraftKey: String? = null,
+        stimulusImageRows: List<NewStimulusImageRow> = emptyList(),
     ): Boolean {
         if (topicId.isBlank() || countTopic(topicId) == 0) return false
         if (items.map { it.label }.distinct().size != items.size) return false
         if (items.any { activeQuestionTypeExists(it.typeId) == 0 }) return false
         if (items.any { item -> item.categoryIds.any(String::isBlank) || item.categoryIds.distinct().size != item.categoryIds.size || item.categoryIds.any { activeCategory(it) == 0 } }) return false
+        if (stimulusId == null && stimulusImageRows.isNotEmpty()) return false
+        if (stimulusImageRows.any { it.imageId.isBlank() || it.placement !in setOf("TOP", "BOTTOM") || imageExistsForQuestion(it.imageId) == 0 }) return false
+        if (items.any { item -> item.orderedSolutionParts.any { part ->
+                part.partType !in setOf("TEXT", "IMAGE") ||
+                    (part.partType == "TEXT" && (part.textContent == null || part.imageId != null)) ||
+                    (part.partType == "IMAGE" && (part.imageId.isNullOrBlank() || part.textContent != null || (part.imageId?.let { imageExistsForQuestion(it) } ?: 0) == 0))
+            } }) return false
         if (stimulusId != null) {
             insertStimulus(TypeCqStimuliEntity(stimulusId, topicId, stimulusText, stimulusRating?.toLong(), referenceText, now, now))
             writeStimulusTags(stimulusId, stimulusTags)
+            stimulusImageRows.sortedWith(compareBy<NewStimulusImageRow> { it.position }.thenBy { it.imageId }).forEachIndexed { index, row ->
+                insertStimulusImageLink(TypeCqStimulusImagesEntity(stimulusId, row.imageId, index.toLong(), row.placement))
+            }
         }
         val ids = FtsIdAllocator(maxFtsId())
         var order = maxSortOrder(topicId)
@@ -396,7 +488,13 @@ abstract class TypeCqQuestionDao {
             )
             writeQuestionTags(item.id, item.tags)
             item.categoryIds.forEach { categoryId -> insertCategoryLink(TypeCqQuestionCategoryLinksEntity(item.id, categoryId, now)) }
-            item.solutionParts.forEachIndexed { index, text -> insertSolutionPart(TypeCqSolutionPartsEntity(UUID.randomUUID().toString(), item.id, index.toLong(), "TEXT", text, null, now)) }
+            if (item.orderedSolutionParts.isNotEmpty()) {
+                item.orderedSolutionParts.sortedWith(compareBy<NewSolutionPartRow> { it.position }.thenBy { it.partId }).forEach { part ->
+                    insertSolutionPart(TypeCqSolutionPartsEntity(part.partId, item.id, part.position, part.partType, part.textContent, part.imageId, now))
+                }
+            } else {
+                item.solutionParts.forEachIndexed { index, text -> insertSolutionPart(TypeCqSolutionPartsEntity(UUID.randomUUID().toString(), item.id, index.toLong(), "TEXT", text, null, now)) }
+            }
         }
         val storedRows = readBack(items.map { it.id }).associateBy { it.questionId }
         val questionsMatch = items.all { item ->
@@ -405,7 +503,10 @@ abstract class TypeCqQuestionDao {
                 stored.rating == item.rating && stored.questionTypeId == item.typeId && stored.marks == item.marks
         }
         val solutionsMatch = items.all { item ->
-            solutionParts(item.id).filter { it.partType == "TEXT" }.mapNotNull { it.textContent } == item.solutionParts
+            val stored = solutionParts(item.id).sortedWith(compareBy<TypeCqSolutionPartsEntity> { it.position }.thenBy { it.partId })
+            if (item.orderedSolutionParts.isNotEmpty()) {
+                stored.map { Triple(it.partType, it.textContent, it.imageId) } == item.orderedSolutionParts.sortedBy { it.position }.map { Triple(it.partType, it.textContent, it.imageId) }
+            } else stored.filter { it.partType == "TEXT" }.mapNotNull { it.textContent } == item.solutionParts
         }
         val stimulusMatch = stimulusId == null || (
             readStimulusText(stimulusId) == stimulusText && readStimulusReference(stimulusId) == referenceText &&
@@ -417,7 +518,9 @@ abstract class TypeCqQuestionDao {
         )
         val categoriesByQuestion = categoryLinksIn(items.map { it.id }).groupBy({ it.questionId }, { it.categoryId })
         val categoriesMatch = items.all { item -> categoriesByQuestion[item.id].orEmpty().toSet() == item.categoryIds.toSet() }
-        check(questionsMatch && solutionsMatch && stimulusMatch && boardsMatch && categoriesMatch) {
+        val stimulusImagesMatch = stimulusId == null || stimulusImagesFor(stimulusId).map { Triple(it.imageId, it.placement, it.position) } ==
+            stimulusImageRows.sortedWith(compareBy<NewStimulusImageRow> { it.position }.thenBy { it.imageId }).mapIndexed { index, it -> Triple(it.imageId, it.placement, index.toLong()) }
+        check(questionsMatch && solutionsMatch && stimulusMatch && boardsMatch && categoriesMatch && stimulusImagesMatch) {
             "Type_CQ insert read-back mismatch; transaction rolled back"
         }
         deleteMeta(draftKey)
@@ -455,13 +558,15 @@ abstract class TypeCqQuestionDao {
         deletes: List<String> = emptyList(),
         categoryUpdates: List<QuestionCategoriesDb> = emptyList(),
         editorDraftKey: String? = null,
+        solutionPartUpdates: List<QuestionSolutionPartsDb> = emptyList(),
+        stimulusImageReplacement: List<NewStimulusImageRow>? = null,
     ): Boolean {
         if (topicId.isBlank() || countTopic(topicId) == 0) return false
         if (stimulusId != null && countStimulus(stimulusId, topicId) == 0) return false
         if (stimulusId == null && deletes.isNotEmpty()) return false
         if (deletes.distinct().size != deletes.size || deletes.any(String::isBlank)) return false
         val editedIds = (updates.map { it.questionId } + metadataUpdates.map { it.questionId } + solutionUpdates.map { it.questionId } +
-            ratingUpdates.map { it.questionId } + boardUpdates.map { it.questionId } + categoryUpdates.map { it.questionId }).toSet()
+            solutionPartUpdates.map { it.questionId } + ratingUpdates.map { it.questionId } + boardUpdates.map { it.questionId } + categoryUpdates.map { it.questionId }).toSet()
         if (deletes.any { it in editedIds }) return false
         val affectedIds = (editedIds + deletes).toList()
         if (affectedIds.isNotEmpty() && countQuestionsInGroup(affectedIds, topicId, stimulusId) != affectedIds.size) return false
@@ -470,6 +575,16 @@ abstract class TypeCqQuestionDao {
         if (metadataUpdates.isNotEmpty() && countQuestionsInGroup(metadataUpdates.map { it.questionId }, topicId, stimulusId) != metadataUpdates.size) return false
         if (metadataUpdates.any { activeQuestionTypeExists(it.typeId) == 0 && questionTypeOf(it.questionId) != it.typeId }) return false
         if (solutionUpdates.isNotEmpty() && countQuestionsInGroup(solutionUpdates.map { it.questionId }, topicId, stimulusId) != solutionUpdates.size) return false
+        if (solutionPartUpdates.isNotEmpty() && countQuestionsInGroup(solutionPartUpdates.map { it.questionId }, topicId, stimulusId) != solutionPartUpdates.size) return false
+        if (solutionPartUpdates.map { it.questionId }.distinct().size != solutionPartUpdates.size) return false
+        if (solutionPartUpdates.any { update -> update.parts.map { it.partId }.distinct().size != update.parts.size || update.parts.any { part ->
+                part.partType !in setOf("TEXT", "IMAGE") ||
+                    (part.partType == "TEXT" && (part.textContent == null || part.imageId != null)) ||
+                    (part.partType == "IMAGE" && (part.imageId.isNullOrBlank() || part.textContent != null || (part.imageId?.let { imageExistsForQuestion(it) } ?: 0) == 0))
+            } }) return false
+        if (stimulusImageReplacement != null && (stimulusId == null || stimulusImageReplacement.any { row ->
+                row.imageId.isBlank() || row.placement !in setOf("TOP", "BOTTOM") || imageExistsForQuestion(row.imageId) == 0
+            })) return false
         if (ratingUpdates.isNotEmpty() && countQuestionsInGroup(ratingUpdates.map { it.questionId }, topicId, stimulusId) != ratingUpdates.size) return false
         if (changeStimulusRating && stimulusId == null) return false
         if (boardUpdates.isNotEmpty() && countQuestionsInGroup(boardUpdates.map { it.questionId }, topicId, stimulusId) != boardUpdates.size) return false
@@ -477,6 +592,11 @@ abstract class TypeCqQuestionDao {
         if (adds.isNotEmpty() && stimulusId == null) return false
         if (adds.any { activeQuestionTypeExists(it.typeId) == 0 }) return false
         if (adds.any { item -> item.categoryIds.any(String::isBlank) || item.categoryIds.distinct().size != item.categoryIds.size || item.categoryIds.any { activeCategory(it) == 0 } }) return false
+        if (adds.any { item -> item.orderedSolutionParts.map { it.partId }.distinct().size != item.orderedSolutionParts.size || item.orderedSolutionParts.any { part ->
+                part.partType !in setOf("TEXT", "IMAGE") ||
+                    (part.partType == "TEXT" && (part.textContent == null || part.imageId != null)) ||
+                    (part.partType == "IMAGE" && (part.imageId.isNullOrBlank() || part.textContent != null || (part.imageId?.let { imageExistsForQuestion(it) } ?: 0) == 0))
+            } }) return false
         if (categoryUpdates.any { update -> update.categoryIds.any(String::isBlank) || update.categoryIds.distinct().size != update.categoryIds.size }) return false
         if (categoryUpdates.any { update -> update.categoryIds.any { activeCategory(it) == 0 && categoryAlreadyLinked(update.questionId, it) == 0 } }) return false
         if (changeStimulusBoards && stimulusId == null) return false
@@ -505,6 +625,21 @@ abstract class TypeCqQuestionDao {
         for (u in solutionUpdates) {
             replaceTextSolutionPartsWithinUpdate(u.questionId, u.parts, now)
             check(touchQuestion(u.questionId, now) == 1) { "question solution was not updated" }
+        }
+        for (u in solutionPartUpdates) {
+            deleteSolutionParts(u.questionId)
+            u.parts.sortedWith(compareBy<NewSolutionPartRow> { it.position }.thenBy { it.partId }).forEach { part ->
+                insertSolutionPart(TypeCqSolutionPartsEntity(part.partId, u.questionId, part.position, part.partType, part.textContent, part.imageId, now))
+            }
+            check(touchQuestion(u.questionId, now) == 1) { "question mixed solution was not updated" }
+        }
+        if (stimulusImageReplacement != null) {
+            val sid = checkNotNull(stimulusId) { "stimulus images supplied for a group without a stimulus" }
+            clearStimulusImages(sid)
+            stimulusImageReplacement.sortedWith(compareBy<NewStimulusImageRow> { it.position }.thenBy { it.imageId }).forEachIndexed { index, row ->
+                insertStimulusImageLink(TypeCqStimulusImagesEntity(sid, row.imageId, index.toLong(), row.placement))
+            }
+            check(touchStimulus(sid, now) == 1) { "stimulus images were not attached" }
         }
         if (changeStimulusBoards) {
             val sid = checkNotNull(stimulusId) { "stimulus boards given for a group without a stimulus" }
@@ -548,7 +683,13 @@ abstract class TypeCqQuestionDao {
                 )
                 writeQuestionTags(item.id, item.tags)
                 item.categoryIds.forEach { categoryId -> insertCategoryLink(TypeCqQuestionCategoryLinksEntity(item.id, categoryId, now)) }
-                item.solutionParts.forEachIndexed { index, text -> insertSolutionPart(TypeCqSolutionPartsEntity(UUID.randomUUID().toString(), item.id, index.toLong(), "TEXT", text, null, now)) }
+                if (item.orderedSolutionParts.isNotEmpty()) {
+                    item.orderedSolutionParts.sortedWith(compareBy<NewSolutionPartRow> { it.position }.thenBy { it.partId }).forEach { part ->
+                        insertSolutionPart(TypeCqSolutionPartsEntity(part.partId, item.id, part.position, part.partType, part.textContent, part.imageId, now))
+                    }
+                } else {
+                    item.solutionParts.forEachIndexed { index, text -> insertSolutionPart(TypeCqSolutionPartsEntity(UUID.randomUUID().toString(), item.id, index.toLong(), "TEXT", text, null, now)) }
+                }
             }
         }
         if (deletes.isNotEmpty()) {
@@ -556,7 +697,7 @@ abstract class TypeCqQuestionDao {
             check(countQuestionIds(deletes) == 0) { "deleted question is still present" }
         }
         val checkedIds = (updates.map { it.questionId } + metadataUpdates.map { it.questionId } +
-            solutionUpdates.map { it.questionId } + ratingUpdates.map { it.questionId } + categoryUpdates.map { it.questionId } + adds.map { it.id }).distinct()
+            solutionUpdates.map { it.questionId } + solutionPartUpdates.map { it.questionId } + ratingUpdates.map { it.questionId } + categoryUpdates.map { it.questionId } + adds.map { it.id }).distinct()
         val storedRows = if (checkedIds.isEmpty()) emptyMap() else readBack(checkedIds).associateBy { it.questionId }
         val textMatches = updates.all { update ->
             val stored = storedRows[update.questionId]
@@ -574,8 +715,14 @@ abstract class TypeCqQuestionDao {
         }
         val solutionsMatch = solutionUpdates.all { update ->
             solutionParts(update.questionId).filter { it.partType == "TEXT" }.mapNotNull { it.textContent } == update.parts
+        } && solutionPartUpdates.all { update ->
+            solutionParts(update.questionId).sortedBy { it.position }.map { Triple(it.partType, it.textContent, it.imageId) } ==
+                update.parts.sortedBy { it.position }.map { Triple(it.partType, it.textContent, it.imageId) }
         } && adds.all { item ->
-            solutionParts(item.id).filter { it.partType == "TEXT" }.mapNotNull { it.textContent } == item.solutionParts
+            val stored = solutionParts(item.id).sortedBy { it.position }
+            if (item.orderedSolutionParts.isNotEmpty()) stored.map { Triple(it.partType, it.textContent, it.imageId) } ==
+                item.orderedSolutionParts.sortedBy { it.position }.map { Triple(it.partType, it.textContent, it.imageId) }
+            else stored.filter { it.partType == "TEXT" }.mapNotNull { it.textContent } == item.solutionParts
         }
         val stimulusMatch = stimulusId == null || (
             (newStimulusText == null || readStimulusText(stimulusId) == newStimulusText) &&
@@ -591,7 +738,12 @@ abstract class TypeCqQuestionDao {
             if (changeStimulusBoards && stimulusId != null) stimulusId to newStimulusBoards else null,
             wantedQuestionBoards,
         )
-        check(textMatches && metadataMatches && ratingsMatch && addedRowsMatch && solutionsMatch && stimulusMatch && boardsMatch && categoriesMatch) {
+        val stimulusImagesMatch = stimulusImageReplacement == null || stimulusId?.let { sid ->
+            stimulusImagesFor(sid).map { Triple(it.imageId, it.placement, it.position) } == stimulusImageReplacement
+                .sortedWith(compareBy<NewStimulusImageRow> { it.position }.thenBy { it.imageId })
+                .mapIndexed { index, it -> Triple(it.imageId, it.placement, index.toLong()) }
+        } == true
+        check(textMatches && metadataMatches && ratingsMatch && addedRowsMatch && solutionsMatch && stimulusMatch && boardsMatch && categoriesMatch && stimulusImagesMatch) {
             "Type_CQ update read-back mismatch; transaction rolled back"
         }
         // Draft deletion occurs only after every read-back check passed, in the same transaction.

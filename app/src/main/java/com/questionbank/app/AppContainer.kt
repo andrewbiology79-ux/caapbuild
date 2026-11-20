@@ -8,12 +8,14 @@ import com.questionbank.app.data.local.forceFullSync
 import com.questionbank.app.data.local.typeCqFtsMatch
 import com.questionbank.app.data.repository.TypeCqHierarchyRepositoryImpl
 import com.questionbank.app.data.settings.AppSettings
+import com.questionbank.app.media.ImagePipeline
 import com.questionbank.app.data.repository.TypeCqQuestionRepositoryImpl
 import com.questionbank.app.data.repository.ChapterCqRepositoryImpl
 import com.questionbank.app.data.repository.PaperRepositoryImpl
 import com.questionbank.app.data.repository.CategoryRepositoryImpl
 import com.questionbank.app.data.repository.MediaRepositoryImpl
 import com.questionbank.app.data.repository.TypeCqRepositoryImpl
+import com.questionbank.app.data.repository.GlobalQuestionSearchRepositoryImpl
 import com.questionbank.app.data.repository.EditorDraftRepositoryImpl
 import com.questionbank.app.domain.repository.ChapterCqRepository
 import com.questionbank.app.domain.repository.PaperRepository
@@ -23,6 +25,7 @@ import com.questionbank.app.domain.repository.TypeCqRepository
 import com.questionbank.app.domain.repository.EditorDraftRepository
 import com.questionbank.app.domain.hierarchy.TypeCqHierarchyRepository
 import com.questionbank.app.domain.question.TypeCqQuestionRepository
+import com.questionbank.app.domain.search.GlobalQuestionSearchUseCase
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -67,6 +70,7 @@ class AppContainer(private val appContext: Context) {
             database = { database },
             closeDatabase = { closeDatabaseForRestore() },
             prefs = backupPrefs,
+            beforeMediaSnapshot = { imagePipeline.awaitRecoveryReady() },
         )
     }
 
@@ -82,6 +86,10 @@ class AppContainer(private val appContext: Context) {
      * Before every question save the writer connection is set to `synchronous=FULL`: each commit is flushed to storage
      * before "saved" is shown, so a power cut or crash right after saving cannot lose the question.
      */
+    val globalQuestionSearch: GlobalQuestionSearchUseCase by lazy {
+        GlobalQuestionSearchUseCase(GlobalQuestionSearchRepositoryImpl(database))
+    }
+
     val typeCqQuestions: TypeCqQuestionRepository by lazy {
         TypeCqQuestionRepositoryImpl(
             dao = database.typeCqQuestionDao(),
@@ -93,8 +101,19 @@ class AppContainer(private val appContext: Context) {
     /** Separate repositories preserve the Type_CQ / Chapter_CQ write boundary. */
     val typeCqData: TypeCqRepository by lazy { TypeCqRepositoryImpl(database.typeCqReferenceDao(), database.categoryDataDao(), database.sharedDataDao()) { database.forceFullSync() } }
     val chapterCq: ChapterCqRepository by lazy { ChapterCqRepositoryImpl(database.chapterCqDataDao()) { database.forceFullSync() } }
-    val papers: PaperRepository by lazy { PaperRepositoryImpl(database.sharedDataDao()) { database.forceFullSync() } }
+    val papers: PaperRepository by lazy {
+        PaperRepositoryImpl(
+            dao = database.sharedDataDao(),
+            typeDao = database.typeCqQuestionDao(),
+            chapterDao = database.chapterCqDataDao(),
+            imagePipeline = imagePipeline,
+            beforeWrite = { database.forceFullSync() },
+        )
+    }
     val editorDrafts: EditorDraftRepository by lazy { EditorDraftRepositoryImpl(database.sharedDataDao()) { database.forceFullSync() } }
     val categories: CategoryRepository by lazy { CategoryRepositoryImpl(database.categoryDataDao()) { database.forceFullSync() } }
     val media: MediaRepository by lazy { MediaRepositoryImpl(database.mediaDataDao()) { database.forceFullSync() } }
+
+    /** Filesystem media operations are coordinated with the shared operation journal. */
+    val imagePipeline: ImagePipeline by lazy { ImagePipeline(appContext, database.mediaDataDao(), database.sharedDataDao()) { database.forceFullSync() } }
 }

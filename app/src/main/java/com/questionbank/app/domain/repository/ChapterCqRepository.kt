@@ -4,6 +4,7 @@ import com.questionbank.app.data.local.entity.ChapterCqQuestionsEntity
 import com.questionbank.app.data.local.entity.ChapterCqSubjectsEntity
 import com.questionbank.app.data.local.entity.ChapterCqChaptersEntity
 import com.questionbank.app.data.local.entity.ChapterCqStimuliEntity
+import com.questionbank.app.data.local.entity.ChapterCqStimulusImagesEntity
 import com.questionbank.app.data.local.entity.ChapterCqQuestionCategoriesEntity
 import com.questionbank.app.data.local.entity.ChapterCqSolutionPartsEntity
 import com.questionbank.app.data.local.dao.ChapterCqQuestionCardDb
@@ -19,7 +20,13 @@ interface ChapterCqRepository {
     fun observeQuestions(chapterId: String): Flow<List<ChapterCqQuestionsEntity>>
     fun observeQuestionCards(chapterId: String): Flow<List<ChapterCqQuestionCardDb>>
     suspend fun loadQuestion(questionId: String): ChapterCqQuestionsEntity?
+    suspend fun deleteQuestion(questionId: String, chapterId: String): Boolean
+    /** Atomically deletes a selected set in one chapter; restricted paper references roll the whole batch back. */
+    suspend fun deleteQuestions(questionIds: List<String>, chapterId: String): Boolean
+    /** Copies one Chapter_CQ question, its stimulus images, solution blocks, tags and categories. */
+    suspend fun duplicateQuestion(questionId: String, chapterId: String): Boolean
     suspend fun loadStimulus(stimulusId: String): ChapterCqStimuliEntity?
+    suspend fun loadStimulusImages(stimulusId: String): List<ChapterCqStimulusImagesEntity>
     suspend fun loadSolutionParts(questionId: String): List<ChapterCqSolutionPartsEntity>
     suspend fun loadQuestionBoards(questionId: String): List<ChapterCqQuestionBoardsEntity>
     suspend fun loadQuestionCategories(questionId: String): List<ChapterCqQuestionCategoryLinksEntity>
@@ -33,6 +40,7 @@ interface ChapterCqRepository {
         solutionParts: List<ChapterCqSolutionPartsEntity> = emptyList(),
         boards: List<ChapterCqQuestionBoardsEntity> = emptyList(),
         categories: List<ChapterCqQuestionCategoryLinksEntity> = emptyList(),
+        stimulusImages: List<ChapterCqStimulusImagesEntity>? = null,
         mustUpdateExisting: Boolean,
         draftOwnerId: String,
     ): Boolean

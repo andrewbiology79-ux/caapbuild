@@ -29,6 +29,15 @@ interface TypeCqQuestionRepository {
     /** One card as saved now, for the edit screen (v0.2.28). Null when it no longer exists. [groupKey] comes from [QuestionGroupKey]. */
     suspend fun loadGroup(topicId: String, groupKey: String): SavedGroup?
 
+    /** Deletes one card atomically; referenced source questions may be restricted by saved paper items. */
+    suspend fun deleteGroup(topicId: String, groupKey: String): Boolean
+
+    /** Deletes selected complete cards in one database transaction; any restricted paper reference rolls back the whole batch. */
+    suspend fun deleteGroups(topicId: String, groupKeys: List<String>): Boolean
+
+    /** Creates a full copy of a card, including tags, categories, ordered solutions and media links. */
+    suspend fun duplicateGroup(topicId: String, groupKey: String): SaveResult
+
     /**
      * Saves changes to an EXISTING group (v0.2.28) in ONE transaction: stimulus text, texts and short answers of stored
      * sub-questions (the FTS update trigger replaces their FTS rows), new rows for labels that were empty, `updated_at`. Reported

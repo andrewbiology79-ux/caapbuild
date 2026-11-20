@@ -33,6 +33,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.questionbank.app.domain.question.QuestionRules
 import com.questionbank.app.domain.question.UpdateResult
+import com.questionbank.app.media.ImagePipeline
+import com.questionbank.app.media.ImageScope
 import com.questionbank.app.ui.components.AppHeader
 
 private fun editResultText(result: UpdateResult?): String? = when (result) {
@@ -50,6 +52,7 @@ private fun editResultText(result: UpdateResult?): String? = when (result) {
 @Composable
 fun QuestionEditScreen(
     viewModel: QuestionEditViewModel,
+    imagePipeline: ImagePipeline,
     onSaved: () -> Unit,
     onBack: () -> Unit,
     onManageCategories: () -> Unit,
@@ -187,6 +190,13 @@ fun QuestionEditScreen(
                         minLines = 3,
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    StimulusImageAttachments(
+                        pipeline = imagePipeline,
+                        imageScope = ImageScope.TYPE_CQ,
+                        images = viewModel.stimulusImages,
+                        enabled = !viewModel.saving,
+                        onChange = viewModel::changeStimulusImages,
+                    )
                     RatingPicker(
                         title = "উদ্দীপকের রেটিং",
                         selected = viewModel.stimulusRating,
@@ -306,6 +316,13 @@ fun QuestionEditScreen(
                         TextButton(onClick = { viewModel.addSolutionText(label) }, enabled = !viewModel.saving) {
                             Text("+ সমাধানের অংশ যোগ করুন")
                         }
+                        SolutionImageAttachments(
+                            pipeline = imagePipeline,
+                            imageScope = ImageScope.TYPE_CQ,
+                            parts = viewModel.solutionPartsByLabel[i],
+                            enabled = !viewModel.saving,
+                            onChange = { viewModel.changeSolutionImageParts(label, it) },
+                        )
                     }
                 }
 

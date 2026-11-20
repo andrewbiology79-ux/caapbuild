@@ -38,6 +38,11 @@ import com.questionbank.app.data.local.entity.ChapterCqQuestionCategoryLinksEnti
 import com.questionbank.app.data.local.entity.ChapterCqQuestionsEntity
 import com.questionbank.app.data.local.entity.ChapterCqSolutionPartsEntity
 import com.questionbank.app.data.local.entity.ChapterCqStimuliEntity
+import com.questionbank.app.data.local.entity.ChapterCqStimulusImagesEntity
+import com.questionbank.app.domain.question.QuestionSolutionPart
+import com.questionbank.app.domain.question.QuestionStimulusImage
+import com.questionbank.app.media.ImagePipeline
+import com.questionbank.app.media.ImageScope
 import com.questionbank.app.domain.editor.EditorBoardYear
 import com.questionbank.app.domain.editor.EditorPartKind
 import com.questionbank.app.domain.editor.EditorQuestionBlockDraft
@@ -140,6 +145,8 @@ private data class ChapterCqEditorSnapshot(
     val boardYear: String = "",
     val categories: List<String> = emptyList(),
     val editorMode: EditorMode = EditorMode.MINIMUM,
+    val stimulusImages: List<QuestionStimulusImage> = emptyList(),
+    val solutionParts: List<QuestionSolutionPart> = emptyList(),
 )
 
 private fun ChapterCqEditorSnapshot.toCanonicalDraft(
@@ -157,20 +164,15 @@ private fun ChapterCqEditorSnapshot.toCanonicalDraft(
         if (boardCode.isNotBlank() && year != null) add(EditorBoardYear(boardCode, year))
         previousBlock?.boardYears.orEmpty().drop(1).filterNot { it.boardCode == boardCode }.forEach { add(it) }
     }
-    val parts = buildList {
-        var textIndex = 0
-        previousBlock?.solutionParts.orEmpty().sortedBy { it.position }.forEach { oldPart ->
-            if (oldPart.kind == EditorPartKind.IMAGE) add(oldPart)
-            else if (textIndex < solutionTexts.size) {
-                add(oldPart.copy(text = solutionTexts[textIndex], position = size.toLong()))
-                textIndex++
-            }
-        }
-        while (textIndex < solutionTexts.size) {
-            add(EditorSolutionPart("$ownerId:solution:$textIndex", EditorPartKind.TEXT, size.toLong(), text = solutionTexts[textIndex]))
-            textIndex++
-        }
-    }.mapIndexed { index, part -> part.copy(position = index.toLong()) }
+    val parts = solutionParts.sortedBy { it.position }.mapIndexed { index, part ->
+        EditorSolutionPart(
+            partId = part.partId,
+            kind = if (part.partType == "IMAGE") EditorPartKind.IMAGE else EditorPartKind.TEXT,
+            position = index.toLong(),
+            text = part.textContent,
+            imageId = part.imageId,
+        )
+    }
     return EditorSessionDraft(
         scope = CanonicalEditorScope.CHAPTER_CQ,
         ownerId = ownerId,
@@ -180,6 +182,7 @@ private fun ChapterCqEditorSnapshot.toCanonicalDraft(
         existingQuestionIds = questionId?.let { listOf(it) } ?: previous?.existingQuestionIds.orEmpty(),
         stimulus = (previous?.stimulus ?: EditorStimulusDraft()).copy(
             text = stimulus, referenceText = reference, rating = stimulusRating.toIntOrNull(),
+            images = stimulusImages.map { com.questionbank.app.domain.editor.EditorImageRef(it.imageId, it.placement, it.position) },
         ),
         questionBlocks = listOf(EditorQuestionBlockDraft(
             blockId = previousBlock?.blockId ?: "$ownerId:block:$label",
@@ -226,6 +229,10 @@ private fun chapterCqSnapshotFromJson(raw: String): ChapterCqEditorSnapshot? {
             boardYear = primaryBoard?.year?.toString().orEmpty(),
             categories = block?.categoryIds.orEmpty(),
             editorMode = if (canonical.mode == CanonicalEditorMode.FULL) EditorMode.FULL else EditorMode.MINIMUM,
+            stimulusImages = canonical.stimulus.images.map { QuestionStimulusImage(it.imageId, it.placement, it.position) },
+            solutionParts = block?.solutionParts.orEmpty().sortedBy { it.position }.map { part ->
+                QuestionSolutionPart(part.partId, part.kind.name, part.position, part.text, part.imageId)
+            },
         )
     }
     // Backward-compatible reader for the pre-v2 Chapter_CQ snapshot format.
@@ -254,6 +261,8 @@ fun ChapterCqWorkspaceScreen(
     referenceRepository: TypeCqRepository,
     draftRepository: EditorDraftRepository,
     draftScope: CoroutineScope,
+    imagePipeline: ImagePipeline,
+    defaultEditorMode: EditorMode = EditorMode.MINIMUM,
     onBack: (() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
@@ -264,7 +273,6 @@ fun ChapterCqWorkspaceScreen(
     val chapters by remember(subjectId) { repository.observeChapters(subjectId) }.collectAsState(initial = emptyList())
     var chapterId by rememberSaveable { mutableStateOf("") }
     val cards by remember(chapterId) { repository.observeQuestionCards(chapterId) }.collectAsState(initial = emptyList())
-
     var nameDialog by rememberSaveable { mutableStateOf(false) }
     var nameKind by rememberSaveable { mutableStateOf("subject") }
     var nameEntityId by rememberSaveable { mutableStateOf("") }
@@ -277,6 +285,22 @@ fun ChapterCqWorkspaceScreen(
     var draftSaved by rememberSaveable { mutableStateOf(false) }
     var duplicateDialog by rememberSaveable { mutableStateOf(false) }
     var previewDialog by rememberSaveable { mutableStateOf(false) }
+    var pendingDeleteQuestionId by rememberSaveable { mutableStateOf<String?>(null) }
+    var deleteError by rememberSaveable { mutableStateOf("") }
+    var selectedQuestionIds by remember { mutableStateOf(emptySet<String>()) }
+    var pendingBulkDeleteIds by remember { mutableStateOf<List<String>?>(null) }
+    var detailQuestionId by remember { mutableStateOf<String?>(null) }
+    var sortMode by rememberSaveable { mutableStateOf("DEFAULT") }
+    var sortMenuOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(chapterId) { selectedQuestionIds = emptySet() }
+    val displayedCards = remember(cards, sortMode) {
+        when (sortMode) {
+            "RATING" -> cards.sortedWith(compareByDescending<com.questionbank.app.data.local.dao.ChapterCqQuestionCardDb> { it.rating ?: it.stimulusRating ?: 3L }.thenBy { it.questionId })
+            "MARKS" -> cards.sortedWith(compareByDescending<com.questionbank.app.data.local.dao.ChapterCqQuestionCardDb> { it.marks }.thenBy { it.questionId })
+            "TYPE" -> cards.sortedWith(compareBy<com.questionbank.app.data.local.dao.ChapterCqQuestionCardDb> { it.label }.thenBy { it.questionId })
+            else -> cards
+        }
+    }
     var saveError by rememberSaveable { mutableStateOf("") }
     var editorLoadError by rememberSaveable { mutableStateOf("") }
 
@@ -295,13 +319,15 @@ fun ChapterCqWorkspaceScreen(
     val selectedCategories = remember { mutableStateListOf<String>() }
     var previousBoards by remember { mutableStateOf(emptyList<ChapterCqQuestionBoardsEntity>()) }
     var previousParts by remember { mutableStateOf(emptyList<ChapterCqSolutionPartsEntity>()) }
-    var editorMode by rememberSaveable { mutableStateOf(EditorMode.MINIMUM) }
+    var stimulusImages by remember { mutableStateOf(emptyList<QuestionStimulusImage>()) }
+    var solutionPartsDraft by remember { mutableStateOf(emptyList<QuestionSolutionPart>()) }
+    var editorMode by rememberSaveable { mutableStateOf(defaultEditorMode) }
     var canonicalDraftTemplate by remember { mutableStateOf<EditorSessionDraft?>(null) }
     val history = remember { EditorHistory(ChapterCqEditorSnapshot()) }
 
     fun snapshotForm() = ChapterCqEditorSnapshot(
         stimulus, reference, stimulusRating, label, marks, questionText, shortAnswer, rating,
-        solutionTexts, boardCode, boardYear, selectedCategories.toList(), editorMode,
+        solutionTexts, boardCode, boardYear, selectedCategories.toList(), editorMode, stimulusImages, solutionPartsDraft,
     )
     fun queueEditorDraft() {
         val owner = draftOwnerId
@@ -315,11 +341,30 @@ fun ChapterCqWorkspaceScreen(
         draftSaved = false
     }
     fun recordForm(group: String) { history.record(snapshotForm(), group); queueEditorDraft() }
+    fun syncMixedSolutionText() {
+        val old = solutionPartsDraft.sortedBy { it.position }
+        val next = mutableListOf<QuestionSolutionPart>()
+        var textIndex = 0
+        old.forEach { part ->
+            if (part.partType == "IMAGE") next += part.copy(position = next.size.toLong())
+            else if (textIndex < solutionTexts.size) {
+                next += part.copy(textContent = solutionTexts[textIndex], imageId = null, position = next.size.toLong())
+                textIndex++
+            }
+        }
+        while (textIndex < solutionTexts.size) {
+            next += QuestionSolutionPart("chapter_cq:$draftOwnerId:text:$textIndex", "TEXT", next.size.toLong(), textContent = solutionTexts[textIndex])
+            textIndex++
+        }
+        solutionPartsDraft = next
+    }
     fun restoreForm(value: ChapterCqEditorSnapshot) {
         stimulus = value.stimulus; reference = value.reference; stimulusRating = value.stimulusRating
         label = value.label; marks = value.marks; questionText = value.questionText; shortAnswer = value.shortAnswer
         rating = value.rating; solutionTexts = value.solutionTexts; boardCode = value.boardCode; boardYear = value.boardYear
         editorMode = value.editorMode
+        stimulusImages = value.stimulusImages
+        solutionPartsDraft = value.solutionParts
         selectedCategories.clear(); selectedCategories.addAll(value.categories)
     }
     var labelMenu by remember { mutableStateOf(false) }
@@ -350,7 +395,7 @@ fun ChapterCqWorkspaceScreen(
                 stimulusId = null; stimulus = ""; reference = ""; stimulusRating = ""
                 label = "ক"; marks = "1"; questionText = ""; shortAnswer = ""; rating = ""
                 solutionTexts = listOf(""); boardCode = ""; boardYear = ""
-                selectedCategories.clear(); previousBoards = emptyList(); previousParts = emptyList()
+                selectedCategories.clear(); previousBoards = emptyList(); previousParts = emptyList(); stimulusImages = emptyList(); solutionPartsDraft = emptyList()
                 editorLoadError = "এই প্রশ্নটি আর নেই। তালিকা রিফ্রেশ করে আবার চেষ্টা করুন।"
                 history.reset(snapshotForm())
                 editorLoading = false
@@ -361,12 +406,16 @@ fun ChapterCqWorkspaceScreen(
                 stimulus = s?.stimulusText.orEmpty()
                 reference = s?.referenceText.orEmpty()
                 stimulusRating = s?.rating?.toString().orEmpty()
+                stimulusImages = s?.stimulusId?.let { repository.loadStimulusImages(it) }?.map { QuestionStimulusImage(it.imageId, it.placement, it.position) }.orEmpty()
                 label = q.subquestionLabel
                 marks = q.marks.toString()
                 questionText = q.questionText
                 shortAnswer = q.shortAnswer
                 rating = q.rating?.toString().orEmpty()
                 previousParts = repository.loadSolutionParts(q.questionId)
+                solutionPartsDraft = previousParts.sortedBy { it.position }.map { part ->
+                    QuestionSolutionPart(part.partId, part.partType, part.position, part.textContent, part.imageId)
+                }
                 solutionTexts = previousParts.filter { it.partType == "TEXT" }.sortedBy { it.position }.mapNotNull { it.textContent }.ifEmpty { listOf("") }
                 val qBoards = repository.loadQuestionBoards(q.questionId)
                 previousBoards = qBoards
@@ -387,7 +436,7 @@ fun ChapterCqWorkspaceScreen(
             }
             draftSaved = true
         }
-        editorMode = if (rawDraft == null) EditorMode.MINIMUM else editorMode
+        editorMode = if (rawDraft == null) defaultEditorMode else editorMode
         history.reset(snapshotForm())
         editorLoading = false
     }
@@ -397,8 +446,8 @@ fun ChapterCqWorkspaceScreen(
         stimulusId = null; stimulus = ""; reference = ""; stimulusRating = ""
         label = "ক"; marks = "1"; questionText = ""; shortAnswer = ""; rating = ""
         solutionTexts = listOf(""); boardCode = ""; boardYear = ""
-        selectedCategories.clear(); previousBoards = emptyList(); previousParts = emptyList(); saveError = ""
-        editorMode = EditorMode.MINIMUM
+        selectedCategories.clear(); previousBoards = emptyList(); previousParts = emptyList(); stimulusImages = emptyList(); solutionPartsDraft = emptyList(); saveError = ""
+        editorMode = defaultEditorMode
         draftOwnerId = "new:$chapterId"
         canonicalDraftTemplate = null
         draftSaved = false
@@ -418,7 +467,7 @@ fun ChapterCqWorkspaceScreen(
         if (markValue == null || !markValue.isFinite() || markValue <= 0.0) { saveError = "নম্বর শূন্যের বেশি হতে হবে।"; return }
         if (rating.isNotBlank() && ratingValue == null) { saveError = "প্রশ্নের রেটিং ১–৫-এর মধ্যে দিন।"; return }
         if (stimulusRating.isNotBlank() && parsedStimulusRating == null) { saveError = "উদ্দীপকের রেটিং ১–৫-এর মধ্যে দিন।"; return }
-        val hasStimulusContent = stimulus.isNotBlank() || reference.isNotBlank()
+        val hasStimulusContent = stimulus.isNotBlank() || reference.isNotBlank() || stimulusImages.isNotEmpty()
         val stimRatingValue = parsedStimulusRating.takeIf { hasStimulusContent }
         val yearValue = boardYear.toLongOrNull()
         if (boardCode.isNotBlank() && (yearValue == null || yearValue !in 1900L..2200L)) { saveError = "বোর্ডের সাল ১৯০০–২২০০-এর মধ্যে দিন।"; return }
@@ -474,25 +523,21 @@ fun ChapterCqWorkspaceScreen(
                             createdAt = existing?.createdAt ?: now,
                             updatedAt = now,
                         )
-                        // Refill the existing TEXT slots in order, but preserve every non-TEXT row (including IMAGE)
-                        // at its original position. New text parts append after the previous sequence so the unique
-                        // (question_id, position) index is never violated and an edit cannot silently reorder images.
-                        val cleanSolutions = solutionTexts.map { it.trim() }.filter { it.isNotEmpty() }
-                        var textIndex = 0
-                        val oldParts = previousParts.sortedWith(compareBy<ChapterCqSolutionPartsEntity> { it.position }.thenBy { it.partId })
-                        val maxOldPosition = oldParts.maxOfOrNull { it.position } ?: -1L
-                        val retainedParts = oldParts.mapNotNull { part ->
-                            if (part.partType == "TEXT") {
-                                val value = cleanSolutions.getOrNull(textIndex++)
-                                value?.let { ChapterCqSolutionPartsEntity("ccsp_${UUID.randomUUID()}", qid, part.position, "TEXT", it, null, now) }
-                            } else {
-                                part.copy(questionId = qid)
-                            }
+                        // Save the exact ordered mixed solution sequence from the editor draft.
+                        if (solutionPartsDraft.isEmpty()) syncMixedSolutionText()
+                        val allParts = solutionPartsDraft.sortedBy { it.position }.mapIndexedNotNull { index, part ->
+                            val text = part.textContent?.trim()
+                            if (part.partType == "TEXT" && text.isNullOrEmpty()) null
+                            else ChapterCqSolutionPartsEntity(
+                                partId = part.partId.ifBlank { "ccsp_${UUID.randomUUID()}" },
+                                questionId = qid,
+                                position = index.toLong(),
+                                partType = part.partType,
+                                textContent = text,
+                                imageId = part.imageId,
+                                createdAt = now,
+                            )
                         }
-                        val appendedTextParts = cleanSolutions.drop(textIndex).mapIndexed { index, value ->
-                            ChapterCqSolutionPartsEntity("ccsp_${UUID.randomUUID()}", qid, maxOldPosition + index + 1L, "TEXT", value, null, now)
-                        }
-                        val allParts = (retainedParts + appendedTextParts).sortedBy { it.position }
                         val oldPrimary = previousBoards.firstOrNull()
                         val boardUnchanged = oldPrimary != null && oldPrimary.boardCode == boardCode && oldPrimary.year == yearValue
                         val boardRows = when {
@@ -506,6 +551,9 @@ fun ChapterCqWorkspaceScreen(
                         val categoryRows = selectedCategories.distinct().map { ChapterCqQuestionCategoryLinksEntity(qid, it, now) }
                         repository.saveQuestionWithStimulus(
                             q, stimulusRow, allParts, boardRows, categoryRows,
+                            stimulusImages = stimulusImages.mapIndexed { index, row ->
+                                ChapterCqStimulusImagesEntity(targetStimulusId!!, row.imageId, index.toLong(), row.placement)
+                            }.takeIf { wantsStimulus },
                             mustUpdateExisting = editingId != null,
                             draftOwnerId = draftOwnerId,
                         )
@@ -551,6 +599,22 @@ fun ChapterCqWorkspaceScreen(
         dismissButton = { TextButton(onClick = { nameDialog = false }) { Text("বাতিল") } },
     )
 
+    pendingDeleteQuestionId?.let { questionId ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteQuestionId = null },
+            title = { Text("প্রশ্নটি মুছবেন?") },
+            text = { Text("এই Chapter_CQ প্রশ্নটি মুছে যাবে। সংরক্ষিত প্রশ্নপত্রে ব্যবহৃত থাকলে ডাটাবেস মুছতে বাধা দেবে।") },
+            confirmButton = { TextButton(onClick = {
+                pendingDeleteQuestionId = null
+                scope.launch {
+                    val removed = repository.deleteQuestion(questionId, chapterId)
+                    deleteError = if (removed) "প্রশ্ন মুছে ফেলা হয়েছে।" else "প্রশ্নটি মুছতে পারেনি; এটি কোনো সংরক্ষিত প্রশ্নপত্রে ব্যবহৃত হতে পারে।"
+                }
+            }) { Text("মুছুন") } },
+            dismissButton = { TextButton(onClick = { pendingDeleteQuestionId = null }) { Text("বাতিল") } },
+        )
+    }
+
     if (previewDialog) AlertDialog(
         onDismissRequest = { previewDialog = false },
         title = { Text("Chapter CQ প্রিভিউ") },
@@ -588,6 +652,13 @@ fun ChapterCqWorkspaceScreen(
                     }
                     Text(if (draftSaved) "ড্রাফট সংরক্ষিত ✓" else "পরিবর্তন ড্রাফটে সংরক্ষিত হবে…", style = MaterialTheme.typography.bodySmall)
                     OutlinedTextField(value = stimulus, onValueChange = { stimulus = it; recordForm("stimulus") }, label = { Text("উদ্দীপক (ঐচ্ছিক)") }, minLines = 2)
+                    StimulusImageAttachments(
+                        pipeline = imagePipeline,
+                        imageScope = ImageScope.CHAPTER_CQ,
+                        images = stimulusImages,
+                        enabled = !savingQuestion,
+                        onChange = { stimulusImages = it; recordForm("stimulus-images") },
+                    )
                     OutlinedTextField(value = reference, onValueChange = { reference = it; recordForm("reference") }, label = { Text("রেফারেন্স (ঐচ্ছিক)") }, minLines = 2)
                     OutlinedTextField(value = stimulusRating, onValueChange = { stimulusRating = it; recordForm("stimulus-rating") }, label = { Text("উদ্দীপক রেটিং (১–৫)") }, singleLine = true)
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -605,21 +676,28 @@ fun ChapterCqWorkspaceScreen(
                     if (editorMode == EditorMode.FULL) {
                         TextButton(onClick = { previewDialog = true }) { Text("প্রিভিউ দেখুন") }
                         solutionTexts.forEachIndexed { index, value ->
-                            MathSymbolBar { symbol -> solutionTexts = solutionTexts.toMutableList().also { it[index] = value + symbol }; recordForm("solution-$index") }
-                            OutlinedTextField(value = value, onValueChange = { v -> solutionTexts = solutionTexts.toMutableList().also { it[index] = v }; recordForm("solution-$index") }, label = { Text("সমাধান ${index + 1}") }, minLines = 2)
+                            MathSymbolBar { symbol -> solutionTexts = solutionTexts.toMutableList().also { it[index] = value + symbol }; syncMixedSolutionText(); recordForm("solution-$index") }
+                            OutlinedTextField(value = value, onValueChange = { v -> solutionTexts = solutionTexts.toMutableList().also { it[index] = v }; syncMixedSolutionText(); recordForm("solution-$index") }, label = { Text("সমাধান ${index + 1}") }, minLines = 2)
                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                 TextButton(onClick = {
                                     if (index > 0) solutionTexts = solutionTexts.toMutableList().also { row -> val v = row.removeAt(index); row.add(index - 1, v) }
-                                    recordForm("solution-order")
+                                    syncMixedSolutionText(); recordForm("solution-order")
                                 }, enabled = index > 0) { Text("↑") }
                                 TextButton(onClick = {
                                     if (index < solutionTexts.lastIndex) solutionTexts = solutionTexts.toMutableList().also { row -> val v = row.removeAt(index); row.add(index + 1, v) }
-                                    recordForm("solution-order")
+                                    syncMixedSolutionText(); recordForm("solution-order")
                                 }, enabled = index < solutionTexts.lastIndex) { Text("↓") }
-                                TextButton(onClick = { solutionTexts = solutionTexts.toMutableList().also { if (index in it.indices) it.removeAt(index) }; recordForm("solution-remove") }) { Text("সমাধান অংশ সরান") }
+                                TextButton(onClick = { solutionTexts = solutionTexts.toMutableList().also { if (index in it.indices) it.removeAt(index) }; syncMixedSolutionText(); recordForm("solution-remove") }) { Text("সমাধান অংশ সরান") }
                             }
                         }
-                        TextButton(onClick = { solutionTexts = solutionTexts + ""; recordForm("solution-add") }) { Text("+ সমাধান অংশ যোগ") }
+                        TextButton(onClick = { solutionTexts = solutionTexts + ""; syncMixedSolutionText(); recordForm("solution-add") }) { Text("+ সমাধান অংশ যোগ") }
+                        SolutionImageAttachments(
+                            pipeline = imagePipeline,
+                            imageScope = ImageScope.CHAPTER_CQ,
+                            parts = solutionPartsDraft,
+                            enabled = !savingQuestion,
+                            onChange = { parts -> solutionPartsDraft = parts; solutionTexts = parts.filter { it.partType == "TEXT" }.sortedBy { it.position }.mapNotNull { it.textContent }.ifEmpty { listOf("") }; recordForm("solution-images") },
+                        )
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("বোর্ড: ${boardCode.ifBlank { "নির্বাচন করুন" }}")
@@ -651,6 +729,22 @@ fun ChapterCqWorkspaceScreen(
         dismissButton = { TextButton(onClick = { editorOpen = false }, enabled = !savingQuestion) { Text("বাতিল") } },
     )
 
+    if (pendingBulkDeleteIds != null) AlertDialog(
+        onDismissRequest = { pendingBulkDeleteIds = null },
+        title = { Text("নির্বাচিত প্রশ্ন মুছবেন?") },
+        text = { Text("${pendingBulkDeleteIds!!.size} টি নির্বাচিত প্রশ্ন মুছে যাবে। সংরক্ষিত প্রশ্নপত্রে কোনো প্রশ্ন ব্যবহৃত হলে পুরো batch বাতিল হবে।") },
+        confirmButton = { TextButton(onClick = {
+            val ids = pendingBulkDeleteIds.orEmpty(); pendingBulkDeleteIds = null
+            scope.launch {
+                val ok = repository.deleteQuestions(ids, chapterId)
+                deleteError = if (ok) "${ids.size} টি প্রশ্ন মুছে ফেলা হয়েছে।" else "নির্বাচিত প্রশ্নগুলো মুছতে পারেনি; সংরক্ষিত প্রশ্নপত্রের reference থাকতে পারে।"
+                if (ok) selectedQuestionIds = emptySet()
+            }
+        }) { Text("মুছুন") } },
+        dismissButton = { TextButton(onClick = { pendingBulkDeleteIds = null }) { Text("বাতিল") } },
+    )
+    detailQuestionId?.let { id -> ChapterCqQuestionDetailDialog(id, repository, imagePipeline) { detailQuestionId = null } }
+
     Scaffold(topBar = { AppHeader(title = "Chapter CQ", onBack = onBack) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("বিষয়", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -670,17 +764,40 @@ fun ChapterCqWorkspaceScreen(
                 }, enabled = chapterId.isNotBlank()) { Text("নাম পরিবর্তন") }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("প্রশ্নসমূহ", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Button(onClick = ::openNewQuestion, enabled = chapterId.isNotBlank()) { Text("+ প্রশ্ন") }
+                Text("প্রশ্নসমূহ (${displayedCards.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { sortMenuOpen = true }) { Text("সাজান") }
+                    DropdownMenu(expanded = sortMenuOpen, onDismissRequest = { sortMenuOpen = false }) {
+                        listOf("DEFAULT" to "ডিফল্ট", "RATING" to "রেটিং", "MARKS" to "নম্বর", "TYPE" to "লেবেল").forEach { (key, title) ->
+                            DropdownMenuItem(text = { Text(title) }, onClick = { sortMode = key; sortMenuOpen = false })
+                        }
+                    }
+                    Button(onClick = ::openNewQuestion, enabled = chapterId.isNotBlank()) { Text("+ প্রশ্ন") }
+                }
+            }
+            if (selectedQuestionIds.isNotEmpty()) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("নির্বাচিত ${selectedQuestionIds.size} টি")
+                TextButton(onClick = { pendingBulkDeleteIds = selectedQuestionIds.toList() }) { Text("নির্বাচিত মুছুন", color = MaterialTheme.colorScheme.error) }
             }
             if (chapterId.isBlank()) Text("প্রশ্ন দেখতে বা যোগ করতে একটি অধ্যায় নির্বাচন করুন।")
-            cards.forEach { card ->
-                Column(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("${card.label} · ${card.marks} নম্বর", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                    card.stimulusText?.takeIf { it.isNotBlank() }?.let { Text("উদ্দীপক: $it") }
-                    Text(card.questionText, style = MaterialTheme.typography.bodyLarge)
-                    if (card.shortAnswer.isNotBlank()) Text("উত্তর: ${card.shortAnswer}", style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = { editingId = card.questionId; draftOwnerId = "edit:${card.questionId}"; draftSaved = false; editorLoading = true; saveError = ""; editorLoadError = ""; editorOpen = true }) { Text("সম্পাদনা") }
+            if (deleteError.isNotBlank()) Text(deleteError, color = if (deleteError.contains("মুছে") ) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+            displayedCards.forEach { card ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Checkbox(checked = card.questionId in selectedQuestionIds, onCheckedChange = { checked ->
+                        selectedQuestionIds = if (checked) selectedQuestionIds + card.questionId else selectedQuestionIds - card.questionId
+                    })
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("${card.label} · ${card.marks} নম্বর · রেটিং ${card.rating ?: card.stimulusRating ?: 3}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                        card.stimulusText?.takeIf { it.isNotBlank() }?.let { Text("উদ্দীপক: $it") }
+                        Text(card.questionText, style = MaterialTheme.typography.bodyLarge)
+                        if (card.shortAnswer.isNotBlank()) Text("উত্তর: ${card.shortAnswer}", style = MaterialTheme.typography.bodySmall)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            TextButton(onClick = { detailQuestionId = card.questionId }) { Text("বিস্তারিত") }
+                            TextButton(onClick = { editingId = card.questionId; draftOwnerId = "edit:${card.questionId}"; draftSaved = false; editorLoading = true; saveError = ""; editorLoadError = ""; editorOpen = true }) { Text("সম্পাদনা") }
+                            TextButton(onClick = { scope.launch { deleteError = if (repository.duplicateQuestion(card.questionId, chapterId)) "প্রশ্নের সম্পূর্ণ কপি তৈরি হয়েছে।" else "কপি তৈরি করা যায়নি; archived reference বা data restriction থাকতে পারে।" } }) { Text("কপি") }
+                            TextButton(onClick = { pendingDeleteQuestionId = card.questionId }) { Text("মুছুন", color = MaterialTheme.colorScheme.error) }
+                        }
+                    }
                 }
             }
             if (cards.isEmpty() && chapterId.isNotBlank()) Text("এই অধ্যায়ে এখনো প্রশ্ন যোগ করা হয়নি।")

@@ -1,3 +1,24 @@
+CURRENT SOURCE CANDIDATE v1.65 — PHASE 10–12 SECOND STATIC RECHECK (NOT VERIFIED)
+Artifact filename: QuestionBank_PHASE10_12_v1_65_RECHECKED_SOURCE_UNVERIFIED.zip
+Project plan: PROJECT_PLAN_v1_65_RECHECKED.txt
+
+- Recheck corrections: media orphan collection scope-limited to Type_CQ/Chapter_CQ folders; image journal recovery filters operation types; pending media files protected; media delete confirmation; picker scope captured at launch; recovery gates media actions; full-group delete warning fixed for filtered cards.
+- Phase 10–12 remain PARTIAL / WRITTEN / UNVERIFIED; remaining work is listed in Project Plan section 74.
+- No Gradle build, Kotlin/KSP/Room compile, unit/instrumented/UI test, APK build, emulator or device run was performed. This follows the owner's no-test instruction.
+- No APK is included. app versionCode/versionName remain 36 / 0.2.31-phase5-wip2. Canonical SQL, Room schema JSON, database version and identityHash are unchanged.
+- Archive integrity and static source/document checks are not Android compilation or runtime verification.
+
+--- Previous v1.64 candidate record ---
+CURRENT SOURCE CANDIDATE v1.64 — COORDINATED PHASE 10–12 (NOT VERIFIED)
+Artifact filename: QuestionBank_PHASE10_12_v1_64_SOURCE_UNVERIFIED.zip
+Project plan: PROJECT_PLAN_v1_64_UPDATED.txt
+
+- Source additions: private-storage media import/export and journal/recovery; Type_CQ card deletion; Chapter_CQ single-question deletion; Type_CQ in-topic category/rating/question-type filters.
+- Phase 10–12 remain PARTIAL / WRITTEN / UNVERIFIED; full outstanding scope is recorded in section 73 of the project plan.
+- The owner expressly instructed that no tests be run. No Gradle build, Kotlin/KSP/Room compile, unit/instrumented test, APK build, emulator or device run was performed.
+- No APK is included. app versionCode/versionName remain 36 / 0.2.31-phase5-wip2. Canonical SQL, Room schema, database version and identityHash are unchanged.
+- ZIP packaging and source static review do not establish Android compilation or runtime behavior.
+
 Question Bank Android - coordinated Phase 6-8 implementation candidate + CI run 51 fix (plan v1.55)
 Artifact filename: QuestionBank_v0_2_31_PHASE6_8_IMPLEMENTATION_CANDIDATE_UNVERIFIED_v1_55.zip
 Project plan: PROJECT_PLAN_v1_55_UPDATED.txt

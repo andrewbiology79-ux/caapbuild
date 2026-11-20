@@ -24,6 +24,10 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Switch
+import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.layout.Row
+import androidx.compose.ui.Alignment
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -34,10 +38,11 @@ import com.questionbank.app.data.backup.BackupNames
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BackupScreen(viewModel: BackupViewModel, onBack: () -> Unit) {
-    val activity = LocalContext.current as? Activity
+    val context = LocalContext.current
+    val activity = context as? Activity
 
     val createLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/octet-stream")
+        ActivityResultContracts.CreateDocument("application/zip")
     ) { uri -> if (uri != null) viewModel.export(uri) }
 
     val openLauncher = rememberLauncherForActivityResult(
@@ -70,10 +75,48 @@ fun BackupScreen(viewModel: BackupViewModel, onBack: () -> Unit) {
                         Text("এখনো কোনো ব্যাকআপ নেওয়া হয়নি। অ্যাপ আনইনস্টল, \"Clear data\" বা ফোন হারালে প্রশ্ন মুছে যাবে।", color = MaterialTheme.colorScheme.error)
                     } else {
                         Text("শেষ ব্যাকআপ: ${BackupNames.display(viewModel.lastBackupAt).toBengaliDigits()} (তখন প্রশ্ন ছিল ${viewModel.lastBackupQuestions.toBengali()})")
-                        val now = viewModel.current?.questions
+                        val now = viewModel.current?.totalQuestions
                         if (now != null && now != viewModel.lastBackupQuestions) {
                             Text("শেষ ব্যাকআপের পর প্রশ্নের সংখ্যা বদলেছে (এখন ${now.toBengali()})। নতুন ব্যাকআপ নিন।", color = MaterialTheme.colorScheme.error)
                         }
+                    }
+                }
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column(Modifier.weight(1f)) {
+                            Text("স্বয়ংক্রিয় স্থানীয় ব্যাকআপ", style = MaterialTheme.typography.titleMedium)
+                            Text("অ্যাপের private storage-এ সীমিত কপি রাখবে; এটি off-device backup নয়।", style = MaterialTheme.typography.bodySmall)
+                        }
+                        Switch(
+                            checked = viewModel.automaticBackupEnabled,
+                            onCheckedChange = { viewModel.updateAutomaticBackup(context, it) },
+                        )
+                    }
+                    if (viewModel.automaticBackupEnabled) {
+                        Text("ব্যাকআপের ব্যবধান", style = MaterialTheme.typography.labelLarge)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(1, 7, 30).forEach { days ->
+                                FilterChip(
+                                    selected = viewModel.automaticIntervalDays == days,
+                                    onClick = { viewModel.updateAutomaticBackup(context, true, days) },
+                                    label = { Text(when (days) { 1 -> "প্রতিদিন"; 7 -> "৭ দিন"; else -> "৩০ দিন" }) },
+                                )
+                            }
+                        }
+                        Text("কতটি কপি রাখবেন", style = MaterialTheme.typography.labelLarge)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(1, 3, 5, 10).forEach { count ->
+                                FilterChip(
+                                    selected = viewModel.automaticRetentionCount == count,
+                                    onClick = { viewModel.updateAutomaticBackup(context, true, viewModel.automaticIntervalDays, count) },
+                                    label = { Text(count.toString()) },
+                                )
+                            }
+                        }
+                        Text("স্বয়ংক্রিয় কপি app-private storage-এ থাকে; uninstall/Clear data/device loss থেকে রক্ষা করে না। ব্যাকআপের সময় ব্যাটারি ও storage শর্তও বিবেচনা করা হবে।", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -105,6 +148,7 @@ fun BackupScreen(viewModel: BackupViewModel, onBack: () -> Unit) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("ব্যাকআপ ফাইল যাচাই হয়েছে। ফাইলে আছে:")
                     Text(countsLine(p.backup))
+                    Text(if (p.includesMedia) "মিডিয়া ছবি: ${p.mediaFileCount}টি (প্রশ্ন ও paper media সহ)" else "এটি পুরোনো database-only backup; বর্তমান media files অপরিবর্তিত থাকবে।")
                     Text("অ্যাপে এখন আছে:")
                     Text(countsLine(p.current))
                     Text("নিশ্চিত করলে অ্যাপ বন্ধ হবে; আবার খুললে ব্যাকআপের ডাটা থাকবে। আগের ডাটাবেস ফোনে সংরক্ষিত থাকে।")

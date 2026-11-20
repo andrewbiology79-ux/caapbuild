@@ -25,6 +25,22 @@ data class SubQuestionInput(
     val solutionParts: List<String> = emptyList(),
 )
 
+/** An image already imported into the matching scope's private media namespace. */
+data class QuestionStimulusImage(
+    val imageId: String,
+    val placement: String = "TOP",
+    val position: Long = 0L,
+)
+
+/** Ordered text/image solution content. IMAGE rows reference an existing scoped image record. */
+data class QuestionSolutionPart(
+    val partId: String,
+    val partType: String,
+    val position: Long,
+    val textContent: String? = null,
+    val imageId: String? = null,
+)
+
 /**
  * Ratings chosen in the editor (v0.2.30, UI-07). A rating is 1-5 or null (= not saved; the card then shows 3 by rule U-1).
  * For a NEW group the map holds the labels the person rated. For an EDIT the object means "these are the wanted ratings":
@@ -64,6 +80,10 @@ data class QuestionGroupInput(
     val categoriesByLabel: Map<CqLabel, List<String>> = emptyMap(),
     /** Optional canonical Phase 6 draft key, removed in the same Room transaction as the content save. */
     val editorDraftKey: String? = null,
+    /** Ordered images attached to the optional stimulus; links are committed with the question group. */
+    val stimulusImages: List<QuestionStimulusImage> = emptyList(),
+    /** Complete mixed TEXT/IMAGE solution order for labels in this group; absent labels use [SubQuestionInput.solutionParts]. */
+    val solutionPartsByLabel: Map<CqLabel, List<QuestionSolutionPart>> = emptyMap(),
 )
 
 /** Raw editor text, used for the automatic draft. Index 0..3 = ক, খ, গ, ঘ. */
@@ -81,9 +101,13 @@ data class DraftText(
     val questionTypeIds: List<String> = CqLabel.entries.map { it.typeId },
     val marks: List<Double> = CqLabel.entries.map { it.marks },
     val solutionTexts: List<List<String>> = List(4) { emptyList() },
+    /** Null means a legacy text-only draft did not specify media; an empty list explicitly clears it. */
+    val stimulusImages: List<QuestionStimulusImage>? = null,
+    /** Null means legacy text-only draft; an empty row deliberately clears that label's mixed solution parts. */
+    val solutionPartsByLabel: List<List<QuestionSolutionPart>>? = null,
 ) {
     val isBlank: Boolean
-        get() = stimulus.isBlank() && referenceText.isBlank() && texts.all { it.isBlank() } && answers.all { it.isBlank() } && solutionTexts.all { row -> row.all { it.isBlank() } }
+        get() = stimulus.isBlank() && referenceText.isBlank() && texts.all { it.isBlank() } && answers.all { it.isBlank() } && solutionTexts.all { row -> row.all { it.isBlank() } } && stimulusImages.isNullOrEmpty() && (solutionPartsByLabel.isNullOrEmpty() || solutionPartsByLabel.all { it.isEmpty() })
 }
 
 /** One saved sub-question as the list shows it. */
@@ -101,6 +125,8 @@ data class SavedSubQuestion(
     val solutionParts: List<String> = emptyList(),
     /** Type_CQ category links loaded for edit validation and preserved when no replacement is supplied. */
     val categoryIds: List<String> = emptyList(),
+    /** Full ordered TEXT/IMAGE solution representation; text-only preview remains in [solutionParts]. */
+    val orderedSolutionParts: List<QuestionSolutionPart> = emptyList(),
 )
 
 /** One stimulus with its sub-questions, or one single question without a stimulus. */
@@ -113,6 +139,7 @@ data class SavedGroup(
     /** v0.2.30c: boards and years of the stimulus, in the order they were chosen. */
     val stimulusBoards: List<BoardTag> = emptyList(),
     val referenceText: String = "",
+    val stimulusImages: List<QuestionStimulusImage> = emptyList(),
 )
 
 sealed interface SaveResult {
@@ -161,6 +188,10 @@ data class GroupEditInput(
     val deletedQuestionIds: Set<String> = emptySet(),
     /** Optional canonical Phase 6 draft key, removed in the same Room transaction as the content save. */
     val editorDraftKey: String? = null,
+    /** Null preserves the current set; an empty list deliberately unlinks every stimulus image. */
+    val stimulusImages: List<QuestionStimulusImage>? = null,
+    /** Null preserves the current mixed solution content; a label entry replaces that complete ordered sequence. */
+    val solutionPartsByLabel: Map<CqLabel, List<QuestionSolutionPart>>? = null,
 )
 
 data class QuestionMetaUpdate(val questionId: String, val label: CqLabel, val questionTypeId: String, val marks: Double)

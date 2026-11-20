@@ -17,7 +17,49 @@ class ChapterCqRepositoryImpl(
     override fun observeQuestions(chapterId: String): Flow<List<ChapterCqQuestionsEntity>> = dao.observeQuestions(chapterId)
     override fun observeQuestionCards(chapterId: String) = dao.observeQuestionCards(chapterId)
     override suspend fun loadQuestion(questionId: String): ChapterCqQuestionsEntity? = dao.question(questionId)
+    override suspend fun deleteQuestion(questionId: String, chapterId: String): Boolean = try {
+        beforeWrite()
+        dao.deleteQuestionAndUnusedStimulus(questionId, chapterId)
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        false
+    }
+    override suspend fun deleteQuestions(questionIds: List<String>, chapterId: String): Boolean = try {
+        if (questionIds.isEmpty() || questionIds.distinct().size != questionIds.size) return false
+        beforeWrite()
+        dao.deleteQuestionBatchAndUnusedStimuli(questionIds, chapterId)
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        false
+    }
+
+    override suspend fun duplicateQuestion(questionId: String, chapterId: String): Boolean = try {
+        val original = dao.question(questionId) ?: return false
+        if (original.chapterId != chapterId) return false
+        val now = System.currentTimeMillis()
+        val newQuestionId = "ccq_${java.util.UUID.randomUUID()}"
+        val originalStimulus = original.stimulusId?.let { dao.stimulus(it) }
+        val newStimulusId = originalStimulus?.let { "ccs_${java.util.UUID.randomUUID()}" }
+        val clonedStimulus = originalStimulus?.copy(stimulusId = newStimulusId!!, createdAt = now, updatedAt = now)
+        val imageRows = originalStimulus?.let { dao.stimulusImages(it.stimulusId) }.orEmpty().map { row -> row.copy(stimulusId = newStimulusId!!) }
+        val questionCopy = original.copy(questionId = newQuestionId, ftsId = 0L, stimulusId = newStimulusId, createdAt = now, updatedAt = now)
+        val parts = dao.solutionParts(questionId).map { it.copy(partId = "ccsp_${java.util.UUID.randomUUID()}", questionId = newQuestionId, createdAt = now) }
+        val boards = dao.questionBoards(questionId).map { it.copy(id = "ccqb_${java.util.UUID.randomUUID()}", questionId = newQuestionId) }
+        val categories = dao.questionCategories(questionId).map { it.copy(questionId = newQuestionId, assignedAt = now) }
+        beforeWrite()
+        dao.saveQuestionWithStimulusBundle(
+            question = questionCopy, stimulusRow = clonedStimulus, parts = parts, boards = boards, categories = categories,
+            mustUpdateExisting = false, draftKey = "draft:chapter_cq:duplicate:$newQuestionId", stimulusImageRows = imageRows,
+        )
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        false
+    }
     override suspend fun loadStimulus(stimulusId: String): ChapterCqStimuliEntity? = dao.stimulus(stimulusId)
+    override suspend fun loadStimulusImages(stimulusId: String): List<ChapterCqStimulusImagesEntity> = dao.stimulusImages(stimulusId)
     override suspend fun loadSolutionParts(questionId: String): List<ChapterCqSolutionPartsEntity> = dao.solutionParts(questionId)
     override suspend fun loadQuestionBoards(questionId: String): List<ChapterCqQuestionBoardsEntity> = dao.questionBoards(questionId)
     override suspend fun loadQuestionCategories(questionId: String): List<ChapterCqQuestionCategoryLinksEntity> = dao.questionCategories(questionId)
@@ -42,20 +84,21 @@ class ChapterCqRepositoryImpl(
     override suspend fun saveQuestionWithStimulus(
         question: ChapterCqQuestionsEntity, stimulus: ChapterCqStimuliEntity?, solutionParts: List<ChapterCqSolutionPartsEntity>,
         boards: List<ChapterCqQuestionBoardsEntity>, categories: List<ChapterCqQuestionCategoryLinksEntity>,
-        mustUpdateExisting: Boolean, draftOwnerId: String,
+        stimulusImages: List<ChapterCqStimulusImagesEntity>?, mustUpdateExisting: Boolean, draftOwnerId: String,
     ): Boolean {
         // The DAO owns the whole Room transaction, including all validation and read-back checks.
         // Do not perform a second post-commit read-back here: a late mismatch could otherwise report
         // failure after the write had already committed and could not be rolled back.
         return try {
             val command = com.questionbank.app.domain.editor.EditorSaveCommand.chapterCqBundle(
-                question, stimulus, solutionParts, boards, categories, mustUpdateExisting, draftOwnerId,
+                question, stimulus, solutionParts, boards, categories, stimulusImages, mustUpdateExisting, draftOwnerId,
             )
             beforeWrite()
             dao.saveQuestionWithStimulusBundle(
                 command.question, command.stimulus, command.solutionParts, command.boards, command.categories,
                 mustUpdateExisting = command.mustUpdateExisting,
                 draftKey = "draft:chapter_cq:editor:${command.draftOwnerId}",
+                stimulusImageRows = command.stimulusImages,
             )
         } catch (cancelled: CancellationException) {
             throw cancelled
