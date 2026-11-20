@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -196,10 +197,13 @@ fun QuestionListScreen(
             if (!searchOpen) {
                 ExtendedFloatingActionButton(
                     onClick = onAdd,
-                    icon = { Text("+", fontSize = 30.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Light) },
                     containerColor = Color(0xFF3B4FD8),
                     contentColor = Color.White,
-                ) { Text("Add question", fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold) }
+                ) {
+                    Text("+", fontSize = 30.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Light)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Add question", fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                }
             }
         },
     ) { innerPadding ->
