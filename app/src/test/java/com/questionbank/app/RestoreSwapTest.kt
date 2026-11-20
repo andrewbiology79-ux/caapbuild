@@ -99,7 +99,7 @@ class RestoreSwapTest {
         val zone = TimeZone.getTimeZone("Asia/Dhaka")
         // 2026-11-18 15:30 UTC = 21:30 in Dhaka (UTC+6)
         val millis = 1_795_015_800_000L
-        assertEquals("QuestionBank-backup-20261118-2130.db", BackupNames.fileName(millis, zone))
+        assertEquals("QuestionBank-backup-20261118-2130.qbbak", BackupNames.fileName(millis, zone))
         assertEquals("18/11/2026 21:30", BackupNames.display(millis, zone))
     }
 }

@@ -1,9 +1,10 @@
 QUESTION BANK ANDROID APP COMPLETE PROJECT DEVELOPMENT & DELIVERY PLAN
 ============================================================
 
-Document version: 1.60 (v1.59 preserved; section 69 added: second review pass, five more defects fixed, source-only, unverified.) (v1.58 preserved; section 68 added: two logic bugs fixed in the canonical draft codec and reducer, source-only, unverified.) (v1.57 preserved; section 67 added: coordinated Phase 6–8 canonical draft integration; implementation remains partial and unverified.)
+Document version: 1.71 (CI run after v1.70: compileDebugKotlin FAILED with 8 errors, fixed in compilefix1; next run: compile OK, 147 of 148 unit tests passed, 1 stale test fixed in compilefix2; section 80 added; not yet re-run.) (v1.69 preserved; section 79 records recovery-gate lock-order correction, finite-mark validation, and expanded final static review. Source-only; tests not run and not verified.) (v1.65 preserved; section 75 records the expanded coordinated Phase 10–12 Editor/media, question-management and global-search source work with a static-only review; source-only and unverified.) (v1.63 preserved; section 72 records Type_CQ Edit delete/category integration; source-only and unverified.) (v1.62 preserved; section 72 added: Type_CQ Edit delete/category UI integration and complete draft-state wiring recorded, source-only and unverified.) (v1.60 preserved; section 70 added: CI run 55 analysed, missing debug keystore, new fixed debug key added.) (v1.59 preserved; section 69 added: second review pass, five more defects fixed, source-only, unverified.) (v1.58 preserved; section 68 added: two logic bugs fixed in the canonical draft codec and reducer, source-only, unverified.) (v1.57 preserved; section 67 added: coordinated Phase 6–8 canonical draft integration; implementation remains partial and unverified.)
 Planning baseline: 16 November 2026
-Project status: Single-database architecture confirmed; canonical SQL and Room build harness prepared. CI run 11 (package v0.2.8) passed: KSP/Room generation, unit tests (5 of 5) and debug APK assembly. The package is still a build harness, not a complete application; Room-database runtime behaviour (CHECK emulation, Bengali FTS on the real database) is not yet device-tested.
+Latest package status: v1.70 advances source/documentation for Phases 0–15 but preserves their PARTIAL / UNVERIFIED conditions where criteria or inputs remain open; Phase 16 is SOURCE INTEGRATION REVIEW ONLY / TESTS NOT RUN / NOT COMPLETED; Phase 17 is NOT STARTED and intentionally excluded. No Gradle build, compile, KSP/Room generation, test, emulator/device run or APK assembly was performed.
+Historical foundation evidence (not evidence for the current source candidate): Single-database architecture confirmed; canonical SQL and Room build harness prepared. CI run 11 (package v0.2.8) passed: KSP/Room generation, unit tests (5 of 5) and debug APK assembly. The package is still a build harness, not a complete application; Room-database runtime behaviour (CHECK emulation, Bengali FTS on the real database) is not yet device-tested.
 
 ============================================================ 1. PROJECT
 OBJECTIVE ============================================================
@@ -745,8 +746,8 @@ EDITOR
 [w] Reference text - written (stimulus column), unverified
 [~] Rating - Type_CQ ratings confirmed (v0.2.30a/b); Chapter_CQ written
 [~] Board/year links - Type_CQ confirmed; Chapter_CQ edits only the primary link
-[w] Category links - Chapter_CQ assignment written; Type_CQ editor assignment missing
-[w] Ordered solutions - ordered TEXT parts written; IMAGE parts not editable
+[w] Category links - Type_CQ Edit per-question assignment and category-management navigation written in v1.63; Chapter_CQ assignment also written; integrated behavior remains unverified
+[w] Ordered solutions - Type_CQ and Chapter_CQ editor source now supports mixed ordered TEXT/IMAGE solution parts, image attachment and reorder controls; unverified
 [w] Mathematical input - symbol bar appends at end; plain-text preview, no formula renderer
 [w] Undo/Redo - EditorHistory (80 entries) written, not compiled
 [~] Draft recovery - Type_CQ new + edit drafts confirmed; Chapter_CQ drafts written
@@ -755,43 +756,43 @@ EDITOR
 [~] Atomic save - text-only save with read-back + FTS confirmed; media coordination open
 
 MEDIA
-[ ] Image picker - Phase 10 not started (tables / metadata DAO only)
-[ ] Image import - Phase 10 not started (tables / metadata DAO only)
-[ ] Image verification - Phase 10 not started (tables / metadata DAO only)
-[ ] SHA-256 - Phase 10 not started (tables / metadata DAO only)
-[ ] Crop/rotate - Phase 10 not started (tables / metadata DAO only)
-[ ] Compression - Phase 10 not started (tables / metadata DAO only)
-[ ] TOP/BOTTOM placement - Phase 10 not started (tables / metadata DAO only)
-[ ] Reordering - Phase 10 not started (tables / metadata DAO only)
-[ ] Replacement - Phase 10 not started (tables / metadata DAO only)
-[ ] Removal - Phase 10 not started (tables / metadata DAO only)
-[ ] Image viewer - Phase 10 not started (tables / metadata DAO only)
-[ ] Export - Phase 10 not started (tables / metadata DAO only)
-[ ] Missing-image state - Phase 10 not started (tables / metadata DAO only)
-[ ] Corrupt-image state - Phase 10 not started (tables / metadata DAO only)
-[ ] Operation journal - Phase 10 not started (tables / metadata DAO only)
-[ ] Crash recovery - Phase 10 not started (tables / metadata DAO only)
-[ ] Orphan cleanup - Phase 10 not started (tables / metadata DAO only)
+[w] Image picker - SAF OpenDocument import UI written in media library; compile/runtime unverified
+[w] Image import - private storage, temporary file, JPEG conversion and metadata registration written; unverified
+[w] Image verification - decode/readback preconditions and SHA-256 reconciliation written; unverified
+[w] SHA-256 - import/export integrity hashes written; unverified
+[w] Crop/rotate - centre-square crop and 90-degree rotation written; UI/runtime unverified
+[w] Compression - JPEG quality 88 and maximum 2048-pixel edge policy written; configurable compression remains open
+[w] TOP/BOTTOM placement - Type_CQ and Chapter_CQ stimulus-image Editor controls support TOP/BOTTOM; source-only, unverified
+[w] Image reordering - stimulus image ordering and mixed solution TEXT/IMAGE ordering controls are wired in both scopes; source-only, unverified
+[~] Image replacement - direct draft-link Replace controls now swap the attachment to a newly imported image; automatic cleanup/retention of the old unowned metadata remains open
+[w] Media-library delete with reference guard and journal written; Editor unlink/removal/Replace controls are wired, but replaced-image metadata-retention policy remains open
+[w] Image viewer - media-library preview written; dedicated full-screen viewer remains open
+[w] Export - SAF CreateDocument with hash verification written; unverified
+[w] Missing-image state - reconciliation/status update written; unverified
+[w] Corrupt-image state - SHA-256 mismatch detection/status update written; unverified
+[w] Operation journal - PENDING/COMMITTED/FAILED media operations written; unverified
+[w] Crash recovery - pending import/transform/delete recovery written; unverified
+[~] Orphan cleanup - untracked files collected only within managed Type_CQ/Chapter_CQ media folders; paper-asset and unowned-metadata retention policy remains open and unverified
 
 QUESTION MANAGEMENT
 [x] Question cards - UI-07 confirmed
-[ ] Question detail - no separate detail screen
+[w] Question detail - Type_CQ dedicated detail screen and Chapter_CQ detail dialog are source-wired; unverified
 [~] Edit - Type_CQ confirmed; Chapter_CQ written
-[ ] Delete - delete + selection open
-[ ] Group operations - copy / cut / paste / select not built
-[ ] Sorting - sort by rating / marks / type belongs to the Filter tab, not started
-[ ] Pagination if needed - Paging 3 dependency declared but not used in app source (static check)
+[w] Delete - Type_CQ full-group delete and Chapter_CQ scoped single/batch delete with confirmation and transaction boundaries are source-wired; unverified
+[~] Group operations - Type_CQ copy/duplicate and multi-select/bulk delete; Chapter_CQ single-question duplicate and multi-select/bulk delete written. Cut/paste and Chapter_CQ multi-block group operations remain open
+[w] Sorting - Type_CQ and Chapter_CQ rating/marks/type sorting controls are source-wired; unverified
+[~] Pagination - Type_CQ list has 40-item incremental expansion; database Paging 3 and Chapter_CQ pagination remain open
 
 SEARCH
 [x] FTS5 - confirmed
 [x] Bengali search - confirmed (words, prefixes, NFC / nukta variants)
-[~] English search - FTS handles Latin tokens; no dedicated English-query test found (static)
+[w] English search - global search sends Latin tokens through FTS/LIKE source paths; no runtime acceptance evidence
 [~] Normalization - NFC + য় ড় ঢ় folding closed for the DB layer (P-15); Bengali / Latin digits not unified (P-46)
-[ ] Hierarchy filters - only in-topic search; Filter tab not started
-[ ] Category filters - not started
-[x] Board/year filters - in-topic search confirmed (UI-05); global Filter tab not started
-[ ] Rating filters - waits for the Filter tab
-[w] Duplicate detection - repository check exists; UI warning written, unverified
+[w] Category/rating/question-type filters - Type_CQ in-topic filters plus new global Type_CQ/Chapter_CQ category and rating filters and Type_CQ question-type filter are source-wired; unverified
+[w] Category filter - Type_CQ in-topic and global scope-aware Type_CQ/Chapter_CQ category filtering are source-wired; unverified
+[~] Board/year filters - Type_CQ in-topic behavior remains previously confirmed; global cross-scope board/year filtering is source-wired but unverified
+[w] Rating filter - Type_CQ in-topic and global cross-scope rating filters are source-wired; unverified
+[w] Duplicate detection - existing repository checks plus global exact lower/trimmed-text cross-scope warning are source-wired; this is not fuzzy similarity and is unverified
 [x] Update/delete synchronization - FTS insert / update / delete sync confirmed at database level
 
 PAPER
@@ -813,7 +814,7 @@ BACKUP AND RESTORE
 [~] Backup format - single database file (VACUUM INTO) confirmed; archive + media format not built
 [~] Manifest - header, identity hash and row counts checked (BackupInspector); no media manifest
 [x] Database backup - confirmed on phone (v0.2.24)
-[ ] Media backup - depends on Phase 10 (no image files exist yet)
+[ ] Media backup - image import/storage source is written; archive manifest, media backup and safe media restore are not implemented
 [x] Integrity checks - integrity_check, foreign_key_check, identity hash, SHA-256 read-back
 [x] Restore preview - confirmation shows backup counts next to current counts
 [x] Safe restore - staged restore, swap at next start, rollback on failure; confirmed on phone
@@ -4700,3 +4701,882 @@ END OF VERSION 1.59 UPDATE
 
 END OF VERSION 1.60 UPDATE
 
+
+============================================================ 70. CI RUN 55 AND THE MISSING DEBUG KEYSTORE (v1.61)
+============================================================
+
+70.1 CI run 55 result
+- Run 55 failed in the main Gradle step at :app:validateSigningDebug: "Keystore file .../app/debug.keystore not found for signing config 'debug'".
+- Compiles succeeded in the same report: androidtest-compile.log (compileDebugKotlin and compileDebugAndroidTestKotlin, BUILD SUCCESSFUL) and release-assemble.log (compileReleaseKotlin, BUILD SUCCESSFUL). KSP/Room processing also passed.
+- The debug unit tests (testDebugUnitTest) and the debug APK did not run, so their results are still unknown.
+- Which source ZIP run 55 used is not stated in the report.
+
+70.2 Cause
+- app/debug.keystore (fixed debug signing key, committed on purpose since v0.2.23, see build.gradle.kts signingConfigs) is not in the ZIPs v1.58, v1.59, v1.60. Replacing the repository contents with a ZIP removed it from the repository.
+- P-75: a project ZIP must never be used to replace the repository folder when binary files such as app/debug.keystore exist only in the repository. Copy the ZIP contents over the existing folder instead of deleting it first.
+
+70.3 Fix in this package
+- The original keystore could not be recovered here. A NEW fixed debug keystore was generated and placed at app/debug.keystore with the values build.gradle.kts expects: alias androiddebugkey, store and key password android, RSA 2048, 10000 days, CN=Android Debug.
+- Consequence: its certificate differs from the earlier debug key. A phone that has an APK signed with the OLD key will refuse to install over it. Steps: export a backup in the app first (v0.2.24 backup export), uninstall, install the new APK, restore from the backup. After this one change the new key stays fixed for every later CI run.
+- If the old keystore is found later (an old ZIP or an old commit), put it back at app/debug.keystore; installing over the old app then works again without uninstalling.
+- The status of this key change is WRITTEN / UNVERIFIED until CI signs an APK with it.
+
+70.4 Next steps
+1. Owner: copy this ZIP's contents over the repository folder (do not delete the folder first), commit including app/debug.keystore, push, run CI, send the report.
+2. Check that the unit tests (including EditorSessionReducerTest and TypeCqDraftAdapterTest) and the APK signing step pass.
+3. Before installing the new APK over an app signed with the old key, make a backup export.
+
+70.5 Change log
+- v1.61: CI run 55 analysed; P-75 recorded; new app/debug.keystore added; version metadata unchanged (versionCode=36, versionName=0.2.31-phase5-wip2).
+
+END OF VERSION 1.61 UPDATE
+
+
+
+============================================================ 71. PHASE 9 ATOMIC EDITOR PERSISTENCE — IMPLEMENTATION SLICE (v1.62)
+============================================================
+
+71.1 Owner direction and verification boundary
+- Continue Phase 9 using the v1.61 Phase 6–8 ZIP and v1.61 Project Plan as the baseline.
+- The prior owner direction not to run tests was carried forward. No Gradle build, Kotlin/KSP/Room compile, unit test, instrumented test, APK build/signing, emulator run or device run was performed. This section records source changes and static source inspection only.
+- Phase 9 remains PARTIAL / WRITTEN / UNVERIFIED. Do not infer compilation or runtime success.
+- No Room schema, migration, database version, versionCode or versionName change was made.
+
+71.2 Source changes written
+- Added `domain/editor/EditorSaveCommand.kt` with factory-created immutable snapshots for Type_CQ create/edit and Chapter_CQ bundle saves. Nested collections are defensively copied and exposed as unmodifiable collections. The Room DAO remains the transaction boundary.
+- Type_CQ save input now supports per-label category IDs for new questions, full category replacement for edited questions, and an explicit deleted-question ID set.
+- `QuestionEditRules` validates that deletion IDs belong to the loaded target group, rejects deletes in a single-question scope, prevents a stimulus group from becoming empty, and produces explicit category/delete operations.
+- `SavedSubQuestion` now carries Type_CQ category IDs for edit validation. `TypeCqQuestionRepositoryImpl.loadOriginal` reads those links when loading a group for editing.
+- `TypeCqQuestionDao.insertGroup` inserts new category links in its existing transaction, validates active category IDs, and reads category links back before draft cleanup.
+- `TypeCqQuestionDao.updateGroup` validates every affected record against the exact `(topic_id, stimulus_id)` scope; validates category assignments; replaces only explicitly supplied category sets; deletes only explicitly named questions in the target stimulus group; verifies deletion and category read-back; then clears drafts as the last transactional step. Any check/insert failure throws within the Room transaction and rolls back the relational save and draft cleanup.
+- `ChapterCqRepositoryImpl.saveQuestionWithStimulus` creates a defensive bundle snapshot before delegating to the existing `@Transaction` DAO save. Existing Chapter_CQ ownership checks and read-back remain in the DAO.
+
+71.3 Existing safeguards inspected and retained
+- Type_CQ New/Edit ViewModels set their save-in-flight state before starting asynchronous work and refuse a second save while that state is active.
+- Chapter_CQ editor uses `savingQuestion` as an in-flight guard.
+- Type_CQ create/edit and Chapter_CQ bundle writes remain under existing Room `@Transaction` DAO methods.
+- Success follows the DAO's read-back checks; there is no second repository read-back after commit. Existing question IDs are retained for updated rows.
+- Type_CQ text-only solution updates continue to preserve existing non-TEXT solution parts.
+
+71.4 Remaining work and known limits
+- The Type_CQ Edit UI does not yet expose delete-question or category-management controls. Persistence command fields and DAO operations are implemented; user-facing controls remain to be wired with Phase 7/11.
+- Chapter_CQ multi-question block/group deletion and management are not part of this implementation slice.
+- Filesystem media lifecycle operations are not in the database transaction and remain Phase 10 work, including operation journal, file integrity, recovery and orphan cleanup.
+- Duplicate-save and forced-failure test evidence remains pending. Existing save guards were inspected but not exercised.
+- No Kotlin/KSP/Room build or runtime verification was performed.
+
+71.5 Changed source files
+- `app/src/main/java/com/questionbank/app/domain/editor/EditorSaveCommand.kt` (new)
+- `app/src/main/java/com/questionbank/app/domain/question/QuestionModels.kt`
+- `app/src/main/java/com/questionbank/app/domain/question/QuestionRules.kt`
+- `app/src/main/java/com/questionbank/app/domain/question/QuestionEditRules.kt`
+- `app/src/main/java/com/questionbank/app/data/local/dao/TypeCqQuestionDao.kt`
+- `app/src/main/java/com/questionbank/app/data/repository/TypeCqQuestionRepositoryImpl.kt`
+- `app/src/main/java/com/questionbank/app/data/repository/ChapterCqRepositoryImpl.kt`
+
+71.6 Next step
+- Finish Type_CQ delete/category UI integration, then perform the planned duplicate-save and forced-failure tests/build evidence when authorised. Continue Phase 10 media pipeline only after the Phase 9 persistence contract and UI integration are reconciled.
+
+71.7 Change log
+- v1.62: added immutable save command snapshots; added Type_CQ explicit question deletion and category-link create/replace transaction paths with read-back; tightened exact-group ownership checks; integrated Chapter_CQ save snapshots. No tests/build run; Phase 9 remains partial and unverified.
+
+END OF VERSION 1.62 UPDATE
+
+
+============================================================ 72. PHASE 9 TYPE_CQ EDIT UI INTEGRATION (v1.63)
+============================================================
+
+72.1 Owner direction and verification boundary
+- Continue the v1.62 Phase 9 implementation and complete the next stated task: connect Type_CQ explicit deletion and category persistence to the Edit screen.
+- The prior instruction not to run tests/builds remains in force. No Gradle build, Kotlin/KSP/Room compilation, unit test, instrumented test, APK build/signing, emulator run or device run was performed. This update is source-only and statically inspected.
+- Phase 9 remains PARTIAL / WRITTEN / UNVERIFIED. Source presence and static inspection do not establish compilation or runtime success.
+- No Room schema, database version, migration, versionCode or versionName was changed. App metadata remains versionCode=36 and versionName="0.2.31-phase5-wip2".
+
+72.2 Type_CQ Edit UI integration written
+- The Edit screen now loads the live Type_CQ category catalog from the existing TypeCqData observation flow.
+- Each question block with nonblank question text exposes category checkboxes. Active categories can be assigned. An already-linked archived category remains visible; it may be removed but cannot be newly assigned.
+- A per-question category-management action navigates to the existing Type_CQ Category reference catalog, where categories can be added, renamed, archived or reassigned. Returning to Edit observes catalog changes through the existing Flow.
+- The Edit ViewModel initializes category selections from saved links and sends complete per-label category sets to GroupEditInput. The existing transactional DAO code from v1.62 performs link replacement and read-back.
+- The canonical schema-v2 edit draft now carries category selections, so category-only edits survive draft restore.
+
+72.3 Explicit question deletion UI
+- For a saved question block inside a stimulus group, Edit exposes a confirmation-gated "এই প্রশ্নটি মুছুন" action.
+- At least one question must remain. A newly filled question block counts as a replacement candidate; a non-stimulus single-question edit does not expose this group-delete action.
+- Pending deletions are visibly listed before save and can be cancelled individually. The deleted IDs flow into GroupEditInput and the v1.62 immutable EditorSaveCommand/Room transaction path.
+- The Edit undo/redo snapshot now includes category IDs and deleted-question IDs, so these operations participate in editor history.
+
+72.4 Draft-writer race and recovery handling
+- The application-scope Edit draft queue now carries one immutable payload containing text, category IDs, deleted-question IDs and editor mode. The worker no longer reads category/deletion selections from mutable UI state after dequeue.
+- Canonical draft restore loads category selections for all labels, including a block temporarily marked for deletion, and restores pending deleted IDs. This allows the person to cancel a deletion without losing the rest of that block's pending draft.
+- The save-failure branch writes the same captured text/category/deletion snapshot back to the canonical draft store.
+
+72.5 Changed source files in v1.63
+- `app/src/main/java/com/questionbank/app/ui/question/QuestionEditScreen.kt` — category checkboxes, category-management navigation action, question-delete confirmation and pending-delete cancellation UI.
+- `app/src/main/java/com/questionbank/app/ui/question/QuestionEditViewModel.kt` — category catalog/state, complete category payloads, explicit deletion actions, history snapshots and immutable application-scope draft snapshots.
+- `app/src/main/java/com/questionbank/app/ui/navigation/AppNavHost.kt` — category catalog flow and Category Management route wiring.
+
+72.6 Remaining work and limits
+- Phase 9 acceptance remains unverified until duplicate-save, forced-failure/rollback and save/reload evidence is produced. These tests/builds were not run in this update because of the owner instruction.
+- Chapter_CQ remains a single-question-block bundle editor; multi-question-block group management/deletion is not implemented here.
+- Filesystem media writes are not part of the Room transaction. Phase 10 must coordinate image file operations, operation journal state, verification, recovery and orphan cleanup.
+- No APK is included. This ZIP is a source-only implementation candidate and is not a tested release.
+
+72.7 Next step
+- Preserve Phase 9 as PARTIAL / WRITTEN / UNVERIFIED until build/runtime and planned duplicate-save/forced-failure evidence is authorised and available. Then continue with the Phase 10 image/media pipeline without claiming filesystem operations are atomic with Room.
+
+72.8 Change log
+- v1.63: completed Type_CQ Edit delete/category UI wiring; added management navigation; included category/deletion state in undo/redo and immutable draft snapshots; restored pending deletions/category state from canonical drafts. No tests/build run; Phase 9 remains partial and unverified.
+
+END OF VERSION 1.63 UPDATE
+
+
+============================================================ 73. COORDINATED PHASE 10–12 SOURCE UPDATE — VERSION 1.64
+============================================================
+
+Planning update date: 20 November 2026
+Source baseline: QuestionBank_PHASE9_v1_63_RECHECKED_SOURCE_UNVERIFIED.zip
+Package candidate: v1.64 source-only; app metadata deliberately unchanged.
+
+73.1 Owner direction and verification boundary
+- The owner requested Phase 10, Phase 11 and Phase 12 work together and explicitly instructed that no tests be run.
+- No Gradle build, Kotlin compilation, KSP/Room generation, unit test, instrumented test, APK assembly, emulator run or device run was performed for this update.
+- This is a source implementation candidate, not a verified Android build and not a completed application release.
+- Phase 9 remains PARTIAL / WRITTEN / UNVERIFIED. The duplicate-save and forced-failure/rollback evidence remains open.
+- No canonical SQL schema, Room schema JSON, database version, identityHash, versionCode or versionName was changed. App metadata remains versionCode=36 and versionName="0.2.31-phase5-wip2".
+
+73.2 Phase 10 — Image and Media Pipeline (PARTIAL / WRITTEN / UNVERIFIED)
+Source work added:
+- An ImagePipeline service with separate TYPE_CQ and CHAPTER_CQ scope handling.
+- SAF OpenDocument import into app-private storage; original external files are copied, not modified.
+- Temporary-file staging, bitmap decode checks, downscaling to a maximum 2048-pixel edge, JPEG quality 88 conversion, file sync, SHA-256 and stable image IDs.
+- Media metadata writes coordinated with the existing operation_journal. Import, transform and delete record PENDING and then COMMITTED/FAILED states; database writes request the existing synchronous=FULL policy.
+- Atomic file move with a fallback path; transform operations keep a previous metadata snapshot so pending recovery can restore the previous file/metadata when necessary.
+- Centre-square crop and 90-degree rotation; checksum-checked SAF export; delete is blocked while stimulus or solution references exist.
+- Pending operation recovery, missing/corrupt status reconciliation and removal of untracked temporary/orphan filesystem files.
+- A Profile media-library screen with Type_CQ/Chapter_CQ scope selection, import, preview, rotate, crop, export and delete controls.
+
+Still open in Phase 10:
+- The media library does not yet attach selected image IDs to EditorDraft, stimulus-image links or solution-image parts. Therefore current editor flows cannot yet author full image-bearing questions/solutions from this UI.
+- TOP/BOTTOM stimulus placement, image ordering, replacement and editor-level unlinking are not wired.
+- The crop is a fixed centre-square operation, not an interactive crop editor. Camera capture and dedicated full-screen viewer are not included.
+- Recovery is invoked when the media library opens; application-startup recovery scheduling and comprehensive lifecycle proof remain open.
+- Orphan cleanup currently handles untracked files and temporary/backup files. A complete policy for unowned metadata rows and retained paper assets remains open.
+
+73.3 Phase 11 — Question Cards and Question Management (PARTIAL / WRITTEN / UNVERIFIED)
+Source work added:
+- Type_CQ question cards now expose a confirmation-gated group Delete action.
+- Type_CQ deletion validates the current group/scope, deletes its question rows in a Room transaction, checks read-back and removes an unused stimulus where applicable. Existing restrictive references can prevent the deletion; repository reports failure instead of bypassing the reference.
+- Chapter_CQ workspace now exposes a confirmation-gated single-question Delete action. Its DAO transaction checks chapter ownership, deletes the question and removes an unused stimulus; restricted references can block the operation.
+
+Still open in Phase 11:
+- No separate question-detail screen.
+- Copy, cut, paste, multi-select, bulk/group operations, reorder, sorting and pagination are not implemented.
+- Chapter_CQ remains a single-question-block workflow; multi-block group management/delete is not implemented.
+
+73.4 Phase 12 — Search, Filters and Duplicate Detection (PARTIAL / WRITTEN / UNVERIFIED)
+Source work added:
+- Type_CQ in-topic search filter model now supports categoryId, rating and questionTypeId in addition to the existing board/year criteria.
+- Type_CQ category links are loaded into question list/search projections so category filtering can be evaluated per question.
+- The Type_CQ search header now displays category, rating and question-type filter chips with selection dialogs. Filter-only queries work without requiring a text term.
+- Filter combinations are applied together with text and board/year matching; stimulus board/year tags can still qualify grouped questions, while category/rating/question-type checks apply to each question.
+
+Still open in Phase 12:
+- The bottom-tab global Filter screen remains a placeholder.
+- Cross-scope Type_CQ + Chapter_CQ global search/filter is not implemented.
+- Chapter_CQ search, Bengali/English FTS behavior and its category/rating/board filters remain open.
+- Dedicated filter semantics, performance profiling and all search acceptance evidence remain unverified.
+
+73.5 Source files changed or added
+- app/src/main/java/com/questionbank/app/media/ImagePipeline.kt (new)
+- app/src/main/java/com/questionbank/app/ui/media/ImageLibraryScreen.kt (new)
+- app/src/main/java/com/questionbank/app/AppContainer.kt
+- app/src/main/java/com/questionbank/app/data/local/dao/MediaDataDao.kt
+- app/src/main/java/com/questionbank/app/data/local/dao/SharedDataDao.kt
+- app/src/main/java/com/questionbank/app/data/local/dao/TypeCqQuestionDao.kt
+- app/src/main/java/com/questionbank/app/data/local/dao/ChapterCqDataDao.kt
+- app/src/main/java/com/questionbank/app/domain/question/BoardModels.kt
+- app/src/main/java/com/questionbank/app/domain/question/QuestionSearchRules.kt
+- app/src/main/java/com/questionbank/app/domain/question/TypeCqQuestionRepository.kt
+- app/src/main/java/com/questionbank/app/domain/repository/ChapterCqRepository.kt
+- app/src/main/java/com/questionbank/app/data/repository/TypeCqQuestionRepositoryImpl.kt
+- app/src/main/java/com/questionbank/app/data/repository/ChapterCqRepositoryImpl.kt
+- app/src/main/java/com/questionbank/app/ui/question/QuestionFilterBar.kt (new)
+- app/src/main/java/com/questionbank/app/ui/question/QuestionListViewModel.kt
+- app/src/main/java/com/questionbank/app/ui/question/QuestionListScreen.kt
+- app/src/main/java/com/questionbank/app/ui/question/QuestionCard.kt
+- app/src/main/java/com/questionbank/app/ui/question/ChapterCqWorkspaceScreen.kt
+- app/src/main/java/com/questionbank/app/ui/profile/ProfileScreen.kt
+- app/src/main/java/com/questionbank/app/ui/navigation/AppNavHost.kt
+
+73.6 Static review and limitations
+- A source-level inspection pass was performed over the added media service, DAO methods, navigation wiring, Type_CQ search projection/filter path and delete paths. The Room @Transaction import required by the new media DAO transactions was added.
+- The image pipeline uses the existing media metadata and operation_journal tables; no Room Entity or canonical schema alteration was made.
+- No test or build result is available by owner instruction. Do not interpret source inspection, successful ZIP creation or file presence as compile/runtime verification.
+- Do not mark Phase 10, 11 or 12 PASSED/COMPLETED until their planned build, persistence, recovery, UI and acceptance evidence is produced.
+
+73.7 Recommended next work
+1. Finish Phase 10 editor attachment integration for stimulus and solution images, including TOP/BOTTOM placement, ordering, replacement/unlink, and safe image ownership/retention.
+2. Finish Phase 11 question detail, multi-select/copy/cut/paste, sorting/pagination and Chapter_CQ multi-block group operations.
+3. Finish Phase 12 global cross-scope and Chapter_CQ search/filter behavior, then define and execute Bengali/English search acceptance coverage when authorized.
+4. After source scope is ready and the owner authorizes verification, run a clean CI build and the planned tests. Until then keep all three phases PARTIAL / WRITTEN / UNVERIFIED.
+
+73.8 Change log
+- v1.64: added the private image-library/media operation pipeline, Type_CQ and Chapter_CQ question deletion paths, and Type_CQ in-topic category/rating/question-type filters. Source-only update; no build or test run; Phases 10–12 remain partial and unverified.
+
+END OF VERSION 1.64 UPDATE
+
+============================================================ 74. SECOND STATIC RECHECK AND SAFETY CORRECTIONS (v1.65)
+============================================================
+
+Planning update date: 20 November 2026
+Recheck baseline: QuestionBank_PHASE10_12_v1_64_SOURCE_UNVERIFIED.zip
+Candidate: QuestionBank_PHASE10_12_v1_65_RECHECKED_SOURCE_UNVERIFIED.zip
+
+74.1 Verification boundary
+- The owner previously instructed that tests/builds should not be run. That instruction remains in force.
+- Rechecked the v1.64 archive integrity, source-tree delta against v1.63, Phase 10 media operations/recovery, Type_CQ and Chapter_CQ deletion paths, Type_CQ filter flow, navigation wiring, app/database metadata boundaries and checklist consistency.
+- No Gradle build, Kotlin/KSP/Room compilation, unit test, instrumented test, APK assembly, emulator run or device run was performed.
+- This is a static source review only. It cannot establish compilation, Room processing, database runtime behavior, file-system crash recovery or UI behavior.
+
+74.2 Findings and source corrections
+1. Media orphan cleanup previously traversed the complete `filesDir/media` tree and treated every path not present in the Type_CQ/Chapter_CQ image tables as orphaned. That could remove a future Paper media namespace. The collector now owns only `media/type_cq` and `media/chapter_cq`, while paper/other namespaces are left untouched. Import staging cleanup is limited to `media/.pending` and preserves IDs with pending image-journal operations.
+2. Media recovery previously iterated every pending shared operation and could mark an unrelated operation as FAILED if it happened to use a Type_CQ/Chapter_CQ scope. Recovery now handles only `IMAGE_IMPORT`, `IMAGE_TRANSFORM` and `IMAGE_DELETE` operation types.
+3. The QuestionCard delete confirmation counted only currently displayed subquestions. In a filtered search result the repository deletes the complete original group, not just the visible subset. The message now explicitly says the whole card/group will be deleted.
+4. Media-library deletion was previously immediate. A confirmation dialog is now required before the irreversible delete request; the original reference guard remains in the pipeline.
+5. The image-picker callback previously used the currently selected scope on return. Changing scope while the picker was open could place the imported image in a different scope from the one at launch. The UI now captures the import scope when opening the picker.
+6. Media import/transform/export/delete controls remain unavailable until pending-operation recovery and reconciliation complete successfully when the media library opens.
+
+74.3 Source files corrected in this recheck
+- `app/src/main/java/com/questionbank/app/media/ImagePipeline.kt` — scoped orphan collection, protection of pending journal-owned files and operation-type filtering.
+- `app/src/main/java/com/questionbank/app/ui/media/ImageLibraryScreen.kt` — captured picker scope, recovery-ready gating and delete confirmation.
+- `app/src/main/java/com/questionbank/app/ui/question/QuestionCard.kt` — accurate full-group delete confirmation wording for normal and filtered search cards.
+- `PROJECT_PLAN_v1_65_RECHECKED.txt` — master checklist and latest status reconciled with v1.63–v1.65 changes.
+
+74.4 Reconciled status
+- Phase 9 remains PARTIAL / WRITTEN / UNVERIFIED; duplicate-save and forced-failure/rollback evidence is still open.
+- Phase 10 remains PARTIAL / WRITTEN / UNVERIFIED; editor attachment/linking, TOP/BOTTOM placement, ordering, replacement, unlinking, interactive crop, camera, startup recovery scheduling, paper asset retention and media backup/restore remain open.
+- Phase 11 remains PARTIAL / WRITTEN / UNVERIFIED; detail screen, copy/cut/paste, multi-select, bulk operations, reorder/sort/pagination and Chapter_CQ multi-block group management remain open.
+- Phase 12 remains PARTIAL / WRITTEN / UNVERIFIED; global cross-scope and Chapter_CQ search/filter, complete Bengali/English acceptance coverage and performance verification remain open.
+- Canonical SQL, Room entities/schema JSON, database version, identityHash, versionCode and versionName remain unchanged. App metadata remains versionCode=36 and versionName="0.2.31-phase5-wip2".
+
+74.5 Change log
+- v1.65: second static review corrected media cleanup ownership boundaries, media recovery operation filtering, media delete confirmation, import-scope capture and full-group delete warning. No tests/build run; Phases 9–12 remain unverified.
+
+END OF VERSION 1.65 UPDATE
+
+============================================================ 75. COORDINATED PHASE 10–12 EDITOR, MANAGEMENT AND GLOBAL SEARCH SOURCE UPDATE — VERSION 1.66
+============================================================
+
+Planning update date: 20 November 2026
+Source baseline: QuestionBank_PHASE10_12_v1_65_RECHECKED_SOURCE_UNVERIFIED.zip
+Package candidate: v1.66 source-only; no application build or runtime evidence.
+
+75.1 Owner direction and verification boundary
+- The owner requested Phases 10, 11 and 12 to be advanced together and explicitly instructed that no tests be run.
+- Accordingly, no Gradle build, Kotlin compilation, KSP/Room generation, unit test, instrumented test, APK assembly, emulator run or physical-device run was performed.
+- Static source inspection and archive packaging checks are not Android build or feature verification. The v1.66 candidate remains PARTIAL / SOURCE IMPLEMENTED / UNVERIFIED.
+- Phase 9 remains PARTIAL / WRITTEN / UNVERIFIED. This update does not certify Phase 9 atomic-save acceptance or any unexecuted test.
+- Preserved without change: canonical SQLite SQL, Room Entity set, Room schema JSON, database version 1, Room identityHash `786b471dfa14c9ae4739bb81479bab25`, `versionCode=36`, and `versionName="0.2.31-phase5-wip2"`. No database migration or schema change is introduced.
+
+75.2 Phase 10 — Image and Media Pipeline (PARTIAL / SOURCE IMPLEMENTED / UNVERIFIED)
+Source work added or wired:
+- Type_CQ new-question and Edit flows now carry stimulus image references and mixed ordered TEXT/IMAGE solution parts through EditorDraft, ViewModel snapshots, immutable save commands, repository mapping and DAO transaction/read-back paths.
+- Chapter_CQ editor snapshots and durable draft serialization now retain stimulus image references and mixed solution parts; the Chapter_CQ save bundle writes stimulus-image links and solution-part rows through its existing transaction boundary with validation/read-back.
+- Editor image controls import through the existing SAF/OpenDocument media pipeline into app-private storage. The selected TYPE_CQ or CHAPTER_CQ scope is captured when the picker is opened, rather than being read from a later mutable selection when the result returns.
+- Stimulus image controls expose TOP/BOTTOM placement, ordering, replacement and unlink/removal. Solution controls expose image attachment, removal, replacement and ordering across the combined TEXT/IMAGE solution-part sequence.
+- Image preview thumbnails resolve through the scope-specific media path. Import failures are surfaced in the Editor instead of being silently ignored; coroutine cancellation is propagated.
+- Type_CQ newly added sub-question blocks in an Edit transaction can persist ordered mixed solution parts rather than being treated as already-existing question IDs.
+- Existing v1.65 safeguards remain: scope-limited orphan-file collection, image-operation-only journal recovery, picker-scope capture, recovery-ready control gating, reference-guarded media deletion and delete confirmation.
+
+Still open in Phase 10:
+- Stimulus and solution image rows now have a Replace control that imports a new asset and swaps the attachment ID in the draft. The previously linked asset is not automatically deleted; safe cleanup/retention of unowned metadata remains open.
+- Type_CQ Edit does not yet create a new stimulus group for an existing standalone question that previously had no stimulus. New-question creation and Chapter_CQ's current editor can create an image-only stimulus.
+- Camera capture and an interactive crop UI remain open; current crop/rotate behavior is the existing fixed crop/rotation path.
+- Application-startup recovery scheduling and comprehensive process-death/filesystem lifecycle proof remain open.
+- Paper-asset ownership/retention, media archive backup/restore, and cleanup of unowned metadata rows remain open. Filesystem and Room writes are not claimed to be one atomic transaction.
+
+75.3 Phase 11 — Question Cards and Question Management (PARTIAL / SOURCE IMPLEMENTED / UNVERIFIED)
+Source work added or wired:
+- Type_CQ has a dedicated question-detail screen that loads the selected card/group and displays stimulus, stimulus images, ordered solution content and question metadata before navigation to Edit.
+- Chapter_CQ has a detail dialog displaying stimulus, stimulus images, ordered solution parts, board/year information, categories and marks/rating.
+- Type_CQ supports full-group duplicate/copy, including stimulus data, image links, ordered solution parts, board/year tags and category links, using newly created question/solution identifiers while reusing scope-owned image assets.
+- Type_CQ bulk delete resolves the complete selected groups, validates scope and membership, and delegates to one Room transaction. It does not delete only the currently visible sub-questions from a filtered card. Restrictive references can reject the transaction rather than being bypassed.
+- Chapter_CQ supports question-level duplicate/copy and multi-select batch delete. The batch DAO checks chapter ownership and uses a transaction; restrictive references can reject the batch.
+- Type_CQ and Chapter_CQ list surfaces expose selection and sorting by rating, marks and question type/label. Type_CQ displays results in 40-item increments using an explicit load-more action.
+
+Still open in Phase 11:
+- Chapter_CQ remains a question-level workflow; complete multi-block stimulus-group editing, duplicate/delete and group-level management are not implemented.
+- Cut/paste and a full clipboard workflow are not implemented. The existing copy action is duplicate/copy, not a move operation.
+- Chapter_CQ list pagination and database-backed Paging 3 remain open. Type_CQ's 40-item increment is UI-side over its currently loaded collection, not proof of database paging scalability.
+- Full card/detail UI acceptance and large-dataset behavior remain unverified.
+
+75.4 Phase 12 — Search, Filters and Duplicate Detection (PARTIAL / SOURCE IMPLEMENTED / UNVERIFIED)
+Source work added or wired:
+- A separate global search domain model, repository, use case, ViewModel and Filter-tab UI now query both existing FTS5 virtual tables through a read-only Room reader connection.
+- The result query keeps Type_CQ and Chapter_CQ table families separate and combines them as a cross-scope result projection; it does not add cross-scope DAO calls to either domain repository.
+- Text search uses each scope's FTS5 index with a bounded LIKE fallback for stimulus text and hashtag terms. Scope can be ALL, TYPE_CQ or CHAPTER_CQ.
+- Board, examination year, category (with an explicit category scope), rating and Type_CQ question-type filters can be combined with text search. Question-type filtering is disabled for Chapter_CQ.
+- Results display scope, subject/chapter/topic-or-chapter path, stimulus, question, short answer, marks/rating, board/year tags and categories. Type_CQ results navigate to the dedicated question detail screen; Chapter_CQ results open its detail dialog.
+- A duplicate indicator compares exact lowercased/trimmed question text across the two question tables, excluding the current row only within its own scope. It is an exact-text warning, not fuzzy/similarity matching.
+- The global-search ViewModel uses a generation guard to prevent an older cancelled query from overwriting a newer filter result or loading state.
+- Static corrections also handle the rating fallback for questions without a stimulus and cross-scope duplicate matching when independently scoped IDs happen to coincide.
+
+Still open in Phase 12:
+- Duplicate comparison is lower/trim exact-text matching and does not implement full Unicode canonical normalization or fuzzy similarity. Bengali/Latin digit normalization remains unresolved as documented earlier.
+- Search result highlighting, more advanced sorting, and result counts/pagination beyond the bounded 300-result projection remain open.
+- Bengali and English tokenizer behavior, query punctuation/whitespace cases, FTS rebuild behavior and performance on real datasets have not been tested in this update.
+- The global search query is source-written only; actual Room reader-connection and FTS runtime behavior remains unverified.
+
+75.5 Static review notes and corrections in v1.66
+- New Type_CQ Editor text-solution operations preserve existing image solution parts rather than rebuilding the solution list as text-only rows.
+- The Type_CQ Edit repository/DAO path treats newly added sub-question rows separately from updates to existing row IDs and writes their ordered solution parts as part of the group transaction.
+- Chapter_CQ solution text synchronization preserves IMAGE parts and maintains the combined solution order.
+- Image picker scope is captured at launch in both Editor attachment controls.
+- Global search category filtering is scoped to the chosen category family; board/year predicates include question and stimulus tags; stimulus-less question rating does not aggregate unrelated NULL-stimulus rows.
+- Cross-scope duplicate comparison no longer excludes a row in the other scope merely because its ID text matches the current-scope ID.
+- These are source-level corrections only. No claim is made that they compile or pass runtime behavior.
+
+75.6 Reconciled status
+- Phase 9: PARTIAL / WRITTEN / UNVERIFIED; duplicate-save and forced-failure/rollback evidence remains open.
+- Phase 10: PARTIAL / SOURCE IMPLEMENTED / UNVERIFIED; Editor image attachments and ordered mixed solutions are wired, but the open items in 75.2 remain.
+- Phase 11: PARTIAL / SOURCE IMPLEMENTED / UNVERIFIED; detail, duplicate/copy, bulk deletion and sorting are wired, but the open items in 75.3 remain.
+- Phase 12: PARTIAL / SOURCE IMPLEMENTED / UNVERIFIED; global cross-scope search and combined filters are wired, but the acceptance and feature gaps in 75.4 remain.
+- Phase 13 and later remain at their previous status; this update does not begin Paper Builder implementation.
+- The source archive contains no newly built APK. The package is not a release candidate.
+
+75.7 Change log
+- v1.66: integrated Type_CQ/Chapter_CQ Editor image attachment and mixed solution-image paths; added Type_CQ/Chapter_CQ question detail, duplicate/copy, batch management and sorting flows; added global cross-scope search and filters; applied static source corrections; no build or tests run by owner instruction.
+
+END OF VERSION 1.66 UPDATE
+
+
+============================================================ 76. COORDINATED PHASE 13–16 SOURCE UPDATE — VERSION 1.67
+============================================================
+
+Planning update date: 20 November 2026
+Source baseline: QuestionBank_PHASE10_12_v1_66_SOURCE_UNVERIFIED.zip
+Package candidate: QuestionBank_PHASE13_16_v1_67_SOURCE_UNVERIFIED.zip
+Verification boundary: source review only; no build or tests were run.
+
+76.1 Owner instruction and completion boundary
+- The owner requested Phases 13 through 16 to be advanced in one coordinated source update and explicitly instructed that no tests be run.
+- No Gradle task, Kotlin compilation, KSP/Room generation, unit test, Room test, migration test, repository test, UI test, instrumented test, emulator run, physical-device run or APK assembly was executed.
+- Therefore source files may be updated, but no implementation is described as compiled, runtime-working, regression-passed or release-ready.
+- Phase 16's defined exit criteria require all critical/high-priority tests to pass and a completed 146-item traceability audit. Those criteria cannot be met or claimed under the no-test instruction. Phase 16 is recorded as SOURCE INTEGRATION REVIEW ONLY / REGRESSION NOT RUN, not COMPLETED.
+
+76.2 Phase 13 — Paper Builder (SOURCE UPDATED / PARTIAL / UNVERIFIED)
+Source work added or wired:
+- Added Paper Builder UI in the Create tab and connected it to the paper repository.
+- Added scope-specific read projections for Type_CQ and Chapter_CQ so the two source domains are queried independently and then combined as read-only Paper Builder rows.
+- Added schema-versioned immutable paper snapshot encoding. The snapshot captures question text, answer, stimulus/reference text, hierarchy labels, marks, rating, type and ordered solution content; it is not re-resolved from the live source when rendered.
+- Added creation of a paper with a default section, paper title/metadata editing, section addition/reordering, cross-scope source search, question insertion, per-item marks override, item reorder/removal, paper validation and a text preview.
+- Added independent image copies under `filesDir/paper_media` and rows in the existing `paper_images` / `paper_item_images` tables. Question-scope cleanup is deliberately restricted to `media/type_cq`, `media/chapter_cq` and pending import storage; it does not collect `paper_media`.
+- Added orphan paper-image metadata/file cleanup after item removal. Paper image deletion waits for the media recovery gate.
+- Existing source-question foreign keys use SET NULL, while the serialized snapshot and paper-owned assets retain the captured content independently.
+
+Still open in Phase 13:
+- The preview currently presents text and marks; it does not yet render paper-owned image assets.
+- The repository contains a per-paper item override write path, but a complete override-editing UI and override-aware preview/export are not finished.
+- Custom paper-category selection/management, section deletion, full paper-library management and database-backed paging for large source lists remain open.
+- PDF/print/export is not implemented; the plan says export/print only if approved, and no additional export format was approved in this update.
+- Snapshot schema v1 is written/read; a future snapshot migration path beyond the current version is not implemented.
+- No source-deletion, source-edit, image-retention or ordering persistence acceptance evidence was produced. Phase 13 exit criteria remain UNVERIFIED.
+
+76.3 Phase 14 — Backup and Restore (SOURCE UPDATED / PARTIAL / UNVERIFIED)
+Source work added or wired:
+- Manual backup now writes a `.qbbak` ZIP archive containing a database snapshot plus committed image files under `media/type_cq`, `media/chapter_cq` and `paper_media`.
+- `manifest.json` records archive format version, creation time, application version/versionCode, database version, Room identity hash, database size/SHA-256 and a path/size/SHA-256 inventory for every included media file.
+- Restore extraction rejects unlisted paths, duplicate paths, traversal paths, unexpected content, missing files, hash/length mismatches and archives exceeding configured per-entry/total extraction limits.
+- Restore preview displays database row counts and whether media assets are included. The confirmed archive is staged before the app closes the database.
+- Startup restore swap runs in `Application.onCreate` before the lazy Room database can be opened. The previous database and both media trees are retained as `.replaced` paths; a marker allows interrupted-swap recovery to prefer the previous consistent set.
+- Legacy raw database-only `.db` backups remain readable. They leave current media files unchanged rather than pretending the old backup contains media.
+
+Still open in Phase 14:
+- Automatic backup scheduling/policy was not approved or implemented. Background BackupWorker/RestoreWorker orchestration is not complete; the current user-facing workflow is manual and uses BackupService plus startup restore swapping.
+- Media mutation/backup mutual exclusion is not yet enforced by one shared snapshot lock. A concurrent image operation during archive creation remains a consistency risk to be closed before declaring Phase 14 complete.
+- Cross-device restore, interrupted restore, corrupted archive/media and low-storage behavior have not been exercised.
+- Backup encryption, cloud transport and retention/rotation policy are not included.
+- Existing `.db` compatibility is source-written only; no restore scenario was run. Phase 14 remains UNVERIFIED.
+
+76.4 ADR update — JPEG storage policy (accepted for this source candidate; schema-neutral)
+- The earlier project text specified WebP, 800 px and quality 0.8. The source baseline instead used JPEG, a 2048 px maximum edge and quality 88. This mismatch is now explicitly recorded rather than silently rewriting the old rule.
+- Decision for this candidate: retain JPEG, maximum edge 2048 px and quality 88 for new image imports/transforms. Reason: preserve legibility of small text, diagrams and question-paper figures; a lower 800 px ceiling could reduce their readability.
+- Export converts the stored image to PNG. Existing decodable JPEG/PNG/WebP files remain supported as sources; this decision does not convert old files in place.
+- The backup archive includes supported image extensions and preserves their stored bytes. The decision is recorded in `docs/Architecture_Decision_Records.md` as ADR-013.
+
+76.5 Media recovery architecture and startup integration
+- Added separate source components: `ImageIntegrityChecker`, `ImageReferenceResolver`, `OrphanMediaCollector` and `ImageRecoveryWorker`.
+- `ImagePipeline` remains the application-facing façade and delegates integrity, safe-reference deletion and orphan collection to those components.
+- WorkManager schedules unique retryable startup recovery after restore-swap handling and container creation. The image library also awaits the same recovery gate before enabling media mutations.
+- Image imports, transforms, question-image deletion, paper-image copy and paper-image deletion await successful recovery. Paper media remains outside the question-scope collector roots.
+- This is a source-level integration. WorkManager scheduling, process-death recovery, concurrent operation ordering and every filesystem/Room failure case remain unverified.
+
+76.6 Phase 15 — Settings, Accessibility and Polish (SOURCE UPDATED / PARTIAL / UNVERIFIED)
+Source work added or wired:
+- Profile settings now include a default editor mode (Minimum / Full) and a search-term highlighting preference.
+- The selected default mode is wired to new Type_CQ questions, Type_CQ Edit and Chapter_CQ question creation; a stored canonical draft mode takes precedence when it exists.
+- Global Search can highlight matched terms when the owner enables the preference.
+- Existing theme and text-size controls remain in Profile. The image-storage policy is described there for transparency.
+- Added accessible content descriptions to selected controls and Paper Builder selection affordances; existing Material text labels remain available.
+
+Still open in Phase 15:
+- These preferences remain in SharedPreferences and are not included in database/media backup archives.
+- No configurable image-quality controls, full keyboard-navigation/focus-order audit, comprehensive screen-reader audit, touch-target audit or responsive small/large-screen review was completed.
+- Font-file integration, broad dialog/snackbar polish, image-loading profiling, memory/performance profiling and accessibility report remain open.
+- No UI interaction or accessibility acceptance was run. Phase 15 remains PARTIAL / UNVERIFIED.
+
+76.7 Phase 16 — System Integration and Regression (SOURCE INTEGRATION REVIEW ONLY)
+Source integrations wired in this candidate:
+- Paper Builder is routed from the Create tab and uses the PaperRepository supplied by AppContainer.
+- The `.qbbak` manual backup and staged restore path is exposed through the Profile backup screen; the startup restore swap is invoked before the Room container is constructed.
+- Image recovery is scheduled at application startup through unique WorkManager work and shares the same ImagePipeline recovery gate with the media library and paper-media operations.
+- Default editor mode and search highlighting preferences are passed from AppContainer into their relevant screens/ViewModels.
+- Static source review corrections addressed the backup result/preview model fields, the edit ViewModel default-editor-mode constructor wiring, invalid scope-qualified search selectors, paper-media deletion gating and restore rollback of originally empty media roots.
+
+Not completed in Phase 16:
+- No unit/Room/migration/repository/editor/media/search/paper/backup/UI/process-death/low-memory/large-dataset/cross-scope tests were run.
+- The 146-item Editor audit was not executed and no release-candidate build was produced.
+- No 146-item traceability completion report, executed defect-resolution report or regression pass report is claimed.
+- Phase 16 cannot pass its published exit criteria without the prohibited test runs and remaining evidence. Status: SOURCE INTEGRATION REVIEW WRITTEN / TESTS NOT RUN / NOT VERIFIED.
+
+76.8 Preservation and project status
+- No canonical SQL, Room Entity, exported Room schema JSON, database version, Room identity hash, migration, application versionCode or application versionName change is intended by this update. Database version remains 1; `versionCode=36`; `versionName="0.2.31-phase5-wip2"`.
+- The WorkManager dependency and new Kotlin/Compose source files are source changes only. Dependency resolution and compilation have not been checked.
+- Phase 13: SOURCE UPDATED / PARTIAL / UNVERIFIED.
+- Phase 14: SOURCE UPDATED / PARTIAL / UNVERIFIED.
+- Phase 15: SOURCE UPDATED / PARTIAL / UNVERIFIED.
+- Phase 16: SOURCE INTEGRATION REVIEW ONLY / TESTS NOT RUN / NOT COMPLETED.
+- Phase 17 — Release and Delivery: NOT STARTED.
+
+76.9 Change log
+- v1.67: added the first integrated Paper Builder source path; independent paper-owned media copies and cleanup boundary; media-inclusive ZIP backup/restore with manifest and startup swap; JPEG/2048px/quality-88 and media-recovery architecture decisions; WorkManager startup recovery; default editor/search highlighting preferences; cascading Subject/Chapter/Topic global-search filters; Phase 13–16 source integration review. No build or tests run by owner instruction.
+
+76.10 Final static-only adjustments
+- Paper-owned copies preserve the source image's supported extension and MIME type (legacy PNG/WebP files are not mislabeled as JPEG); new imported media remains JPEG per ADR-013.
+- Backup ZIP extraction enforces the manifest's 8 MiB limit during extraction.
+- WorkManager 2.12.0 is recorded in the dependency-freeze document as UNCONFIRMED because dependency resolution/build was not run.
+
+
+============================================================
+77. CAREFUL SOURCE RECHECK — VERSION 1.68 HOTFIX CANDIDATE
+============================================================
+
+Recheck date: 20 November 2026
+Base package: QuestionBank_PHASE13_16_v1_67_SOURCE_UNVERIFIED.zip
+Updated package: QuestionBank_PHASE13_16_v1_68_RECHECKED_SOURCE_UNVERIFIED.zip
+Scope: Static source and archive inspection only. No Gradle build, compile,
+KSP/Room generation, test, emulator/device run or APK assembly.
+
+77.1 v1.67 package review
+- The v1.67 ZIP archive was readable and its internal entry checks passed.
+  Its SHA-256 matched the supplied checksum file. This establishes archive
+  integrity only; it is not evidence that Android source compiles or runs.
+- Compared with v1.66, 38 paths were added or changed; no source paths were
+  deleted in the package comparison.
+- Canonical SQL, Room exported schema JSON, Room database registration,
+  database version, Room identity hash, app versionCode and versionName
+  were unchanged by the v1.67 source update.
+
+77.2 Critical defect found and source correction applied in v1.68
+The v1.67 RestoreSwap rollback path ignored Boolean results from File.renameTo
+(and deletion operations), then removed the recovery marker unconditionally.
+The interrupted-restore recovery path also ignored rollback operation results
+and removed the marker even if the previous database/media pair could not be
+restored. The Application startup path would then continue toward AppContainer
+and could allow Room to open after incomplete recovery.
+
+The v1.68 source candidate changes this behavior as follows:
+1. WAL/SHM sidecars are moved before the main database so a crash between
+   moves can be identified and reversed independently.
+2. Rollback verifies every old database, sidecar and media restoration step.
+3. The recovery marker is retained when any rollback operation fails.
+4. Startup returns a recoveryRequired failure and refuses to initialize the
+   Room container while the marker indicates incomplete recovery.
+5. The marker is fsynced before live paths are moved.
+6. Any rollback-failure recovery remains retryable on a later process start.
+
+This is a source-level corrective change only. No fault-injection test, file
+permission test, process-death test or device restore test was run.
+
+77.3 Remaining high-priority Phase 14 gaps
+- BackupArchive calculates media file length/SHA-256 while enumerating files,
+  then opens those source paths again later to add them to the ZIP. There is no
+  shared snapshot mutex coordinating this with ImagePipeline imports,
+  transforms, deletes and paper-image copy/delete operations. A mutation in
+  that interval can make the ZIP payload differ from the manifest record.
+- BackupService verifies that the user-selected output bytes equal the
+  internally generated ZIP bytes, but it does not re-extract and validate
+  the finished ZIP before reporting Done. Thus an internally inconsistent
+  manifest/archive could be reported as exported, then be rejected on restore.
+- No BackupWorker or RestoreWorker exists in app source. Automatic backup
+  policy and background worker orchestration remain unimplemented.
+- Backup preview counts are Type_CQ-only (DbCounts); Chapter_CQ data is in
+  the database archive but is not represented in the displayed count summary.
+- Restore crash/fault scenarios and media/database consistency remain
+  unverified.
+
+77.4 Remaining Phase 13 gaps
+- Paper Builder source path is partial: source selection is limited to the
+  first 80 rows and is not database-paged.
+- Preview is text-only; paper-owned image assets are not rendered there.
+- Full per-item override editing/override-aware preview, section deletion,
+  library management, category management and approved PDF/print/export
+  are not complete.
+- Paper orphan collection removes files for unreferenced image rows; it does
+  not scan paper_media for files left behind before a database row was
+  committed (for example, a process death between file copy and DB write).
+
+77.5 Remaining Phase 15 gaps
+- Theme and text-size preferences exist; v1.67 adds default editor mode and
+  search-term highlighting.
+- Configurable image behavior, font integration, complete keyboard/focus
+  order, screen-reader semantics, touch-target review, responsive layouts,
+  and broad interaction/performance polish remain open.
+- No accessibility audit or UI acceptance was performed.
+
+77.6 Phase 16 status
+Phase 16 is SOURCE INTEGRATION REVIEW ONLY / TESTS NOT RUN / NOT COMPLETED.
+The required regression suite, 146-item Editor audit, defect-resolution
+evidence and release-candidate build have not been produced. The owner has
+explicitly instructed that no tests be run; therefore Phase 16 cannot be
+marked passed or completed against the current plan's exit criteria.
+
+77.7 Final status after careful recheck
+- Phase 13: SOURCE UPDATED / PARTIAL / UNVERIFIED.
+- Phase 14: SOURCE UPDATED / PARTIAL / UNVERIFIED; the v1.67 critical
+  rollback defect is corrected in v1.68 source, while archive snapshot
+  concurrency and worker/policy gaps remain.
+- Phase 15: SOURCE UPDATED / PARTIAL / UNVERIFIED.
+- Phase 16: SOURCE INTEGRATION REVIEW ONLY / TESTS NOT RUN / NOT COMPLETED.
+- Phase 17: NOT STARTED.
+- No build, compile, tests, APK assembly or runtime verification is claimed.
+
+END OF VERSION 1.68 RECHECK UPDATE
+
+
+============================================================
+78. COORDINATED PHASE 0–16 SOURCE AND DOCUMENTATION UPDATE — VERSION 1.69
+============================================================
+
+Update date: 20 November 2026
+Base package: QuestionBank_PHASE13_16_v1_68_RECHECKED_SOURCE_UNVERIFIED.zip
+Candidate package: QuestionBank_PHASE0_16_v1_69_SOURCE_UNVERIFIED.zip
+Scope: source edits, source inspection, documentation, diff and archive-integrity review only.
+
+78.1 Owner instruction and non-negotiable verification boundary
+- The owner requested all project phases except Phase 17 to be completed carefully.
+- The owner previously prohibited all tests. That prohibition is preserved.
+- No Gradle build, Kotlin compile, KSP/Room generation, unit test, Room test, migration test,
+  repository test, editor test, media test, search test, paper test, backup/restore test,
+  Compose/UI automation, process-death test, low-memory test, large-dataset test,
+  cross-scope test, emulator run, physical-device run or APK assembly was executed.
+- ZIP entry integrity and SHA-256 checks are archive/file checks only; they do not prove that
+  the Android project compiles, installs, runs, saves data or restores data.
+- Consequently, no phase whose exit criteria require such evidence is marked DONE / VERIFIED.
+  This update advances source and documentation. It does not waive or redefine the published
+  exit criteria. Phase 17 is not modified and remains NOT STARTED.
+
+78.2 Phase ledger — authoritative v1.69 source status
+
+PHASE 0 — REQUIREMENTS AND PROJECT CONTROL
+Status: DOCUMENTATION ADDED / PARTIAL.
+- Added a requirements specification, screen/navigation inventory, phase-level traceability
+  status, risk register and no-test declaration.
+- Preserved the one-database rule, separate Type_CQ / Chapter_CQ domains, canonical schema
+  authority, paper snapshot ownership, media recovery gate and owner-approved image policy.
+- The referenced 146-item Feature-to-Schema / Editor behavior matrix was not present in the
+  supplied project files. No numbered items have been invented. Exact 146-item mapping and
+  owner approval therefore remain open; Phase 0 cannot be marked complete.
+
+PHASE 1 — ANDROID BUILD FOUNDATION
+Status: HISTORICAL BASELINE ONLY / CURRENT CANDIDATE UNVERIFIED.
+- Existing Gradle wrapper, application module, workflow files and fixed debug signing setup
+  are retained unchanged.
+- WorkManager 2.12.0 remains UNCONFIRMED in the dependency freeze. Dependency resolution and
+  toolchain compatibility were not checked.
+- Release signing is deliberately outside this update and belongs to Phase 17.
+
+PHASE 2 — DATABASE PARITY AND CONSTRAINTS
+Status: HISTORICALLY VERIFIED BASELINE / NO SCHEMA DELTA IN v1.69.
+- Canonical SQL and exported Room schema JSON compare byte-for-byte with v1.68.
+- QuestionBankDatabase remains version 1 and the historical identity hash remains unchanged.
+- No database schema, Entity or migration change was introduced by this update.
+- This static comparison is not a new Room parity execution or database runtime verification.
+
+PHASE 3 — MIGRATION AND SEED DATA
+Status: PARTIAL / NO NEW MIGRATION REQUIRED FOR THIS SOURCE DELTA.
+- The v1.69 source update does not change the canonical schema, Room Entity inventory or DB version.
+- The project still has no complete versioned Migration-object chain, migration fixtures, or
+  executed migration coverage for future schema upgrades. Historical seed work is preserved.
+- Do not infer migration completion from the fact that this particular update has no schema change.
+
+PHASE 4 — DOMAIN / DAO / REPOSITORY
+Status: PARTIAL / SOURCE UPDATED / UNVERIFIED.
+- Paper contracts now expose combined source keyset pages and placement-aware paper image links.
+- Paper reorder DAO operations now compare the complete current ID set with the requested ID set
+  inside a Room transaction and fail rather than silently persisting a stale partial order.
+- Existing scope-specific DAOs and repositories remain separate.
+- Shared/Chapter_CQ/media/paper integration and UI/data-layer boundary findings from the earlier
+  source audit remain open. No compile, Room processing or repository tests were run.
+
+PHASE 5 — HIERARCHY AND REFERENCE DATA UI
+Status: PARTIAL / HISTORICALLY CONFIRMED SUBSET RETAINED.
+- Existing Subject → Chapter → Topic Type_CQ and Subject → Chapter Chapter_CQ hierarchy remains.
+- Chapter_CQ has no Topic layer. The cascading global-search filter rules remain: parent changes
+  reset descendants; Topic is only applicable to Type_CQ.
+- Reference-data coverage, full error-state and current runtime behavior are not revalidated.
+
+PHASE 6 — EDITOR STATE ENGINE
+Status: PARTIAL / SOURCE PRESENT / UNVERIFIED.
+- Existing draft state and Minimum/Full mode wiring are retained; default editor preference remains.
+- Complete single shared cross-scope state coverage, Undo/Redo policy/implementation, draft lifecycle
+  after every process-death scenario and full save/recovery acceptance remain open.
+
+PHASE 7 — MINIMUM EDITOR
+Status: PARTIAL / SOURCE PRESENT / UNVERIFIED.
+- Existing Type_CQ and Chapter_CQ create/edit paths remain; default editor mode preference is wired.
+- Full parity for reference text, marks/type chooser, Chapter_CQ workspace and the complete 146-item
+  behavior list is not established. No editor interaction test was run.
+
+PHASE 8 — FULL EDITOR
+Status: PARTIAL / SOURCE PRESENT / UNVERIFIED.
+- Ordered text/image solution support and image attachment flows remain in source.
+- Full mathematical rendering, all block-level add/delete/reorder/replace interactions, camera capture,
+  interactive crop and complete Chapter_CQ multi-block group management remain open.
+
+PHASE 9 — ATOMIC PERSISTENCE
+Status: PARTIAL / SOURCE PRESENT / UNVERIFIED.
+- Existing transaction and operation-journal paths remain; media mutations share a process-local
+  snapshot/mutation exclusion lock.
+- Forced-failure, simultaneous-write, process-death, rollback and cross-domain atomicity evidence
+  has not been generated. External editor/file-process mutual exclusion is not implemented.
+
+PHASE 10 — IMAGE AND MEDIA PIPELINE
+Status: SOURCE IMPLEMENTED / PARTIAL / UNVERIFIED.
+- New image import policy remains JPEG, max edge 2048 px, quality 88; PNG export; legacy decodable
+  JPEG/PNG/WebP files remain readable.
+- Integrity checking, reference resolution, question-scope orphan collection and startup recovery
+  remain separated into their helper components and are wired through ImagePipeline.
+- Recovery is scheduled through unique one-time WorkManager work. All media mutation and backup
+  paths use the recovery gate; the media snapshot coordinator serializes in-process mutations and
+  backup snapshots.
+- Paper-owned image copies retain their source extension/MIME type under paper_media and are outside
+  the Type_CQ/Chapter_CQ orphan-collector roots. Paper orphan files have a 24-hour grace period before
+  untracked files are removed, avoiding deletion in the file-copy/DB-commit window.
+- Camera capture, interactive crop, full automatic retention after every replacement/unlink path,
+  filesystem fault injection, external-process locking and runtime validation remain open.
+
+PHASE 11 — QUESTION CARDS AND QUESTION MANAGEMENT
+Status: PARTIAL / SOURCE IMPLEMENTED / UNVERIFIED.
+- Existing question detail, duplicate/copy, selection/batch deletion and sort paths are retained.
+- Chapter_CQ multi-block group management, full cut/paste, Chapter_CQ list paging, and complete
+  consistency review of selection and ordering remain open. No regression test was run.
+
+PHASE 12 — SEARCH, FILTERS AND DUPLICATE DETECTION
+Status: SOURCE IMPLEMENTED / PARTIAL / UNVERIFIED.
+- Global cross-scope search, scope, board, year, category, rating and Type_CQ question-type filters
+  remain wired. Subject → Chapter → Topic cascading is preserved with Topic limited to Type_CQ.
+- Search-term highlighting is controlled by Profile preference.
+- Full Unicode normalization equivalence, Bengali/Latin digit normalization, broad result highlighting,
+  large-dataset query profiling, duplicate similarity beyond exact normalized text and acceptance
+  coverage remain open.
+
+PHASE 13 — PAPER BUILDER
+Status: SOURCE IMPLEMENTED / PARTIAL / UNVERIFIED.
+- Paper creation, editable title/metadata, category library and custom category management are wired.
+- Section create/reorder/delete-empty and cross-scope Type_CQ/Chapter_CQ source selection are present.
+- Source question selection uses a combined SQL keyset page (40 rows per screen request, limit+1
+  continuation signal) rather than the earlier fixed first-page list.
+- Question content and ordered solution text are stored in a schemaVersion-1 immutable snapshot.
+  Question-scope images are copied into paper_media with SHA-256 metadata and per-item placement links.
+- Per-paper item text/stimulus/answer/solution overrides, per-item marks, marks total and validation
+  are wired. Reordering checks current row IDs transactionally and refuses a stale reorder set.
+- Builder item list displays paper-owned image thumbnails. PDF export is wired from the persisted
+  snapshot and paper-owned assets. It checks paper-media path ownership and SHA-256 before embedding;
+  the PDF places stimulus-top, stimulus-bottom and solution images according to the stored placement.
+- Source question edits/deletions do not trigger a re-resolution of snapshot text. Paper images are
+  independently copied and are not owned by the source question cleanup process.
+- Remaining limitations: preview dialog itself is still text-oriented; image thumbnails exist in the
+  builder and image placement is represented in PDF output, but visual fidelity/layout has not been
+  runtime-checked. PDF uses Android default typeface; Bengali font embedding is not guaranteed across
+  PDF viewers. Empty sections may not appear as independent headings when they contain no items.
+  Snapshot schema migration beyond v1 is not implemented. Large dataset paging, source-deletion
+  behavior, ordering, image lifetime and exported PDF remain unverified.
+
+PHASE 14 — BACKUP AND RESTORE
+Status: SOURCE IMPLEMENTED / PARTIAL / UNVERIFIED.
+- Manual `.qbbak` ZIP includes QuestionBank.db, media/type_cq, media/chapter_cq and paper_media.
+- Manifest includes format version, created time, app version/versionCode, DB version, Room identity
+  hash and database/media length + SHA-256 inventory.
+- Archive extraction rejects unsafe paths, path aliases, symlinks in backup roots, duplicate/unlisted
+  entries, malformed media namespaces, oversized manifest/entries/archive, and inventory/hash mismatch.
+- Export holds a process-wide media snapshot lock across DB snapshot, media enumeration, ZIP creation
+  and archive self-extraction/validation. It waits for ImagePipeline recovery readiness first.
+- Restore preview stages and inspects archive/DB before confirmation. Startup swap runs before Room
+  opens; previous DB, WAL/SHM and media trees are preserved for rollback. v1.68 fail-closed rollback
+  correction remains; a post-swap read-only inspection worker is enqueued.
+- Automatic backup preference, unique periodic WorkManager worker, local retention and battery/storage
+  constraints are source-wired. Policy persistence failure is now surfaced; WorkManager scheduling
+  failure is not reported as success. If recovery-worker scheduling fails on startup, app-scope
+  fallback recovery is attempted while the same media gate remains closed until success.
+- Remaining limitations: automatic copies live only in app-private storage and do not protect against
+  uninstall/Clear data/device loss; manual off-device export remains necessary. No encryption, cloud
+  sync, cross-device migration or multi-process file lock is provided. RestoreWorker is a read-only
+  post-swap inspection worker; actual safe swap still runs synchronously at cold start in Application
+  before Room initialization. WorkManager 2.12.0 and all worker scheduling behavior remain UNCONFIRMED
+  until dependency resolution/build/runtime authorization. No corruption or process-death test was run.
+
+PHASE 15 — SETTINGS, ACCESSIBILITY AND POLISH
+Status: SOURCE UPDATED / PARTIAL / UNVERIFIED.
+- Profile exposes Light/Dark, global text size, default Minimum/Full editor mode, search-term highlight,
+  High Contrast and image-storage policy text.
+- High Contrast light/dark Material color schemes are available and persist in SharedPreferences.
+- Search highlighting is passed into Global Search result cards. Settings are stored in SharedPreferences
+  before database open; these presentation settings are not included in the DB/media archive by design.
+- Remaining: full keyboard and focus-order audit, TalkBack/screen-reader review, touch-target audit,
+  responsive small/large-screen layouts, Hind Siliguri font integration, detailed dialogs/snackbar
+  polish, image memory/performance profiling and a formal accessibility/performance report.
+
+PHASE 16 — SYSTEM INTEGRATION AND REGRESSION
+Status: SOURCE INTEGRATION REVIEW ONLY / TESTS NOT RUN / NOT COMPLETED.
+- Navigation wiring is present for Paper Builder in Create and Profile/Backup/Media routes.
+- AppContainer supplies the same database/repositories/media pipeline; Application applies a staged
+  restore before container/database use, schedules automatic backup and startup image recovery, and
+  schedules post-swap read-only inspection.
+- Static review corrections in this update include: timeout-safe backup recovery gate handling,
+  transactional complete-set order checks, placement-aware snapshot/PDF image rendering, correct
+  per-section reorder button enablement, persisted auto-backup policy result handling, backup path
+  alias/symlink rejection and app-scope fallback recovery scheduling.
+- The required unit/Room/migration/repository/editor/media/search/paper/backup/UI/process-death/
+  low-memory/large-dataset/cross-scope regression suite was not run. The 146-item Editor audit was not
+  possible because the original numbered matrix was not supplied. No release-candidate APK is produced.
+- Phase 16 cannot meet its published exit criteria under the current no-test instruction; it is not
+  labelled completed or passed.
+
+PHASE 17 — RELEASE AND DELIVERY
+Status: NOT STARTED — OUT OF SCOPE FOR THIS UPDATE.
+- No release signing, R8/minification, signed APK/AAB, release install/upgrade verification or final
+  archive was created. No Phase 17 file or status is advanced by this update.
+
+78.3 Static correction log (source inspection only)
+- Added explicit `ImagePipeline.awaitRecoveryReady()` and bounded wait; BackupService reports a failed
+  export result when recovery readiness times out instead of leaving a UI coroutine cancelled silently.
+- Made reorder transactions verify the complete current section/item ID set, and restricted item reorder
+  to its section. Paper UI up/down enabled states now use same-section position.
+- Exposed paper image placement links to the exporter; the PDF source path now renders top/bottom/solution
+  image groups from paper-owned paths after SHA-256/path ownership checks.
+- Split snapshot rendering into stimulus, question and solution sections to align the PDF image placement.
+- Tightened ZIP media-root symlink checks and rejected `.` path segments to prevent canonical path aliases.
+- Surfaced SharedPreferences automatic-backup policy persistence failure.
+- Added an app-scope recovery fallback if WorkManager cannot enqueue the startup recovery item; media
+  operations remain blocked until recovery succeeds.
+- All corrections above remain uncompiled and untested by owner instruction.
+
+78.4 Architecture and data compatibility
+- Canonical SQL file and Room exported schema JSON are byte-identical to v1.68.
+- QuestionBankDatabase `version = 1`; no migration or schema changes were made.
+- `versionCode = 36` and `versionName = 0.2.31-phase5-wip2` remain unchanged.
+- The v1.69 package/document label is not the Android app version. No release version is claimed.
+- WorkManager 2.12.0 remains UNCONFIRMED; dependency resolution was not run.
+
+78.5 Completion decision
+- Source/documentation coverage has been advanced for Phases 0–16.
+- Phases 0, 1, 3–16 retain the explicit partial/unverified limitations above; Phase 2 is based on prior
+  verification plus byte-for-byte schema comparison, not a new database test. No phase is promoted to
+  DONE / VERIFIED solely because source files exist.
+- Phase 16 is specifically not complete because the plan defines test-pass, full audit and regression
+  evidence as exit criteria and those were not run. Phase 17 remains NOT STARTED as requested.
+- The responsible project status is therefore: `PHASES 0–15 SOURCE UPDATED / MIXED PARTIAL / UNVERIFIED;`
+  `PHASE 16 SOURCE REVIEW ONLY / NOT COMPLETED; PHASE 17 NOT STARTED.`
+
+78.6 Change log
+- v1.69: coordinated Phase 0–16 source and documentation pass; enhanced Paper Builder keyset paging,
+  overrides, image preview/PDF placement and safe reorder; strengthened backup/media snapshot coordination,
+  automatic private backup and path validation; added requirements/screen/traceability/risk/handover
+  documents; no build or tests run by owner instruction.
+
+END OF VERSION 1.69 SOURCE UPDATE
+
+============================================================ 79. v1.70 FINAL STATIC RECHECK — SOURCE ONLY
+============================================================
+
+79.1 Recovery-gate lock ordering correction
+- Static inspection identified a deadlock possibility when a media mutation acquired
+  MediaSnapshotCoordinator and then awaited ImagePipeline.recoveryGate, while startup
+  recovery needed the same coordinator lock to complete that gate.
+- Updated importImage, transformImage, deleteImage, exportImage, copyImageToPaperStorage,
+  deletePaperStorageAsset and collectUntrackedPaperFiles so they await recovery readiness
+  BEFORE acquiring the shared media snapshot/mutation lock.
+- runStartupRecovery continues to hold the coordinator lock while replaying the journal and
+  reconciling managed folders, then completes the gate. No media mutation can enter before
+  recovery succeeds. Read-only verification/file lookup methods await the gate without
+  acquiring the coordinator lock.
+- This is a source-level lock-order correction only. It has not been concurrency-tested.
+
+79.2 Paper mark validation hardening
+- updatePaperMetadata and updateItemMarks reject NaN, positive/negative infinity and negative
+  mark values before writing.
+- validatePaper reports non-finite item or declared total marks instead of allowing NaN to
+  contaminate the sum or bypass the declared-total comparison.
+- No database constraint, table, Room Entity or schema version was changed.
+
+79.3 Final static checks permitted in this package
+- Source inspection confirms every ImagePipeline mutation/export path awaits recovery before
+  entering MediaSnapshotCoordinator; runStartupRecovery is the only path that takes that
+  lock before opening the gate.
+- Paper and backup source paths were re-read for call-site wiring and documented limitations.
+- Canonical SQL and exported Room schema remain unchanged from v1.68; database version stays 1.
+- App versionCode remains 36 and versionName remains 0.2.31-phase5-wip2.
+- ZIP integrity and SHA-256 are archive checks only; no Kotlin/Android behavior is inferred.
+
+79.4 Final truthful phase decision
+- Phases 0–15 have source/documentation artifacts and implementation advances, but multiple
+  published exit criteria and owner inputs remain open. They are not all DONE / VERIFIED.
+- Phase 16 remains SOURCE INTEGRATION REVIEW ONLY / TESTS NOT RUN / NOT COMPLETED. The
+  published regression exit criteria and 146-item audit cannot be satisfied under the no-test
+  instruction; the original numbered matrix is not present in the supplied project files.
+- Phase 17 remains NOT STARTED and intentionally excluded.
+- No APK/AAB or release candidate was built.
+
+79.5 Change log
+- v1.70: fixed media recovery gate/mutex lock order to avoid startup recovery deadlock; hardened
+  paper marks against NaN/infinity; expanded project handover, inventory, migration, data-layer,
+  editor-state, media, paper, backup, acceptance-plan, risk and no-test documentation. No
+  Gradle build, compile, KSP, Room generation, tests or device run were performed.
+
+END OF VERSION 1.70 SOURCE UPDATE
+
+============================================================
+80. CI RESULTS FOR THE v1.70 SOURCE CANDIDATE AND COMPILE FIXES - VERSION 1.71
+============================================================
+
+Planning update date: 20 November 2026
+
+80.1 CI run A (v1.70 source) - FAILED at :app:compileDebugKotlin, 8 compile errors
+- BackupService.kt:129  sha256(File): only sha256(InputStream) existed. Fix: sha256(File) overload.
+- PaperRepositoryImpl.kt:196  nullable image id added with += . Fix: null check and .add(...).
+- PaperRepositoryImpl.kt:237  missing return. Fix: "return try { ... }".
+- EditorUseCases.kt:142  PaperRepository.addSnapshotItem missing in the interface (DAO had it). Fix: added to interface and PaperRepositoryImpl (calls beforeWrite, then the DAO).
+- EditorImageAttachments.kt  missing import androidx.compose.runtime.remember (also caused the "!" errors). Fix: import added.
+- GlobalSearchScreen.kt:110  shadowed "it" in nested lambda. Fix: named lambda parameters.
+- QuestionListScreen.kt:215-217  composable Message was not defined anywhere. Fix: private Message composable added.
+- Package: QuestionBank_v1_70_compilefix1.zip. No schema change.
+
+80.2 CI run B (compilefix1) - compile OK, unit tests 147 passed / 1 failed (of 148)
+- Failed: RestoreSwapTest.backupFileNameIsSortableAndUsesTheGivenZone. Expected ".db" but BackupNames.fileName returns ".qbbak" (Phase 14 ZIP format). The code is right, the test was stale.
+- Fix: test expectation changed to ".qbbak"; comment in BackupNames.kt updated.
+- androidTest sources compile: BUILD SUCCESSFUL. Release variant assemble: BUILD SUCCESSFUL (non-blocking steps).
+- Package: QuestionBank_v1_70_compilefix2.zip.
+
+80.3 Effect on phase status (evidence-based)
+- Phase 1: compile and androidTest-compile and release-assemble now have a green log for the current source tree; the unit-test step is green except the one stale test (fixed, awaiting re-run). Phase 1 exit criterion (green CI) is met only after the next run is green.
+- Phases 4-16: source now COMPILES (first time since v1.53 candidates). It still has no runtime evidence: emulator run, 148 unit tests result and instrumented run (111 tests) are not yet confirmed for this source.
+- Phase 3 (no Migration objects/tests), Phase 0 and 16 (146-item matrix missing), media/paper/UI tests missing: unchanged and still open.
+- Room identityHash / schema JSON: not re-checked in this step.
+
+80.4 Next steps
+1. Push compilefix2, run CI, send the new QuestionBank-ci-report.
+2. Run the emulator (instrumented) workflow and send its report.
+3. Then: migration chain and tests (Phase 3); media, paper and Compose UI tests; supply the 146-item matrix.
+
+END OF VERSION 1.71 UPDATE

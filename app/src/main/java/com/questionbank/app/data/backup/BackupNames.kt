@@ -6,7 +6,7 @@ import java.util.Locale
 import java.util.TimeZone
 
 object BackupNames {
-    /** `QuestionBank-backup-20261118-2130.db` (local time of the phone). Sorts by date when listed by name. */
+    /** `QuestionBank-backup-20261118-2130.qbbak` (local time of the phone). Sorts by date when listed by name. */
     fun fileName(timeMillis: Long, zone: TimeZone = TimeZone.getDefault()): String {
         val format = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US)
         format.timeZone = zone

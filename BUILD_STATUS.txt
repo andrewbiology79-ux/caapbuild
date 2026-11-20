@@ -1,3 +1,8 @@
+CI RESULTS v1.70 SOURCE (20 Nov 2026) - see PROJECT_PLAN_v1_71_COMPILEFIX_CI.txt section 80
+- Run A: compileDebugKotlin FAILED, 8 errors; fixed in compilefix1.
+- Run B (compilefix1): compile OK; unit tests 147 of 148 passed (stale .db vs .qbbak expectation in RestoreSwapTest); androidTest compile OK; release assemble OK.
+- compilefix2: stale test corrected. NOT yet re-run, NOT verified. Emulator/instrumented run for this source: not done.
+
 CURRENT SOURCE CANDIDATE v1.65 — PHASE 10–12 SECOND STATIC RECHECK (NOT VERIFIED)
 Artifact filename: QuestionBank_PHASE10_12_v1_65_RECHECKED_SOURCE_UNVERIFIED.zip
 Project plan: PROJECT_PLAN_v1_65_RECHECKED.txt
