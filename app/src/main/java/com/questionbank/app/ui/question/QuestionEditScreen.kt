@@ -2,6 +2,8 @@ package com.questionbank.app.ui.question
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,6 +31,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.questionbank.app.domain.question.QuestionRules
@@ -36,6 +39,7 @@ import com.questionbank.app.domain.question.UpdateResult
 import com.questionbank.app.media.ImagePipeline
 import com.questionbank.app.media.ImageScope
 import com.questionbank.app.ui.components.AppHeader
+import com.questionbank.app.ui.format.toBengali
 
 private fun editResultText(result: UpdateResult?): String? = when (result) {
     null, UpdateResult.Updated -> null
@@ -61,6 +65,9 @@ fun QuestionEditScreen(
     var showPreview by rememberSaveable { mutableStateOf(false) }
     var pendingDeleteLabel by remember { mutableStateOf<com.questionbank.app.domain.question.CqLabel?>(null) }
     val invalidMarkFields = remember { mutableStateListOf<Int>() }
+    var stimulusPreviewOpen by rememberSaveable { mutableStateOf(false) }
+    val questionPreviewOpen = remember { mutableStateListOf(false, false, false, false) }
+    val solutionPreviewOpen = remember { mutableStateListOf(false, false, false, false) }
     val catalog by viewModel.boardCatalog.collectAsState()
     val typeLabels by viewModel.questionTypeLabels.collectAsState()
     val categories by viewModel.categoryCatalog.collectAsState()
@@ -124,7 +131,33 @@ fun QuestionEditScreen(
         )
     }
 
-    Scaffold(topBar = { AppHeader(title = "প্রশ্ন সম্পাদনা", onBack = tryBack) }) { innerPadding ->
+    Scaffold(
+        topBar = {
+            Column {
+                AppHeader(
+                    title = "প্রশ্ন সম্পাদনা",
+                    onBack = tryBack,
+                    actions = {
+                        EditorHeaderActions(
+                            canUndo = viewModel.load == EditLoad.READY && viewModel.canUndo,
+                            canRedo = viewModel.load == EditLoad.READY && viewModel.canRedo,
+                            canSave = viewModel.load == EditLoad.READY && !viewModel.saving && viewModel.changed && invalidMarkFields.isEmpty(),
+                            saving = viewModel.saving,
+                            onUndo = viewModel::undo,
+                            onRedo = viewModel::redo,
+                            onSave = { viewModel.save(onSaved) },
+                        )
+                    },
+                )
+                if (viewModel.load == EditLoad.READY) {
+                    EditorModeBar(
+                        viewModel.editorMode,
+                        !viewModel.saving && (invalidMarkFields.isEmpty() || viewModel.editorMode == EditorMode.FULL),
+                    ) { mode -> if (mode == EditorMode.FULL || invalidMarkFields.isEmpty()) viewModel.setEditorMode(mode) }
+                }
+            }
+        },
+    ) { innerPadding ->
         when (viewModel.load) {
             EditLoad.LOADING -> Column(
                 modifier = Modifier.fillMaxSize().padding(innerPadding),
@@ -155,174 +188,178 @@ fun QuestionEditScreen(
                     DraftStatus.WAITING -> "ড্রাফটে সংরক্ষণ হচ্ছে…"
                     DraftStatus.SAVED -> "ড্রাফট সংরক্ষিত ✓ (প্রশ্নটি এখনো আগের মতোই আছে)"
                 }
-                Text(status, style = MaterialTheme.typography.bodySmall)
-                if (viewModel.restoredFromDraft) {
-                    Text(
-                        "আগের অসমাপ্ত সম্পাদনা ফিরিয়ে আনা হয়েছে।",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                EditorModePicker(viewModel.editorMode, !viewModel.saving && (invalidMarkFields.isEmpty() || viewModel.editorMode == EditorMode.FULL)) { mode ->
-                    if (mode == EditorMode.FULL || invalidMarkFields.isEmpty()) viewModel.setEditorMode(mode)
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = viewModel::undo, enabled = !viewModel.saving && viewModel.canUndo) { Text("↶ Undo") }
-                    TextButton(onClick = viewModel::redo, enabled = !viewModel.saving && viewModel.canRedo) { Text("↷ Redo") }
-                }
+                EditorDraftStatus(status, isSuccess = viewModel.draftStatus == DraftStatus.SAVED)
+                if (viewModel.restoredFromDraft) EditorDraftStatus("আগের অসমাপ্ত সম্পাদনা ফিরিয়ে আনা হয়েছে।", isSuccess = true)
                 if (viewModel.deletedQuestionLabels.isNotEmpty()) {
-                    Text(
-                        "সংরক্ষণের পর মুছে যাবে: ${viewModel.deletedQuestionLabels.joinToString { it.letter }}",
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    viewModel.deletedQuestionLabels.forEach { label ->
-                        TextButton(onClick = { viewModel.restoreDeletedQuestion(label) }, enabled = !viewModel.saving) {
-                            Text("${label.letter}) মুছে ফেলা বাতিল")
+                    EditorPanel {
+                        Text("সংরক্ষণের পর মুছে যাবে: ${viewModel.deletedQuestionLabels.joinToString { it.letter }}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+                        viewModel.deletedQuestionLabels.forEach { label ->
+                            TextButton(onClick = { viewModel.restoreDeletedQuestion(label) }, enabled = !viewModel.saving) {
+                                Text("${label.letter}) মুছে ফেলা বাতিল")
+                            }
                         }
                     }
                 }
                 if (viewModel.hasStimulus) {
-                    OutlinedTextField(
-                        value = viewModel.stimulus,
-                        onValueChange = viewModel::changeStimulus,
-                        label = { Text("উদ্দীপক") },
-                        minLines = 3,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    StimulusImageAttachments(
-                        pipeline = imagePipeline,
-                        imageScope = ImageScope.TYPE_CQ,
-                        images = viewModel.stimulusImages,
-                        enabled = !viewModel.saving,
-                        onChange = viewModel::changeStimulusImages,
-                    )
-                    RatingPicker(
-                        title = "উদ্দীপকের রেটিং",
-                        selected = viewModel.stimulusRating,
-                        enabled = !viewModel.saving,
-                        onSelect = viewModel::changeStimulusRating,
-                    )
-                    BoardTagsEditor(
-                        title = "উদ্দীপকের বোর্ড ও সাল",
-                        tags = viewModel.stimulusBoards,
-                        boards = catalog,
-                        enabled = !viewModel.saving,
-                        onChange = viewModel::changeStimulusBoards,
-                        onAddBoard = viewModel::addBoard,
-                    )
-                    OutlinedTextField(
-                        value = viewModel.referenceText,
-                        onValueChange = viewModel::changeReferenceText,
-                        label = { Text("রেফারেন্স (ঐচ্ছিক)") },
-                        minLines = 2,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-                viewModel.editableLabels.forEach { label ->
-                    val i = label.sortOrder - 1
-                    Text(
-                        "${label.letter}) ${typeLabels[viewModel.questionTypeIds[i]] ?: typeLabels[label.typeId] ?: label.typeLabel} · ${marksText(viewModel.marks[i])} নম্বর",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    if (viewModel.editorMode == EditorMode.FULL) {
-                        TypeAndMarksControls(
-                            i, viewModel.questionTypeIds[i], viewModel.marks[i], typeLabels, !viewModel.saving,
-                            onType = { viewModel.changeQuestionType(label, it) },
-                            onMarks = { viewModel.changeMarks(label, it) },
-                            onMarksValidity = { valid -> if (valid) invalidMarkFields.remove(i) else if (i !in invalidMarkFields) invalidMarkFields.add(i) },
-                        )
-                    }
-                    if (viewModel.editorMode == EditorMode.FULL) {
-                        MathSymbolBar(enabled = !viewModel.saving) { symbol -> viewModel.setText(label, viewModel.texts[i] + symbol) }
-                    }
-                    OutlinedTextField(
-                        value = viewModel.texts[i],
-                        onValueChange = { viewModel.setText(label, it) },
-                        label = { Text("প্রশ্ন") },
-                        minLines = 2,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    // The rating and the boards of a block are stored only with its question text.
-                    if (viewModel.texts[i].isNotBlank()) {
-                        RatingPicker(
-                            title = "${label.letter}) প্রশ্নের রেটিং",
-                            selected = viewModel.ratings[i],
-                            enabled = !viewModel.saving,
-                            onSelect = { viewModel.changeRating(label, it) },
+                    EditorPanel {
+                        EditorSectionTitle(
+                            "উদ্দীপক",
+                            trailing = {
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    EditorEyeToggle(stimulusPreviewOpen, enabled = !viewModel.saving) { stimulusPreviewOpen = !stimulusPreviewOpen }
+                                    EditorRatingSelect(viewModel.stimulusRating, enabled = !viewModel.saving, onSelect = viewModel::changeStimulusRating)
+                                }
+                            },
                         )
                         BoardTagsEditor(
-                            title = "${label.letter}) প্রশ্নের বোর্ড ও সাল",
+                            title = "উদ্দীপকের বোর্ড ও সাল",
+                            tags = viewModel.stimulusBoards,
+                            boards = catalog,
+                            enabled = !viewModel.saving,
+                            onChange = viewModel::changeStimulusBoards,
+                            onAddBoard = viewModel::addBoard,
+                        )
+                        StimulusImageAttachments(
+                            pipeline = imagePipeline,
+                            imageScope = ImageScope.TYPE_CQ,
+                            images = viewModel.stimulusImages,
+                            enabled = !viewModel.saving,
+                            onChange = viewModel::changeStimulusImages,
+                        )
+                        OutlinedTextField(
+                            value = viewModel.stimulus,
+                            onValueChange = viewModel::changeStimulus,
+                            placeholder = { Text("এখানে উদ্দীপকের বিবরণ ও গাণিতিক সূত্র লিখুন...") },
+                            minLines = if (viewModel.editorMode == EditorMode.FULL) 4 else 2,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        if (stimulusPreviewOpen) EditorLivePreview("উদ্দীপকের প্রিভিউ", viewModel.stimulus)
+                        OutlinedTextField(
+                            value = viewModel.referenceText,
+                            onValueChange = viewModel::changeReferenceText,
+                            placeholder = { Text("যেমন: রেফারেন্স লিখুন") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+                EditorSectionTitle("প্রশ্ন তালিকা (${viewModel.editableLabels.size.toBengali()}টি প্রশ্ন)")
+                viewModel.editableLabels.forEach { label ->
+                    val i = label.sortOrder - 1
+                    EditorPanel {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                            if (viewModel.editorMode == EditorMode.FULL) {
+                                TypeAndMarksControls(
+                                    i, viewModel.questionTypeIds[i], viewModel.marks[i], typeLabels, !viewModel.saving,
+                                    onType = { viewModel.changeQuestionType(label, it) },
+                                    onMarks = { viewModel.changeMarks(label, it) },
+                                    onMarksValidity = { valid -> if (valid) invalidMarkFields.remove(i) else if (i !in invalidMarkFields) invalidMarkFields.add(i) },
+                                )
+                            } else {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(
+                                        label.letter,
+                                        modifier = Modifier.background(Color(0xFF3B4FD8), RoundedCornerShape(8.dp)).padding(horizontal = 12.dp, vertical = 7.dp),
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                    Text("${marksText(viewModel.marks[i])} নম্বর", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                EditorEyeToggle(questionPreviewOpen[i], enabled = !viewModel.saving) { questionPreviewOpen[i] = !questionPreviewOpen[i] }
+                                EditorRatingSelect(viewModel.ratings[i], enabled = !viewModel.saving) { viewModel.changeRating(label, it) }
+                            }
+                        }
+                        if (viewModel.editorMode == EditorMode.FULL) {
+                            MathSymbolBar(enabled = !viewModel.saving) { symbol -> viewModel.setText(label, viewModel.texts[i] + symbol) }
+                        }
+                        BoardTagsEditor(
+                            title = "${label.letter}) বোর্ড ও সাল",
                             tags = viewModel.boards[i],
                             boards = catalog,
                             enabled = !viewModel.saving,
                             onChange = { viewModel.changeBoards(label, it) },
                             onAddBoard = viewModel::addBoard,
                         )
-                        Row(
+                        OutlinedTextField(
+                            value = viewModel.texts[i],
+                            onValueChange = { viewModel.setText(label, it) },
+                            placeholder = { Text("প্রশ্নের মূল বক্তব্য লিখুন...") },
+                            minLines = if (viewModel.editorMode == EditorMode.FULL) 3 else 2,
                             modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            Text("${label.letter}) ক্যাটাগরি", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                            TextButton(onClick = onManageCategories, enabled = !viewModel.saving) { Text("ক্যাটাগরি পরিচালনা") }
-                        }
-                        val selectedCategoryIds = viewModel.categoryIdsByLabel[i]
-                        val availableCategories = categories.filter { it.isArchived == 0L || it.categoryId in selectedCategoryIds }
-                        if (availableCategories.isEmpty()) {
-                            Text("কোনো ক্যাটাগরি নেই। রেফারেন্স থেকে ক্যাটাগরি যোগ করুন।", style = MaterialTheme.typography.bodySmall)
-                        }
-                        availableCategories.forEach { category ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(
-                                    checked = category.categoryId in selectedCategoryIds,
-                                    enabled = !viewModel.saving && (category.isArchived == 0L || category.categoryId in selectedCategoryIds),
-                                    onCheckedChange = { checked -> viewModel.changeCategory(label, category.categoryId, checked) },
-                                )
-                                Text(if (category.isArchived != 0L) "${category.name} (আর্কাইভড—আগের লিংক রাখা হয়েছে)" else category.name)
+                        )
+                        if (questionPreviewOpen[i]) EditorLivePreview("${label.letter}) প্রশ্নের প্রিভিউ", viewModel.texts[i])
+                        if (viewModel.texts[i].isNotBlank()) {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("${label.letter}) ক্যাটাগরি", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                TextButton(onClick = onManageCategories, enabled = !viewModel.saving) { Text("ক্যাটাগরি পরিচালনা") }
+                            }
+                            val selectedCategoryIds = viewModel.categoryIdsByLabel[i]
+                            val availableCategories = categories.filter { it.isArchived == 0L || it.categoryId in selectedCategoryIds }
+                            if (availableCategories.isEmpty()) Text("কোনো ক্যাটাগরি নেই। রেফারেন্স থেকে ক্যাটাগরি যোগ করুন।", style = MaterialTheme.typography.bodySmall)
+                            availableCategories.forEach { category ->
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(
+                                        checked = category.categoryId in selectedCategoryIds,
+                                        enabled = !viewModel.saving && (category.isArchived == 0L || category.categoryId in selectedCategoryIds),
+                                        onCheckedChange = { checked -> viewModel.changeCategory(label, category.categoryId, checked) },
+                                    )
+                                    Text(if (category.isArchived != 0L) "${category.name} (আর্কাইভড—আগের লিংক রাখা হয়েছে)" else category.name)
+                                }
                             }
                         }
-                    }
-                    if (viewModel.hasStimulus && viewModel.original?.subQuestions?.any { it.label == label } == true) {
-                        TextButton(
-                            onClick = { pendingDeleteLabel = label },
-                            enabled = !viewModel.saving && viewModel.canDeleteQuestion(label),
-                        ) { Text("এই প্রশ্নটি মুছুন") }
-                    }
-                    OutlinedTextField(
-                        value = viewModel.answers[i],
-                        onValueChange = { viewModel.setAnswer(label, it) },
-                        label = { Text("সংক্ষিপ্ত উত্তর (ঐচ্ছিক)") },
-                        minLines = 1,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    if (viewModel.editorMode == EditorMode.FULL) {
+                        if (viewModel.hasStimulus && viewModel.original?.subQuestions?.any { it.label == label } == true) {
+                            TextButton(
+                                onClick = { pendingDeleteLabel = label },
+                                enabled = !viewModel.saving && viewModel.canDeleteQuestion(label),
+                            ) { Text("এই প্রশ্নটি মুছুন") }
+                        }
+                        if (viewModel.editorMode == EditorMode.FULL) {
+                            OutlinedTextField(
+                                value = viewModel.answers[i],
+                                onValueChange = { viewModel.setAnswer(label, it) },
+                                label = { Text("সংক্ষিপ্ত উত্তর (ঐচ্ছিক)") },
+                                minLines = 1,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                        EditorSectionTitle(
+                            "সমাধান",
+                            trailing = {
+                                EditorEyeToggle(solutionPreviewOpen[i], enabled = !viewModel.saving) { solutionPreviewOpen[i] = !solutionPreviewOpen[i] }
+                            },
+                        )
                         viewModel.solutionTexts[i].forEachIndexed { partIndex, part ->
-                            MathSymbolBar(enabled = !viewModel.saving) { symbol -> viewModel.changeSolutionText(label, partIndex, part + symbol) }
+                            if (viewModel.editorMode == EditorMode.FULL) {
+                                MathSymbolBar(enabled = !viewModel.saving) { symbol -> viewModel.changeSolutionText(label, partIndex, part + symbol) }
+                            }
                             OutlinedTextField(
                                 value = part,
                                 onValueChange = { viewModel.changeSolutionText(label, partIndex, it) },
-                                label = { Text("সমাধান ${partIndex + 1}") },
-                                minLines = 2,
+                                placeholder = { Text(if (partIndex == 0) "ধাপে ধাপে সমাধান লিখুন..." else "সমাধানের পরের অংশ লিখুন...") },
+                                minLines = if (viewModel.editorMode == EditorMode.FULL) 3 else 2,
                                 modifier = Modifier.fillMaxWidth(),
                             )
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                TextButton(onClick = { viewModel.moveSolutionText(label, partIndex, partIndex - 1) }, enabled = !viewModel.saving && partIndex > 0) { Text("↑") }
-                                TextButton(onClick = { viewModel.moveSolutionText(label, partIndex, partIndex + 1) }, enabled = !viewModel.saving && partIndex < viewModel.solutionTexts[i].lastIndex) { Text("↓") }
-                                TextButton(onClick = { viewModel.removeSolutionText(label, partIndex) }, enabled = !viewModel.saving) { Text("এই অংশ সরান") }
+                            if (viewModel.editorMode == EditorMode.FULL) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                    TextButton(onClick = { viewModel.moveSolutionText(label, partIndex, partIndex - 1) }, enabled = !viewModel.saving && partIndex > 0) { Text("↑") }
+                                    TextButton(onClick = { viewModel.moveSolutionText(label, partIndex, partIndex + 1) }, enabled = !viewModel.saving && partIndex < viewModel.solutionTexts[i].lastIndex) { Text("↓") }
+                                    TextButton(onClick = { viewModel.removeSolutionText(label, partIndex) }, enabled = !viewModel.saving) { Text("এই অংশ সরান") }
+                                }
                             }
                         }
-                        TextButton(onClick = { viewModel.addSolutionText(label) }, enabled = !viewModel.saving) {
-                            Text("+ সমাধানের অংশ যোগ করুন")
+                        if (viewModel.editorMode == EditorMode.FULL) {
+                            TextButton(onClick = { viewModel.addSolutionText(label) }, enabled = !viewModel.saving) { Text("+ সমাধানের অংশ যোগ করুন") }
+                            SolutionImageAttachments(
+                                pipeline = imagePipeline,
+                                imageScope = ImageScope.TYPE_CQ,
+                                parts = viewModel.solutionPartsByLabel[i],
+                                enabled = !viewModel.saving,
+                                onChange = { viewModel.changeSolutionImageParts(label, it) },
+                            )
                         }
-                        SolutionImageAttachments(
-                            pipeline = imagePipeline,
-                            imageScope = ImageScope.TYPE_CQ,
-                            parts = viewModel.solutionPartsByLabel[i],
-                            enabled = !viewModel.saving,
-                            onChange = { viewModel.changeSolutionImageParts(label, it) },
-                        )
+                        if (solutionPreviewOpen[i]) EditorLivePreview("${label.letter}) সমাধানের প্রিভিউ", viewModel.solutionTexts[i].filter { it.isNotBlank() }.joinToString("\n"))
                     }
                 }
 
@@ -333,11 +370,6 @@ fun QuestionEditScreen(
                     TextButton(onClick = { showPreview = true }) { Text("প্রিভিউ দেখুন") }
                 }
 
-                Button(
-                    onClick = { viewModel.save(onSaved) },
-                    enabled = !viewModel.saving && viewModel.changed && invalidMarkFields.isEmpty(),
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text(if (viewModel.saving) "সংরক্ষণ হচ্ছে…" else "পরিবর্তন সংরক্ষণ করুন") }
             }
         }
     }

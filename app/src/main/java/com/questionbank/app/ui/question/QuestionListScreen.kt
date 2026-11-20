@@ -54,6 +54,7 @@ import com.questionbank.app.domain.question.BoardItem
 import com.questionbank.app.domain.question.SavedGroup
 import com.questionbank.app.domain.question.QuestionGroupKey
 import com.questionbank.app.domain.question.QuestionCardRules
+import com.questionbank.app.media.ImagePipeline
 import com.questionbank.app.ui.components.AppHeader
 import com.questionbank.app.ui.format.toBengali
 import com.questionbank.app.ui.format.toBengaliDigits
@@ -78,6 +79,7 @@ fun QuestionListScreen(
     onCopy: (SavedGroup) -> Unit,
     onBulkDelete: (List<String>) -> Unit,
     onView: (SavedGroup) -> Unit,
+    imagePipeline: ImagePipeline,
     onBack: () -> Unit,
 ) {
     val groups by viewModel.groups.collectAsState()
@@ -184,8 +186,8 @@ fun QuestionListScreen(
                 val visibleGroups = if (showSearch) (searchState as? SearchUiState.Results)?.groups.orEmpty() else groups.orEmpty()
                 val sortedVisible = remember(visibleGroups, sortMode) { sortQuestionGroups(visibleGroups, sortMode) }
                 val toggleSelection: (String) -> Unit = { key -> selectedKeys = if (key in selectedKeys) selectedKeys - key else selectedKeys + key }
-                if (showSearch) SearchBody(searchState, boardCatalog, onEdit, onDelete, onCopy, onView, selectedKeys, toggleSelection, sortedVisible)
-                else ListBody(if (groups == null) null else sortedVisible, boardCatalog, onEdit, onDelete, onCopy, onView, selectedKeys, toggleSelection)
+                if (showSearch) SearchBody(searchState, boardCatalog, imagePipeline, onEdit, onDelete, onCopy, onView, selectedKeys, toggleSelection, sortedVisible)
+                else ListBody(if (groups == null) null else sortedVisible, boardCatalog, imagePipeline, onEdit, onDelete, onCopy, onView, selectedKeys, toggleSelection)
             }
         }
     }
@@ -193,7 +195,7 @@ fun QuestionListScreen(
 
 @Composable
 private fun ListBody(
-    current: List<SavedGroup>?, boards: List<BoardItem>, onEdit: (SavedGroup) -> Unit, onDelete: (SavedGroup) -> Unit,
+    current: List<SavedGroup>?, boards: List<BoardItem>, imagePipeline: ImagePipeline, onEdit: (SavedGroup) -> Unit, onDelete: (SavedGroup) -> Unit,
     onCopy: (SavedGroup) -> Unit, onView: (SavedGroup) -> Unit, selectedKeys: Set<String>, onToggle: (String) -> Unit,
 ) {
     when {
@@ -201,13 +203,13 @@ private fun ListBody(
         current.isEmpty() -> Box(Modifier.fillMaxSize()) {
             Text("এই টপিকে এখনো কোনো প্রশ্ন নেই।", modifier = Modifier.align(Alignment.Center).padding(24.dp), style = MaterialTheme.typography.bodyLarge)
         }
-        else -> CardList(current, totalLine(current), boards, onEdit, onDelete, onCopy, onView, selectedKeys, onToggle)
+        else -> CardList(current, totalLine(current), boards, imagePipeline, onEdit, onDelete, onCopy, onView, selectedKeys, onToggle)
     }
 }
 
 @Composable
 private fun SearchBody(
-    state: SearchUiState, boards: List<BoardItem>, onEdit: (SavedGroup) -> Unit, onDelete: (SavedGroup) -> Unit,
+    state: SearchUiState, boards: List<BoardItem>, imagePipeline: ImagePipeline, onEdit: (SavedGroup) -> Unit, onDelete: (SavedGroup) -> Unit,
     onCopy: (SavedGroup) -> Unit, onView: (SavedGroup) -> Unit, selectedKeys: Set<String>, onToggle: (String) -> Unit, sortedResults: List<SavedGroup>,
 ) {
     when (state) {
@@ -215,13 +217,13 @@ private fun SearchBody(
         SearchUiState.NoTerms -> Message("খোঁজার জন্য অক্ষর বা সংখ্যা লিখুন।")
         is SearchUiState.Failed -> Message("খোঁজা যায়নি। আবার চেষ্টা করুন।", isError = true)
         is SearchUiState.Results -> if (sortedResults.isEmpty()) Message("কোনো প্রশ্ন পাওয়া যায়নি.") else
-            CardList(sortedResults, foundLine(sortedResults), boards, onEdit, onDelete, onCopy, onView, selectedKeys, onToggle)
+            CardList(sortedResults, foundLine(sortedResults), boards, imagePipeline, onEdit, onDelete, onCopy, onView, selectedKeys, onToggle)
     }
 }
 
 @Composable
 private fun CardList(
-    groups: List<SavedGroup>, headline: String, boards: List<BoardItem>, onEdit: (SavedGroup) -> Unit, onDelete: (SavedGroup) -> Unit,
+    groups: List<SavedGroup>, headline: String, boards: List<BoardItem>, imagePipeline: ImagePipeline, onEdit: (SavedGroup) -> Unit, onDelete: (SavedGroup) -> Unit,
     onCopy: (SavedGroup) -> Unit, onView: (SavedGroup) -> Unit, selectedKeys: Set<String>, onToggle: (String) -> Unit,
 ) {
     val pageSize = 40
@@ -234,13 +236,18 @@ private fun CardList(
         item(key = "count") { Text("$headline · ${groups.size.toBengali()} টি", style = MaterialTheme.typography.labelLarge) }
         itemsIndexed(page, key = { _, group -> QuestionGroupKey.of(group) ?: group.subQuestions.first().id }) { index, group ->
             val key = QuestionGroupKey.of(group).orEmpty()
-            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Checkbox(checked = key in selectedKeys, onCheckedChange = { onToggle(key) })
-                androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
-                    QuestionCard(number = index + 1, group = group, boards = boards,
-                        onEdit = { onEdit(group) }, onDelete = { onDelete(group) }, onCopy = { onCopy(group) }, onView = { onView(group) })
-                }
-            }
+            QuestionCard(
+                number = index + 1,
+                group = group,
+                boards = boards,
+                imagePipeline = imagePipeline,
+                selected = key in selectedKeys,
+                onToggleSelected = { onToggle(key) },
+                onEdit = { onEdit(group) },
+                onDelete = { onDelete(group) },
+                onCopy = { onCopy(group) },
+                onView = { onView(group) },
+            )
         }
         if (shown < groups.size) item(key = "load-more") {
             TextButton(onClick = { shown = (shown + pageSize).coerceAtMost(groups.size) }, modifier = Modifier.fillMaxWidth()) {

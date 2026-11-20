@@ -330,6 +330,7 @@ fun AppNavHost() {
                         onCopy = vm::duplicateGroup,
                         onBulkDelete = vm::deleteGroups,
                         onView = { group -> QuestionGroupKey.of(group)?.let { navController.navigate(Routes.questionDetail(topicId, it)) } },
+                        imagePipeline = container.imagePipeline,
                         onBack = { navController.popBackStack() },
                     )
                 }
