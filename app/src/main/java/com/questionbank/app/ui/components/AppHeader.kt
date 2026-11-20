@@ -38,6 +38,7 @@ fun AppHeader(
     title: String,
     subtitle: String? = null,
     onBack: (() -> Unit)? = null,
+    leadingGlyph: String = "←",
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     val container = if (LocalDarkTheme.current) HeaderDark else HeaderLight
@@ -45,15 +46,15 @@ fun AppHeader(
         Row(
             modifier = Modifier
                 .windowInsetsPadding(WindowInsets.statusBars)
-                .height(56.dp)
+                .height(64.dp)
                 .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (onBack != null) {
                 IconButton(
                     onClick = onBack,
-                    modifier = Modifier.semantics { contentDescription = "পিছনে" },
-                ) { Text("←", fontSize = 22.sp, color = Color.White) }
+                    modifier = Modifier.semantics { contentDescription = if (leadingGlyph == "×") "বন্ধ করুন" else "পিছনে" },
+                ) { Text(leadingGlyph, fontSize = if (leadingGlyph == "×") 32.sp else 24.sp, color = Color.White, fontWeight = FontWeight.Light) }
             } else {
                 Spacer(Modifier.width(12.dp))
             }

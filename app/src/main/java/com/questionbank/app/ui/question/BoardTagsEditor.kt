@@ -132,6 +132,70 @@ fun BoardTagsEditor(
     }
 }
 
+
+
+/**
+ * Compact CAAP-style board/year control for the stimulus and question toolbar rows.
+ * The selected tags remain removable chips beside the board selector rather than a separate labelled form block.
+ */
+@Composable
+fun BoardTagsInlineControl(
+    tags: List<BoardTag>,
+    boards: List<BoardItem>,
+    enabled: Boolean,
+    onChange: (List<BoardTag>) -> Unit,
+    onAddBoard: suspend (String, String) -> AddBoardResult,
+    modifier: Modifier = Modifier,
+) {
+    var picking by rememberSaveable { mutableStateOf(false) }
+    Row(
+        modifier = modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(9.dp))
+                .background(Color.White)
+                .border(1.dp, Color(0xFFD5D9E2), RoundedCornerShape(9.dp))
+                .clickable(enabled = enabled) { picking = true }
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Text("বোর্ড", color = Color(0xFF2A3BB0), fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+            Text("⌄", color = Color(0xFF64748B), fontSize = 13.sp)
+        }
+        tags.forEach { tag ->
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(Color(0xFFEEF2FF))
+                    .border(1.dp, Color(0xFFD5DDFE), RoundedCornerShape(9.dp))
+                    .clickable(enabled = enabled) { onChange(BoardRules.removeTag(tags, tag)) }
+                    .padding(start = 9.dp, end = 7.dp, top = 7.dp, bottom = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                Text(tagText(tag, boards), color = Color(0xFF2A3BB0), fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                Text("×", color = Color(0xFF64748B), fontSize = 14.sp)
+            }
+        }
+    }
+    if (picking) {
+        BoardYearDialog(
+            boards = boards.filter { !it.isArchived },
+            existing = tags,
+            onAddBoard = onAddBoard,
+            onConfirm = { tag ->
+                picking = false
+                onChange(BoardRules.addTag(tags, tag))
+            },
+            onDismiss = { picking = false },
+        )
+    }
+}
+
 /** Picker: choose one board, then a year from the window (recent years) or type another year, then "যোগ করুন". */
 @Composable
 private fun BoardYearDialog(

@@ -33,7 +33,7 @@ class QuestionListLogicTest {
 
     @Test
     fun ratingBadgeShowsABengaliDigitAndAStar() {
-        assertEquals("৩★", ratingText(3))
-        assertEquals("৫★", ratingText(5))
+        assertEquals("★★★☆☆  মাঝারি", ratingText(3))
+        assertEquals("★★★★★  চ্যালেঞ্জিং", ratingText(5))
     }
 }

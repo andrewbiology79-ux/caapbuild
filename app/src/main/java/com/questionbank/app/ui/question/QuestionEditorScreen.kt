@@ -121,6 +121,7 @@ fun TypeAndMarksControls(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             isError = rawMarks.toDoubleOrNull()?.let { !it.isFinite() || it <= 0.0 } ?: true,
             textStyle = TextStyle(fontSize = 12.sp, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold),
+            shape = RoundedCornerShape(10.dp),
             modifier = Modifier
                 .width(48.dp)
                 .height(42.dp)
@@ -188,6 +189,7 @@ fun QuestionEditorScreen(
                 AppHeader(
                     title = "প্রশ্ন যোগ করুন",
                     onBack = onBack,
+                    leadingGlyph = "×",
                     actions = {
                         EditorHeaderActions(
                             canUndo = viewModel.canUndo,
@@ -233,35 +235,41 @@ fun QuestionEditorScreen(
             if (viewModel.restoredFromDraft) EditorDraftStatus("আগের অসমাপ্ত লেখা ফিরিয়ে আনা হয়েছে।", isSuccess = true)
 
             EditorPanel {
-                EditorSectionTitle(
-                    "উদ্দীপক",
-                    trailing = {
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            EditorEyeToggle(stimulusPreviewOpen, enabled = !viewModel.saving) { stimulusPreviewOpen = !stimulusPreviewOpen }
-                            EditorRatingSelect(draft.stimulusRating, enabled = !viewModel.saving, onSelect = viewModel::changeStimulusRating)
-                        }
-                    },
-                )
-                BoardTagsEditor(
-                    title = "উদ্দীপকের বোর্ড ও সাল",
-                    tags = draft.stimulusBoards,
-                    boards = boards,
-                    enabled = !viewModel.saving,
-                    onChange = viewModel::changeStimulusBoards,
-                    onAddBoard = viewModel::addBoard,
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    Text("ⓘ উদ্দীপক *", modifier = Modifier.weight(1f), color = Color(0xFF2A3BB0), fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    BoardTagsInlineControl(
+                        tags = draft.stimulusBoards,
+                        boards = boards,
+                        enabled = !viewModel.saving,
+                        onChange = viewModel::changeStimulusBoards,
+                        onAddBoard = viewModel::addBoard,
+                        modifier = Modifier.weight(1.15f),
+                    )
+                    EditorEyeToggle(stimulusPreviewOpen, enabled = !viewModel.saving) { stimulusPreviewOpen = !stimulusPreviewOpen }
+                    EditorRatingSelect(draft.stimulusRating, enabled = !viewModel.saving, onSelect = viewModel::changeStimulusRating)
+                }
                 StimulusImageAttachments(
                     pipeline = imagePipeline,
                     imageScope = ImageScope.TYPE_CQ,
                     images = draft.stimulusImages.orEmpty(),
                     enabled = !viewModel.saving,
                     onChange = viewModel::setStimulusImages,
+                    compact = true,
                 )
+                if (viewModel.editorMode == EditorMode.FULL) {
+                    MathSymbolBar(enabled = !viewModel.saving) { symbol -> viewModel.setStimulus(draft.stimulus + symbol) }
+                }
                 OutlinedTextField(
                     value = draft.stimulus,
                     onValueChange = viewModel::setStimulus,
                     placeholder = { Text("এখানে উদ্দীপকের বিবরণ ও গাণিতিক সূত্র লিখুন...") },
-                    minLines = if (viewModel.editorMode == EditorMode.FULL) 4 else 2,
+                    minLines = if (viewModel.editorMode == EditorMode.FULL) 4 else 3,
+                    textStyle = TextStyle(fontSize = 17.sp, lineHeight = 26.sp),
+                    shape = RoundedCornerShape(16.dp),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 if (stimulusPreviewOpen) EditorLivePreview("উদ্দীপকের প্রিভিউ", draft.stimulus)
@@ -270,6 +278,8 @@ fun QuestionEditorScreen(
                     onValueChange = viewModel::setReferenceText,
                     placeholder = { Text("যেমন: রেফারেন্স লিখুন") },
                     singleLine = true,
+                    textStyle = TextStyle(fontSize = 15.sp),
+                    shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -301,29 +311,29 @@ fun QuestionEditorScreen(
                                 Text("${marksText(draft.marks[i])} নম্বর", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            EditorEyeToggle(questionPreviewOpen[i], enabled = !viewModel.saving) {
-                                questionPreviewOpen[i] = !questionPreviewOpen[i]
-                            }
-                            EditorRatingSelect(draft.ratings[i], enabled = !viewModel.saving) { viewModel.changeRating(i, it) }
+                        BoardTagsInlineControl(
+                            tags = draft.boards[i],
+                            boards = boards,
+                            enabled = !viewModel.saving,
+                            onChange = { viewModel.changeBoards(i, it) },
+                            onAddBoard = viewModel::addBoard,
+                            modifier = Modifier.weight(1f),
+                        )
+                        EditorEyeToggle(questionPreviewOpen[i], enabled = !viewModel.saving) {
+                            questionPreviewOpen[i] = !questionPreviewOpen[i]
                         }
+                        EditorRatingSelect(draft.ratings[i], enabled = !viewModel.saving) { viewModel.changeRating(i, it) }
                     }
                     if (viewModel.editorMode == EditorMode.FULL) {
                         MathSymbolBar(enabled = !viewModel.saving) { symbol -> viewModel.setText(i, draft.texts[i] + symbol) }
                     }
-                    BoardTagsEditor(
-                        title = "${label.letter}) বোর্ড ও সাল",
-                        tags = draft.boards[i],
-                        boards = boards,
-                        enabled = !viewModel.saving,
-                        onChange = { viewModel.changeBoards(i, it) },
-                        onAddBoard = viewModel::addBoard,
-                    )
                     OutlinedTextField(
                         value = draft.texts[i],
                         onValueChange = { viewModel.setText(i, it) },
                         placeholder = { Text("প্রশ্নের মূল বক্তব্য লিখুন...") },
-                        minLines = if (viewModel.editorMode == EditorMode.FULL) 3 else 2,
+                        minLines = if (viewModel.editorMode == EditorMode.FULL) 4 else 3,
+                        textStyle = TextStyle(fontSize = 17.sp, lineHeight = 26.sp),
+                        shape = RoundedCornerShape(16.dp),
                         modifier = Modifier.fillMaxWidth(),
                     )
                     if (questionPreviewOpen[i]) EditorLivePreview("${label.letter}) প্রশ্নের প্রিভিউ", draft.texts[i])
@@ -333,16 +343,23 @@ fun QuestionEditorScreen(
                             onValueChange = { viewModel.setAnswer(i, it) },
                             label = { Text("সংক্ষিপ্ত উত্তর (ঐচ্ছিক)") },
                             minLines = 1,
+                            shape = RoundedCornerShape(14.dp),
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
                     EditorSectionTitle(
                         "সমাধান",
-                        trailing = {
-                            EditorEyeToggle(solutionPreviewOpen[i], enabled = !viewModel.saving) {
-                                solutionPreviewOpen[i] = !solutionPreviewOpen[i]
-                            }
+                        trailing = { EditorEyeToggle(solutionPreviewOpen[i], enabled = !viewModel.saving) { solutionPreviewOpen[i] = !solutionPreviewOpen[i] } },
+                    )
+                    SolutionImageAttachments(
+                        pipeline = imagePipeline,
+                        imageScope = ImageScope.TYPE_CQ,
+                        parts = draft.solutionPartsByLabel?.getOrNull(i) ?: draft.solutionTexts[i].mapIndexed { partIndex, text ->
+                            QuestionSolutionPart("type_cq:new:${label.letter}:text:$partIndex", "TEXT", partIndex.toLong(), textContent = text)
                         },
+                        enabled = !viewModel.saving,
+                        onChange = { viewModel.setSolutionImageParts(i, it) },
+                        compact = true,
                     )
                     draft.solutionTexts[i].forEachIndexed { partIndex, part ->
                         if (viewModel.editorMode == EditorMode.FULL) {
@@ -352,7 +369,9 @@ fun QuestionEditorScreen(
                             value = part,
                             onValueChange = { viewModel.setSolutionText(i, partIndex, it) },
                             placeholder = { Text(if (partIndex == 0) "ধাপে ধাপে সমাধান লিখুন..." else "সমাধানের পরের অংশ লিখুন...") },
-                            minLines = if (viewModel.editorMode == EditorMode.FULL) 3 else 2,
+                            minLines = if (viewModel.editorMode == EditorMode.FULL) 4 else 3,
+                            textStyle = TextStyle(fontSize = 17.sp, lineHeight = 26.sp),
+                            shape = RoundedCornerShape(16.dp),
                             modifier = Modifier.fillMaxWidth(),
                         )
                         if (viewModel.editorMode == EditorMode.FULL) {
@@ -365,16 +384,6 @@ fun QuestionEditorScreen(
                     }
                     if (viewModel.editorMode == EditorMode.FULL) {
                         TextButton(onClick = { viewModel.addSolutionText(i) }, enabled = !viewModel.saving) { Text("+ সমাধানের অংশ যোগ করুন") }
-                        val mixedParts = draft.solutionPartsByLabel?.getOrNull(i) ?: draft.solutionTexts[i].mapIndexed { partIndex, text ->
-                            QuestionSolutionPart("type_cq:new:${label.letter}:text:$partIndex", "TEXT", partIndex.toLong(), textContent = text)
-                        }
-                        SolutionImageAttachments(
-                            pipeline = imagePipeline,
-                            imageScope = ImageScope.TYPE_CQ,
-                            parts = mixedParts,
-                            enabled = !viewModel.saving,
-                            onChange = { viewModel.setSolutionImageParts(i, it) },
-                        )
                     }
                     if (solutionPreviewOpen[i]) EditorLivePreview("${label.letter}) সমাধানের প্রিভিউ", draft.solutionTexts[i].filter { it.isNotBlank() }.joinToString("\n"))
                 }

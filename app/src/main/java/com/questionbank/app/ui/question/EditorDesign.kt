@@ -59,7 +59,7 @@ fun EditorModePicker(mode: EditorMode, enabled: Boolean, onChange: (EditorMode) 
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .height(26.dp)
+                    .height(29.dp)
                     .clip(RoundedCornerShape(7.dp))
                     .background(if (active) EditorBlue else Color.Transparent)
                     .clickable(enabled = enabled && !active) { onChange(value) }
@@ -70,7 +70,7 @@ fun EditorModePicker(mode: EditorMode, enabled: Boolean, onChange: (EditorMode) 
                     label,
                     color = if (active) Color.White else EditorBlueText,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp,
+                    fontSize = 13.sp,
                 )
             }
         }
@@ -85,15 +85,15 @@ fun EditorPanel(
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
-                .padding(14.dp),
+                .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(20.dp))
+                .padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
             content = content,
         )
@@ -107,7 +107,7 @@ fun EditorSectionTitle(title: String, trailing: (@Composable () -> Unit)? = null
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(title, color = EditorBlueText, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Text(title, color = EditorBlueText, fontSize = 15.sp, fontWeight = FontWeight.Bold)
         trailing?.invoke()
     }
 }
@@ -144,13 +144,13 @@ fun EditorRatingSelect(
         Text(
             "${current.toBengali()}★⌄",
             modifier = Modifier
-                .clip(RoundedCornerShape(7.dp))
+                .clip(RoundedCornerShape(9.dp))
                 .background(Color(0xFFFEF9C3))
-                .border(1.dp, Color(0xFFFDE047), RoundedCornerShape(7.dp))
+                .border(1.dp, Color(0xFFFDE047), RoundedCornerShape(9.dp))
                 .clickable(enabled = enabled) { expanded = true }
-                .padding(horizontal = 9.dp, vertical = 7.dp),
+                .padding(horizontal = 12.dp, vertical = 9.dp),
             color = Color(0xFF713F12),
-            fontSize = 11.sp,
+            fontSize = 13.sp,
             fontWeight = FontWeight.Bold,
         )
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
@@ -173,15 +173,15 @@ fun EditorRatingSelect(
 fun EditorEyeToggle(open: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .size(32.dp)
-            .clip(RoundedCornerShape(7.dp))
+            .size(38.dp)
+            .clip(RoundedCornerShape(9.dp))
             .background(if (open) EditorBlue else Color(0xFFEEF2FF))
             .border(1.dp, if (open) EditorBlue else EditorBorder, RoundedCornerShape(7.dp))
             .clickable(enabled = enabled, onClick = onClick)
             .semantics { contentDescription = if (open) "লাইভ প্রিভিউ বন্ধ করুন" else "লাইভ প্রিভিউ দেখুন" },
         contentAlignment = Alignment.Center,
     ) {
-        Text(if (open) "◉" else "◎", color = if (open) Color.White else EditorBlue, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Text(if (open) "◉" else "◎", color = if (open) Color.White else EditorBlue, fontSize = 19.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -223,8 +223,8 @@ fun EditorHeaderActions(
         Box(
             modifier = Modifier
                 .padding(start = 2.dp)
-                .size(36.dp)
-                .clip(RoundedCornerShape(10.dp))
+                .size(42.dp)
+                .clip(RoundedCornerShape(50))
                 .background(Color.White)
                 .clickable(enabled = canSave && !saving, onClick = onSave)
                 .semantics { contentDescription = if (saving) "সংরক্ষণ হচ্ছে" else "প্রশ্ন সংরক্ষণ করুন" },
@@ -234,7 +234,7 @@ fun EditorHeaderActions(
                 if (saving) "…" else "✓",
                 color = EditorBlue,
                 fontWeight = FontWeight.Black,
-                fontSize = 21.sp,
+                fontSize = 27.sp,
             )
         }
     }
@@ -249,8 +249,8 @@ private fun EditorHeaderAction(
 ) {
     Box(
         modifier = Modifier
-            .size(36.dp)
-            .clip(RoundedCornerShape(18.dp))
+            .size(40.dp)
+            .clip(RoundedCornerShape(20.dp))
             .clickable(enabled = enabled, onClick = onClick)
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
@@ -259,7 +259,7 @@ private fun EditorHeaderAction(
             glyph,
             color = Color.White.copy(alpha = if (enabled) 1f else 0.38f),
             fontWeight = FontWeight.SemiBold,
-            fontSize = 23.sp,
+            fontSize = 26.sp,
         )
     }
 }

@@ -111,7 +111,7 @@ fun QuestionCard(
             if (selected) BrandBlue else if (dark) Color(0xFF6574E8) else BrandBlue,
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(20.dp),
     ) {
         Column {
             // Top ribbon: serial, white selection control, yellow rating badge and kebab menu.
@@ -119,29 +119,29 @@ fun QuestionCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(BrandBlue)
-                    .heightIn(min = 44.dp)
-                    .padding(start = 12.dp, end = 4.dp),
+                    .heightIn(min = 68.dp)
+                    .padding(start = 18.dp, end = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     "প্রশ্ন ${number.toBengali()}",
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp,
+                    fontSize = 17.sp,
                     modifier = Modifier,
                 )
                 if (onToggleSelected != null) {
                     Box(
                         modifier = Modifier
-                            .size(44.dp)
+                            .size(52.dp)
                             .clickable(onClick = onToggleSelected)
                             .semantics { contentDescription = if (selected) "নির্বাচন বাতিল করুন" else "নির্বাচন করুন" },
                         contentAlignment = Alignment.Center,
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(20.dp)
-                                .clip(RoundedCornerShape(4.dp))
+                                .size(24.dp)
+                                .clip(RoundedCornerShape(5.dp))
                                 .background(if (selected) Color.White else Color.Transparent)
                                 .border(2.dp, Color.White, RoundedCornerShape(4.dp)),
                             contentAlignment = Alignment.Center,
@@ -158,19 +158,40 @@ fun QuestionCard(
                     Box {
                         Box(
                             modifier = Modifier
-                                .size(40.dp)
-                                .clip(RoundedCornerShape(10.dp))
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(Color.White.copy(alpha = 0.16f))
                                 .clickable { menuOpen = true }
                                 .semantics { contentDescription = "মেনু" },
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text("⋮", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                            Text("⋮", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 28.sp)
                         }
-                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                            if (onEdit != null) DropdownMenuItem(text = { Text("সম্পাদনা") }, onClick = { menuOpen = false; onEdit() })
-                            if (group.referenceText.isNotBlank()) DropdownMenuItem(text = { Text("রেফারেন্স দেখুন") }, onClick = { menuOpen = false; referenceOpen = true })
-                            if (onCopy != null) DropdownMenuItem(text = { Text("সম্পূর্ণ কপি তৈরি") }, onClick = { menuOpen = false; onCopy() })
-                            if (onDelete != null) DropdownMenuItem(text = { Text("কার্ড মুছুন") }, onClick = { menuOpen = false; confirmDelete = true })
+                        DropdownMenu(
+                            expanded = menuOpen,
+                            onDismissRequest = { menuOpen = false },
+                            modifier = Modifier.width(248.dp),
+                        ) {
+                            if (onEdit != null) DropdownMenuItem(
+                                leadingIcon = { Text("✎", color = BrandBlue, fontSize = 20.sp) },
+                                text = { Text("Edit this Q&A", fontSize = 15.sp) },
+                                onClick = { menuOpen = false; onEdit() },
+                            )
+                            DropdownMenuItem(
+                                leadingIcon = { Text("▣", color = BrandBlue, fontSize = 19.sp) },
+                                text = { Text("রেফারেন্স দেখুন", fontSize = 15.sp) },
+                                onClick = { menuOpen = false; referenceOpen = true },
+                            )
+                            if (onCopy != null) DropdownMenuItem(
+                                leadingIcon = { Text("▢", color = BrandBlue, fontSize = 22.sp) },
+                                text = { Text("Copy", fontSize = 15.sp) },
+                                onClick = { menuOpen = false; onCopy() },
+                            )
+                            if (onDelete != null) DropdownMenuItem(
+                                leadingIcon = { Text("♜", color = Color(0xFFDC2626), fontSize = 20.sp) },
+                                text = { Text("Delete", color = Color(0xFFDC2626), fontSize = 15.sp) },
+                                onClick = { menuOpen = false; confirmDelete = true },
+                            )
                         }
                     }
                 }
@@ -185,19 +206,21 @@ fun QuestionCard(
                     .fillMaxWidth()
                     .background(softTagBg)
                     .border(width = 0.5.dp, color = if (dark) Color(0xFF334155) else Color(0xFFE2E8F0))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .heightIn(min = 42.dp)
+                    .padding(horizontal = 14.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (top.isNotEmpty()) {
+                    Spacer(Modifier.weight(1f))
                     TagChipRow(top, boards)
                 } else {
-                    Text("ট্যাগ নেই", fontSize = 10.sp, color = Color(0xFF94A3B8))
+                    Spacer(Modifier.height(14.dp))
                 }
             }
 
             Column(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.padding(horizontal = 17.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(15.dp),
             ) {
                 // Stimulus image placement is preserved: TOP images, text, then BOTTOM images.
                 val orderedStimulusImages = group.stimulusImages.sortedWith(
@@ -211,9 +234,9 @@ fun QuestionCard(
                     Text(
                         group.stimulusText,
                         color = bodyText,
-                        fontSize = 13.sp,
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.Medium,
-                        lineHeight = 21.sp,
+                        lineHeight = 27.sp,
                     )
                 }
                 orderedStimulusImages.filterNot { it.placement.equals("TOP", true) }.forEach { image ->
@@ -242,16 +265,16 @@ fun QuestionCard(
                                 Text(
                                     question.label?.letter?.plus(".") ?: "",
                                     color = bodyText,
-                                    fontSize = 13.sp,
+                                    fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold,
                                 )
                                 Text(
                                     question.text,
                                     modifier = Modifier.weight(1f),
                                     color = bodyText,
-                                    fontSize = 13.sp,
+                                    fontSize = 16.sp,
                                     fontWeight = FontWeight.Medium,
-                                    lineHeight = 21.sp,
+                                    lineHeight = 27.sp,
                                 )
                             }
                             Row(
@@ -261,25 +284,25 @@ fun QuestionCard(
                             ) {
                                 Row(
                                     modifier = Modifier
-                                        .heightIn(min = 26.dp)
-                                        .clip(RoundedCornerShape(6.dp))
+                                        .heightIn(min = 44.dp)
+                                        .clip(RoundedCornerShape(9.dp))
                                         .background(if (dark) Color(0xFF172235) else Color.White)
                                         .border(1.dp, if (dark) Color(0xFF334155) else Line, RoundedCornerShape(6.dp))
                                         .clickable {
                                             openSolutions = if (isOpen) openSolutions - key else openSolutions + key
                                         }
-                                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                                        .padding(horizontal = 13.dp, vertical = 9.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 ) {
                                     Text(
                                         if (isOpen) "◉" else "◎",
-                                        fontSize = 11.sp,
+                                        fontSize = 17.sp,
                                         color = if (dark) Color(0xFFA5B4FC) else Color(0xFF2A3BB0),
                                     )
                                     Text(
                                         if (isOpen) "সমাধান লুকাও" else "সমাধান দেখো",
-                                        fontSize = 10.sp,
+                                        fontSize = 14.sp,
                                         color = if (dark) Color(0xFFA5B4FC) else Color(0xFF2A3BB0),
                                         fontWeight = FontWeight.SemiBold,
                                     )
@@ -295,23 +318,23 @@ fun QuestionCard(
                                         .clip(RoundedCornerShape(12.dp))
                                         .background(if (dark) Color(0xFF172235) else RibbonBg)
                                         .border(1.dp, if (dark) Color(0xFF334155) else Color(0xFFE2E8F0), RoundedCornerShape(12.dp))
-                                        .padding(12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                        .padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp),
                                 ) {
-                                    Text("সমাধান:", color = if (dark) Color(0xFFA5B4FC) else Color(0xFF2A3BB0), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Text("সমাধান:", color = if (dark) Color(0xFFA5B4FC) else Color(0xFF2A3BB0), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                                     val parts = question.orderedSolutionParts.sortedBy { it.position }
                                     if (parts.isNotEmpty()) {
                                         parts.forEach { part ->
                                             if (part.partType == "TEXT") {
-                                                Text(part.textContent.orEmpty(), color = bodyText, fontSize = 12.sp, lineHeight = 19.sp)
+                                                Text(part.textContent.orEmpty(), color = bodyText, fontSize = 14.sp, lineHeight = 23.sp)
                                             } else {
                                                 part.imageId?.let { imageId -> if (imagePipeline != null) CardMediaImage(imagePipeline, imageId, ImageScope.TYPE_CQ) }
                                             }
                                         }
                                     } else if (question.solutionParts.isNotEmpty()) {
-                                        question.solutionParts.forEach { part -> Text(part, color = bodyText, fontSize = 12.sp, lineHeight = 19.sp) }
+                                        question.solutionParts.forEach { part -> Text(part, color = bodyText, fontSize = 14.sp, lineHeight = 23.sp) }
                                     } else {
-                                        Text("এখনো কোনো সমাধান যোগ করা হয়নি।", color = MutedInk, fontSize = 11.sp)
+                                        Text("এখনো কোনো সমাধান যোগ করা হয়নি।", color = MutedInk, fontSize = 13.sp)
                                     }
                                 }
                             }
@@ -319,7 +342,7 @@ fun QuestionCard(
                     }
                 }
                 if (onView != null) {
-                    TextButton(onClick = onView, modifier = Modifier.align(Alignment.End)) { Text("বিস্তারিত দেখুন", fontSize = 11.sp) }
+                    TextButton(onClick = onView, modifier = Modifier.align(Alignment.End)) { Text("বিস্তারিত দেখুন", fontSize = 13.sp) }
                 }
             }
         }
@@ -339,10 +362,10 @@ private fun RatingBadge(rating: Int) {
         modifier = Modifier
             .background(background, shape)
             .border(1.dp, border, shape)
-            .padding(horizontal = 8.dp, vertical = 3.dp),
+            .padding(horizontal = 12.dp, vertical = 7.dp),
         color = textColor,
         fontWeight = FontWeight.Bold,
-        fontSize = 10.sp,
+        fontSize = 13.sp,
         maxLines = 1,
     )
 }

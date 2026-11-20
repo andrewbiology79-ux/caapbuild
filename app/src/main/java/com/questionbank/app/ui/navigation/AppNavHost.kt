@@ -2,7 +2,9 @@ package com.questionbank.app.ui.navigation
 
 import android.app.Activity
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
@@ -19,6 +21,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -486,10 +494,74 @@ private fun AppBottomBar(navController: NavHostController, currentDestination: N
                         restoreState = true
                     }
                 },
-                icon = { Text(tab.glyph, fontSize = 18.sp) },
+                icon = { AppTabIcon(tab.route, selected) },
                 label = { Text(tab.label, fontSize = 11.sp, maxLines = 1) },
                 alwaysShowLabel = true,
             )
+        }
+    }
+}
+
+
+/** Small outline icons matching the CAAP bottom navigation without adding an icon-pack runtime dependency. */
+@Composable
+private fun AppTabIcon(route: String, selected: Boolean) {
+    val tint = if (selected) Color(0xFF3B4FD8) else Color(0xFF64748B)
+    Canvas(Modifier.size(27.dp)) {
+        val stroke = Stroke(width = 2.dp.toPx())
+        val w = size.width
+        val h = size.height
+        val cx = w / 2f
+        when (route) {
+            Routes.TAB_CREATE -> {
+                drawCircle(tint, radius = w * 0.37f, center = Offset(cx, h * 0.5f), style = stroke)
+                drawLine(tint, Offset(cx, h * 0.30f), Offset(cx, h * 0.70f), stroke.width, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                drawLine(tint, Offset(cx - w * 0.20f, h * 0.5f), Offset(cx + w * 0.20f, h * 0.5f), stroke.width, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+            }
+            Routes.TAB_TYPE_CQ -> {
+                for (offset in listOf(0.60f, 0.42f, 0.24f)) {
+                    val path = Path().apply {
+                        moveTo(cx, h * offset)
+                        lineTo(w * 0.87f, h * (offset + 0.15f))
+                        lineTo(cx, h * (offset + 0.30f))
+                        lineTo(w * 0.13f, h * (offset + 0.15f))
+                        close()
+                    }
+                    drawPath(path, tint, style = stroke)
+                }
+            }
+            Routes.TAB_CHAPTER_CQ -> {
+                val left = Path().apply {
+                    moveTo(cx, h * 0.25f); lineTo(cx, h * 0.82f)
+                    cubicTo(w * 0.32f, h * 0.68f, w * 0.20f, h * 0.72f, w * 0.12f, h * 0.72f)
+                    lineTo(w * 0.12f, h * 0.20f)
+                    cubicTo(w * 0.30f, h * 0.16f, w * 0.42f, h * 0.18f, cx, h * 0.25f)
+                }
+                val right = Path().apply {
+                    moveTo(cx, h * 0.25f); lineTo(cx, h * 0.82f)
+                    cubicTo(w * 0.68f, h * 0.68f, w * 0.80f, h * 0.72f, w * 0.88f, h * 0.72f)
+                    lineTo(w * 0.88f, h * 0.20f)
+                    cubicTo(w * 0.70f, h * 0.16f, w * 0.58f, h * 0.18f, cx, h * 0.25f)
+                }
+                drawPath(left, tint, style = stroke); drawPath(right, tint, style = stroke)
+            }
+            Routes.TAB_FILTER -> {
+                val ys = listOf(0.25f, 0.50f, 0.75f)
+                val xs = listOf(0.35f, 0.68f, 0.45f)
+                ys.forEachIndexed { i, y ->
+                    drawLine(tint, Offset(w * 0.12f, h * y), Offset(w * 0.88f, h * y), stroke.width, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                    drawCircle(Color.White, w * 0.09f, Offset(w * xs[i], h * y))
+                    drawCircle(tint, w * 0.09f, Offset(w * xs[i], h * y), style = stroke)
+                }
+            }
+            else -> {
+                drawCircle(tint, w * 0.17f, Offset(cx, h * 0.31f), style = stroke)
+                val shoulders = Path().apply {
+                    moveTo(w * 0.18f, h * 0.88f)
+                    cubicTo(w * 0.18f, h * 0.58f, w * 0.82f, h * 0.58f, w * 0.82f, h * 0.88f)
+                }
+                drawPath(shoulders, tint, style = stroke)
+            }
         }
     }
 }

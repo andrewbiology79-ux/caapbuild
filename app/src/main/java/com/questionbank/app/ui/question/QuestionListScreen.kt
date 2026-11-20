@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardOptions
@@ -93,6 +94,7 @@ fun QuestionListScreen(
     var selectedKeys by remember { mutableStateOf(emptySet<String>()) }
     var sortMode by remember { mutableStateOf("DEFAULT") }
     var sortMenuOpen by remember { mutableStateOf(false) }
+    var overflowOpen by remember { mutableStateOf(false) }
     var pendingBulkDelete by remember { mutableStateOf<List<String>?>(null) }
 
     val searchOpen = viewModel.searchOpen
@@ -103,9 +105,10 @@ fun QuestionListScreen(
 
     // Back closes the search first (the innermost handler wins over the navigation Back).
     BackHandler(enabled = searchOpen) { viewModel.closeSearch() }
-    LaunchedEffect(groups, selectedKeys) {
+    LaunchedEffect(groups, searchState, showSearch, selectedKeys) {
         if (groups != null) {
-            val available = groups.orEmpty().mapNotNull { QuestionGroupKey.of(it) }.toSet()
+            val visibleForSelection = if (showSearch) (searchState as? SearchUiState.Results)?.groups.orEmpty() else groups.orEmpty()
+            val available = visibleForSelection.mapNotNull { QuestionGroupKey.of(it) }.toSet()
             if (!available.containsAll(selectedKeys)) selectedKeys = selectedKeys.intersect(available)
         }
     }
@@ -155,7 +158,35 @@ fun QuestionListScreen(
                         IconButton(
                             onClick = viewModel::openSearch,
                             modifier = Modifier.semantics { contentDescription = "খুঁজুন" },
-                        ) { Text("🔍", fontSize = 18.sp) }
+                        ) { Text("⌕", fontSize = 30.sp) }
+                        Box {
+                            IconButton(
+                                onClick = { overflowOpen = true },
+                                modifier = Modifier.semantics { contentDescription = "আরও বিকল্প" },
+                            ) { Text("⋮", fontSize = 26.sp, color = Color.White) }
+                            DropdownMenu(expanded = overflowOpen, onDismissRequest = { overflowOpen = false }, modifier = Modifier.width(238.dp)) {
+                                DropdownMenuItem(
+                                    leadingIcon = { Text("☑", color = Color(0xFF3B4FD8), fontSize = 20.sp) },
+                                    text = { Text("সব নির্বাচন করুন") },
+                                    onClick = {
+                                        overflowOpen = false
+                                        val source = if (showSearch) (searchState as? SearchUiState.Results)?.groups.orEmpty() else groups.orEmpty()
+                                        selectedKeys = source.mapNotNull { QuestionGroupKey.of(it) }.toSet()
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    leadingIcon = { Text("□", color = Color(0xFF3B4FD8), fontSize = 20.sp) },
+                                    text = { Text("নির্বাচন বাতিল করুন") },
+                                    onClick = { overflowOpen = false; selectedKeys = emptySet() },
+                                )
+                                DropdownMenuItem(
+                                    leadingIcon = { Text("▢", color = Color(0xFF3B4FD8), fontSize = 20.sp) },
+                                    text = { Text("নির্বাচিত মুছুন", color = if (selectedKeys.isEmpty()) Color(0xFF94A3B8) else Color(0xFFDC2626)) },
+                                    enabled = selectedKeys.isNotEmpty(),
+                                    onClick = { overflowOpen = false; pendingBulkDelete = selectedKeys.toList() },
+                                )
+                            }
+                        }
                     },
                 )
             }
@@ -165,9 +196,10 @@ fun QuestionListScreen(
             if (!searchOpen) {
                 ExtendedFloatingActionButton(
                     onClick = onAdd,
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                ) { Text("+ প্রশ্ন যোগ করুন") }
+                    icon = { Text("+", fontSize = 30.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Light) },
+                    containerColor = Color(0xFF3B4FD8),
+                    contentColor = Color.White,
+                ) { Text("Add question", fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold) }
             }
         },
     ) { innerPadding ->
