@@ -46,6 +46,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.semantics.contentDescription
@@ -64,6 +66,66 @@ private fun resultText(result: SaveResult?): String? = when (result) {
     is SaveResult.TooLong -> "${result.field} অনেক বড় (সর্বোচ্চ ${QuestionRules.MAX_TEXT_LENGTH} অক্ষর)।"
     SaveResult.TopicMissing -> "টপিকটি আর নেই। আপনার লেখা ড্রাফটে আছে; ফিরে গিয়ে আবার চেষ্টা করুন।"
     is SaveResult.Failed -> "সংরক্ষণ করা যায়নি, কিছুই হারায়নি। আপনার লেখা ড্রাফটে আছে; আবার চেষ্টা করুন।"
+}
+
+@Composable
+fun CqBlockLabelAndMarksControls(
+    currentLabel: CqLabel,
+    marks: Double,
+    availableLabels: List<CqLabel>,
+    enabled: Boolean,
+    onLabel: (CqLabel) -> Unit,
+    onMarks: (Double) -> Unit,
+    onMarksValidity: (Boolean) -> Unit = {},
+) {
+    var rawMarks by remember(currentLabel, marks) { mutableStateOf(marks.toString()) }
+    var expanded by remember { mutableStateOf(false) }
+    LaunchedEffect(marks) {
+        if (rawMarks.toDoubleOrNull() != marks) rawMarks = marks.toString()
+    }
+    LaunchedEffect(rawMarks) {
+        val parsed = rawMarks.toDoubleOrNull()
+        onMarksValidity(parsed != null && parsed.isFinite() && parsed > 0.0)
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Box {
+            Row(
+                modifier = Modifier
+                    .height(32.dp)
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(Color(0xFF3B4FD8))
+                    .clickable(enabled = enabled) { expanded = true }
+                    .padding(horizontal = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(currentLabel.letter, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text("⌄", color = Color.White, fontSize = 11.sp)
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                availableLabels.forEach { label ->
+                    DropdownMenuItem(
+                        text = { Text(label.letter) },
+                        onClick = { expanded = false; if (label != currentLabel) onLabel(label) },
+                    )
+                }
+            }
+        }
+        OutlinedTextField(
+            value = rawMarks,
+            onValueChange = { raw ->
+                rawMarks = raw
+                raw.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0.0 }?.let(onMarks)
+            },
+            enabled = enabled,
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            isError = rawMarks.toDoubleOrNull()?.let { !it.isFinite() || it <= 0.0 } ?: true,
+            textStyle = TextStyle(fontSize = 12.sp, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.width(40.dp).height(40.dp).semantics { contentDescription = "প্রশ্নের নম্বর" },
+        )
+    }
 }
 
 @Composable
@@ -147,6 +209,22 @@ fun QuestionEditorScreen(
     var stimulusPreviewOpen by rememberSaveable { mutableStateOf(false) }
     val questionPreviewOpen = remember { mutableStateListOf(false, false, false, false) }
     val solutionPreviewOpen = remember { mutableStateListOf(false, false, false, false) }
+    val context = LocalContext.current
+    // CAAP opens a new group with only গ and ঘ; the current persisted schema supports one row per label.
+    var visibleBlockMask by rememberSaveable { mutableStateOf("23") }
+    var pendingBlockRemoval by rememberSaveable { mutableStateOf<Int?>(null) }
+    val visibleBlockIndices = visibleBlockMask.mapNotNull { it.digitToIntOrNull() }.filter { it in 0..3 }.distinct().sorted()
+    LaunchedEffect(viewModel.loaded) {
+        if (viewModel.loaded) {
+            val restored = CqLabel.entries.indices.filter { index ->
+                draft.texts[index].isNotBlank() || draft.answers[index].isNotBlank() ||
+                    draft.solutionTexts[index].any { it.isNotBlank() } ||
+                    draft.boards[index].isNotEmpty() || draft.ratings[index] != null ||
+                    draft.solutionPartsByLabel?.getOrNull(index)?.isNotEmpty() == true
+            }
+            visibleBlockMask = (restored.ifEmpty { listOf(2, 3) }).sorted().joinToString("")
+        }
+    }
     val saveNow: () -> Unit = {
         viewModel.save {
             val n = (viewModel.result as? SaveResult.Saved)?.questionIds?.size ?: 0
@@ -161,7 +239,8 @@ fun QuestionEditorScreen(
                 Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     draft.stimulus.takeIf { it.isNotBlank() }?.let { Text("উদ্দীপক\n$it") }
                     draft.referenceText.takeIf { it.isNotBlank() }?.let { Text("রেফারেন্স\n$it") }
-                    CqLabel.entries.forEachIndexed { i, label ->
+                    visibleBlockIndices.forEach { i ->
+                        val label = CqLabel.entries[i]
                         if (draft.texts[i].isNotBlank()) {
                             Text("${label.letter}) ${typeLabels[draft.questionTypeIds[i]] ?: label.typeLabel} · ${marksText(draft.marks[i])} নম্বর", fontWeight = FontWeight.Bold)
                             Text(draft.texts[i])
@@ -172,6 +251,26 @@ fun QuestionEditorScreen(
                 }
             },
             confirmButton = { TextButton(onClick = { showPreview = false }) { Text("বন্ধ") } },
+        )
+    }
+    pendingBlockRemoval?.let { index ->
+        val label = CqLabel.entries[index]
+        AlertDialog(
+            onDismissRequest = { pendingBlockRemoval = null },
+            title = { Text("প্রশ্নটি মুছবেন?") },
+            text = { Text("(${label.letter}) প্রশ্নটি মুছে ফেলা হবে।") },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (visibleBlockIndices.size > 1) {
+                        viewModel.clearQuestionBlock(index)
+                        visibleBlockMask = visibleBlockIndices.filterNot { it == index }.joinToString("")
+                        questionPreviewOpen[index] = false
+                        solutionPreviewOpen[index] = false
+                    }
+                    pendingBlockRemoval = null
+                }) { Text("মুছুন", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { pendingBlockRemoval = null }) { Text("না") } },
         )
     }
     if (showDuplicateConfirm) {
@@ -187,7 +286,7 @@ fun QuestionEditorScreen(
         topBar = {
             Column {
                 AppHeader(
-                    title = "প্রশ্ন যোগ করুন",
+                    title = "প্রশ্ন যোগ করো",
                     onBack = onBack,
                     leadingGlyph = "×",
                     actions = {
@@ -267,7 +366,7 @@ fun QuestionEditorScreen(
                     value = draft.stimulus,
                     onValueChange = viewModel::setStimulus,
                     placeholder = { Text("এখানে উদ্দীপকের বিবরণ ও গাণিতিক সূত্র লিখুন...") },
-                    minLines = if (viewModel.editorMode == EditorMode.FULL) 4 else 3,
+                    minLines = if (viewModel.editorMode == EditorMode.FULL) 4 else 2,
                     textStyle = TextStyle(fontSize = 17.sp, lineHeight = 26.sp),
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier.fillMaxWidth(),
@@ -284,8 +383,19 @@ fun QuestionEditorScreen(
                 )
             }
 
-            EditorSectionTitle("প্রশ্ন তালিকা (${CqLabel.entries.size.toBengali()}টি প্রশ্ন)")
-            CqLabel.entries.forEachIndexed { i, label ->
+            if (viewModel.editorMode == EditorMode.FULL) {
+                EditorSectionTitle(
+                    "প্রশ্ন তালিকা (${visibleBlockIndices.size.toBengali()}টি প্রশ্ন)",
+                    trailing = if (visibleBlockIndices.size > 1) ({
+                        TextButton(onClick = {
+                            visibleBlockMask = visibleBlockIndices.sorted().joinToString("")
+                            Toast.makeText(context, "প্রশ্নগুলো আগে থেকেই ক-খ-গ-ঘ ক্রমে আছে।", Toast.LENGTH_SHORT).show()
+                        }, enabled = !viewModel.saving) { Text("ক-খ-গ-ঘ সাজাও", fontSize = 11.sp) }
+                    }) else null,
+                )
+            }
+            visibleBlockIndices.forEach { i ->
+                val label = CqLabel.entries[i]
                 EditorPanel {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -293,9 +403,22 @@ fun QuestionEditorScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
                         if (viewModel.editorMode == EditorMode.FULL) {
-                            TypeAndMarksControls(
-                                i, draft.questionTypeIds[i], draft.marks[i], typeLabels, !viewModel.saving,
-                                onType = { viewModel.setQuestionType(i, it) }, onMarks = { viewModel.setMarks(i, it) },
+                            CqBlockLabelAndMarksControls(
+                                currentLabel = label,
+                                marks = draft.marks[i],
+                                availableLabels = CqLabel.entries.filter { it.sortOrder - 1 == i || it.sortOrder - 1 !in visibleBlockIndices },
+                                enabled = !viewModel.saving,
+                                onLabel = { nextLabel ->
+                                    val nextIndex = nextLabel.sortOrder - 1
+                                    viewModel.moveQuestionBlock(i, nextIndex)
+                                    visibleBlockMask = (visibleBlockIndices.filterNot { it == i } + nextIndex).distinct().sorted().joinToString("")
+                                    questionPreviewOpen[nextIndex] = questionPreviewOpen[i]
+                                    solutionPreviewOpen[nextIndex] = solutionPreviewOpen[i]
+                                    questionPreviewOpen[i] = false
+                                    solutionPreviewOpen[i] = false
+                                    if (invalidMarkFields.remove(i)) invalidMarkFields.add(nextIndex)
+                                },
+                                onMarks = { viewModel.setMarks(i, it) },
                                 onMarksValidity = { valid -> if (valid) invalidMarkFields.remove(i) else if (i !in invalidMarkFields) invalidMarkFields.add(i) },
                             )
                         } else {
@@ -323,6 +446,12 @@ fun QuestionEditorScreen(
                             questionPreviewOpen[i] = !questionPreviewOpen[i]
                         }
                         EditorRatingSelect(draft.ratings[i], enabled = !viewModel.saving) { viewModel.changeRating(i, it) }
+                        if (viewModel.editorMode == EditorMode.FULL) {
+                            TextButton(
+                                onClick = { pendingBlockRemoval = i },
+                                enabled = !viewModel.saving && visibleBlockIndices.size > 1,
+                            ) { Text("✕", color = MaterialTheme.colorScheme.error) }
+                        }
                     }
                     if (viewModel.editorMode == EditorMode.FULL) {
                         MathSymbolBar(enabled = !viewModel.saving) { symbol -> viewModel.setText(i, draft.texts[i] + symbol) }
@@ -331,7 +460,7 @@ fun QuestionEditorScreen(
                         value = draft.texts[i],
                         onValueChange = { viewModel.setText(i, it) },
                         placeholder = { Text("প্রশ্নের মূল বক্তব্য লিখুন...") },
-                        minLines = if (viewModel.editorMode == EditorMode.FULL) 4 else 3,
+                        minLines = if (viewModel.editorMode == EditorMode.FULL) 3 else 2,
                         textStyle = TextStyle(fontSize = 17.sp, lineHeight = 26.sp),
                         shape = RoundedCornerShape(16.dp),
                         modifier = Modifier.fillMaxWidth(),
@@ -369,7 +498,7 @@ fun QuestionEditorScreen(
                             value = part,
                             onValueChange = { viewModel.setSolutionText(i, partIndex, it) },
                             placeholder = { Text(if (partIndex == 0) "ধাপে ধাপে সমাধান লিখুন..." else "সমাধানের পরের অংশ লিখুন...") },
-                            minLines = if (viewModel.editorMode == EditorMode.FULL) 4 else 3,
+                            minLines = if (viewModel.editorMode == EditorMode.FULL) 3 else 2,
                             textStyle = TextStyle(fontSize = 17.sp, lineHeight = 26.sp),
                             shape = RoundedCornerShape(16.dp),
                             modifier = Modifier.fillMaxWidth(),
@@ -386,6 +515,24 @@ fun QuestionEditorScreen(
                         TextButton(onClick = { viewModel.addSolutionText(i) }, enabled = !viewModel.saving) { Text("+ সমাধানের অংশ যোগ করুন") }
                     }
                     if (solutionPreviewOpen[i]) EditorLivePreview("${label.letter}) সমাধানের প্রিভিউ", draft.solutionTexts[i].filter { it.isNotBlank() }.joinToString("\n"))
+                }
+            }
+            if (viewModel.editorMode == EditorMode.FULL) {
+                TextButton(
+                    onClick = {
+                        val next = CqLabel.entries.indices.firstOrNull { it !in visibleBlockIndices }
+                        if (next != null) {
+                            viewModel.prepareQuestionBlock(next)
+                            visibleBlockMask = (visibleBlockIndices + next).sorted().joinToString("")
+                        } else {
+                            Toast.makeText(context, "প্রতিটি ধরন (ক/খ/গ/ঘ) এই সংস্করণে একবার করে যোগ করা যায়।", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    enabled = !viewModel.saving && visibleBlockIndices.size < CqLabel.entries.size,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("＋ আরও প্রশ্ন যোগ করো") }
+                if (visibleBlockIndices.size == CqLabel.entries.size) {
+                    Text("এই ডেটা মডেলে ক/খ/গ/ঘ প্রতিটি ধরন একবার করে রাখা যায়।", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 }
             }
 

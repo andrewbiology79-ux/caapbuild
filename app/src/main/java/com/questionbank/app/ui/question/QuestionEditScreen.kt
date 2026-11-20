@@ -36,6 +36,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
 import com.questionbank.app.domain.question.QuestionRules
 import com.questionbank.app.domain.question.UpdateResult
 import com.questionbank.app.media.ImagePipeline
@@ -65,6 +67,7 @@ fun QuestionEditScreen(
 ) {
     var askDiscard by rememberSaveable { mutableStateOf(false) }
     var showPreview by rememberSaveable { mutableStateOf(false) }
+    val context = LocalContext.current
     var pendingDeleteLabel by remember { mutableStateOf<com.questionbank.app.domain.question.CqLabel?>(null) }
     val invalidMarkFields = remember { mutableStateListOf<Int>() }
     var stimulusPreviewOpen by rememberSaveable { mutableStateOf(false) }
@@ -110,7 +113,8 @@ fun QuestionEditScreen(
             text = { Text("${label.letter}) প্রশ্নটি সংরক্ষণ করলে এই উদ্দীপক-গ্রুপ থেকে মুছে যাবে। অন্য প্রশ্নগুলো অক্ষত থাকবে।") },
             confirmButton = {
                 TextButton(onClick = {
-                    viewModel.deleteQuestion(label)
+                    if (viewModel.isPersistedBlock(label)) viewModel.deleteQuestion(label)
+                    else viewModel.clearPendingQuestionBlock(label)
                     pendingDeleteLabel = null
                 }) { Text("মুছে দিন") }
             },
@@ -237,7 +241,7 @@ fun QuestionEditScreen(
                             value = viewModel.stimulus,
                             onValueChange = viewModel::changeStimulus,
                             placeholder = { Text("এখানে উদ্দীপকের বিবরণ ও গাণিতিক সূত্র লিখুন...") },
-                            minLines = if (viewModel.editorMode == EditorMode.FULL) 4 else 3,
+                            minLines = if (viewModel.editorMode == EditorMode.FULL) 4 else 2,
                             textStyle = TextStyle(fontSize = 17.sp, lineHeight = 26.sp),
                             shape = RoundedCornerShape(16.dp),
                             modifier = Modifier.fillMaxWidth(),
@@ -254,7 +258,16 @@ fun QuestionEditScreen(
                         )
                     }
                 }
-                EditorSectionTitle("প্রশ্ন তালিকা (${viewModel.editableLabels.size.toBengali()}টি প্রশ্ন)")
+                if (viewModel.editorMode == EditorMode.FULL) {
+                    EditorSectionTitle(
+                        "প্রশ্ন তালিকা (${viewModel.editableLabels.size.toBengali()}টি প্রশ্ন)",
+                        trailing = if (viewModel.editableLabels.size > 1) ({
+                            TextButton(onClick = {
+                                Toast.makeText(context, "প্রশ্নগুলো আগে থেকেই ক-খ-গ-ঘ ক্রমে আছে।", Toast.LENGTH_SHORT).show()
+                            }, enabled = !viewModel.saving) { Text("ক-খ-গ-ঘ সাজাও", fontSize = 11.sp) }
+                        }) else null,
+                    )
+                }
                 viewModel.editableLabels.forEach { label ->
                     val i = label.sortOrder - 1
                     EditorPanel {
@@ -295,7 +308,7 @@ fun QuestionEditScreen(
                             value = viewModel.texts[i],
                             onValueChange = { viewModel.setText(label, it) },
                             placeholder = { Text("প্রশ্নের মূল বক্তব্য লিখুন...") },
-                            minLines = if (viewModel.editorMode == EditorMode.FULL) 4 else 3,
+                            minLines = if (viewModel.editorMode == EditorMode.FULL) 3 else 2,
                             textStyle = TextStyle(fontSize = 17.sp, lineHeight = 26.sp),
                             shape = RoundedCornerShape(16.dp),
                             modifier = Modifier.fillMaxWidth(),
@@ -320,11 +333,11 @@ fun QuestionEditScreen(
                                 }
                             }
                         }
-                        if (viewModel.hasStimulus && viewModel.original?.subQuestions?.any { it.label == label } == true) {
+                        if (viewModel.hasStimulus && viewModel.editorMode == EditorMode.FULL) {
                             TextButton(
                                 onClick = { pendingDeleteLabel = label },
-                                enabled = !viewModel.saving && viewModel.canDeleteQuestion(label),
-                            ) { Text("এই প্রশ্নটি মুছুন") }
+                                enabled = !viewModel.saving && viewModel.canRemoveEditorBlock(label),
+                            ) { Text("প্রশ্নটি মুছুন", color = MaterialTheme.colorScheme.error) }
                         }
                         if (viewModel.editorMode == EditorMode.FULL) {
                             OutlinedTextField(
@@ -376,6 +389,20 @@ fun QuestionEditScreen(
                     }
                 }
 
+                if (viewModel.editorMode == EditorMode.FULL && viewModel.hasStimulus) {
+                    TextButton(
+                        onClick = {
+                            val next = viewModel.addableLabels.firstOrNull()
+                            if (next != null) viewModel.prepareQuestionBlock(next)
+                            else Toast.makeText(context, "এই সেশনে সংরক্ষিত ক/খ/গ/ঘ label আবার যোগ করা যাবে না।", Toast.LENGTH_SHORT).show()
+                        },
+                        enabled = !viewModel.saving && viewModel.addableLabels.isNotEmpty(),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("＋ আরও প্রশ্ন যোগ করো") }
+                    if (viewModel.addableLabels.isEmpty()) {
+                        Text("এই ডেটা মডেলে ক/খ/গ/ঘ প্রতিটি ধরন একবার করে রাখা যায়। মুছে ফেলা সংরক্ষিত label এই সেভের আগে আবার যোগ করা যাবে না।", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
                 editResultText(viewModel.result)?.let {
                     Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
                 }

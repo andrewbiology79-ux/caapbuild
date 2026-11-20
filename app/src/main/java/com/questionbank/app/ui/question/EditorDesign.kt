@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -59,7 +60,7 @@ fun EditorModePicker(mode: EditorMode, enabled: Boolean, onChange: (EditorMode) 
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .height(29.dp)
+                    .height(26.dp)
                     .clip(RoundedCornerShape(7.dp))
                     .background(if (active) EditorBlue else Color.Transparent)
                     .clickable(enabled = enabled && !active) { onChange(value) }
@@ -70,7 +71,7 @@ fun EditorModePicker(mode: EditorMode, enabled: Boolean, onChange: (EditorMode) 
                     label,
                     color = if (active) Color.White else EditorBlueText,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
+                    fontSize = 11.sp,
                 )
             }
         }
@@ -93,7 +94,7 @@ fun EditorPanel(
             modifier = Modifier
                 .fillMaxWidth()
                 .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(20.dp))
-                .padding(18.dp),
+                .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
             content = content,
         )
@@ -107,7 +108,7 @@ fun EditorSectionTitle(title: String, trailing: (@Composable () -> Unit)? = null
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(title, color = EditorBlueText, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        Text(title, color = EditorBlueText, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         trailing?.invoke()
     }
 }
@@ -148,9 +149,9 @@ fun EditorRatingSelect(
                 .background(Color(0xFFFEF9C3))
                 .border(1.dp, Color(0xFFFDE047), RoundedCornerShape(9.dp))
                 .clickable(enabled = enabled) { expanded = true }
-                .padding(horizontal = 12.dp, vertical = 9.dp),
+                .padding(horizontal = 9.dp, vertical = 6.dp),
             color = Color(0xFF713F12),
-            fontSize = 13.sp,
+            fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
         )
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
@@ -173,7 +174,7 @@ fun EditorRatingSelect(
 fun EditorEyeToggle(open: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .size(38.dp)
+            .size(32.dp)
             .clip(RoundedCornerShape(9.dp))
             .background(if (open) EditorBlue else Color(0xFFEEF2FF))
             .border(1.dp, if (open) EditorBlue else EditorBorder, RoundedCornerShape(7.dp))
@@ -188,17 +189,20 @@ fun EditorEyeToggle(open: Boolean, enabled: Boolean = true, onClick: () -> Unit)
 /** Live preview panel; uses the app's currently supported text rendering (the target has no KaTeX renderer yet). */
 @Composable
 fun EditorLivePreview(title: String, text: String) {
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val previewBackground = if (dark) Color(0xFF162033) else Color(0xFFF8FAFF)
+    val previewForeground = if (dark) Color(0xFFE5EAF5) else Color(0xFF1B1F2A)
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFFF8FAFF))
-            .border(1.dp, Color(0xFFD5D9E2), RoundedCornerShape(12.dp))
+            .background(previewBackground)
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text("◎  $title", color = EditorBlueText, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-        Text(text.ifBlank { "উপরে লিখলে এখানে প্রিভিউ দেখা যাবে।" }, color = Color(0xFF1B1F2A), fontSize = 13.sp, lineHeight = 20.sp)
+        Text(text.ifBlank { "উপরে লিখলে এখানে প্রিভিউ দেখা যাবে।" }, color = previewForeground, fontSize = 13.sp, lineHeight = 20.sp)
     }
 }
 
@@ -223,7 +227,7 @@ fun EditorHeaderActions(
         Box(
             modifier = Modifier
                 .padding(start = 2.dp)
-                .size(42.dp)
+                .size(36.dp)
                 .clip(RoundedCornerShape(50))
                 .background(Color.White)
                 .clickable(enabled = canSave && !saving, onClick = onSave)
@@ -249,7 +253,7 @@ private fun EditorHeaderAction(
 ) {
     Box(
         modifier = Modifier
-            .size(40.dp)
+            .size(36.dp)
             .clip(RoundedCornerShape(20.dp))
             .clickable(enabled = enabled, onClick = onClick)
             .semantics { contentDescription = description },

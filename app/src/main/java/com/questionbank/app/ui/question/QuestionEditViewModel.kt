@@ -17,6 +17,7 @@ import com.questionbank.app.domain.question.QuestionStimulusImage
 import com.questionbank.app.domain.question.QuestionSolutionPart
 import com.questionbank.app.domain.question.GroupEditInput
 import com.questionbank.app.domain.question.QuestionEditRules
+import com.questionbank.app.domain.question.QuestionEditBlockRules
 import com.questionbank.app.domain.question.RatingsInput
 import com.questionbank.app.domain.question.SavedGroup
 import com.questionbank.app.domain.question.SubQuestionInput
@@ -198,7 +199,7 @@ class QuestionEditViewModel(
                 categoryIdsByLabel = categoryRows
                 val typeRows = CqLabel.entries.map { label -> group.subQuestions.firstOrNull { it.label == label }?.questionTypeId ?: label.typeId }
                 val markRows = CqLabel.entries.map { label -> group.subQuestions.firstOrNull { it.label == label }?.marks ?: label.marks }
-                val solutionRows = CqLabel.entries.map { label -> group.subQuestions.firstOrNull { it.label == label }?.solutionParts.orEmpty() }
+                val solutionRows = CqLabel.entries.map { label -> group.subQuestions.firstOrNull { it.label == label }?.solutionParts.orEmpty().ifEmpty { listOf("") } }
                 questionTypeIds = typeRows
                 marks = markRows
                 solutionTexts = solutionRows
@@ -225,7 +226,8 @@ class QuestionEditViewModel(
             .getOrNull()?.takeIf { it.scope == CanonicalEditorScope.TYPE_CQ && it.ownerId == canonicalDraftOwnerId }
         canonicalDraftTemplate = canonical
         val stored = canonical?.let(TypeCqDraftAdapter::toLegacy) ?: repository.loadEditDraft(groupKey) ?: return
-        if (canonical != null) editorMode = if (canonical.mode == CanonicalEditorMode.FULL) EditorMode.FULL else EditorMode.MINIMUM
+        // CAAP opens every editor session in Minimum mode; restored content remains unchanged.
+        editorMode = defaultEditorMode
         if (group.stimulusId != null) {
             stimulus = stored.stimulus
             referenceText = stored.referenceText
@@ -344,16 +346,67 @@ class QuestionEditViewModel(
     /** True for a card with a stimulus: all four blocks and the stimulus can be edited. A single question edits only its own block. */
     val hasStimulus: Boolean get() = original?.stimulusId != null
 
-    /** The sub-question blocks shown on the screen, in label order. */
+    /** Existing blocks plus blocks explicitly added in Full mode, always ordered ক-খ-গ-ঘ. */
     val editableLabels: List<CqLabel>
         get() {
             val group = original ?: return emptyList()
-            val labels = if (group.stimulusId != null) CqLabel.entries else group.subQuestions.mapNotNull { it.label }
-            return labels.filter { label ->
+            val candidates = if (group.stimulusId != null) CqLabel.entries else group.subQuestions.mapNotNull { it.label }
+            return candidates.filter { label ->
+                val index = label.sortOrder - 1
                 val savedId = group.subQuestions.firstOrNull { it.label == label }?.id
-                savedId == null || savedId !in deletedQuestionIds
+                when {
+                    savedId != null -> savedId !in deletedQuestionIds
+                    group.stimulusId == null -> false
+                    else -> texts[index].isNotBlank() || answers[index].isNotBlank() || ratings[index] != null ||
+                        boards[index].isNotEmpty() || solutionTexts[index].any { it.isNotBlank() } ||
+                        solutionPartsByLabel[index].isNotEmpty() || categoryIdsByLabel[index].isNotEmpty()
+                }
             }
         }
+
+    /** Labels whose database rows do not exist yet; a row marked for deletion is still occupied until save. */
+    val addableLabels: List<CqLabel>
+        get() {
+            val group = original ?: return emptyList()
+            if (group.stimulusId == null) return emptyList()
+            val persisted = group.subQuestions.mapNotNull { it.label }.toSet()
+            return QuestionEditBlockRules.addableLabels(CqLabel.entries, persisted, editableLabels.toSet())
+        }
+
+    fun isPersistedBlock(label: CqLabel): Boolean = original?.subQuestions?.any { it.label == label } == true
+
+    /** Adds a missing, never-persisted label in Full mode. The schema currently allows one row per label. */
+    fun prepareQuestionBlock(label: CqLabel) {
+        if (saving || finished || !hasStimulus || label !in addableLabels) return
+        val index = label.sortOrder - 1
+        ratings = ratings.toMutableList().also { if (it[index] == null) it[index] = 3 }
+        solutionTexts = solutionTexts.toMutableList().also { if (it[index].isEmpty()) it[index] = listOf("") }
+        syncMixedSolutionText(index)
+        record("add-${label.letter}")
+        result = null
+        queueDraft()
+    }
+
+    /** Removes a newly added but not yet persisted block. Existing rows use the confirmed delete workflow. */
+    fun clearPendingQuestionBlock(label: CqLabel) {
+        if (saving || finished || isPersistedBlock(label) || editableLabels.size <= 1) return
+        val index = label.sortOrder - 1
+        texts = texts.toMutableList().also { it[index] = "" }
+        answers = answers.toMutableList().also { it[index] = "" }
+        ratings = ratings.toMutableList().also { it[index] = null }
+        boards = boards.toMutableList().also { it[index] = emptyList() }
+        categoryIdsByLabel = categoryIdsByLabel.toMutableList().also { it[index] = emptyList() }
+        questionTypeIds = questionTypeIds.toMutableList().also { it[index] = label.typeId }
+        marks = marks.toMutableList().also { it[index] = label.marks }
+        solutionTexts = solutionTexts.toMutableList().also { it[index] = emptyList() }
+        solutionPartsByLabel = solutionPartsByLabel.toMutableList().also { it[index] = emptyList() }
+        record("remove-pending-${label.letter}")
+        result = null
+        queueDraft()
+    }
+
+    fun canRemoveEditorBlock(label: CqLabel): Boolean = editableLabels.size > 1 &&
+        (isPersistedBlock(label) && canDeleteQuestion(label) || !isPersistedBlock(label))
 
     val deletedQuestionLabels: List<CqLabel>
         get() = original?.subQuestions.orEmpty().filter { it.id in deletedQuestionIds }.mapNotNull { it.label }
@@ -362,10 +415,12 @@ class QuestionEditViewModel(
         val group = original ?: return false
         val row = group.subQuestions.firstOrNull { it.label == label } ?: return false
         val remainingStored = group.subQuestions.count { it.id !in deletedQuestionIds }
-        val pendingNew = editableLabels.count { candidate ->
-            group.subQuestions.none { it.label == candidate } && texts[candidate.sortOrder - 1].isNotBlank()
-        }
-        return group.stimulusId != null && row.id !in deletedQuestionIds && remainingStored + pendingNew > 1
+        val persistedLabels = group.subQuestions.mapNotNull { it.label }.toSet()
+        // A visible pending block counts even while its required question text is still blank;
+        // save validation, not the delete button, decides whether its content is ready.
+        val pendingNew = editableLabels.count { it !in persistedLabels }
+        return group.stimulusId != null && row.id !in deletedQuestionIds &&
+            QuestionEditBlockRules.canDeletePersistedBlock(remainingStored, pendingNew)
     }
 
     private fun buildInput(): GroupEditInput =

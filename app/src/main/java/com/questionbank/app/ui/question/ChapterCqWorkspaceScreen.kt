@@ -436,7 +436,9 @@ fun ChapterCqWorkspaceScreen(
             }
             draftSaved = true
         }
-        editorMode = if (rawDraft == null) defaultEditorMode else editorMode
+        // CAA reference behavior: every newly opened editor session starts in Minimum mode.
+        // restoreForm keeps question/stimulus content; mode is presentation-only and resets here.
+        editorMode = defaultEditorMode
         history.reset(snapshotForm())
         editorLoading = false
     }
