@@ -1,0 +1,6 @@
+CURRENT SOURCE CANDIDATE v1.78 - CI RUN 66 COMPILE FIX (NOT VERIFIED)
+Project plan: PROJECT_PLAN_v1_78_CAA_EDITOR_COMPILEFIX.txt (section 87)
+
+- CI run 66 (commit c0c4dcd): compileDebugKotlin/compileReleaseKotlin FAILED, 1 error: QuestionEditViewModel.kt:230 Unresolved reference 'defaultEditorMode'.
+- Fix: constructor parameter defaultEditorMode made `private val` in QuestionEditViewModel and QuestionEditorViewModel.
+- Not yet re-run in CI. Unit tests, androidTest compile, APK assembly, emulator: NOT VERIFIED.

@@ -98,7 +98,7 @@ class QuestionEditViewModel(
     questionTypesFlow: Flow<List<com.questionbank.app.data.local.entity.TypeCqQuestionTypesEntity>> = flowOf(emptyList()),
     private val editorDraftRepository: EditorDraftRepository? = null,
     categoriesFlow: Flow<List<TypeCqQuestionCategoriesEntity>> = flowOf(emptyList()),
-    defaultEditorMode: EditorMode = EditorMode.MINIMUM,
+    private val defaultEditorMode: EditorMode = EditorMode.MINIMUM,
 ) : ViewModel() {
 
     var load by mutableStateOf(EditLoad.LOADING)

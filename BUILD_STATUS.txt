@@ -1,3 +1,5 @@
+CURRENT SOURCE CANDIDATE v1.78 - CI RUN 66 COMPILE FIX (NOT VERIFIED). See BUILD_STATUS_CAA_EDITOR_v1_78.txt and PROJECT_PLAN_v1_78_CAA_EDITOR_COMPILEFIX.txt
+
 CI RESULTS v1.70 SOURCE (20 Nov 2026) - see PROJECT_PLAN_v1_71_COMPILEFIX_CI.txt section 80
 - Run A: compileDebugKotlin FAILED, 8 errors; fixed in compilefix1.
 - Run B (compilefix1): compile OK; unit tests 147 of 148 passed (stale .db vs .qbbak expectation in RestoreSwapTest); androidTest compile OK; release assemble OK.

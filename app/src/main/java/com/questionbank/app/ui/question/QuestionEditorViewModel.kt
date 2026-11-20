@@ -65,7 +65,7 @@ class QuestionEditorViewModel(
     questionTypesFlow: Flow<List<com.questionbank.app.data.local.entity.TypeCqQuestionTypesEntity>> = flowOf(emptyList()),
     private val duplicateChecker: suspend (String) -> Boolean = { false },
     private val editorDraftRepository: EditorDraftRepository? = null,
-    defaultEditorMode: EditorMode = EditorMode.MINIMUM,
+    private val defaultEditorMode: EditorMode = EditorMode.MINIMUM,
 ) : ViewModel() {
 
     var loaded by mutableStateOf(false)
