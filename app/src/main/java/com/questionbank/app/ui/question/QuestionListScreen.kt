@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,7 +13,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardOptions
@@ -56,13 +54,13 @@ import com.questionbank.app.domain.question.BoardItem
 import com.questionbank.app.domain.question.SavedGroup
 import com.questionbank.app.domain.question.QuestionGroupKey
 import com.questionbank.app.domain.question.QuestionCardRules
-import com.questionbank.app.media.ImagePipeline
 import com.questionbank.app.ui.components.AppHeader
 import com.questionbank.app.ui.format.toBengali
 import com.questionbank.app.ui.format.toBengaliDigits
 import com.questionbank.app.ui.theme.HeaderDark
 import com.questionbank.app.ui.theme.HeaderLight
 import com.questionbank.app.ui.theme.LocalDarkTheme
+import com.questionbank.app.media.ImagePipeline
 
 internal fun marksText(marks: Double): String =
     (if (marks % 1.0 == 0.0) marks.toInt().toString() else marks.toString()).toBengaliDigits()
@@ -95,7 +93,6 @@ fun QuestionListScreen(
     var selectedKeys by remember { mutableStateOf(emptySet<String>()) }
     var sortMode by remember { mutableStateOf("DEFAULT") }
     var sortMenuOpen by remember { mutableStateOf(false) }
-    var overflowOpen by remember { mutableStateOf(false) }
     var pendingBulkDelete by remember { mutableStateOf<List<String>?>(null) }
 
     val searchOpen = viewModel.searchOpen
@@ -106,10 +103,9 @@ fun QuestionListScreen(
 
     // Back closes the search first (the innermost handler wins over the navigation Back).
     BackHandler(enabled = searchOpen) { viewModel.closeSearch() }
-    LaunchedEffect(groups, searchState, showSearch, selectedKeys) {
+    LaunchedEffect(groups, selectedKeys) {
         if (groups != null) {
-            val visibleForSelection = if (showSearch) (searchState as? SearchUiState.Results)?.groups.orEmpty() else groups.orEmpty()
-            val available = visibleForSelection.mapNotNull { QuestionGroupKey.of(it) }.toSet()
+            val available = groups.orEmpty().mapNotNull { QuestionGroupKey.of(it) }.toSet()
             if (!available.containsAll(selectedKeys)) selectedKeys = selectedKeys.intersect(available)
         }
     }
@@ -159,35 +155,7 @@ fun QuestionListScreen(
                         IconButton(
                             onClick = viewModel::openSearch,
                             modifier = Modifier.semantics { contentDescription = "খুঁজুন" },
-                        ) { Text("⌕", fontSize = 30.sp) }
-                        Box {
-                            IconButton(
-                                onClick = { overflowOpen = true },
-                                modifier = Modifier.semantics { contentDescription = "আরও বিকল্প" },
-                            ) { Text("⋮", fontSize = 26.sp, color = Color.White) }
-                            DropdownMenu(expanded = overflowOpen, onDismissRequest = { overflowOpen = false }, modifier = Modifier.width(238.dp)) {
-                                DropdownMenuItem(
-                                    leadingIcon = { Text("☑", color = Color(0xFF3B4FD8), fontSize = 20.sp) },
-                                    text = { Text("সব নির্বাচন করুন") },
-                                    onClick = {
-                                        overflowOpen = false
-                                        val source = if (showSearch) (searchState as? SearchUiState.Results)?.groups.orEmpty() else groups.orEmpty()
-                                        selectedKeys = source.mapNotNull { QuestionGroupKey.of(it) }.toSet()
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    leadingIcon = { Text("□", color = Color(0xFF3B4FD8), fontSize = 20.sp) },
-                                    text = { Text("নির্বাচন বাতিল করুন") },
-                                    onClick = { overflowOpen = false; selectedKeys = emptySet() },
-                                )
-                                DropdownMenuItem(
-                                    leadingIcon = { Text("▢", color = Color(0xFF3B4FD8), fontSize = 20.sp) },
-                                    text = { Text("নির্বাচিত মুছুন", color = if (selectedKeys.isEmpty()) Color(0xFF94A3B8) else Color(0xFFDC2626)) },
-                                    enabled = selectedKeys.isNotEmpty(),
-                                    onClick = { overflowOpen = false; pendingBulkDelete = selectedKeys.toList() },
-                                )
-                            }
-                        }
+                        ) { Text("🔍", fontSize = 18.sp) }
                     },
                 )
             }
@@ -197,13 +165,9 @@ fun QuestionListScreen(
             if (!searchOpen) {
                 ExtendedFloatingActionButton(
                     onClick = onAdd,
-                    containerColor = Color(0xFF3B4FD8),
-                    contentColor = Color.White,
-                ) {
-                    Text("+", fontSize = 30.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Light)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Add question", fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
-                }
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                ) { Text("+ প্রশ্ন যোগ করুন") }
             }
         },
     ) { innerPadding ->
@@ -216,14 +180,18 @@ fun QuestionListScreen(
                             DropdownMenuItem(text = { Text(label) }, onClick = { sortMode = key; sortMenuOpen = false })
                         }
                     }
+                    TextButton(onClick = {
+                        val allKeys = groups.orEmpty().mapNotNull { QuestionGroupKey.of(it) }.toSet()
+                        selectedKeys = if (allKeys.isNotEmpty() && selectedKeys.containsAll(allKeys)) emptySet() else allKeys
+                    }) { Text(if (groups.orEmpty().isNotEmpty() && selectedKeys.containsAll(groups.orEmpty().mapNotNull { QuestionGroupKey.of(it) })) "সব নির্বাচন বাতিল" else "সব নির্বাচন") }
                     Text("নির্বাচিত ${selectedKeys.size.toBengali()}", style = MaterialTheme.typography.labelMedium)
                     if (selectedKeys.isNotEmpty()) Button(onClick = { pendingBulkDelete = selectedKeys.toList() }) { Text("নির্বাচিত মুছুন") }
                 }
                 val visibleGroups = if (showSearch) (searchState as? SearchUiState.Results)?.groups.orEmpty() else groups.orEmpty()
                 val sortedVisible = remember(visibleGroups, sortMode) { sortQuestionGroups(visibleGroups, sortMode) }
                 val toggleSelection: (String) -> Unit = { key -> selectedKeys = if (key in selectedKeys) selectedKeys - key else selectedKeys + key }
-                if (showSearch) SearchBody(searchState, boardCatalog, imagePipeline, onEdit, onDelete, onCopy, onView, selectedKeys, toggleSelection, sortedVisible)
-                else ListBody(if (groups == null) null else sortedVisible, boardCatalog, imagePipeline, onEdit, onDelete, onCopy, onView, selectedKeys, toggleSelection)
+                if (showSearch) SearchBody(searchState, boardCatalog, onEdit, onDelete, onCopy, onView, selectedKeys, toggleSelection, sortedVisible, imagePipeline)
+                else ListBody(if (groups == null) null else sortedVisible, boardCatalog, onEdit, onDelete, onCopy, onView, selectedKeys, toggleSelection, imagePipeline)
             }
         }
     }
@@ -231,36 +199,39 @@ fun QuestionListScreen(
 
 @Composable
 private fun ListBody(
-    current: List<SavedGroup>?, boards: List<BoardItem>, imagePipeline: ImagePipeline, onEdit: (SavedGroup) -> Unit, onDelete: (SavedGroup) -> Unit,
+    current: List<SavedGroup>?, boards: List<BoardItem>, onEdit: (SavedGroup) -> Unit, onDelete: (SavedGroup) -> Unit,
     onCopy: (SavedGroup) -> Unit, onView: (SavedGroup) -> Unit, selectedKeys: Set<String>, onToggle: (String) -> Unit,
+    imagePipeline: ImagePipeline,
 ) {
     when {
         current == null -> Box(Modifier.fillMaxSize()) { CircularProgressIndicator(modifier = Modifier.align(Alignment.Center)) }
         current.isEmpty() -> Box(Modifier.fillMaxSize()) {
             Text("এই টপিকে এখনো কোনো প্রশ্ন নেই।", modifier = Modifier.align(Alignment.Center).padding(24.dp), style = MaterialTheme.typography.bodyLarge)
         }
-        else -> CardList(current, totalLine(current), boards, imagePipeline, onEdit, onDelete, onCopy, onView, selectedKeys, onToggle)
+        else -> CardList(current, totalLine(current), boards, onEdit, onDelete, onCopy, onView, selectedKeys, onToggle, imagePipeline)
     }
 }
 
 @Composable
 private fun SearchBody(
-    state: SearchUiState, boards: List<BoardItem>, imagePipeline: ImagePipeline, onEdit: (SavedGroup) -> Unit, onDelete: (SavedGroup) -> Unit,
+    state: SearchUiState, boards: List<BoardItem>, onEdit: (SavedGroup) -> Unit, onDelete: (SavedGroup) -> Unit,
     onCopy: (SavedGroup) -> Unit, onView: (SavedGroup) -> Unit, selectedKeys: Set<String>, onToggle: (String) -> Unit, sortedResults: List<SavedGroup>,
+    imagePipeline: ImagePipeline,
 ) {
     when (state) {
         SearchUiState.Idle -> Unit
         SearchUiState.NoTerms -> Message("খোঁজার জন্য অক্ষর বা সংখ্যা লিখুন।")
         is SearchUiState.Failed -> Message("খোঁজা যায়নি। আবার চেষ্টা করুন।", isError = true)
         is SearchUiState.Results -> if (sortedResults.isEmpty()) Message("কোনো প্রশ্ন পাওয়া যায়নি.") else
-            CardList(sortedResults, foundLine(sortedResults), boards, imagePipeline, onEdit, onDelete, onCopy, onView, selectedKeys, onToggle)
+            CardList(sortedResults, foundLine(sortedResults), boards, onEdit, onDelete, onCopy, onView, selectedKeys, onToggle, imagePipeline)
     }
 }
 
 @Composable
 private fun CardList(
-    groups: List<SavedGroup>, headline: String, boards: List<BoardItem>, imagePipeline: ImagePipeline, onEdit: (SavedGroup) -> Unit, onDelete: (SavedGroup) -> Unit,
+    groups: List<SavedGroup>, headline: String, boards: List<BoardItem>, onEdit: (SavedGroup) -> Unit, onDelete: (SavedGroup) -> Unit,
     onCopy: (SavedGroup) -> Unit, onView: (SavedGroup) -> Unit, selectedKeys: Set<String>, onToggle: (String) -> Unit,
+    imagePipeline: ImagePipeline,
 ) {
     val pageSize = 40
     var shown by remember(groups) { mutableStateOf(pageSize) }
@@ -269,7 +240,7 @@ private fun CardList(
         modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item(key = "count") { Text("$headline · ${groups.size.toBengali()} টি", style = MaterialTheme.typography.labelLarge) }
+        item(key = "count") { Text(headline, style = MaterialTheme.typography.labelLarge) }
         itemsIndexed(page, key = { _, group -> QuestionGroupKey.of(group) ?: group.subQuestions.first().id }) { index, group ->
             val key = QuestionGroupKey.of(group).orEmpty()
             QuestionCard(

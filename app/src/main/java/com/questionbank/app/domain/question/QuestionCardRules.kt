@@ -12,6 +12,7 @@ object QuestionCardRules {
      */
     fun rating(group: SavedGroup): Int {
         group.stimulusRating?.let { return it }
+        group.unfilteredFallbackRating?.let { return it }
         val own = group.subQuestions.mapNotNull { it.rating }
         if (own.isEmpty()) return DEFAULT_RATING
         return (own.sum().toDouble() / own.size).roundToInt()

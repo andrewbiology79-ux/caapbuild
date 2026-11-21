@@ -41,8 +41,21 @@ abstract class ChapterCqDataDao {
     @Query("SELECT * FROM chapter_cq_subjects ORDER BY sort_order, name, subject_id")
     abstract fun observeSubjects(): Flow<List<ChapterCqSubjectsEntity>>
 
+    @Query("SELECT s.subject_id AS id, s.name AS name, " +
+        "(SELECT COUNT(*) FROM chapter_cq_chapters c WHERE c.subject_id = s.subject_id) AS child_count, " +
+        "(SELECT COUNT(*) FROM chapter_cq_questions q JOIN chapter_cq_chapters c ON c.chapter_id=q.chapter_id " +
+        "WHERE c.subject_id=s.subject_id) AS question_count " +
+        "FROM chapter_cq_subjects s ORDER BY s.sort_order, s.name, s.subject_id")
+    abstract fun observeSubjectRows(): Flow<List<HierarchyRowDb>>
+
     @Query("SELECT * FROM chapter_cq_chapters WHERE subject_id = :subjectId ORDER BY sort_order, name, chapter_id")
     abstract fun observeChapters(subjectId: String): Flow<List<ChapterCqChaptersEntity>>
+
+    @Query("SELECT c.chapter_id AS id, c.name AS name, 0 AS child_count, " +
+        "(SELECT COUNT(*) FROM chapter_cq_questions q WHERE q.chapter_id=c.chapter_id) AS question_count " +
+        "FROM chapter_cq_chapters c WHERE c.subject_id=:subjectId " +
+        "ORDER BY c.sort_order, c.name, c.chapter_id")
+    abstract fun observeChapterRows(subjectId: String): Flow<List<HierarchyRowDb>>
 
     @Query("SELECT * FROM chapter_cq_stimuli WHERE chapter_id = :chapterId ORDER BY created_at, stimulus_id")
     abstract fun observeStimuli(chapterId: String): Flow<List<ChapterCqStimuliEntity>>
@@ -82,6 +95,9 @@ abstract class ChapterCqDataDao {
 
     @Query("SELECT * FROM chapter_cq_stimuli WHERE stimulus_id = :stimulusId LIMIT 1")
     abstract suspend fun stimulus(stimulusId: String): ChapterCqStimuliEntity?
+
+    @Query("SELECT * FROM chapter_cq_stimulus_boards WHERE stimulus_id=:stimulusId ORDER BY sort_order, year, board_code")
+    abstract suspend fun stimulusBoards(stimulusId: String): List<ChapterCqStimulusBoardsEntity>
 
     @Query("DELETE FROM chapter_cq_questions WHERE question_id = :questionId AND chapter_id = :chapterId")
     abstract suspend fun deleteQuestionRow(questionId: String, chapterId: String): Int
@@ -127,8 +143,91 @@ abstract class ChapterCqDataDao {
         return question(questionId) == null
     }
 
+    @Query("SELECT COUNT(*) FROM chapter_cq_subjects WHERE subject_id = :subjectId")
+    abstract suspend fun countSubject(subjectId: String): Int
+
+    @Query("SELECT COUNT(*) FROM chapter_cq_subjects WHERE name = :name")
+    abstract suspend fun countSubjectName(name: String): Int
+
+    @Query("SELECT COUNT(*) FROM chapter_cq_subjects WHERE name = :name AND subject_id <> :subjectId")
+    abstract suspend fun countSubjectNameExcept(name: String, subjectId: String): Int
+
+    @Query("SELECT COUNT(*) FROM chapter_cq_chapters WHERE chapter_id = :chapterId")
+    abstract suspend fun countChapter(chapterId: String): Int
+
+    @Query("SELECT COUNT(*) FROM chapter_cq_chapters WHERE subject_id = :subjectId AND name = :name")
+    abstract suspend fun countChapterName(subjectId: String, name: String): Int
+
+    @Query("SELECT COUNT(*) FROM chapter_cq_chapters WHERE subject_id = :subjectId AND name = :name AND chapter_id <> :chapterId")
+    abstract suspend fun countChapterNameExcept(subjectId: String, name: String, chapterId: String): Int
+
+    @Query("SELECT subject_id FROM chapter_cq_chapters WHERE chapter_id = :chapterId")
+    abstract suspend fun subjectIdForChapter(chapterId: String): String?
+
     @Query("SELECT COUNT(*) FROM chapter_cq_chapters WHERE chapter_id = :chapterId AND subject_id = :subjectId")
     abstract suspend fun chapterBelongsToSubject(chapterId: String, subjectId: String): Int
+
+    @Query("SELECT COUNT(*) FROM chapter_cq_chapters WHERE subject_id = :subjectId")
+    abstract suspend fun countChaptersForSubject(subjectId: String): Int
+
+    @Query("SELECT COUNT(*) FROM chapter_cq_questions q JOIN chapter_cq_chapters c ON c.chapter_id=q.chapter_id WHERE c.subject_id=:subjectId")
+    abstract suspend fun countQuestionsForSubject(subjectId: String): Int
+
+    @Query("SELECT COUNT(*) FROM chapter_cq_questions WHERE chapter_id=:chapterId")
+    abstract suspend fun countQuestionsForChapter(chapterId: String): Int
+
+    @Query("DELETE FROM chapter_cq_subjects WHERE subject_id=:subjectId")
+    abstract suspend fun deleteSubjectRow(subjectId: String): Int
+
+    @Query("DELETE FROM chapter_cq_chapters WHERE chapter_id=:chapterId")
+    abstract suspend fun deleteChapterRow(chapterId: String): Int
+
+    @Query("SELECT subject_id FROM chapter_cq_subjects")
+    abstract suspend fun allSubjectIds(): List<String>
+
+    @Query("SELECT chapter_id FROM chapter_cq_chapters WHERE subject_id=:subjectId")
+    abstract suspend fun chapterIdsForSubject(subjectId: String): List<String>
+
+    @Query("UPDATE chapter_cq_subjects SET sort_order=:position, updated_at=:now WHERE subject_id=:subjectId")
+    abstract suspend fun setSubjectOrder(subjectId: String, position: Long, now: Long)
+
+    @Query("UPDATE chapter_cq_chapters SET sort_order=:position, updated_at=:now WHERE chapter_id=:chapterId AND subject_id=:subjectId")
+    abstract suspend fun setChapterOrder(subjectId: String, chapterId: String, position: Long, now: Long)
+
+    @Transaction
+    open suspend fun deleteSubjectIfEmpty(subjectId: String): DeleteOutcome {
+        if (countSubject(subjectId) == 0) return DeleteOutcome.NotFound
+        val chapters = countChaptersForSubject(subjectId)
+        val questions = countQuestionsForSubject(subjectId)
+        if (chapters > 0 || questions > 0) return DeleteOutcome.NotEmpty(chapters, questions)
+        deleteSubjectRow(subjectId)
+        return DeleteOutcome.Deleted
+    }
+
+    @Transaction
+    open suspend fun deleteChapterIfEmpty(chapterId: String): DeleteOutcome {
+        if (countChapter(chapterId) == 0) return DeleteOutcome.NotFound
+        val questions = countQuestionsForChapter(chapterId)
+        if (questions > 0) return DeleteOutcome.NotEmpty(0, questions)
+        deleteChapterRow(chapterId)
+        return DeleteOutcome.Deleted
+    }
+
+    @Transaction
+    open suspend fun reorderSubjects(ids: List<String>, now: Long): Boolean {
+        val current = allSubjectIds()
+        if (ids.size != current.size || ids.toSet() != current.toSet()) return false
+        ids.forEachIndexed { index, id -> setSubjectOrder(id, (index + 1).toLong(), now) }
+        return true
+    }
+
+    @Transaction
+    open suspend fun reorderChapters(subjectId: String, ids: List<String>, now: Long): Boolean {
+        val current = chapterIdsForSubject(subjectId)
+        if (ids.size != current.size || ids.toSet() != current.toSet()) return false
+        ids.forEachIndexed { index, id -> setChapterOrder(subjectId, id, (index + 1).toLong(), now) }
+        return true
+    }
 
     @Query("UPDATE chapter_cq_subjects SET name = :name, updated_at = :now WHERE subject_id = :subjectId")
     abstract suspend fun renameSubject(subjectId: String, name: String, now: Long): Int
@@ -144,6 +243,15 @@ abstract class ChapterCqDataDao {
 
     @Query("SELECT COUNT(*) FROM chapter_cq_questions WHERE chapter_id = :chapterId AND question_text = :text AND question_id <> :excludeQuestionId")
     abstract suspend fun countDuplicateQuestionExcept(chapterId: String, text: String, excludeQuestionId: String): Int
+
+    @Query("""
+        SELECT DISTINCT pq.chapter_cq_question_id AS question_id, p.paper_id AS paper_id,
+               p.short_name AS short_name, p.title AS title
+        FROM paper_question_items pq JOIN papers p ON p.paper_id=pq.paper_id
+        WHERE pq.chapter_cq_question_id = :questionId
+        ORDER BY p.short_name, p.title, p.paper_id
+    """)
+    abstract suspend fun paperUsagesForQuestion(questionId: String): List<QuestionPaperUsageDb>
 
     @Query("SELECT * FROM chapter_cq_solution_parts WHERE question_id = :questionId ORDER BY position, part_id")
     abstract suspend fun solutionParts(questionId: String): List<ChapterCqSolutionPartsEntity>

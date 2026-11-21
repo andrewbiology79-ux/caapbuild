@@ -65,17 +65,12 @@ class QuestionEditorViewModel(
     questionTypesFlow: Flow<List<com.questionbank.app.data.local.entity.TypeCqQuestionTypesEntity>> = flowOf(emptyList()),
     private val duplicateChecker: suspend (String) -> Boolean = { false },
     private val editorDraftRepository: EditorDraftRepository? = null,
-    private val defaultEditorMode: EditorMode = EditorMode.MINIMUM,
+    defaultEditorMode: EditorMode = EditorMode.MINIMUM,
 ) : ViewModel() {
 
     var loaded by mutableStateOf(false)
         private set
-    private fun newQuestionDraft() = DraftText(
-        ratings = listOf(null, null, 3, 4),
-        solutionTexts = listOf(emptyList(), emptyList(), listOf(""), listOf("")),
-    )
-
-    var draft by mutableStateOf(newQuestionDraft())
+    var draft by mutableStateOf(DraftText())
         private set
     var draftStatus by mutableStateOf(DraftStatus.NONE)
         private set
@@ -91,7 +86,7 @@ class QuestionEditorViewModel(
         private set
     var checkingDuplicate by mutableStateOf(false)
         private set
-    private val history = EditorHistory(newQuestionDraft())
+    private val history = EditorHistory(DraftText())
     private var duplicateJob: Job? = null
     private var canonicalDraftTemplate: EditorSessionDraft? = null
     val canUndo: Boolean get() = history.canUndo
@@ -120,9 +115,7 @@ class QuestionEditorViewModel(
                 // Migrate a legacy DraftText payload to the shared schema without removing the old recovery copy.
                 if (canonical == null) pending.trySend(stored)
             }
-            // CAAP reference behavior: every new editor session opens in Minimum mode.
-            // The restored draft content is retained; only this presentation preference resets.
-            editorMode = defaultEditorMode
+            if (canonical != null) editorMode = if (canonical.mode == CanonicalEditorMode.FULL) EditorMode.FULL else EditorMode.MINIMUM
             loaded = true
             scheduleDuplicateCheck()
         }
@@ -164,14 +157,7 @@ class QuestionEditorViewModel(
             }
         }).toMutableList()
         if (index !in rows.indices) return
-        val sorted = value.sortedBy { it.position }
-        val withTextEntry = if (sorted.any { it.partType == "TEXT" }) sorted else sorted + QuestionSolutionPart(
-            "type_cq:$topicId:${CqLabel.entries[index].letter}:text:blank",
-            "TEXT",
-            sorted.size.toLong(),
-            textContent = "",
-        )
-        val ordered = withTextEntry.mapIndexed { position, part -> part.copy(position = position.toLong()) }
+        val ordered = value.sortedBy { it.position }.mapIndexed { position, part -> part.copy(position = position.toLong()) }
         rows[index] = ordered
         val texts = draft.solutionTexts.toMutableList().also { list -> list[index] = ordered.filter { it.partType == "TEXT" }.mapNotNull { it.textContent } }
         change(draft.copy(solutionTexts = texts, solutionPartsByLabel = rows), "solution-mixed-$index")
@@ -234,76 +220,6 @@ class QuestionEditorViewModel(
     fun setText(index: Int, value: String) =
         change(draft.copy(texts = draft.texts.toMutableList().also { it[index] = value }), "question-$index")
             .also { scheduleDuplicateCheck() }
-
-    /** Moves a question block to an unused CQ label; its text, ratings, tags and solution order move together. */
-    fun moveQuestionBlock(fromIndex: Int, toIndex: Int) {
-        if (fromIndex !in CqLabel.entries.indices || toIndex !in CqLabel.entries.indices || fromIndex == toIndex) return
-        val sourceLabel = CqLabel.entries[fromIndex]
-        val targetLabel = CqLabel.entries[toIndex]
-        val targetHasData = draft.texts[toIndex].isNotBlank() || draft.answers[toIndex].isNotBlank() ||
-            draft.solutionTexts[toIndex].any { it.isNotBlank() } || draft.boards[toIndex].isNotEmpty() ||
-            draft.ratings[toIndex] != null || draft.solutionPartsByLabel?.getOrNull(toIndex)?.isNotEmpty() == true
-        if (targetHasData) return
-
-        fun <T> moved(rows: List<T>, sourceEmpty: T): List<T> = rows.toMutableList().also {
-            it[toIndex] = it[fromIndex]
-            it[fromIndex] = sourceEmpty
-        }
-        val movedMarks = if (draft.marks[fromIndex] == sourceLabel.marks) targetLabel.marks else draft.marks[fromIndex]
-        val nextMarks = draft.marks.toMutableList().also { it[toIndex] = movedMarks; it[fromIndex] = sourceLabel.marks }
-        val nextTypes = draft.questionTypeIds.toMutableList().also { it[toIndex] = targetLabel.typeId; it[fromIndex] = sourceLabel.typeId }
-        val nextParts = draft.solutionPartsByLabel?.toMutableList()?.also { it[toIndex] = it[fromIndex]; it[fromIndex] = emptyList() }
-        change(
-            draft.copy(
-                texts = moved(draft.texts, ""),
-                answers = moved(draft.answers, ""),
-                ratings = moved(draft.ratings, null),
-                boards = moved(draft.boards, emptyList()),
-                questionTypeIds = nextTypes,
-                marks = nextMarks,
-                solutionTexts = moved(draft.solutionTexts, emptyList()),
-                solutionPartsByLabel = nextParts,
-            ),
-            "move-question-$fromIndex-$toIndex",
-        )
-        scheduleDuplicateCheck()
-    }
-
-    /** Initializes a newly exposed block with CAAP defaults while preserving every other block. */
-    fun prepareQuestionBlock(index: Int) {
-        if (index !in CqLabel.entries.indices) return
-        val rows = draft.solutionTexts.toMutableList()
-        if (rows[index].isEmpty()) rows[index] = listOf("")
-        val ratings = draft.ratings.toMutableList()
-        if (ratings[index] == null) ratings[index] = 3
-        change(draft.copy(solutionTexts = rows, ratings = ratings), "add-question-$index")
-    }
-
-    /** Removes one not-yet-saved block from the new-question editor without touching other block data. */
-    fun clearQuestionBlock(index: Int) {
-        if (index !in CqLabel.entries.indices) return
-        val label = CqLabel.entries[index]
-        val solutionRows = (draft.solutionPartsByLabel ?: CqLabel.entries.mapIndexed { i, item ->
-            draft.solutionTexts.getOrNull(i).orEmpty().mapIndexed { partIndex, text ->
-                QuestionSolutionPart("type_cq:$topicId:${item.letter}:text:$partIndex", "TEXT", partIndex.toLong(), textContent = text)
-            }
-        }).toMutableList()
-        solutionRows[index] = emptyList()
-        change(
-            draft.copy(
-                texts = draft.texts.toMutableList().also { it[index] = "" },
-                answers = draft.answers.toMutableList().also { it[index] = "" },
-                ratings = draft.ratings.toMutableList().also { it[index] = null },
-                boards = draft.boards.toMutableList().also { it[index] = emptyList() },
-                questionTypeIds = draft.questionTypeIds.toMutableList().also { it[index] = label.typeId },
-                marks = draft.marks.toMutableList().also { it[index] = label.marks },
-                solutionTexts = draft.solutionTexts.toMutableList().also { it[index] = emptyList() },
-                solutionPartsByLabel = solutionRows,
-            ),
-            "remove-question-$index",
-        )
-        scheduleDuplicateCheck()
-    }
 
     fun setAnswer(index: Int, value: String) =
         change(draft.copy(answers = draft.answers.toMutableList().also { it[index] = value }), "answer-$index")
@@ -433,7 +349,7 @@ class QuestionEditorViewModel(
                 )
             }
             if (outcome is SaveResult.Saved) {
-                draft = newQuestionDraft()
+                draft = DraftText()
                 history.reset(draft)
                 canonicalDraftTemplate = null
                 duplicateWarning = false

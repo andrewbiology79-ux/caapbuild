@@ -129,6 +129,9 @@ data class SavedSubQuestion(
     val orderedSolutionParts: List<QuestionSolutionPart> = emptyList(),
 )
 
+/** One saved Paper that references a question; shown as a usage chip on Collection cards. */
+data class PaperUsage(val paperId: String, val shortName: String, val title: String)
+
 /** One stimulus with its sub-questions, or one single question without a stimulus. */
 data class SavedGroup(
     val stimulusId: String?,
@@ -140,6 +143,10 @@ data class SavedGroup(
     val stimulusBoards: List<BoardTag> = emptyList(),
     val referenceText: String = "",
     val stimulusImages: List<QuestionStimulusImage> = emptyList(),
+    /** Rating derived from the complete stored group before search can reduce visible sub-questions. */
+    val unfilteredFallbackRating: Int? = null,
+    /** Distinct Paper references across the complete saved group, retained for partial-search cards. */
+    val paperUsages: List<PaperUsage> = emptyList(),
 )
 
 sealed interface SaveResult {

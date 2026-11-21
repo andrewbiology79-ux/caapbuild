@@ -8,12 +8,8 @@ import com.questionbank.app.ui.format.toBengali
 /** Number of sub-questions in [groups]; the unit of "মোট N টি প্রশ্ন". */
 fun questionCount(groups: List<SavedGroup>): Int = groups.sumOf { it.subQuestions.size }
 
-/** CAAP-style five-star badge with a short Bengali difficulty label. */
-fun ratingText(rating: Int): String {
-    val safe = rating.coerceIn(1, 5)
-    val label = listOf("", "সহজ", "মোটামুটি", "মাঝারি", "ভালো", "চ্যালেঞ্জিং")[safe]
-    return "${"★".repeat(safe)}${"☆".repeat(5 - safe)}  $label"
-}
+/** Rating badge on the card ribbon: "৩★". */
+fun ratingText(rating: Int): String = "${rating.toBengali()}★"
 
 /** Line above the cards in the normal list. */
 fun totalLine(groups: List<SavedGroup>): String = "মোট ${questionCount(groups).toBengali()} টি প্রশ্ন"

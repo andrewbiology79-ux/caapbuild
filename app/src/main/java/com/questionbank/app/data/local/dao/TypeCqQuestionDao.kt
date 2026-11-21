@@ -17,6 +17,14 @@ import com.questionbank.app.data.local.entity.TypeCqStimulusImagesEntity
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 
+/** Paper title metadata for a Type CQ or Chapter CQ source question. */
+data class QuestionPaperUsageDb(
+    @ColumnInfo(name = "question_id") val questionId: String,
+    @ColumnInfo(name = "paper_id") val paperId: String,
+    @ColumnInfo(name = "short_name") val shortName: String,
+    @ColumnInfo(name = "title") val title: String,
+)
+
 /** One question row joined with its stimulus text (null when the question has no stimulus). */
 data class QuestionRowDb(
     @ColumnInfo(name = "question_id") val questionId: String,
@@ -296,6 +304,15 @@ abstract class TypeCqQuestionDao {
 
     @Query("SELECT * FROM type_cq_solution_parts WHERE question_id = :questionId ORDER BY position, part_id")
     abstract suspend fun solutionParts(questionId: String): List<TypeCqSolutionPartsEntity>
+
+    @Query("""
+        SELECT DISTINCT pq.type_cq_question_id AS question_id, p.paper_id AS paper_id,
+               p.short_name AS short_name, p.title AS title
+        FROM paper_question_items pq JOIN papers p ON p.paper_id=pq.paper_id
+        WHERE pq.type_cq_question_id IN (:ids)
+        ORDER BY p.short_name, p.title, p.paper_id
+    """)
+    abstract suspend fun paperUsagesForQuestions(ids: List<String>): List<QuestionPaperUsageDb>
 
     @Query("SELECT * FROM type_cq_solution_parts WHERE question_id IN (:ids) ORDER BY question_id, position, part_id")
     abstract suspend fun solutionPartsIn(ids: List<String>): List<TypeCqSolutionPartsEntity>

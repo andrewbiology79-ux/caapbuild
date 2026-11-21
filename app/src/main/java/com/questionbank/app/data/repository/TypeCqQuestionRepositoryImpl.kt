@@ -30,6 +30,8 @@ import com.questionbank.app.domain.question.QuestionGroupInput
 import com.questionbank.app.domain.question.RatingsInput
 import com.questionbank.app.domain.question.BoardsInput
 import com.questionbank.app.domain.question.QuestionSolutionPart
+import com.questionbank.app.domain.question.QuestionStimulusImage
+import com.questionbank.app.domain.question.PaperUsage
 import com.questionbank.app.domain.question.QuestionCategoryUpdate
 import com.questionbank.app.domain.question.QuestionRules
 import com.questionbank.app.domain.question.RatingRules
@@ -43,6 +45,7 @@ import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -66,7 +69,35 @@ class TypeCqQuestionRepositoryImpl(
     override fun observeTopicName(topicId: String): Flow<String?> = dao.observeTopicName(topicId)
 
     override fun observeGroups(topicId: String): Flow<List<SavedGroup>> =
-        dao.observeByTopic(topicId).map { rows -> group(rows, tagsOfTopic(topicId)) }
+        dao.observeByTopic(topicId).mapLatest { rows ->
+            if (rows.isEmpty()) emptyList() else enrichGroups(group(rows, tagsOfTopic(topicId)))
+        }
+
+    /** Attach ordered solution text/images and stimulus image placement for both normal and searched card results. */
+    private suspend fun enrichGroups(groups: List<SavedGroup>): List<SavedGroup> {
+        if (groups.isEmpty()) return emptyList()
+        val questionIds = groups.flatMap { it.subQuestions }.map { it.id }.distinct()
+        val solutionRows = dao.solutionPartsIn(questionIds).groupBy { it.questionId }
+        val paperRows = dao.paperUsagesForQuestions(questionIds).groupBy { it.questionId }
+        val imageRows = groups.mapNotNull { it.stimulusId }.distinct().associateWith { dao.stimulusImagesFor(it) }
+        return groups.map { saved ->
+            saved.copy(
+                stimulusImages = imageRows[saved.stimulusId].orEmpty().map { QuestionStimulusImage(it.imageId, it.placement, it.position) },
+                paperUsages = saved.subQuestions.flatMap { question ->
+                    paperRows[question.id].orEmpty().map { PaperUsage(it.paperId, it.shortName, it.title) }
+                }.distinctBy { it.paperId },
+                subQuestions = saved.subQuestions.map { question ->
+                    val parts = solutionRows[question.id].orEmpty().map { part ->
+                        QuestionSolutionPart(part.partId, part.partType, part.position, part.textContent, part.imageId)
+                    }
+                    question.copy(
+                        solutionParts = parts.filter { it.partType == "TEXT" }.mapNotNull { it.textContent },
+                        orderedSolutionParts = parts,
+                    )
+                },
+            )
+        }
+    }
 
     override suspend fun saveGroup(input: QuestionGroupInput): SaveResult {
         val snapshot = try {
@@ -122,7 +153,7 @@ class TypeCqQuestionRepositoryImpl(
         // null when every word is a hashtag word (or there is no word): then nothing is asked from FTS5 (v0.2.29).
         val match = QuestionSearchRules.ftsQuery(tokens)
         return try {
-            val groups = group(dao.selectByTopic(topicId), tagsOfTopic(topicId))
+            val groups = enrichGroups(group(dao.selectByTopic(topicId), tagsOfTopic(topicId)))
             val found = if (tokens.isEmpty()) {
                 // No text, only the board / year filter (v0.2.30c-3).
                 QuestionSearchRules.filterByBoards(groups, null, emptySet(), f!!)
@@ -439,6 +470,8 @@ class TypeCqQuestionRepositoryImpl(
                     },
                 stimulusBoards = first.stimulusId?.let { tags.stimulus[it] }.orEmpty(),
                 referenceText = first.referenceText.orEmpty(),
+                unfilteredFallbackRating = list.mapNotNull { it.rating }.takeIf { it.isNotEmpty() }
+                    ?.let { kotlin.math.round(it.average()).toInt() },
             )
         }
     }

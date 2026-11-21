@@ -1,0 +1,97 @@
+QuestionBank — Type CQ ও Chapter CQ Phase 1 পরিবর্তন প্রতিবেদন
+তারিখ: ২১ নভেম্বর ২০২৬
+ভিত্তি ZIP: QuestionBank_v1_71_compilefix2.zip
+নির্দেশনা: CAAPBUILD_34_FULL_SOURCE_REVIEW_COMPLETE_BN_v1_2_EXHAUSTIVE_RECHECK.txt
+
+১. কাজের পরিধি ও বাস্তবায়ন পদ্ধতি
+---------------------------------
+এই আপডেটে কেবল Type CQ ও Chapter CQ উইন্ডোর navigation, hierarchy, question-group card এবং সংশ্লিষ্ট list/data path-এ কাজ করা হয়েছে।
+
+প্রদত্ত নির্দেশনা-টেক্সটটি পুরোনো React/TypeScript অ্যাপের source-derived design/behavior বর্ণনা করে। লক্ষ্য ZIP-টি Kotlin + Jetpack Compose + Room-ভিত্তিক Native Android অ্যাপ। তাই React component বা CSS সরাসরি কপি করা হয়নি; নির্দেশনার layout order, labels, interactions ও data behavior-কে বর্তমান Android ভাষা/architecture-এ Compose screen, Room DAO ও repository-তে রূপান্তর করা হয়েছে।
+
+২. এই আপডেটে বাস্তবায়িত পরিবর্তন
+--------------------------------
+
+A. Chapter CQ navigation ও hierarchy
+- Chapter CQ ট্যাব এখন Subject list-এ শুরু হয়।
+- Navigation flow: Subject → Chapter → Questions। Chapter CQ-তে Topic list আলাদা করে দেখানো হয় না।
+- Subject/Chapter add, rename, reorder এবং hierarchy count-এর জন্য Room DAO ও repository path যোগ করা হয়েছে।
+- Chapter list-এ parent Subject context/breadcrumb রাখা হয়েছে; প্রশ্ন তালিকায় Subject ও Chapter context দেখানো হয়।
+- Subject/Chapter-এর ভেতরে প্রশ্ন/child data থাকলে destructive delete না করে deletion আটকে দেওয়া হয়, যাতে অনিচ্ছাকৃতভাবে তথ্য নষ্ট না হয়। এটি পুরোনো React implementation-এর cascade delete আচরণের সঙ্গে পুরোপুরি এক নয়; Native app-এর বর্তমান data-integrity policy অনুসরণ করা হয়েছে।
+
+B. Chapter CQ group question card
+- একটি Stimulus ও তার sub-question-গুলোকে এক card-এ group করা হয়েছে; stimulus ছাড়া question আলাদা card হয়।
+- Card-এর উপরে নীল action ribbon, group rating, checkbox এবং context menu রাখা হয়েছে।
+- Stimulus-এর board/year chips, reference reveal, text, upper image ও lower image placement দেখানো হয়।
+- প্রতিটি question row-তে ক/খ/গ/ঘ label, marks, own board/year chips, question text, rating এবং solution toggle রাখা হয়েছে।
+- Solution content position অনুযায়ী text/image sequence-এ দেখানো হয়।
+- Paper usage chips দেখানোর জন্য Chapter CQ question ID থেকে shared Paper records lookup যোগ করা হয়েছে।
+- Card-level group delete action search-এর partial result নয়, মূল persisted group-এর সব question ID নেয়; এতে search করলে আড়ালে থাকা sibling question রেখে stimulus orphan হওয়ার ঝুঁকি এড়ানো হয়।
+- Chapter CQ card selection visible question ID-ভিত্তিক; search result partial হলে শুধু দৃশ্যমান question-গুলো select/unselect হয়।
+
+C. Chapter CQ search, sort ও counters
+- Stimulus, question text, solution text, board code/name এবং English/Bengali year দিয়ে search; একাধিক শব্দ AND হিসেবে match হয়।
+- Stimulus match হলে সম্পূর্ণ group দেখা যায়; শুধু question match হলে matching question-গুলোই card-এ থাকে।
+- Rating, marks ও question-type order অনুযায়ী list sort করা যায়।
+- “মোট প্রশ্ন” এখন দৃশ্যমান sub-question row গণনা করে; আলাদা group/stimulus count দেখায়।
+- Search subset অনুযায়ী fallback group rating বদলে যায় না; original complete group data থেকে rating নির্ধারিত হয়।
+
+D. Type CQ card ও data enrichment
+- Existing Type CQ question card-কে stimulus-group layout-এর সঙ্গে আরও সামঞ্জস্যপূর্ণ করা হয়েছে: blue ribbon, rating badge, card selection, contextual menu, Paper usage chips, stimulus board/year chips, top/bottom images, reference reveal, per-question solution toggle ও ordered solution text/image.
+- Type CQ repository list এবং search result-এ ordered solution parts, stimulus image placement ও Paper usage data attach করে।
+- Search-এ partial group থাকলেও fallback rating complete source group থেকে অপরিবর্তিত থাকে।
+- এ আচরণের জন্য `QuestionCardRulesTest`-এ regression assertion যোগ করা হয়েছে।
+
+৩. বদলানো ফাইল
+---------------
+- app/src/main/java/com/questionbank/app/data/local/dao/ChapterCqDataDao.kt
+- app/src/main/java/com/questionbank/app/data/local/dao/TypeCqQuestionDao.kt
+- app/src/main/java/com/questionbank/app/data/repository/ChapterCqRepositoryImpl.kt
+- app/src/main/java/com/questionbank/app/data/repository/TypeCqQuestionRepositoryImpl.kt
+- app/src/main/java/com/questionbank/app/domain/question/QuestionCardRules.kt
+- app/src/main/java/com/questionbank/app/domain/question/QuestionModels.kt
+- app/src/main/java/com/questionbank/app/domain/repository/ChapterCqRepository.kt
+- app/src/main/java/com/questionbank/app/ui/navigation/AppNavHost.kt
+- app/src/main/java/com/questionbank/app/ui/question/ChapterCqWorkspaceScreen.kt
+- app/src/main/java/com/questionbank/app/ui/question/QuestionCard.kt
+- app/src/main/java/com/questionbank/app/ui/question/QuestionListScreen.kt
+- app/src/test/java/com/questionbank/app/QuestionCardRulesTest.kt
+
+৪. নতুন ফাইল
+------------
+- app/src/main/java/com/questionbank/app/ui/question/ChapterCqQuestionGroupCard.kt
+
+৫. যে বিষয়গুলো এখনও সম্পূর্ণ পুরোনো design/function parity পায়নি
+------------------------------------------------------------
+এই আপডেটকে Type CQ ও Chapter CQ-এর প্রথম implementation pass হিসেবে ধরতে হবে; নিচের অংশগুলো পরবর্তী ধাপে সম্পন্ন/যাচাই করতে হবে:
+
+- Compose UI-টি একই hierarchy ও control order অনুসরণ করে, কিন্তু React/CSS source-এর pixel-perfect rendering দাবি করা হচ্ছে না; দেওয়া টেক্সট-ফাইলে editable Figma বা actual screenshot design reference নেই।
+- Chapter CQ editor এখনও বর্তমান Native app-এর single-question editing flow ব্যবহার করে। পুরোনো Full Editor-এর মতো একটি session-এ stimulus ও একাধিক ক/খ/গ/ঘ block একসঙ্গে সম্পাদনা, reorder, add/remove এবং full group-save parity এখনও সম্পূর্ণ হয়নি।
+- Card body-তে KaTeX-সমতুল্য rich formula renderer/invalid-formula preview এখনও সংযুক্ত করা হয়নি; formula text বর্তমানে native text rendering path-এ থাকে।
+- Card thumbnail tap থেকে পুরোনো image viewer-এর pinch zoom/pan/full-screen interaction এই pass-এ যুক্ত হয়নি।
+- Type CQ-এর বর্তমান selection model card/group-key-ভিত্তিক; পুরোনো implementation-এর মতো selected individual question ID-ভিত্তিক full parity নেই।
+- Type CQ-তে card copy/cut, paste before/after/end এবং cross-scope multi-clipboard flow এই pass-এর অন্তর্ভুক্ত নয়। Chapter CQ card copy action-ও বর্তমানে নির্বাচিত question-এর copy তৈরি করে; full stimulus group clipboard-copy parity নয়।
+- Type CQ-এর পুরোনো search contract-এর সঙ্গে সব সূক্ষ্মতা (বিশেষত short-answer exclusion এবং সব board display-name search case) এখনও line-by-line parity-তে যাচাই করা হয়নি। Chapter CQ-তে board display name ও দুই ধরনের year digit search যুক্ত হয়েছে।
+- Hierarchy non-empty হলে delete block করা হয়; পুরোনো React path-এর cascade-delete semantics এখানে ইচ্ছাকৃতভাবে ফিরিয়ে আনা হয়নি।
+- Chapter CQ metadata (tags/solution/paper usage) লোডে বর্তমান implementation per-question repository lookup করে; অনেক বড় Chapter-এ batch query ও performance tuning পরবর্তী ধাপে করা উচিত।
+- বাস্তব ফোনের screenshot, tap target, keyboard/back, image rendering ও scroll test চালানো হয়নি।
+
+৬. যাচাইয়ের ফলাফল
+-----------------
+- মূল ZIP integrity: PASS (`ZipFile.testzip()` damaged member ফেরত দেয়নি)।
+- Original archive-এর ৩৩৬টি file-এর সবগুলো নতুন tree-তে অক্ষত আছে; কোনো original path বাদ যায়নি।
+- Original-এর তুলনায় পরিবর্তিত source/test file: {len(changed_now)}টি; নতুন code file: {len(new_now)}টি; এই TXT report ZIP-এ যোগ হলে archive-এ সেটিও থাকবে।
+- Chapter hierarchy এবং Type/Chapter Paper-usage-এর চারটি নতুন/পরিবর্তিত SELECT query প্রদত্ত Room schema DDL দিয়ে in-memory SQLite-তে syntax/schema check করা হয়েছে: ৪/৪ PASS।
+- Changed Kotlin files-এ parser-oriented syntax scan চালানো হয়েছে; `expecting`, `missing }`, `unexpected tokens` ধরনের syntax diagnostic পাওয়া যায়নি। এটি পূর্ণ Kotlin/Android compilation-এর বিকল্প নয়।
+- `./gradlew :app:testDebugUnitTest :app:compileDebugKotlin --no-daemon` চালানোর চেষ্টা করা হয়েছে, কিন্তু Gradle Wrapper-এর Gradle 8.14.3 distribution `services.gradle.org` থেকে নামাতে গিয়ে `java.net.UnknownHostException` হয়েছে। তাই unit test বা Android compile এই পরিবেশে সম্পন্ন হয়নি; কোনো Build PASS দাবি করা হচ্ছে না।
+
+৭. পরবর্তী প্রস্তাবিত কাজ
+-----------------------
+পরবর্তী ধাপে প্রথমে দুই CQ-র Editor parity সম্পন্ন করা উচিত: stimulus + multiple question blocks, Full/Minimum controls, math toolbar/preview, image add/edit/replace/export/viewer, ordered solution image/text editor, undo/redo, validation, duplicate warning, dirty-close guard এবং group transaction save। এরপর copy/cut/paste parity ও Compose/Android screenshot/instrumentation regression tests যোগ করতে হবে।
+
+৮. উৎস ও fingerprint
+--------------------
+Original ZIP SHA-256: {original_zip_hash}
+Specification TXT SHA-256: {source_hash}
+
+নোট: এই প্রতিবেদন source review ও বর্তমান repository tree-র code changes-এর ভিত্তিতে তৈরি। Runtime behavior-এর প্রমাণ হিসেবে কেবল উপরে স্পষ্টভাবে উল্লেখ করা checks-গুলোকেই গণ্য করতে হবে।

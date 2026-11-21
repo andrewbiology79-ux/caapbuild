@@ -3,15 +3,24 @@ package com.questionbank.app.data.repository
 import com.questionbank.app.data.local.dao.ChapterCqDataDao
 import com.questionbank.app.data.local.entity.*
 import com.questionbank.app.domain.repository.ChapterCqRepository
+import com.questionbank.app.domain.hierarchy.AddResult
+import com.questionbank.app.domain.hierarchy.EditResult
+import com.questionbank.app.domain.hierarchy.HierarchyName
+import com.questionbank.app.domain.hierarchy.HierarchyRow
+import com.questionbank.app.data.local.dao.DeleteOutcome
+import com.questionbank.app.data.local.dao.HierarchyRowDb
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 class ChapterCqRepositoryImpl(
     private val dao: ChapterCqDataDao,
     private val beforeWrite: suspend () -> Unit = {},
 ) : ChapterCqRepository {
     override fun observeSubjects(): Flow<List<ChapterCqSubjectsEntity>> = dao.observeSubjects()
+    override fun observeSubjectRows(): Flow<List<HierarchyRow>> = dao.observeSubjectRows().map { it.toHierarchyRows() }
     override fun observeChapters(subjectId: String): Flow<List<ChapterCqChaptersEntity>> = dao.observeChapters(subjectId)
+    override fun observeChapterRows(subjectId: String): Flow<List<HierarchyRow>> = dao.observeChapterRows(subjectId).map { it.toHierarchyRows() }
     override fun observeStimuli(chapterId: String): Flow<List<ChapterCqStimuliEntity>> = dao.observeStimuli(chapterId)
     override fun observeCategories(): Flow<List<ChapterCqQuestionCategoriesEntity>> = dao.observeCategories()
     override fun observeQuestions(chapterId: String): Flow<List<ChapterCqQuestionsEntity>> = dao.observeQuestions(chapterId)
@@ -60,9 +69,11 @@ class ChapterCqRepositoryImpl(
     }
     override suspend fun loadStimulus(stimulusId: String): ChapterCqStimuliEntity? = dao.stimulus(stimulusId)
     override suspend fun loadStimulusImages(stimulusId: String): List<ChapterCqStimulusImagesEntity> = dao.stimulusImages(stimulusId)
+    override suspend fun loadStimulusBoards(stimulusId: String): List<ChapterCqStimulusBoardsEntity> = dao.stimulusBoards(stimulusId)
     override suspend fun loadSolutionParts(questionId: String): List<ChapterCqSolutionPartsEntity> = dao.solutionParts(questionId)
     override suspend fun loadQuestionBoards(questionId: String): List<ChapterCqQuestionBoardsEntity> = dao.questionBoards(questionId)
     override suspend fun loadQuestionCategories(questionId: String): List<ChapterCqQuestionCategoryLinksEntity> = dao.questionCategories(questionId)
+    override suspend fun loadQuestionPaperUsages(questionId: String) = dao.paperUsagesForQuestion(questionId)
     override suspend fun addSubject(name: String): Boolean {
         val value = name.trim(); if (value.isBlank()) return false
         val now = System.currentTimeMillis(); beforeWrite()
@@ -80,6 +91,84 @@ class ChapterCqRepositoryImpl(
     override suspend fun renameChapter(chapterId: String, name: String): Boolean {
         val value = name.trim(); if (value.isBlank()) return false
         beforeWrite(); return try { dao.renameChapter(chapterId, value, System.currentTimeMillis()) > 0 } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { false }
+    }
+
+    override suspend fun addSubjectItem(name: String): AddResult = checkedAdd(name) { value ->
+        if (dao.countSubjectName(value) > 0) return@checkedAdd AddResult.Duplicate
+        val now = System.currentTimeMillis()
+        val id = "cqs_${java.util.UUID.randomUUID()}"
+        beforeWrite()
+        dao.insertSubject(ChapterCqSubjectsEntity(id, value, 999, now, now))
+        AddResult.Added(id)
+    }
+
+    override suspend fun addChapterItem(subjectId: String, name: String): AddResult = checkedAdd(name) { value ->
+        if (dao.countSubject(subjectId) == 0) return@checkedAdd AddResult.ParentMissing
+        if (dao.countChapterName(subjectId, value) > 0) return@checkedAdd AddResult.Duplicate
+        val now = System.currentTimeMillis()
+        val id = "cqc_${java.util.UUID.randomUUID()}"
+        beforeWrite()
+        dao.insertChapter(ChapterCqChaptersEntity(id, subjectId, value, 999, now, now))
+        AddResult.Added(id)
+    }
+
+    override suspend fun renameSubjectItem(subjectId: String, name: String): EditResult = checkedEdit(name) { value ->
+        if (dao.countSubject(subjectId) == 0) return@checkedEdit EditResult.NotFound
+        if (dao.countSubjectNameExcept(value, subjectId) > 0) return@checkedEdit EditResult.Duplicate
+        beforeWrite()
+        if (dao.renameSubject(subjectId, value, System.currentTimeMillis()) > 0) EditResult.Done else EditResult.NotFound
+    }
+
+    override suspend fun renameChapterItem(chapterId: String, name: String): EditResult = checkedEdit(name) { value ->
+        val subjectId = dao.subjectIdForChapter(chapterId) ?: return@checkedEdit EditResult.NotFound
+        if (dao.countChapterName(subjectId, value) > 0 && dao.countChapterNameExcept(subjectId, value, chapterId) > 0) return@checkedEdit EditResult.Duplicate
+        beforeWrite()
+        if (dao.renameChapter(chapterId, value, System.currentTimeMillis()) > 0) EditResult.Done else EditResult.NotFound
+    }
+
+    override suspend fun deleteSubjectItem(subjectId: String): EditResult = guardedDelete { dao.deleteSubjectIfEmpty(subjectId) }
+    override suspend fun deleteChapterItem(chapterId: String): EditResult = guardedDelete { dao.deleteChapterIfEmpty(chapterId) }
+    override suspend fun reorderSubjectItems(orderedIds: List<String>): EditResult = guardedReorder { dao.reorderSubjects(orderedIds, System.currentTimeMillis()) }
+    override suspend fun reorderChapterItems(subjectId: String, orderedIds: List<String>): EditResult = guardedReorder { dao.reorderChapters(subjectId, orderedIds, System.currentTimeMillis()) }
+
+    private fun List<HierarchyRowDb>.toHierarchyRows(): List<HierarchyRow> = map {
+        HierarchyRow(it.id, it.name, it.childCount, it.questionCount)
+    }
+
+    private suspend fun checkedAdd(raw: String, block: suspend (String) -> AddResult): AddResult {
+        val name = HierarchyName.clean(raw)
+        if (name.isEmpty()) return AddResult.Blank
+        if (name.length > HierarchyName.MAX_LENGTH) return AddResult.TooLong
+        return try { block(name) } catch (cancelled: CancellationException) { throw cancelled } catch (error: Exception) {
+            AddResult.Failed(error.message ?: error.javaClass.simpleName)
+        }
+    }
+
+    private suspend fun checkedEdit(raw: String, block: suspend (String) -> EditResult): EditResult {
+        val name = HierarchyName.clean(raw)
+        if (name.isEmpty()) return EditResult.Blank
+        if (name.length > HierarchyName.MAX_LENGTH) return EditResult.TooLong
+        return try { block(name) } catch (cancelled: CancellationException) { throw cancelled } catch (error: Exception) {
+            EditResult.Failed(error.message ?: error.javaClass.simpleName)
+        }
+    }
+
+    private suspend fun guardedDelete(block: suspend () -> DeleteOutcome): EditResult = try {
+        beforeWrite()
+        when (val value = block()) {
+            DeleteOutcome.Deleted -> EditResult.Done
+            DeleteOutcome.NotFound -> EditResult.NotFound
+            is DeleteOutcome.NotEmpty -> EditResult.NotEmpty(value.childCount, value.questionCount)
+        }
+    } catch (cancelled: CancellationException) { throw cancelled } catch (error: Exception) {
+        EditResult.Failed(error.message ?: error.javaClass.simpleName)
+    }
+
+    private suspend fun guardedReorder(block: suspend () -> Boolean): EditResult = try {
+        beforeWrite()
+        if (block()) EditResult.Done else EditResult.NotFound
+    } catch (cancelled: CancellationException) { throw cancelled } catch (error: Exception) {
+        EditResult.Failed(error.message ?: error.javaClass.simpleName)
     }
     override suspend fun saveQuestionWithStimulus(
         question: ChapterCqQuestionsEntity, stimulus: ChapterCqStimuliEntity?, solutionParts: List<ChapterCqSolutionPartsEntity>,

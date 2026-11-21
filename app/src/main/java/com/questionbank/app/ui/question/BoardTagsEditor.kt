@@ -1,7 +1,6 @@
 package com.questionbank.app.ui.question
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -15,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -28,8 +28,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -53,11 +51,10 @@ fun TagChipRow(tags: List<BoardTag>, boards: List<BoardItem>, modifier: Modifier
             Text(
                 tagText(tag, boards),
                 modifier = Modifier
-                    .background(if (MaterialTheme.colorScheme.surface == androidx.compose.ui.graphics.Color.White) androidx.compose.ui.graphics.Color.White else MaterialTheme.colorScheme.surface, RoundedCornerShape(6.dp))
-                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(6.dp))
-                    .padding(horizontal = 8.dp, vertical = 3.dp),
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 10.sp,
+                    .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(8.dp))
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                fontSize = 11.sp,
             )
         }
     }
@@ -79,107 +76,26 @@ fun BoardTagsEditor(
     modifier: Modifier = Modifier,
 ) {
     var picking by rememberSaveable { mutableStateOf(false) }
-    val chipShape = RoundedCornerShape(7.dp)
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(title, color = Color(0xFF64748B), fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
-        Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            for (tag in tags) {
-                Row(
-                    modifier = Modifier
-                        .clip(chipShape)
-                        .background(Color(0xFFEEF2FF))
-                        .border(1.dp, Color(0xFFD5DDFE), chipShape)
-                        .clickable(enabled = enabled) { onChange(BoardRules.removeTag(tags, tag)) }
-                        .padding(start = 8.dp, end = 6.dp, top = 5.dp, bottom = 5.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                ) {
-                    Text(tagText(tag, boards), color = Color(0xFF2A3BB0), fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
-                    Text("×", color = Color(0xFF64748B), fontSize = 11.sp)
+        Text(title, style = MaterialTheme.typography.labelLarge)
+        if (tags.isNotEmpty()) {
+            Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                for (tag in tags) {
+                    InputChip(
+                        selected = false,
+                        onClick = { onChange(BoardRules.removeTag(tags, tag)) },
+                        enabled = enabled,
+                        label = { Text(tagText(tag, boards)) },
+                        trailingIcon = { Text("✕") },
+                    )
                 }
             }
-            Row(
-                modifier = Modifier
-                    .clip(chipShape)
-                    .background(Color.White)
-                    .border(1.dp, Color(0xFFD5D9E2), chipShape)
-                    .clickable(enabled = enabled && !BoardRules.isFull(tags)) { picking = true }
-                    .padding(horizontal = 9.dp, vertical = 5.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(if (tags.isEmpty()) "+ বোর্ড ও সাল" else "+ যোগ করুন", color = Color(0xFF3B4FD8), fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-            }
+        }
+        TextButton(onClick = { picking = true }, enabled = enabled && !BoardRules.isFull(tags)) {
+            Text(if (tags.isEmpty()) "+ বোর্ড ও সাল যোগ করুন" else "+ আরও বোর্ড ও সাল")
         }
         if (BoardRules.isFull(tags)) {
             Text("সর্বোচ্চ ${BoardRules.MAX_TAGS_PER_BLOCK.toBengali()}টি বোর্ড-সাল দেওয়া যায়।", style = MaterialTheme.typography.bodySmall)
-        }
-    }
-    if (picking) {
-        BoardYearDialog(
-            boards = boards.filter { !it.isArchived },
-            existing = tags,
-            onAddBoard = onAddBoard,
-            onConfirm = { tag ->
-                picking = false
-                onChange(BoardRules.addTag(tags, tag))
-            },
-            onDismiss = { picking = false },
-        )
-    }
-}
-
-
-
-/**
- * Compact CAAP-style board/year control for the stimulus and question toolbar rows.
- * The selected tags remain removable chips beside the board selector rather than a separate labelled form block.
- */
-@Composable
-fun BoardTagsInlineControl(
-    tags: List<BoardTag>,
-    boards: List<BoardItem>,
-    enabled: Boolean,
-    onChange: (List<BoardTag>) -> Unit,
-    onAddBoard: suspend (String, String) -> AddBoardResult,
-    modifier: Modifier = Modifier,
-) {
-    var picking by rememberSaveable { mutableStateOf(false) }
-    Row(
-        modifier = modifier.horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(9.dp))
-                .background(Color.White)
-                .border(1.dp, Color(0xFFD5D9E2), RoundedCornerShape(9.dp))
-                .clickable(enabled = enabled) { picking = true }
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
-        ) {
-            Text("বোর্ড", color = Color(0xFF2A3BB0), fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
-            Text("⌄", color = Color(0xFF64748B), fontSize = 13.sp)
-        }
-        tags.forEach { tag ->
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(9.dp))
-                    .background(Color(0xFFEEF2FF))
-                    .border(1.dp, Color(0xFFD5DDFE), RoundedCornerShape(9.dp))
-                    .clickable(enabled = enabled) { onChange(BoardRules.removeTag(tags, tag)) }
-                    .padding(start = 9.dp, end = 7.dp, top = 7.dp, bottom = 7.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
-            ) {
-                Text(tagText(tag, boards), color = Color(0xFF2A3BB0), fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
-                Text("×", color = Color(0xFF64748B), fontSize = 14.sp)
-            }
         }
     }
     if (picking) {

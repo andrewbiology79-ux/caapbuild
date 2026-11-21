@@ -6,16 +6,6 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.padding
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -59,7 +49,6 @@ fun StimulusImageAttachments(
     images: List<QuestionStimulusImage>,
     enabled: Boolean,
     onChange: (List<QuestionStimulusImage>) -> Unit,
-    compact: Boolean = false,
 ) {
     val coroutineScope = rememberCoroutineScope()
     var importing by remember { mutableStateOf(false) }
@@ -95,24 +84,14 @@ fun StimulusImageAttachments(
         }
     }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            if (!compact) Text("উদ্দীপকের ছবি", style = MaterialTheme.typography.titleSmall)
-            else androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
-            if (compact) {
-                Box(
-                    modifier = Modifier.size(38.dp).clip(RoundedCornerShape(9.dp))
-                        .background(Color(0xFFF8FAFF)).border(1.5.dp, Color(0xFF3B4FD8), RoundedCornerShape(9.dp))
-                        .clickable(enabled = enabled && !importing) { pickerScope = imageScope; launcher.launch(arrayOf("image/*")) },
-                    contentAlignment = Alignment.Center,
-                ) { Text(if (importing) "…" else "▧+", color = Color(0xFF3B4FD8), fontSize = 19.sp, fontWeight = FontWeight.Bold) }
-            } else {
-                OutlinedButton(enabled = enabled && !importing, onClick = { pickerScope = imageScope; launcher.launch(arrayOf("image/*")) }) {
-                    Text(if (importing) "আমদানি হচ্ছে…" else "ছবি যোগ করুন")
-                }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("উদ্দীপকের ছবি", style = MaterialTheme.typography.titleSmall)
+            OutlinedButton(enabled = enabled && !importing, onClick = { pickerScope = imageScope; launcher.launch(arrayOf("image/*")) }) {
+                Text(if (importing) "আমদানি হচ্ছে…" else "ছবি যোগ করুন")
             }
         }
         if (importError.isNotBlank()) Text(importError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-        if (images.isEmpty() && !compact) Text("এখনো কোনো ছবি যুক্ত নেই।", style = MaterialTheme.typography.bodySmall)
+        if (images.isEmpty()) Text("এখনো কোনো ছবি যুক্ত নেই।", style = MaterialTheme.typography.bodySmall)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             itemsIndexed(images.sortedBy { it.position }, key = { _, item -> item.imageId }) { index, item ->
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -141,7 +120,6 @@ fun SolutionImageAttachments(
     parts: List<QuestionSolutionPart>,
     enabled: Boolean,
     onChange: (List<QuestionSolutionPart>) -> Unit,
-    compact: Boolean = false,
 ) {
     val coroutineScope = rememberCoroutineScope()
     var importing by remember { mutableStateOf(false) }
@@ -178,20 +156,10 @@ fun SolutionImageAttachments(
         }
     }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            if (!compact) Text("সমাধানের ছবি", style = MaterialTheme.typography.titleSmall)
-            else androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
-            if (compact) {
-                Box(
-                    modifier = Modifier.size(38.dp).clip(RoundedCornerShape(9.dp))
-                        .background(Color(0xFFF8FAFF)).border(1.5.dp, Color(0xFF3B4FD8), RoundedCornerShape(9.dp))
-                        .clickable(enabled = enabled && !importing) { pickerScope = imageScope; launcher.launch(arrayOf("image/*")) },
-                    contentAlignment = Alignment.Center,
-                ) { Text(if (importing) "…" else "▧+", color = Color(0xFF3B4FD8), fontSize = 19.sp, fontWeight = FontWeight.Bold) }
-            } else {
-                OutlinedButton(enabled = enabled && !importing, onClick = { pickerScope = imageScope; launcher.launch(arrayOf("image/*")) }) {
-                    Text(if (importing) "আমদানি হচ্ছে…" else "ছবি যোগ করুন")
-                }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("সমাধানের ছবি", style = MaterialTheme.typography.titleSmall)
+            OutlinedButton(enabled = enabled && !importing, onClick = { pickerScope = imageScope; launcher.launch(arrayOf("image/*")) }) {
+                Text(if (importing) "আমদানি হচ্ছে…" else "ছবি যোগ করুন")
             }
         }
         if (importError.isNotBlank()) Text(importError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)

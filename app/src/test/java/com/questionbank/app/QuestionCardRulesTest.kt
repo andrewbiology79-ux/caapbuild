@@ -34,4 +34,11 @@ class QuestionCardRulesTest {
         assertEquals(3, QuestionCardRules.rating(group(null, sub("a", null))))
         assertEquals(3, QuestionCardRules.rating(group(null, sub("a", null), stimulusId = null)))
     }
+
+    @Test
+    fun fallbackRatingDoesNotChangeWhenSearchShowsOnlyPartOfAGroup() {
+        val complete = group(null, sub("a", 1), sub("b", 5)).copy(unfilteredFallbackRating = 3)
+        val partialSearchResult = complete.copy(subQuestions = listOf(sub("a", 1)))
+        assertEquals(3, QuestionCardRules.rating(partialSearchResult))
+    }
 }

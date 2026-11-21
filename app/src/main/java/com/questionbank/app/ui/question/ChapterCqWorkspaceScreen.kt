@@ -1,6 +1,7 @@
 package com.questionbank.app.ui.question
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,7 +33,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.questionbank.app.data.local.entity.BoardCatalogEntity
 import com.questionbank.app.data.local.entity.ChapterCqQuestionBoardsEntity
 import com.questionbank.app.data.local.entity.ChapterCqQuestionCategoryLinksEntity
 import com.questionbank.app.data.local.entity.ChapterCqQuestionsEntity
@@ -40,7 +40,11 @@ import com.questionbank.app.data.local.entity.ChapterCqSolutionPartsEntity
 import com.questionbank.app.data.local.entity.ChapterCqStimuliEntity
 import com.questionbank.app.data.local.entity.ChapterCqStimulusImagesEntity
 import com.questionbank.app.domain.question.QuestionSolutionPart
+import com.questionbank.app.domain.question.BoardItem
+import com.questionbank.app.domain.question.PaperUsage
+import com.questionbank.app.domain.question.BoardTag
 import com.questionbank.app.domain.question.QuestionStimulusImage
+import com.questionbank.app.ui.format.toBengaliDigits
 import com.questionbank.app.media.ImagePipeline
 import com.questionbank.app.media.ImageScope
 import com.questionbank.app.domain.editor.EditorBoardYear
@@ -254,6 +258,21 @@ private fun chapterCqSnapshotFromJson(raw: String): ChapterCqEditorSnapshot? {
     }.getOrNull()
 }
 
+private fun labelOrder(label: String): Int = when (label) { "ক" -> 0; "খ" -> 1; "গ" -> 2; "ঘ" -> 3; else -> 9 }
+
+private fun chapterCqSearchMatches(haystack: String, query: String): Boolean {
+    val terms = query.trim().lowercase().split(Regex("\\s+")).filter { it.isNotBlank() }
+    if (terms.isEmpty()) return true
+    val normalized = haystack.lowercase()
+    return terms.all { normalized.contains(it) }
+}
+
+private fun chapterCqBoardText(tags: List<BoardTag>, catalog: List<BoardItem>): String =
+    tags.joinToString(" ") { tag ->
+        val boardName = catalog.firstOrNull { it.code.equals(tag.boardCode, ignoreCase = true) }?.displayName.orEmpty()
+        "${tag.boardCode} $boardName ${tag.year} ${tag.year.toString().toBengaliDigits()}"
+    }
+
 /** Chapter_CQ has its own repository and schema; it intentionally has no Type_CQ question-type field. */
 @Composable
 fun ChapterCqWorkspaceScreen(
@@ -263,15 +282,19 @@ fun ChapterCqWorkspaceScreen(
     draftScope: CoroutineScope,
     imagePipeline: ImagePipeline,
     defaultEditorMode: EditorMode = EditorMode.MINIMUM,
+    /** When present, the workspace opens directly on this Chapter_CQ subject/chapter after hierarchy navigation. */
+    fixedSubjectId: String? = null,
+    fixedChapterId: String? = null,
     onBack: (() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     val subjects by repository.observeSubjects().collectAsState(initial = emptyList())
     val boards by referenceRepository.observeBoards().collectAsState(initial = emptyList())
+    val boardItems = remember(boards) { boards.map { BoardItem(it.code, it.displayName, it.boardKind == "CUSTOM", it.isArchived == 1L) } }
     val categories by repository.observeCategories().collectAsState(initial = emptyList())
-    var subjectId by rememberSaveable { mutableStateOf("") }
+    var subjectId by rememberSaveable { mutableStateOf(fixedSubjectId.orEmpty()) }
     val chapters by remember(subjectId) { repository.observeChapters(subjectId) }.collectAsState(initial = emptyList())
-    var chapterId by rememberSaveable { mutableStateOf("") }
+    var chapterId by rememberSaveable { mutableStateOf(fixedChapterId.orEmpty()) }
     val cards by remember(chapterId) { repository.observeQuestionCards(chapterId) }.collectAsState(initial = emptyList())
     var nameDialog by rememberSaveable { mutableStateOf(false) }
     var nameKind by rememberSaveable { mutableStateOf("subject") }
@@ -292,15 +315,87 @@ fun ChapterCqWorkspaceScreen(
     var detailQuestionId by remember { mutableStateOf<String?>(null) }
     var sortMode by rememberSaveable { mutableStateOf("DEFAULT") }
     var sortMenuOpen by remember { mutableStateOf(false) }
-    LaunchedEffect(chapterId) { selectedQuestionIds = emptySet() }
-    val displayedCards = remember(cards, sortMode) {
-        when (sortMode) {
-            "RATING" -> cards.sortedWith(compareByDescending<com.questionbank.app.data.local.dao.ChapterCqQuestionCardDb> { it.rating ?: it.stimulusRating ?: 3L }.thenBy { it.questionId })
-            "MARKS" -> cards.sortedWith(compareByDescending<com.questionbank.app.data.local.dao.ChapterCqQuestionCardDb> { it.marks }.thenBy { it.questionId })
-            "TYPE" -> cards.sortedWith(compareBy<com.questionbank.app.data.local.dao.ChapterCqQuestionCardDb> { it.label }.thenBy { it.questionId })
-            else -> cards
+    var searchOpen by rememberSaveable { mutableStateOf(false) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var questionMetadata by remember { mutableStateOf<Map<String, ChapterCqQuestionPresentation>>(emptyMap()) }
+    var stimulusMetadata by remember { mutableStateOf<Map<String, ChapterCqStimulusPresentation>>(emptyMap()) }
+    var stimulusReferences by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    LaunchedEffect(chapterId) { selectedQuestionIds = emptySet(); searchQuery = ""; searchOpen = false }
+    BackHandler(enabled = searchOpen) { searchOpen = false; searchQuery = "" }
+    LaunchedEffect(cards, chapterId) {
+        if (cards.isEmpty()) {
+            questionMetadata = emptyMap(); stimulusMetadata = emptyMap(); stimulusReferences = emptyMap()
+        } else {
+            val questionRows = linkedMapOf<String, ChapterCqQuestionPresentation>()
+            val stimulusRows = linkedMapOf<String, ChapterCqStimulusPresentation>()
+            val referenceRows = linkedMapOf<String, String>()
+            cards.forEach { card ->
+                val questionBoards = repository.loadQuestionBoards(card.questionId).map { BoardTag(it.boardCode, it.year.toInt()) }
+                val solutionParts = repository.loadSolutionParts(card.questionId).sortedBy { it.position }.map {
+                    QuestionSolutionPart(it.partId, it.partType, it.position, it.textContent, it.imageId)
+                }
+                val paperUsages = repository.loadQuestionPaperUsages(card.questionId).map { PaperUsage(it.paperId, it.shortName, it.title) }
+                questionRows[card.questionId] = ChapterCqQuestionPresentation(card, questionBoards, solutionParts, paperUsages)
+                card.stimulusId?.let { stimulusIdValue ->
+                    if (stimulusIdValue !in stimulusRows) {
+                        val images = repository.loadStimulusImages(stimulusIdValue).sortedBy { it.position }.map {
+                            QuestionStimulusImage(it.imageId, it.placement, it.position)
+                        }
+                        val tags = repository.loadStimulusBoards(stimulusIdValue).map { BoardTag(it.boardCode, it.year.toInt()) }
+                        stimulusRows[stimulusIdValue] = ChapterCqStimulusPresentation(tags, images)
+                        referenceRows[stimulusIdValue] = repository.loadStimulus(stimulusIdValue)?.referenceText.orEmpty()
+                    }
+                }
+            }
+            questionMetadata = questionRows
+            stimulusMetadata = stimulusRows
+            stimulusReferences = referenceRows
         }
     }
+    val allQuestionGroups = remember(cards, questionMetadata, stimulusMetadata, stimulusReferences) {
+        cards.groupBy { it.stimulusId ?: "single:${it.questionId}" }.map { (key, rows) ->
+            val sortedRows = rows.sortedWith(compareBy<com.questionbank.app.data.local.dao.ChapterCqQuestionCardDb> { labelOrder(it.label) }.thenBy { it.questionId })
+            val stimulusIdValue = sortedRows.firstOrNull()?.stimulusId
+            val first = sortedRows.first()
+            val fallback = sortedRows.mapNotNull { it.rating?.toInt() }.takeIf { it.isNotEmpty() }?.average()?.let { kotlin.math.round(it).toInt() } ?: 3
+            ChapterCqQuestionGroupPresentation(
+                key = key,
+                stimulusId = stimulusIdValue,
+                stimulusText = first.stimulusText.orEmpty(),
+                stimulusRating = first.stimulusRating?.toInt(),
+                fallbackRating = fallback,
+                referenceText = stimulusIdValue?.let { stimulusReferences[it] }.orEmpty(),
+                stimulus = stimulusIdValue?.let { stimulusMetadata[it] } ?: ChapterCqStimulusPresentation(),
+                questions = sortedRows.mapNotNull { questionMetadata[it.questionId] },
+                allQuestionIds = sortedRows.map { it.questionId },
+                paperUsages = sortedRows.flatMap { questionMetadata[it.questionId]?.paperUsages.orEmpty() }.distinctBy { it.paperId },
+            )
+        }
+    }
+    val visibleQuestionGroups = remember(allQuestionGroups, searchQuery, sortMode) {
+        val filtered = if (searchQuery.isBlank()) allQuestionGroups else allQuestionGroups.mapNotNull { group ->
+            val stimulusMatched = chapterCqSearchMatches(
+                listOf(group.stimulusText, chapterCqBoardText(group.stimulus.boards, boardItems)).joinToString(" "), searchQuery,
+            )
+            if (stimulusMatched) group else {
+                val matches = group.questions.filter { item ->
+                    val q = item.row
+                    chapterCqSearchMatches(
+                        listOf(q.questionText, item.solutionParts.filter { it.partType != "IMAGE" }.mapNotNull { it.textContent }.joinToString(" "), chapterCqBoardText(item.boards, boardItems)).joinToString(" "),
+                        searchQuery,
+                    )
+                }
+                if (matches.isEmpty()) null else group.copy(questions = matches)
+            }
+        }
+        when (sortMode) {
+            "RATING" -> filtered.sortedWith(compareByDescending<ChapterCqQuestionGroupPresentation> { it.rating }.thenBy { it.key })
+            "MARKS" -> filtered.sortedWith(compareByDescending<ChapterCqQuestionGroupPresentation> { it.questions.sumOf { q -> q.row.marks } }.thenBy { it.key })
+            "TYPE" -> filtered.sortedWith(compareBy<ChapterCqQuestionGroupPresentation> { it.questions.minOfOrNull { q -> labelOrder(q.row.label) } ?: 9 }.thenBy { it.key })
+            else -> filtered
+        }
+    }
+    val visibleQuestionCount = visibleQuestionGroups.sumOf { it.questions.size }
     var saveError by rememberSaveable { mutableStateOf("") }
     var editorLoadError by rememberSaveable { mutableStateOf("") }
 
@@ -370,11 +465,19 @@ fun ChapterCqWorkspaceScreen(
     var labelMenu by remember { mutableStateOf(false) }
     var boardMenu by remember { mutableStateOf(false) }
 
-    LaunchedEffect(subjects) {
-        if (subjectId.isBlank() || subjects.none { it.subjectId == subjectId }) subjectId = subjects.firstOrNull()?.subjectId.orEmpty()
+    LaunchedEffect(subjects, fixedSubjectId) {
+        if (fixedSubjectId != null) {
+            subjectId = fixedSubjectId
+        } else if (subjectId.isBlank() || subjects.none { it.subjectId == subjectId }) {
+            subjectId = subjects.firstOrNull()?.subjectId.orEmpty()
+        }
     }
-    LaunchedEffect(chapters) {
-        if (chapterId.isBlank() || chapters.none { it.chapterId == chapterId }) chapterId = chapters.firstOrNull()?.chapterId.orEmpty()
+    LaunchedEffect(chapters, fixedChapterId) {
+        if (fixedChapterId != null) {
+            chapterId = fixedChapterId
+        } else if (chapterId.isBlank() || chapters.none { it.chapterId == chapterId }) {
+            chapterId = chapters.firstOrNull()?.chapterId.orEmpty()
+        }
     }
     LaunchedEffect(editorOpen, editingId, draftOwnerId) {
         if (!editorOpen) return@LaunchedEffect
@@ -436,9 +539,7 @@ fun ChapterCqWorkspaceScreen(
             }
             draftSaved = true
         }
-        // CAA reference behavior: every newly opened editor session starts in Minimum mode.
-        // restoreForm keeps question/stimulus content; mode is presentation-only and resets here.
-        editorMode = defaultEditorMode
+        editorMode = if (rawDraft == null) defaultEditorMode else editorMode
         history.reset(snapshotForm())
         editorLoading = false
     }
@@ -747,62 +848,93 @@ fun ChapterCqWorkspaceScreen(
     )
     detailQuestionId?.let { id -> ChapterCqQuestionDetailDialog(id, repository, imagePipeline) { detailQuestionId = null } }
 
-    Scaffold(topBar = { AppHeader(title = "Chapter CQ", onBack = onBack) }) { padding ->
+    Scaffold(topBar = { AppHeader(
+        title = "Chapter CQ",
+        subtitle = if (fixedChapterId != null) {
+            val subjectName = subjects.firstOrNull { it.subjectId == subjectId }?.name.orEmpty()
+            val chapterName = chapters.firstOrNull { it.chapterId == chapterId }?.name.orEmpty()
+            listOf(subjectName, chapterName, "প্রশ্নসমূহ").filter { it.isNotBlank() }.joinToString(" › ")
+        } else null,
+        onBack = onBack,
+        actions = {
+            TextButton(onClick = { searchOpen = !searchOpen; if (!searchOpen) searchQuery = "" }) { Text(if (searchOpen) "বন্ধ" else "খুঁজুন") }
+        },
+    ) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("বিষয়", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                subjects.forEach { row -> TextButton(onClick = { subjectId = row.subjectId; chapterId = "" }) { Text(if (row.subjectId == subjectId) "✓ ${row.name}" else row.name) } }
-                TextButton(onClick = { nameKind = "subject"; newName = ""; nameDialog = true }) { Text("+ বিষয়") }
-                TextButton(onClick = {
-                    subjects.firstOrNull { it.subjectId == subjectId }?.let { nameEntityId = it.subjectId; nameKind = "renameSubject"; newName = it.name; nameDialog = true }
-                }, enabled = subjectId.isNotBlank()) { Text("নাম পরিবর্তন") }
+            if (fixedChapterId == null) {
+                Text("বিষয়", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    subjects.forEach { row -> TextButton(onClick = { subjectId = row.subjectId; chapterId = "" }) { Text(if (row.subjectId == subjectId) "✓ ${row.name}" else row.name) } }
+                    TextButton(onClick = { nameKind = "subject"; newName = ""; nameDialog = true }) { Text("+ বিষয়") }
+                    TextButton(onClick = {
+                        subjects.firstOrNull { it.subjectId == subjectId }?.let { nameEntityId = it.subjectId; nameKind = "renameSubject"; newName = it.name; nameDialog = true }
+                    }, enabled = subjectId.isNotBlank()) { Text("নাম পরিবর্তন") }
+                }
+                Text("অধ্যায়", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    chapters.forEach { row -> TextButton(onClick = { chapterId = row.chapterId }) { Text(if (row.chapterId == chapterId) "✓ ${row.name}" else row.name) } }
+                    TextButton(onClick = { nameKind = "chapter"; newName = ""; nameDialog = true }, enabled = subjectId.isNotBlank()) { Text("+ অধ্যায়") }
+                    TextButton(onClick = {
+                        chapters.firstOrNull { it.chapterId == chapterId }?.let { nameEntityId = it.chapterId; nameKind = "renameChapter"; newName = it.name; nameDialog = true }
+                    }, enabled = chapterId.isNotBlank()) { Text("নাম পরিবর্তন") }
+                }
             }
-            Text("অধ্যায়", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                chapters.forEach { row -> TextButton(onClick = { chapterId = row.chapterId }) { Text(if (row.chapterId == chapterId) "✓ ${row.name}" else row.name) } }
-                TextButton(onClick = { nameKind = "chapter"; newName = ""; nameDialog = true }, enabled = subjectId.isNotBlank()) { Text("+ অধ্যায়") }
-                TextButton(onClick = {
-                    chapters.firstOrNull { it.chapterId == chapterId }?.let { nameEntityId = it.chapterId; nameKind = "renameChapter"; newName = it.name; nameDialog = true }
-                }, enabled = chapterId.isNotBlank()) { Text("নাম পরিবর্তন") }
+            if (searchOpen) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("উদ্দীপক, প্রশ্ন, সমাধান, বোর্ড বা সাল খুঁজুন") },
+                    trailingIcon = { TextButton(onClick = { searchQuery = "" }) { Text("মুছুন") } },
+                )
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("প্রশ্নসমূহ (${displayedCards.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("মোট প্রশ্ন: ${visibleQuestionCount}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("উদ্দীপক/গ্রুপ: ${visibleQuestionGroups.size}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TextButton(onClick = { sortMenuOpen = true }) { Text("সাজান") }
                     DropdownMenu(expanded = sortMenuOpen, onDismissRequest = { sortMenuOpen = false }) {
-                        listOf("DEFAULT" to "ডিফল্ট", "RATING" to "রেটিং", "MARKS" to "নম্বর", "TYPE" to "লেবেল").forEach { (key, title) ->
+                        listOf("DEFAULT" to "ডিফল্ট", "RATING" to "রেটিং", "MARKS" to "নম্বর", "TYPE" to "প্রশ্নের ধরন").forEach { (key, title) ->
                             DropdownMenuItem(text = { Text(title) }, onClick = { sortMode = key; sortMenuOpen = false })
                         }
                     }
                     Button(onClick = ::openNewQuestion, enabled = chapterId.isNotBlank()) { Text("+ প্রশ্ন") }
                 }
             }
-            if (selectedQuestionIds.isNotEmpty()) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("নির্বাচিত ${selectedQuestionIds.size} টি")
-                TextButton(onClick = { pendingBulkDeleteIds = selectedQuestionIds.toList() }) { Text("নির্বাচিত মুছুন", color = MaterialTheme.colorScheme.error) }
-            }
-            if (chapterId.isBlank()) Text("প্রশ্ন দেখতে বা যোগ করতে একটি অধ্যায় নির্বাচন করুন।")
-            if (deleteError.isNotBlank()) Text(deleteError, color = if (deleteError.contains("মুছে") ) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
-            displayedCards.forEach { card ->
-                Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Checkbox(checked = card.questionId in selectedQuestionIds, onCheckedChange = { checked ->
-                        selectedQuestionIds = if (checked) selectedQuestionIds + card.questionId else selectedQuestionIds - card.questionId
-                    })
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("${card.label} · ${card.marks} নম্বর · রেটিং ${card.rating ?: card.stimulusRating ?: 3}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                        card.stimulusText?.takeIf { it.isNotBlank() }?.let { Text("উদ্দীপক: $it") }
-                        Text(card.questionText, style = MaterialTheme.typography.bodyLarge)
-                        if (card.shortAnswer.isNotBlank()) Text("উত্তর: ${card.shortAnswer}", style = MaterialTheme.typography.bodySmall)
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            TextButton(onClick = { detailQuestionId = card.questionId }) { Text("বিস্তারিত") }
-                            TextButton(onClick = { editingId = card.questionId; draftOwnerId = "edit:${card.questionId}"; draftSaved = false; editorLoading = true; saveError = ""; editorLoadError = ""; editorOpen = true }) { Text("সম্পাদনা") }
-                            TextButton(onClick = { scope.launch { deleteError = if (repository.duplicateQuestion(card.questionId, chapterId)) "প্রশ্নের সম্পূর্ণ কপি তৈরি হয়েছে।" else "কপি তৈরি করা যায়নি; archived reference বা data restriction থাকতে পারে।" } }) { Text("কপি") }
-                            TextButton(onClick = { pendingDeleteQuestionId = card.questionId }) { Text("মুছুন", color = MaterialTheme.colorScheme.error) }
-                        }
-                    }
+            if (cards.isNotEmpty()) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                TextButton(onClick = {
+                    val allIds = cards.map { it.questionId }.toSet()
+                    selectedQuestionIds = if (selectedQuestionIds.containsAll(allIds)) selectedQuestionIds - allIds else selectedQuestionIds + allIds
+                }) { Text(if (cards.isNotEmpty() && selectedQuestionIds.containsAll(cards.map { it.questionId })) "সব নির্বাচন বাতিল" else "সব নির্বাচন") }
+                if (selectedQuestionIds.isNotEmpty()) {
+                    Text("নির্বাচিত ${selectedQuestionIds.size} টি")
+                    TextButton(onClick = { pendingBulkDeleteIds = selectedQuestionIds.toList() }) { Text("নির্বাচিত মুছুন", color = MaterialTheme.colorScheme.error) }
                 }
             }
-            if (cards.isEmpty() && chapterId.isNotBlank()) Text("এই অধ্যায়ে এখনো প্রশ্ন যোগ করা হয়নি।")
+            if (chapterId.isBlank()) Text("প্রশ্ন দেখতে বা যোগ করতে একটি অধ্যায় নির্বাচন করুন।")
+            if (deleteError.isNotBlank()) Text(deleteError, color = if (deleteError.contains("মুছে")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+            visibleQuestionGroups.forEachIndexed { index, group ->
+                val visibleIds = group.questions.map { it.row.questionId }
+                ChapterCqQuestionGroupCard(
+                    number = index + 1,
+                    group = group,
+                    visibleQuestionIds = visibleIds,
+                    selectedQuestionIds = selectedQuestionIds,
+                    boards = boardItems,
+                    imagePipeline = imagePipeline,
+                    onSelectionChange = { checked -> selectedQuestionIds = if (checked) selectedQuestionIds + visibleIds else selectedQuestionIds - visibleIds.toSet() },
+                    onEdit = { id -> editingId = id; draftOwnerId = "edit:$id"; draftSaved = false; editorLoading = true; saveError = ""; editorLoadError = ""; editorOpen = true },
+                    onView = { id -> detailQuestionId = id },
+                    onCopy = { id -> scope.launch { deleteError = if (repository.duplicateQuestion(id, chapterId)) "প্রশ্নের সম্পূর্ণ কপি তৈরি হয়েছে।" else "কপি তৈরি করা যায়নি; archived reference বা data restriction থাকতে পারে।" } },
+                    onDelete = { ids -> pendingBulkDeleteIds = ids },
+                )
+            }
+            if (visibleQuestionGroups.isEmpty() && chapterId.isNotBlank()) {
+                Text(if (cards.isEmpty()) "এই অধ্যায়ে এখনো প্রশ্ন যোগ করা হয়নি।" else "কোনো মিল পাওয়া যায়নি।")
+            }
         }
     }
 }
