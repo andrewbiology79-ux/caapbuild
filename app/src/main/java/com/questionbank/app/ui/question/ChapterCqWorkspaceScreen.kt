@@ -849,9 +849,9 @@ fun ChapterCqWorkspaceScreen(
 
                             EdCard {
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    EdLabelChip(label, listOf("ক", "খ", "গ", "ঘ").mapIndexed { index, value -> index to value }, !savingQuestion) { selected ->
+                                    EdLabelChip(label, listOf("ক", "খ", "গ", "ঘ").mapIndexed { index, value -> index to value }, !savingQuestion, onPick = { selected ->
                                         label = listOf("ক", "খ", "গ", "ঘ").getOrElse(selected) { "ক" }; recordForm("label")
-                                    }
+                                    })
                                     EdMarksField(0, marks.toDoubleOrNull() ?: 1.0, !savingQuestion, { marks = it.toString(); recordForm("marks") }, {})
                                     EdBoardPill(
                                         tags = if (boardCode.isNotBlank() && boardYear.toIntOrNull() != null) listOf(BoardTag(boardCode, boardYear.toInt())) else emptyList(),
