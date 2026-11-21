@@ -280,11 +280,9 @@ fun AppNavHost() {
                 composable(
                     route = Routes.TOPICS,
                     arguments = listOf(
-                        navArgument("subjectId") { type = NavType.StringType },
                         navArgument("chapterId") { type = NavType.StringType },
                     ),
                 ) { entry ->
-                    val subjectId = entry.arguments?.getString("subjectId").orEmpty()
                     val chapterId = entry.arguments?.getString("chapterId").orEmpty()
                     val vm: HierarchyListViewModel = viewModel(
                         factory = HierarchyListViewModel.factory {
