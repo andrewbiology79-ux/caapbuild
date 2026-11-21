@@ -5,6 +5,15 @@ import com.questionbank.app.data.local.BanglaText
 /** One board and one year a question appeared in (v0.2.30c, UI-08). [boardCode] is a `board_catalog.code`. */
 data class BoardTag(val boardCode: String, val year: Int)
 
+/** One visual board chip may summarize several years for the same board. */
+data class BoardYearGroup(val boardCode: String, val years: List<Int>)
+
+/** Groups saved board-year tags without changing their underlying storage; years are displayed in ascending order. */
+fun groupBoardYears(tags: List<BoardTag>): List<BoardYearGroup> =
+    tags.distinct().groupBy { it.boardCode }.map { (code, rows) ->
+        BoardYearGroup(code, rows.map { it.year }.distinct().sorted())
+    }
+
 /**
  * Boards and years chosen in the editor. Same meaning as [RatingsInput]: for a NEW group the map holds the labels the person
  * tagged; for an EDIT the object means "these are the wanted tags": [stimulus] is the full wanted list (empty clears), a label

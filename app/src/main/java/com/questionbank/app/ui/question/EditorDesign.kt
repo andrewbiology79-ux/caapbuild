@@ -85,6 +85,7 @@ import com.questionbank.app.domain.question.AddBoardResult
 import com.questionbank.app.domain.question.BoardItem
 import com.questionbank.app.domain.question.BoardRules
 import com.questionbank.app.domain.question.BoardTag
+import com.questionbank.app.domain.question.groupBoardYears
 import com.questionbank.app.domain.question.QuestionSolutionPart
 import com.questionbank.app.domain.question.QuestionStimulusImage
 import com.questionbank.app.domain.question.RatingRules
@@ -103,7 +104,7 @@ import kotlinx.coroutines.launch
  * button, and a segmented Minimum / Full Editor switch. No icon library is used; the few icons are drawn on a Canvas.
  * ------------------------------------------------------------------------------------------------------------------- */
 
-enum class EdIcon { EYE, IMAGE_ADD, PLUS_BOX, TRASH, CHECK, CLOSE, CHEVRON, LAYERS, REFRESH, SORT }
+enum class EdIcon { EYE, IMAGE_ADD, PLUS, PLUS_BOX, TRASH, CHECK, CLOSE, CHEVRON, LAYERS, REFRESH, SORT }
 
 @Composable
 fun EdIconGlyph(icon: EdIcon, tint: Color, modifier: Modifier = Modifier.size(22.dp)) {
@@ -141,6 +142,10 @@ fun EdIconGlyph(icon: EdIcon, tint: Color, modifier: Modifier = Modifier.size(22
                 drawCircle(tint, radius = w * 0.05f, center = Offset(w * 0.3f, h * 0.38f))
                 drawLine(tint, Offset(w * 0.82f, h * 0.02f), Offset(w * 0.82f, h * 0.34f), strokeWidth = stroke.width, cap = StrokeCap.Round)
                 drawLine(tint, Offset(w * 0.66f, h * 0.18f), Offset(w * 0.98f, h * 0.18f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+            }
+            EdIcon.PLUS -> {
+                drawLine(tint, Offset(w * 0.5f, h * 0.16f), Offset(w * 0.5f, h * 0.84f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.16f, h * 0.5f), Offset(w * 0.84f, h * 0.5f), strokeWidth = stroke.width, cap = StrokeCap.Round)
             }
             EdIcon.PLUS_BOX -> {
                 drawRoundRect(tint, topLeft = Offset(w * 0.1f, h * 0.1f), size = Size(w * 0.8f, h * 0.8f), cornerRadius = CornerRadius(w * 0.12f), style = stroke)
@@ -280,6 +285,53 @@ fun EdIconButton(
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) { EdIconGlyph(icon, tint, Modifier.size(16.dp)) }
+}
+
+/** Small add-question control: only the question label and plus glyph are visible. */
+@Composable
+fun EdMiniQuestionAddButton(
+    label: String,
+    description: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val cs = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(6.dp)
+    Row(
+        modifier = modifier
+            .height(27.dp)
+            .clip(shape)
+            .background(cs.surface)
+            .border(1.dp, cs.outlineVariant, shape)
+            .clickable(enabled = enabled, onClick = onClick)
+            .alpha(if (enabled) 1f else 0.42f)
+            .semantics { contentDescription = description }
+            .padding(horizontal = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Text(label, color = cs.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        EdIconGlyph(EdIcon.PLUS, cs.primary, Modifier.size(12.dp))
+    }
+}
+
+/** Tiny icon-only control used for sorting the question cards. */
+@Composable
+fun EdMiniSortButton(enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val cs = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(6.dp)
+    Box(
+        modifier = modifier
+            .size(width = 28.dp, height = 27.dp)
+            .clip(shape)
+            .background(cs.surface)
+            .border(1.dp, cs.outlineVariant, shape)
+            .clickable(enabled = enabled, onClick = onClick)
+            .alpha(if (enabled) 1f else 0.42f)
+            .semantics { contentDescription = "ক-খ-গ-ঘ ক্রমে সাজান" },
+        contentAlignment = Alignment.Center,
+    ) { EdIconGlyph(EdIcon.SORT, cs.primary, Modifier.size(15.dp)) }
 }
 
 /** A compact 32 dp pill with an optional dropdown arrow. [accent] gives the yellow rating look. */
@@ -578,14 +630,21 @@ fun EdTextArea(
     showPreviewToggle: Boolean = true,
 ) {
     val cs = MaterialTheme.colorScheme
-    val density = LocalDensity.current.density
-    val bodyTextSize = LocalQuestionBodyTextSize.current.sp
+    val densityInfo = LocalDensity.current
+    val density = densityInfo.density
+    val bodyTextSizeValue = LocalQuestionBodyTextSize.current
+    val bodyTextSize = bodyTextSizeValue.sp
+    // A resized field must always retain enough vertical space for one complete line at the selected Settings font size and system font scale.
+    val oneLineMinimum = EditorTextAreaRules.minimumOneLineHeightDp(bodyTextSizeValue, densityInfo.fontScale)
     var field by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
-    var boxHeight by rememberSaveable(minHeight.value) { mutableStateOf(minHeight.value) }
+    var boxHeight by rememberSaveable(minHeight.value) { mutableStateOf(minHeight.value.coerceAtLeast(oneLineMinimum)) }
     var internalPreviewOpen by rememberSaveable { mutableStateOf(false) }
     val previewOpen = externalPreviewOpen ?: internalPreviewOpen
     LaunchedEffect(value) {
         if (field.text != value) field = TextFieldValue(value, TextRange(value.length))
+    }
+    LaunchedEffect(oneLineMinimum) {
+        if (boxHeight < oneLineMinimum) boxHeight = oneLineMinimum
     }
     val shape = RoundedCornerShape(16.dp)
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -626,7 +685,10 @@ fun EdTextArea(
                     cursorBrush = SolidColor(cs.primary),
                     modifier = Modifier.fillMaxWidth().height(boxHeight.dp),
                     decorationBox = { inner ->
-                        Box(Modifier.fillMaxWidth().height(boxHeight.dp).padding(start = 16.dp, top = 16.dp, end = 30.dp, bottom = 28.dp)) {
+                        // Keep the writing area almost edge-to-edge; the old 16dp/30dp side insets made narrow fields look blank.
+                        // No horizontal inset: shrinking the field must not leave thick white rails on either side.
+                        // Reserve the bottom 26dp for the resize grip so one line remains fully readable above it.
+                        Box(Modifier.fillMaxWidth().height(boxHeight.dp).padding(start = 0.dp, top = 6.dp, end = 0.dp, bottom = 26.dp)) {
                             if (field.text.isEmpty() && placeholder != null) Text(placeholder, color = cs.onSurfaceVariant, fontSize = bodyTextSize)
                             inner()
                         }
@@ -635,12 +697,12 @@ fun EdTextArea(
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .size(width = 34.dp, height = 30.dp)
+                        .size(width = 30.dp, height = 26.dp)
                         .semantics { contentDescription = "লেখার ঘর ছোট-বড় করতে ধরে টানুন" }
-                        .pointerInput(enabled, minHeight.value) {
+                        .pointerInput(enabled, minHeight.value, oneLineMinimum) {
                             if (enabled) detectDragGestures { change, dragAmount ->
                                 change.consume()
-                                boxHeight = (boxHeight + dragAmount.y / density).coerceIn(52f, 620f)
+                                boxHeight = EditorTextAreaRules.clampHeightDp(boxHeight + dragAmount.y / density, bodyTextSizeValue, densityInfo.fontScale)
                             }
                         },
                     contentAlignment = Alignment.Center,
@@ -765,29 +827,42 @@ fun EdRatingPill(selected: Int?, enabled: Boolean, onSelect: (Int?) -> Unit) {
     }
 }
 
-/** The chosen board/year tags as small chips; tapping a chip removes it. */
+/** The chosen board/year tags grouped by board; each year remains individually removable. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun EdTagChips(tags: List<BoardTag>, boards: List<BoardItem>, enabled: Boolean, onChange: (List<BoardTag>) -> Unit) {
     if (tags.isEmpty()) return
     val cs = MaterialTheme.colorScheme
     FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp, Alignment.End), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        tags.forEach { tag ->
+        groupBoardYears(tags).forEach { group ->
             val shape = RoundedCornerShape(7.dp)
             Row(
                 Modifier
-                    .height(20.dp)
+                    .heightIn(min = 20.dp)
                     .clip(shape)
                     .background(Color(0xFFEEF2FF), shape)
                     .border(1.dp, Color(0xFFD5D9E2), shape)
-                    .clickable(enabled = enabled) { onChange(BoardRules.removeTag(tags, tag)) }
-                    .padding(start = 6.dp, end = 3.dp)
-                    .semantics { contentDescription = "${tagText(tag, boards)} মুছুন" },
+                    .padding(start = 6.dp, end = 4.dp, top = 1.dp, bottom = 1.dp)
+                    .semantics { contentDescription = "${group.boardCode} বোর্ডের সাল" },
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                Text("${tag.boardCode}'${tag.year.toString().takeLast(2)}", color = Color(0xFF2A3BB0), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-                Text("×", color = Color(0xFF64748B), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text(group.boardCode, color = Color(0xFF2A3BB0), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                group.years.forEachIndexed { index, year ->
+                    if (index > 0) Text(",", color = Color(0xFF2A3BB0), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                    Row(
+                        Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .clickable(enabled = enabled) { onChange(BoardRules.removeTag(tags, BoardTag(group.boardCode, year))) }
+                            .padding(horizontal = 1.dp, vertical = 1.dp)
+                            .semantics { contentDescription = "${group.boardCode} ${year.toBengali()} সাল মুছুন" },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(1.dp),
+                    ) {
+                        Text("'${year.toString().takeLast(2)}", color = Color(0xFF2A3BB0), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                        Text("×", color = Color(0xFF64748B), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
         }
     }

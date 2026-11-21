@@ -72,9 +72,18 @@ fun EditorModePicker(mode: EditorMode, enabled: Boolean, onChange: (EditorMode) 
 
 /* ----------------------------------------------- the editor screen -------------------------------------------------- */
 
-private fun slotHasContent(d: DraftText, i: Int): Boolean =
-    d.texts[i].isNotBlank() || d.answers[i].isNotBlank() || d.solutionTexts[i].any { it.isNotBlank() } ||
-        d.solutionPartsByLabel?.getOrNull(i)?.any { it.partType == "IMAGE" } == true
+private fun slotHasContent(d: DraftText, i: Int): Boolean {
+    val label = CqLabel.entries.getOrNull(i) ?: return false
+    return d.texts.getOrNull(i).orEmpty().isNotBlank() ||
+        d.answers.getOrNull(i).orEmpty().isNotBlank() ||
+        d.solutionTexts.getOrNull(i).orEmpty().any { it.isNotBlank() } ||
+        d.solutionPartsByLabel?.getOrNull(i)?.any { it.partType == "IMAGE" } == true ||
+        d.boards.getOrNull(i).orEmpty().isNotEmpty() ||
+        d.ratings.getOrNull(i) != null ||
+        d.categoryIdsByLabel?.getOrNull(i).orEmpty().isNotEmpty() ||
+        d.questionTypeIds.getOrNull(i) != label.typeId ||
+        d.marks.getOrNull(i) != label.marks
+}
 
 private fun contentMask(d: DraftText): Int =
     CqLabel.entries.indices.fold(0) { acc, i -> if (slotHasContent(d, i)) acc or (1 shl i) else acc }
@@ -95,7 +104,7 @@ fun QuestionEditorScreen(
     var showDuplicateConfirm by rememberSaveable { mutableStateOf(false) }
     var stimulusPreviewOpen by rememberSaveable { mutableStateOf(false) }
     var shownMask by rememberSaveable { mutableStateOf((1 shl 2) or (1 shl 3)) }
-    var sortedByLabel by rememberSaveable { mutableStateOf(false) }
+    var sortConfirmed by rememberSaveable { mutableStateOf(false) }
     var topicOpen by rememberSaveable { mutableStateOf(true) }
     val invalidMarkFields = remember { mutableStateListOf<Int>() }
     val full = viewModel.editorMode == EditorMode.FULL
@@ -144,10 +153,9 @@ fun QuestionEditorScreen(
 
         // Which of the four label slots (ক..ঘ) have a card. Slots with content always show; the rest follow the add/move/delete buttons.
         val mask = (shownMask or contentMask(draft)).let { if (it == 0) ((1 shl 2) or (1 shl 3)) else it }
-        // The legacy editor starts with গ, ঘ; Full-only additions (ক, খ) are appended after those two cards.
-        val defaultOrder = listOf(CqLabel.GA, CqLabel.GHA, CqLabel.KA, CqLabel.KHA).map { it.sortOrder - 1 }
-        val sortedOrder = CqLabel.entries.map { it.sortOrder - 1 }
-        val visibleOrder = if (!full) defaultOrder.take(2) else if (sortedByLabel) sortedOrder else defaultOrder
+        // Cards always follow the canonical ক → খ → গ → ঘ sequence. Minimum keeps any K/Kh cards added in Full, with Minimum controls only.
+        val sortedOrder = CqLabel.entries.sortedBy { it.sortOrder }.map { it.sortOrder - 1 }
+        val visibleOrder = sortedOrder
         val visible = visibleOrder.filter { mask and (1 shl it) != 0 }
         val freeSlots = listOf(CqLabel.KA.sortOrder - 1, CqLabel.KHA.sortOrder - 1).filter { mask and (1 shl it) == 0 }
 
@@ -250,30 +258,23 @@ fun QuestionEditorScreen(
 
                 // Full editor only: optional ক/খ cards and one-tap legacy order control.
                 if (full) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
                         val canAddKa = mask and (1 shl (CqLabel.KA.sortOrder - 1)) == 0
                         val canAddKha = mask and (1 shl (CqLabel.KHA.sortOrder - 1)) == 0
-                        EdPill(
-                            text = if (canAddKa) "+ ক যোগ করুন" else "ক যোগ হয়েছে",
-                            onClick = { shownMask = mask or (1 shl (CqLabel.KA.sortOrder - 1)) },
+                        EdMiniQuestionAddButton(
+                            label = "ক", description = "ক দাগের প্রশ্ন যোগ করুন",
                             enabled = canAddKa && !busy,
-                            dropdown = false,
-                            icon = EdIcon.PLUS_BOX,
+                            onClick = { shownMask = shownMask or (1 shl (CqLabel.KA.sortOrder - 1)); sortConfirmed = false },
                         )
-                        EdPill(
-                            text = if (canAddKha) "+ খ যোগ করুন" else "খ যোগ হয়েছে",
-                            onClick = { shownMask = mask or (1 shl (CqLabel.KHA.sortOrder - 1)) },
+                        EdMiniQuestionAddButton(
+                            label = "খ", description = "খ দাগের প্রশ্ন যোগ করুন",
                             enabled = canAddKha && !busy,
-                            dropdown = false,
-                            icon = EdIcon.PLUS_BOX,
+                            onClick = { shownMask = shownMask or (1 shl (CqLabel.KHA.sortOrder - 1)); sortConfirmed = false },
                         )
-                        EdPill(
-                            text = "ক-খ-গ-ঘ সাজাও",
-                            onClick = { sortedByLabel = true },
-                            enabled = !busy && !sortedByLabel,
-                            dropdown = false,
-                            icon = EdIcon.SORT,
-                        )
+                        EdMiniSortButton(enabled = !busy && visible.size > 1, onClick = { sortConfirmed = true })
+                    }
+                    if (sortConfirmed) {
+                        Text("প্রশ্নগুলো আগে থেকেই ক-খ-গ-ঘ ক্রমে সাজানো আছে।", color = cs.primary, style = MaterialTheme.typography.bodySmall)
                     }
                 }
 

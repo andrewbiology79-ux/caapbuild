@@ -51,6 +51,7 @@ import com.questionbank.app.domain.question.AddBoardResult
 import com.questionbank.app.domain.question.BoardItem
 import com.questionbank.app.domain.question.BoardRules
 import com.questionbank.app.domain.question.BoardTag
+import com.questionbank.app.domain.question.groupBoardYears
 import com.questionbank.app.ui.format.toBengali
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -60,7 +61,8 @@ private val LegacyBlueDark = Color(0xFF2A3BB0)
 private val LegacyBorder = Color(0xFFD5D9E2)
 private val LegacyMuted = Color(0xFF64748B)
 
-/** Read-only compact chips "ঢাকা'১৯" in one line (used on question cards). */
+/** Read-only compact chips matching the legacy notation, e.g. DB'23,25. */
+@Suppress("UNUSED_PARAMETER")
 @Composable
 fun TagChipRow(tags: List<BoardTag>, boards: List<BoardItem>, modifier: Modifier = Modifier) {
     Row(
@@ -68,9 +70,10 @@ fun TagChipRow(tags: List<BoardTag>, boards: List<BoardItem>, modifier: Modifier
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        for (tag in tags) {
+        for (group in groupBoardYears(tags)) {
+            val yearsText = group.years.joinToString(separator = ",") { it.toString().takeLast(2) }
             Text(
-                tagText(tag, boards),
+                "${group.boardCode}'$yearsText",
                 modifier = Modifier
                     .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(8.dp))
                     .padding(horizontal = 8.dp, vertical = 2.dp),
@@ -112,24 +115,32 @@ fun BoardTagsEditor(
                 modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
             ) {
-                tags.forEach { tag ->
+                groupBoardYears(tags).forEach { group ->
                     Row(
                         modifier = Modifier
                             .clip(RoundedCornerShape(7.dp))
                             .background(Color(0xFFEEF2FF))
                             .border(1.dp, LegacyBorder, RoundedCornerShape(7.dp))
-                            .clickable(enabled = enabled) { onChange(BoardRules.removeTag(tags, tag)) }
                             .padding(start = 7.dp, end = 4.dp, top = 3.dp, bottom = 3.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
-                        Text(
-                            "${tag.boardCode}'${tag.year.toString().takeLast(2)}",
-                            color = LegacyBlueDark,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text("×", color = LegacyMuted, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        // Match the old app's exact board-chip notation: DB'23,25 (apostrophe once per board).
+                        Text("${group.boardCode}'", color = LegacyBlueDark, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                        group.years.forEachIndexed { index, year ->
+                            if (index > 0) Text(",", color = LegacyBlueDark, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .clickable(enabled = enabled) { onChange(BoardRules.removeTag(tags, BoardTag(group.boardCode, year))) }
+                                    .padding(horizontal = 1.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(1.dp),
+                            ) {
+                                Text(year.toString().takeLast(2), color = LegacyBlueDark, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                                Text("×", color = LegacyMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
                 }
             }

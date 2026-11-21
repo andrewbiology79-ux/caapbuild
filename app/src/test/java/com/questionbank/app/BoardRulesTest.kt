@@ -7,6 +7,7 @@ import com.questionbank.app.domain.question.BoardTag
 import com.questionbank.app.domain.question.BoardsInput
 import com.questionbank.app.domain.question.CqLabel
 import com.questionbank.app.domain.question.GroupEditInput
+import com.questionbank.app.domain.question.groupBoardYears
 import com.questionbank.app.domain.question.QuestionEditRules
 import com.questionbank.app.domain.question.QuestionGroupInput
 import com.questionbank.app.domain.question.QuestionRules
@@ -65,6 +66,23 @@ class BoardRulesTest {
         assertNull(BoardRules.parseYear("1899"))
         assertNull(BoardRules.parseYear("2201"))
         assertNull(BoardRules.parseYear("20245"))
+    }
+
+    @Test
+    fun boardYearsAreGroupedByBoardAndSortedForCommaSeparatedDisplay() {
+        val groups = groupBoardYears(
+            listOf(
+                BoardTag("DHA", 2025),
+                BoardTag("RAJ", 2024),
+                BoardTag("DHA", 2023),
+                BoardTag("DHA", 2025),
+            ),
+        )
+        assertEquals(2, groups.size)
+        assertEquals("DHA", groups[0].boardCode)
+        assertEquals(listOf(2023, 2025), groups[0].years)
+        assertEquals("RAJ", groups[1].boardCode)
+        assertEquals(listOf(2024), groups[1].years)
     }
 
     @Test

@@ -266,7 +266,7 @@ private fun chapterCqSnapshotFromJson(raw: String): ChapterCqEditorSnapshot? {
     }.getOrNull()
 }
 
-private fun labelOrder(label: String): Int = when (label) { "গ" -> 0; "ঘ" -> 1; "ক" -> 2; "খ" -> 3; else -> 9 }
+private fun labelOrder(label: String): Int = when (label) { "ক" -> 0; "খ" -> 1; "গ" -> 2; "ঘ" -> 3; else -> 9 }
 
 private fun chapterCqSearchMatches(haystack: String, query: String): Boolean {
     val terms = query.trim().lowercase().split(Regex("\\s+")).filter { it.isNotBlank() }

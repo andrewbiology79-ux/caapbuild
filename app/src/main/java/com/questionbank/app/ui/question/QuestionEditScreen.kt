@@ -2,7 +2,6 @@ package com.questionbank.app.ui.question
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -62,7 +61,7 @@ fun QuestionEditScreen(
 ) {
     var askDiscard by rememberSaveable { mutableStateOf(false) }
     var stimulusPreviewOpen by rememberSaveable { mutableStateOf(false) }
-    var sortedByLabel by rememberSaveable { mutableStateOf(false) }
+    var sortConfirmed by rememberSaveable { mutableStateOf(false) }
     var pendingDeleteLabel by remember { mutableStateOf<com.questionbank.app.domain.question.CqLabel?>(null) }
     val invalidMarkFields = remember { mutableStateListOf<Int>() }
     val catalog by viewModel.boardCatalog.collectAsState()
@@ -81,7 +80,7 @@ fun QuestionEditScreen(
         AlertDialog(
             onDismissRequest = { pendingDeleteLabel = null },
             title = { Text("প্রশ্ন মুছে ফেলবেন?") },
-            text = { Text("${label.letter}) প্রশ্নটি সংরক্ষণ করলে এই উদ্দীপক-গ্রুপ থেকে মুছে যাবে। অন্য প্রশ্নগুলো অক্ষত থাকবে।") },
+            text = { Text("${label.letter}) প্রশ্ন কার্ডটি এই Editor থেকে মুছে যাবে। Save করলে পরিবর্তন কার্যকর হবে; অন্য প্রশ্নগুলো অক্ষত থাকবে।") },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.deleteQuestion(label)
@@ -226,33 +225,30 @@ fun QuestionEditScreen(
                     }
                 }
                 if (viewModel.hasStimulus && viewModel.editorMode == EditorMode.FULL) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
                         val canAddKa = viewModel.canAddOptionalQuestion(CqLabel.KA)
                         val canAddKha = viewModel.canAddOptionalQuestion(CqLabel.KHA)
-                        EdPill(
-                            text = if (canAddKa) "+ ক যোগ করুন" else "ক আগে থেকেই আছে",
-                            onClick = { viewModel.addOptionalQuestion(CqLabel.KA) },
+                        EdMiniQuestionAddButton(
+                            label = "ক", description = "ক দাগের প্রশ্ন যোগ করুন",
                             enabled = canAddKa && !viewModel.saving,
-                            dropdown = false,
-                            icon = EdIcon.PLUS_BOX,
+                            onClick = { viewModel.addOptionalQuestion(CqLabel.KA); sortConfirmed = false },
                         )
-                        EdPill(
-                            text = if (canAddKha) "+ খ যোগ করুন" else "খ আগে থেকেই আছে",
-                            onClick = { viewModel.addOptionalQuestion(CqLabel.KHA) },
+                        EdMiniQuestionAddButton(
+                            label = "খ", description = "খ দাগের প্রশ্ন যোগ করুন",
                             enabled = canAddKha && !viewModel.saving,
-                            dropdown = false,
-                            icon = EdIcon.PLUS_BOX,
+                            onClick = { viewModel.addOptionalQuestion(CqLabel.KHA); sortConfirmed = false },
                         )
-                        EdPill(
-                            text = "ক-খ-গ-ঘ সাজাও",
-                            onClick = { sortedByLabel = true },
-                            enabled = !viewModel.saving && !sortedByLabel && viewModel.editableLabels.size > 1,
-                            dropdown = false,
-                            icon = EdIcon.SORT,
+                        EdMiniSortButton(
+                            enabled = !viewModel.saving && viewModel.editableLabels.size > 1,
+                            onClick = { sortConfirmed = true },
                         )
                     }
+                    if (sortConfirmed) {
+                        Text("প্রশ্নগুলো আগে থেকেই ক-খ-গ-ঘ ক্রমে সাজানো আছে।", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
+                    }
                 }
-                val labelsToShow = if (sortedByLabel) viewModel.editableLabels.sortedBy { it.sortOrder } else viewModel.editableLabels
+                // The fixed CQ labels always render in canonical ক → খ → গ → ঘ order.
+                val labelsToShow = viewModel.editableLabels.sortedBy { it.sortOrder }
                 labelsToShow.forEach { label ->
                     val i = label.sortOrder - 1
                     var questionPreviewOpen by rememberSaveable(label.letter) { mutableStateOf(false) }
@@ -298,7 +294,7 @@ fun QuestionEditScreen(
                                 enabled = !viewModel.saving, selected = questionPreviewOpen,
                             )
                             EdRatingPill(viewModel.ratings[i], !viewModel.saving) { viewModel.changeRating(label, it) }
-                            if (viewModel.hasStimulus && viewModel.original?.subQuestions?.any { it.label == label } == true && viewModel.editorMode == EditorMode.FULL) {
+                            if (viewModel.hasStimulus && viewModel.editorMode == EditorMode.FULL && viewModel.shouldShowDeleteButton(label)) {
                                 EdIconButton(
                                     EdIcon.TRASH, "${label.letter}) প্রশ্ন মুছুন", { pendingDeleteLabel = label },
                                     enabled = !viewModel.saving && viewModel.canDeleteQuestion(label),

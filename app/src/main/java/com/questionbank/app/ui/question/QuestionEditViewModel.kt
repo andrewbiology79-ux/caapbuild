@@ -349,7 +349,7 @@ class QuestionEditViewModel(
     /** True for a card with a stimulus: all four blocks and the stimulus can be edited. A single question edits only its own block. */
     val hasStimulus: Boolean get() = original?.stimulusId != null
 
-    /** The sub-question blocks shown on the screen; minimum preserves G/Gh-only view and Full reveals saved or explicitly added blocks. */
+    /** The sub-question blocks shown on screen; Minimum keeps G/Gh and any saved or Full-added K/Kh cards. */
     val editableLabels: List<CqLabel>
         get() {
             val group = original ?: return emptyList()
@@ -370,10 +370,11 @@ class QuestionEditViewModel(
                 val visibleInMode = when {
                     !hasStimulus -> alreadyHasData
                     editorMode == EditorMode.FULL -> alreadyHasData || explicitlyAdded
-                    else -> label in setOf(CqLabel.GA, CqLabel.GHA)
+                    // Minimum shows the normal G/Gh cards plus any K/Kh question explicitly added in Full or already saved.
+                    else -> label in setOf(CqLabel.GA, CqLabel.GHA) || alreadyHasData || explicitlyAdded
                 }
                 notDeleted && visibleInMode
-            }
+            }.sortedBy { it.sortOrder }
         }
 
     /** K/Kh are optional on an existing stimulus group and appear only after an explicit Full Editor action. */
@@ -393,14 +394,24 @@ class QuestionEditViewModel(
     val deletedQuestionLabels: List<CqLabel>
         get() = original?.subQuestions.orEmpty().filter { it.id in deletedQuestionIds }.mapNotNull { it.label }
 
+    fun hasQuestionCard(label: CqLabel): Boolean = label in editableLabels
+
+    fun shouldShowDeleteButton(label: CqLabel): Boolean {
+        val group = original ?: return false
+        return group.stimulusId != null &&
+            (group.subQuestions.any { it.label == label && it.id !in deletedQuestionIds } || label in addedOptionalQuestionLabels)
+    }
+
     fun canDeleteQuestion(label: CqLabel): Boolean {
         val group = original ?: return false
-        val row = group.subQuestions.firstOrNull { it.label == label } ?: return false
-        val remainingStored = group.subQuestions.count { it.id !in deletedQuestionIds }
+        if (group.stimulusId == null || !shouldShowDeleteButton(label)) return false
+        val row = group.subQuestions.firstOrNull { it.label == label && it.id !in deletedQuestionIds }
+        val remainingStored = group.subQuestions.count { it.id !in deletedQuestionIds && it.label != label }
         val pendingNew = editableLabels.count { candidate ->
-            group.subQuestions.none { it.label == candidate } && texts[candidate.sortOrder - 1].isNotBlank()
+            candidate != label && group.subQuestions.none { it.label == candidate } &&
+                texts[candidate.sortOrder - 1].isNotBlank()
         }
-        return group.stimulusId != null && row.id !in deletedQuestionIds && remainingStored + pendingNew > 1
+        return remainingStored + pendingNew > 0 && (row != null || label in addedOptionalQuestionLabels)
     }
 
     private fun buildInput(): GroupEditInput =
@@ -546,8 +557,23 @@ class QuestionEditViewModel(
 
     fun deleteQuestion(label: CqLabel) {
         if (saving || finished || !canDeleteQuestion(label)) return
-        val rowId = original?.subQuestions?.firstOrNull { it.label == label }?.id ?: return
-        deletedQuestionIds = deletedQuestionIds + rowId
+        val rowId = original?.subQuestions?.firstOrNull { it.label == label && it.id !in deletedQuestionIds }?.id
+        if (rowId != null) {
+            deletedQuestionIds = deletedQuestionIds + rowId
+        } else if (label in addedOptionalQuestionLabels) {
+            // An optional K/Kh card added in this Full session has no database row yet; remove its draft slot.
+            val i = label.sortOrder - 1
+            addedOptionalQuestionLabels = addedOptionalQuestionLabels - label
+            texts = texts.toMutableList().also { it[i] = "" }
+            answers = answers.toMutableList().also { it[i] = "" }
+            ratings = ratings.toMutableList().also { it[i] = null }
+            boards = boards.toMutableList().also { it[i] = emptyList() }
+            questionTypeIds = questionTypeIds.toMutableList().also { it[i] = label.typeId }
+            marks = marks.toMutableList().also { it[i] = label.marks }
+            solutionTexts = solutionTexts.toMutableList().also { it[i] = emptyList() }
+            categoryIdsByLabel = categoryIdsByLabel.toMutableList().also { it[i] = emptyList() }
+            solutionPartsByLabel = solutionPartsByLabel.toMutableList().also { it[i] = emptyList() }
+        } else return
         record("delete-${label.sortOrder}")
         result = null
         queueDraft()
