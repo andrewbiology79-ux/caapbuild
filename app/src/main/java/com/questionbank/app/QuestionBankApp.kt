@@ -16,6 +16,7 @@ class QuestionBankApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        CrashLog.install(this)
         // A staged restore is applied here, BEFORE anything can open the database (the container opens it lazily).
         val outcome = RestoreSwap.applyIfPending(getDatabasePath(BackupService.DB_NAME), filesDir) { file -> BackupInspector.inspect(file) }
         val message = when (outcome) {
