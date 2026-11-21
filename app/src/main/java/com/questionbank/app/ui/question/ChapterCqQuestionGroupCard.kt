@@ -171,7 +171,7 @@ internal fun ChapterCqQuestionGroupCard(
                 Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("${q.label}. · ${marksText(q.marks)} নম্বর", modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
-                        Text("রেটিং ${(q.rating ?: group.stimulusRating ?: group.fallbackRating.toLong()).coerceIn(1,5)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("রেটিং ${(q.rating?.toInt() ?: group.stimulusRating ?: group.fallbackRating).coerceIn(1, 5)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     if (item.boards.isNotEmpty()) TagChipRow(item.boards, boards)
                     Text(q.questionText, style = MaterialTheme.typography.bodyLarge)
