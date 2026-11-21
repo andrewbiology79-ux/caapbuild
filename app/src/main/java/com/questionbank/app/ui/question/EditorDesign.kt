@@ -567,7 +567,7 @@ fun EdTextArea(
     val density = LocalDensity.current.density
     val bodyTextSize = LocalQuestionBodyTextSize.current.sp
     var field by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
-    var boxHeight by rememberSaveable { mutableStateOf(minHeight.value) }
+    var boxHeight by rememberSaveable(minHeight.value) { mutableStateOf(minHeight.value) }
     var internalPreviewOpen by rememberSaveable { mutableStateOf(false) }
     val previewOpen = externalPreviewOpen ?: internalPreviewOpen
     LaunchedEffect(value) {
@@ -600,7 +600,7 @@ fun EdTextArea(
                 }
                 HorizontalDivider(color = cs.outlineVariant)
             }
-            Box(Modifier.fillMaxWidth().heightIn(min = boxHeight.dp, max = 620.dp)) {
+            Box(Modifier.fillMaxWidth().height(boxHeight.dp)) {
                 BasicTextField(
                     value = field,
                     onValueChange = {
@@ -610,26 +610,29 @@ fun EdTextArea(
                     enabled = enabled,
                     textStyle = LocalTextStyle.current.copy(color = cs.onSurface, fontSize = bodyTextSize, lineHeight = (LocalQuestionBodyTextSize.current * 1.5f).sp),
                     cursorBrush = SolidColor(cs.primary),
-                    modifier = Modifier.fillMaxWidth().heightIn(min = boxHeight.dp, max = 620.dp),
+                    modifier = Modifier.fillMaxWidth().height(boxHeight.dp),
                     decorationBox = { inner ->
-                        Box(Modifier.fillMaxWidth().padding(start = 16.dp, top = 16.dp, end = 30.dp, bottom = 28.dp)) {
-                            if (field.text.isEmpty() && placeholder != null) Text(placeholder, color = cs.onSurfaceVariant, fontSize = 17.sp)
+                        Box(Modifier.fillMaxWidth().height(boxHeight.dp).padding(start = 16.dp, top = 16.dp, end = 30.dp, bottom = 28.dp)) {
+                            if (field.text.isEmpty() && placeholder != null) Text(placeholder, color = cs.onSurfaceVariant, fontSize = bodyTextSize)
                             inner()
                         }
                     },
                 )
-                Text(
-                    "◢",
-                    color = Color(0xFF94A3B8),
-                    fontSize = 22.sp,
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(end = 6.dp, bottom = 2.dp)
-                        .pointerInput(enabled, boxHeight) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(width = 34.dp, height = 30.dp)
+                        .semantics { contentDescription = "লেখার ঘর ছোট-বড় করতে ধরে টানুন" }
+                        .pointerInput(enabled, minHeight.value) {
                             if (enabled) detectDragGestures { change, dragAmount ->
                                 change.consume()
                                 boxHeight = (boxHeight + dragAmount.y / density).coerceIn(52f, 620f)
                             }
                         },
-                )
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("◢", color = Color(0xFF94A3B8), fontSize = 20.sp)
+                }
             }
         }
         if (showPreviewToggle && externalPreviewOpen == null) {
@@ -765,7 +768,7 @@ fun EdRatingPill(selected: Int?, enabled: Boolean, onSelect: (Int?) -> Unit) {
 fun EdTagChips(tags: List<BoardTag>, boards: List<BoardItem>, enabled: Boolean, onChange: (List<BoardTag>) -> Unit) {
     if (tags.isEmpty()) return
     val cs = MaterialTheme.colorScheme
-    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp, Alignment.End), verticalArrangement = Arrangement.spacedBy(5.dp)) {
         tags.forEach { tag ->
             val shape = RoundedCornerShape(7.dp)
             Row(
@@ -851,6 +854,7 @@ fun rememberSolutionImageAdder(
     parts: List<QuestionSolutionPart>,
     enabled: Boolean,
     onChange: (List<QuestionSolutionPart>) -> Unit,
+    insertAtStart: Boolean = false,
 ): ImageAdder {
     val coroutineScope = rememberCoroutineScope()
     var importing by remember { mutableStateOf(false) }
@@ -865,10 +869,16 @@ fun rememberSolutionImageAdder(
                     error = ""
                     val imageId = pipeline.importImage(uri, imageScope)
                     val ordered = parts.sortedBy { it.position }
+                    val imagePart = QuestionSolutionPart("solution_image_$imageId", "IMAGE", 0L, imageId = imageId)
+                    val base = if (ordered.any { it.partType != "IMAGE" }) ordered else listOf(
+                        QuestionSolutionPart("solution_text_initial_$imageId", "TEXT", 0L, textContent = ""),
+                    )
                     val next = if (target != null) {
                         ordered.map { if (it.partId == target) it.copy(imageId = imageId) else it }
+                    } else if (insertAtStart) {
+                        listOf(imagePart) + base
                     } else {
-                        ordered + QuestionSolutionPart("solution_image_$imageId", "IMAGE", ordered.size.toLong(), imageId = imageId)
+                        base + imagePart.copy(position = base.size.toLong())
                     }
                     onChange(next.mapIndexed { index, row -> row.copy(position = index.toLong()) })
                 } catch (cancelled: CancellationException) {

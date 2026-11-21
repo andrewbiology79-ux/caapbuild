@@ -142,7 +142,7 @@ fun QuestionEditorScreen(
     val typeLabels by viewModel.questionTypeLabels.collectAsState()
     var showDuplicateConfirm by rememberSaveable { mutableStateOf(false) }
     var stimulusPreviewOpen by rememberSaveable { mutableStateOf(false) }
-    var shownMask by rememberSaveable { mutableStateOf(0) }
+    var shownMask by rememberSaveable { mutableStateOf((1 shl 2) or (1 shl 3)) }
     var topicOpen by rememberSaveable { mutableStateOf(true) }
     val invalidMarkFields = remember { mutableStateListOf<Int>() }
     val full = viewModel.editorMode == EditorMode.FULL
@@ -190,9 +190,12 @@ fun QuestionEditorScreen(
         }
 
         // Which of the four label slots (ক..ঘ) have a card. Slots with content always show; the rest follow the add/move/delete buttons.
-        val mask = (shownMask or contentMask(draft)).let { if (it == 0) 1 else it }
-        val visible = CqLabel.entries.indices.filter { mask and (1 shl it) != 0 }
-        val freeSlots = CqLabel.entries.indices.filter { mask and (1 shl it) == 0 }
+        val mask = (shownMask or contentMask(draft)).let { if (it == 0) ((1 shl 2) or (1 shl 3)) else it }
+        // The legacy editor starts with গ, ঘ; Full-only additions (ক, খ) are appended after those two cards.
+        val cardDisplayOrder = listOf(CqLabel.GA, CqLabel.GHA, CqLabel.KA, CqLabel.KHA).map { it.sortOrder - 1 }
+        val addOrder = listOf(CqLabel.KA, CqLabel.KHA, CqLabel.GA, CqLabel.GHA).map { it.sortOrder - 1 }
+        val visible = cardDisplayOrder.filter { mask and (1 shl it) != 0 }
+        val freeSlots = addOrder.filter { mask and (1 shl it) == 0 }
 
         val stimulusAdder = rememberStimulusImageAdder(
             pipeline = imagePipeline,
@@ -274,6 +277,7 @@ fun QuestionEditorScreen(
                         value = draft.stimulus,
                         onValueChange = viewModel::setStimulus,
                         enabled = !busy,
+                        minHeight = if (full) 150.dp else 88.dp,
                         placeholder = "উদ্দীপক লিখুন (ঐচ্ছিক)",
                         showMathBar = full,
                         previewTitle = "লাইভ প্রিভিউ (KaTeX)",
@@ -293,7 +297,7 @@ fun QuestionEditorScreen(
                 }
 
                 // --- question list ---
-                Text("প্রশ্ন তালিকা (${visible.size.toBengali()}টি প্রশ্ন)", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                if (full) Text("প্রশ্ন তালিকা (${visible.size.toBengali()}টি প্রশ্ন)", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                 visible.forEach { i ->
                     key(i) {
                         QuestionBlockCard(
@@ -318,23 +322,25 @@ fun QuestionEditorScreen(
                     }
                 }
 
-                val nextFree = freeSlots.firstOrNull()
-                val addShape = RoundedCornerShape(20.dp)
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(58.dp)
-                        .clip(addShape)
-                        .dashedBorder(if (nextFree != null && !busy) cs.primary else cs.outline, radius = 20.dp, width = 2.dp)
-                        .clickable(enabled = nextFree != null && !busy) { shownMask = mask or (1 shl nextFree!!) },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        if (nextFree != null) "+ আরও প্রশ্ন যোগ করো" else "চারটি প্রশ্নই যোগ করা হয়েছে",
-                        color = if (nextFree != null && !busy) cs.primary else cs.onSurfaceVariant,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 16.sp,
-                    )
+                if (full) {
+                    val nextFree = freeSlots.firstOrNull()
+                    val addShape = RoundedCornerShape(20.dp)
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(58.dp)
+                            .clip(addShape)
+                            .dashedBorder(if (nextFree != null && !busy) cs.primary else cs.outline, radius = 20.dp, width = 2.dp)
+                            .clickable(enabled = nextFree != null && !busy) { shownMask = mask or (1 shl nextFree!!) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            if (nextFree != null) "+ আরও প্রশ্ন যোগ করো" else "চারটি প্রশ্নই যোগ করা হয়েছে",
+                            color = if (nextFree != null && !busy) cs.primary else cs.onSurfaceVariant,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 16.sp,
+                        )
+                    }
                 }
 
                 resultText(viewModel.result)?.let { Text(it, color = cs.error, style = MaterialTheme.typography.bodyMedium) }
@@ -366,7 +372,15 @@ private fun QuestionBlockCard(
     val parts = (draft.solutionPartsByLabel?.getOrNull(index) ?: draft.solutionTexts[index].mapIndexed { partIndex, text ->
         QuestionSolutionPart("type_cq:new:${label.letter}:text:$partIndex", "TEXT", partIndex.toLong(), textContent = text)
     }).sortedBy { it.position }
-    val solutionAdder = rememberSolutionImageAdder(pipeline, ImageScope.TYPE_CQ, parts, !busy) { viewModel.setSolutionImageParts(index, it) }
+    val solutionStartAdder = rememberSolutionImageAdder(
+        pipeline, ImageScope.TYPE_CQ, parts, !busy,
+        onChange = { viewModel.setSolutionImageParts(index, it) }, insertAtStart = true,
+    )
+    val solutionEndAdder = rememberSolutionImageAdder(
+        pipeline, ImageScope.TYPE_CQ, parts, !busy,
+        onChange = { viewModel.setSolutionImageParts(index, it) },
+    )
+    val solutionAdder = solutionEndAdder
     val textParts = draft.solutionTexts[index]
     var questionPreviewOpen by rememberSaveable(index) { mutableStateOf(false) }
     var solutionPreviewOpen by rememberSaveable(index) { mutableStateOf(false) }
@@ -410,6 +424,7 @@ private fun QuestionBlockCard(
             value = draft.texts[index],
             onValueChange = { viewModel.setText(index, it) },
             enabled = !busy,
+            minHeight = if (full) 112.dp else 88.dp,
             placeholder = "প্রশ্ন লিখুন",
             showMathBar = full,
             previewTitle = "${label.letter}) প্রশ্নের প্রিভিউ (KaTeX)",
@@ -429,12 +444,12 @@ private fun QuestionBlockCard(
                     EdIcon.EYE, "সমাধানের প্রিভিউ", { solutionPreviewOpen = !solutionPreviewOpen },
                     selected = solutionPreviewOpen,
                 )
-                EdIconButton(EdIcon.IMAGE_ADD, "সমাধানে ছবি যোগ করুন", { solutionAdder.pick(null) }, enabled = !busy && !solutionAdder.importing, dashed = true)
+                EdIconButton(EdIcon.IMAGE_ADD, "সমাধানের শুরুতে ছবি যোগ করুন", { solutionStartAdder.pick(null) }, enabled = !busy && !solutionStartAdder.importing, dashed = true)
             }
         }
         // With no part yet, one empty box is shown; the first key stays the same once the part exists, so typing keeps its focus.
-        val placeholder = parts.isEmpty()
-        val shownParts = if (placeholder) listOf(QuestionSolutionPart("first-text", "TEXT", 0L, textContent = "")) else parts
+        val placeholder = parts.none { it.partType != "IMAGE" }
+        val shownParts = if (placeholder) parts + QuestionSolutionPart("first-text", "TEXT", parts.size.toLong(), textContent = "") else parts
         var textIndex = 0
         shownParts.forEachIndexed { order, part ->
             val isFirstText = part.partType != "IMAGE" && textIndex == 0
@@ -463,6 +478,7 @@ private fun QuestionBlockCard(
                         },
                         enabled = !busy,
                         placeholder = "সমাধান লিখুন",
+                        minHeight = if (full) 112.dp else 88.dp,
                         showMathBar = full,
                         showPreviewToggle = false,
                     )
@@ -483,31 +499,34 @@ private fun QuestionBlockCard(
                 text = textParts.filter { it.isNotBlank() }.joinToString("\n\n"),
             )
         }
-        if (solutionAdder.error.isNotBlank()) Text(solutionAdder.error, color = cs.error, style = MaterialTheme.typography.bodySmall)
+        if (solutionStartAdder.error.isNotBlank()) Text(solutionStartAdder.error, color = cs.error, style = MaterialTheme.typography.bodySmall)
+        if (solutionEndAdder.error.isNotBlank()) Text(solutionEndAdder.error, color = cs.error, style = MaterialTheme.typography.bodySmall)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
-            EdIconButton(EdIcon.IMAGE_ADD, "সমাধানে ছবি যোগ করুন", { solutionAdder.pick(null) }, enabled = !busy && !solutionAdder.importing, dashed = true)
+            EdIconButton(EdIcon.IMAGE_ADD, "সমাধানের শেষে ছবি যোগ করুন", { solutionEndAdder.pick(null) }, enabled = !busy && !solutionEndAdder.importing, dashed = true)
             EdIconButton(EdIcon.PLUS_BOX, "সমাধানের আরেকটি অংশ যোগ করুন", { viewModel.addSolutionText(index) }, enabled = !busy, dashed = true)
         }
 
-        // --- short answer ---
-        HorizontalDivider(color = cs.outlineVariant)
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("সংক্ষিপ্ত উত্তর (ঐচ্ছিক)", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-            EdIconButton(
-                EdIcon.EYE, "সংক্ষিপ্ত উত্তরের প্রিভিউ", { answerPreviewOpen = !answerPreviewOpen },
-                selected = answerPreviewOpen,
+        // --- short answer: Full Editor only ---
+        if (full) {
+            HorizontalDivider(color = cs.outlineVariant)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("সংক্ষিপ্ত উত্তর (ঐচ্ছিক)", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                EdIconButton(
+                    EdIcon.EYE, "সংক্ষিপ্ত উত্তরের প্রিভিউ", { answerPreviewOpen = !answerPreviewOpen },
+                    selected = answerPreviewOpen,
+                )
+            }
+            EdTextArea(
+                value = draft.answers[index],
+                onValueChange = { viewModel.setAnswer(index, it) },
+                enabled = !busy,
+                minHeight = 76.dp,
+                placeholder = "সংক্ষিপ্ত উত্তর (ঐচ্ছিক)",
+                showMathBar = true,
+                previewTitle = "${label.letter}) সংক্ষিপ্ত উত্তরের প্রিভিউ (KaTeX)",
+                externalPreviewOpen = answerPreviewOpen,
+                showPreviewToggle = false,
             )
         }
-        EdTextArea(
-            value = draft.answers[index],
-            onValueChange = { viewModel.setAnswer(index, it) },
-            enabled = !busy,
-            minHeight = 76.dp,
-            placeholder = "সংক্ষিপ্ত উত্তর (ঐচ্ছিক)",
-            showMathBar = full,
-            previewTitle = "${label.letter}) সংক্ষিপ্ত উত্তরের প্রিভিউ (KaTeX)",
-            externalPreviewOpen = answerPreviewOpen,
-            showPreviewToggle = false,
-        )
     }
 }

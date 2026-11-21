@@ -348,10 +348,20 @@ class QuestionEditViewModel(
     val editableLabels: List<CqLabel>
         get() {
             val group = original ?: return emptyList()
-            val labels = if (group.stimulusId != null) CqLabel.entries else group.subQuestions.mapNotNull { it.label }
+            val labels = if (group.stimulusId != null) listOf(CqLabel.GA, CqLabel.GHA, CqLabel.KA, CqLabel.KHA)
+                else group.subQuestions.mapNotNull { it.label }
             return labels.filter { label ->
+                val index = label.sortOrder - 1
                 val savedId = group.subQuestions.firstOrNull { it.label == label }?.id
-                savedId == null || savedId !in deletedQuestionIds
+                val notDeleted = savedId == null || savedId !in deletedQuestionIds
+                val alreadyHasData = savedId != null || texts.getOrNull(index).orEmpty().isNotBlank() ||
+                    answers.getOrNull(index).orEmpty().isNotBlank() ||
+                    solutionTexts.getOrNull(index).orEmpty().any { it.isNotBlank() } ||
+                    solutionPartsByLabel.getOrNull(index).orEmpty().any { it.partType == "IMAGE" } ||
+                    boards.getOrNull(index).orEmpty().isNotEmpty() || ratings.getOrNull(index) != null ||
+                    categoryIdsByLabel.getOrNull(index).orEmpty().isNotEmpty() ||
+                    questionTypeIds.getOrNull(index) != label.typeId || marks.getOrNull(index) != label.marks
+                notDeleted && (editorMode == EditorMode.FULL || label == CqLabel.GA || label == CqLabel.GHA || alreadyHasData)
             }
         }
 
@@ -528,9 +538,16 @@ class QuestionEditViewModel(
     fun changeSolutionImageParts(label: CqLabel, value: List<QuestionSolutionPart>) {
         if (saving || finished) return
         val index = label.sortOrder - 1
-        val ordered = value.sortedBy { it.position }.mapIndexed { position, part -> part.copy(position = position.toLong()) }
+        val sorted = value.sortedBy { it.position }
+        val withText = if (sorted.any { it.partType != "IMAGE" }) sorted else sorted + QuestionSolutionPart(
+            "type_cq:$groupKey:${label.letter}:text:auto",
+            "TEXT",
+            sorted.size.toLong(),
+            textContent = "",
+        )
+        val ordered = withText.mapIndexed { position, part -> part.copy(position = position.toLong()) }
         solutionPartsByLabel = solutionPartsByLabel.toMutableList().also { it[index] = ordered }
-        solutionTexts = solutionTexts.toMutableList().also { rows -> rows[index] = ordered.filter { it.partType == "TEXT" }.mapNotNull { it.textContent } }
+        solutionTexts = solutionTexts.toMutableList().also { rows -> rows[index] = ordered.filter { it.partType != "IMAGE" }.mapNotNull { it.textContent } }
         record("solution-mixed-${label.sortOrder}"); result = null; queueDraft()
     }
     fun changeReferenceText(value: String) { if (saving || finished || !hasStimulus) return; referenceText = value; record("reference"); result = null; queueDraft() }

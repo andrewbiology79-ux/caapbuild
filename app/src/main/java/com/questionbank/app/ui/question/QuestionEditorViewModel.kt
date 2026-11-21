@@ -157,9 +157,16 @@ class QuestionEditorViewModel(
             }
         }).toMutableList()
         if (index !in rows.indices) return
-        val ordered = value.sortedBy { it.position }.mapIndexed { position, part -> part.copy(position = position.toLong()) }
+        val sorted = value.sortedBy { it.position }
+        val withText = if (sorted.any { it.partType != "IMAGE" }) sorted else sorted + QuestionSolutionPart(
+            "type_cq:$topicId:${CqLabel.entries[index].letter}:text:auto",
+            "TEXT",
+            sorted.size.toLong(),
+            textContent = "",
+        )
+        val ordered = withText.mapIndexed { position, part -> part.copy(position = position.toLong()) }
         rows[index] = ordered
-        val texts = draft.solutionTexts.toMutableList().also { list -> list[index] = ordered.filter { it.partType == "TEXT" }.mapNotNull { it.textContent } }
+        val texts = draft.solutionTexts.toMutableList().also { list -> list[index] = ordered.filter { it.partType != "IMAGE" }.mapNotNull { it.textContent } }
         change(draft.copy(solutionTexts = texts, solutionPartsByLabel = rows), "solution-mixed-$index")
     }
     fun setQuestionType(index: Int, value: String) = change(draft.copy(questionTypeIds = draft.questionTypeIds.toMutableList().also { it[index] = value }), "type-$index")

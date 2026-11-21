@@ -14,6 +14,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -33,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.questionbank.app.domain.question.QuestionRules
+import com.questionbank.app.domain.question.QuestionSolutionPart
 import com.questionbank.app.domain.question.UpdateResult
 import com.questionbank.app.media.ImagePipeline
 import com.questionbank.app.media.ImageScope
@@ -201,7 +203,7 @@ fun QuestionEditScreen(
                         onValueChange = viewModel::changeStimulus,
                         enabled = !viewModel.saving,
                         placeholder = "উদ্দীপক লিখুন",
-                        minHeight = 150.dp,
+                        minHeight = if (viewModel.editorMode == EditorMode.FULL) 150.dp else 88.dp,
                         showMathBar = viewModel.editorMode == EditorMode.FULL,
                         previewTitle = "লাইভ প্রিভিউ (KaTeX)",
                         externalPreviewOpen = stimulusPreviewOpen,
@@ -229,7 +231,15 @@ fun QuestionEditScreen(
                     var questionPreviewOpen by rememberSaveable(label.letter) { mutableStateOf(false) }
                     var answerPreviewOpen by rememberSaveable(label.letter) { mutableStateOf(false) }
                     var solutionPreviewOpen by rememberSaveable(label.letter) { mutableStateOf(false) }
-                    val solutionImageAdder = rememberSolutionImageAdder(
+                    val solutionStartAdder = rememberSolutionImageAdder(
+                        pipeline = imagePipeline,
+                        imageScope = ImageScope.TYPE_CQ,
+                        parts = viewModel.solutionPartsByLabel[i],
+                        enabled = !viewModel.saving,
+                        onChange = { viewModel.changeSolutionImageParts(label, it) },
+                        insertAtStart = true,
+                    )
+                    val solutionEndAdder = rememberSolutionImageAdder(
                         pipeline = imagePipeline,
                         imageScope = ImageScope.TYPE_CQ,
                         parts = viewModel.solutionPartsByLabel[i],
@@ -283,7 +293,7 @@ fun QuestionEditScreen(
                         onValueChange = { viewModel.setText(label, it) },
                         enabled = !viewModel.saving,
                         placeholder = "${label.letter}) প্রশ্ন লিখুন",
-                        minHeight = 132.dp,
+                        minHeight = if (viewModel.editorMode == EditorMode.FULL) 112.dp else 88.dp,
                         showMathBar = viewModel.editorMode == EditorMode.FULL,
                         previewTitle = "${label.letter}) প্রশ্নের প্রিভিউ (KaTeX)",
                         externalPreviewOpen = questionPreviewOpen,
@@ -315,72 +325,121 @@ fun QuestionEditScreen(
                             }
                         }
                     }
+                    // Solution is available in both modes; its core controls remain identical.
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("সংক্ষিপ্ত উত্তর (ঐচ্ছিক)", style = MaterialTheme.typography.labelLarge)
-                        EdIconButton(
-                            EdIcon.EYE, "${label.letter}) সংক্ষিপ্ত উত্তরের প্রিভিউ", { answerPreviewOpen = !answerPreviewOpen },
-                            enabled = !viewModel.saving, selected = answerPreviewOpen,
-                        )
-                    }
-                    EdTextArea(
-                        value = viewModel.answers[i],
-                        onValueChange = { viewModel.setAnswer(label, it) },
-                        enabled = !viewModel.saving,
-                        placeholder = "সংক্ষিপ্ত উত্তর (ঐচ্ছিক)",
-                        minHeight = 76.dp,
-                        showMathBar = viewModel.editorMode == EditorMode.FULL,
-                        previewTitle = "${label.letter}) সংক্ষিপ্ত উত্তরের প্রিভিউ (KaTeX)",
-                        externalPreviewOpen = answerPreviewOpen,
-                        showPreviewToggle = false,
-                    )
-                    if (viewModel.editorMode == EditorMode.FULL) {
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("সমাধান", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                EdIconButton(
-                                    EdIcon.EYE, "${label.letter}) সমাধানের প্রিভিউ", { solutionPreviewOpen = !solutionPreviewOpen },
-                                    enabled = !viewModel.saving, selected = solutionPreviewOpen,
-                                )
-                                EdIconButton(
-                                    EdIcon.IMAGE_ADD, "${label.letter}) সমাধানের শুরুতে ছবি যোগ করুন", { solutionImageAdder.pick(null) },
-                                    enabled = !viewModel.saving && !solutionImageAdder.importing, dashed = true,
-                                )
-                            }
+                        Text("সমাধান", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            EdIconButton(
+                                EdIcon.EYE, "${label.letter}) সমাধানের প্রিভিউ", { solutionPreviewOpen = !solutionPreviewOpen },
+                                enabled = !viewModel.saving, selected = solutionPreviewOpen,
+                            )
+                            EdIconButton(
+                                EdIcon.IMAGE_ADD, "${label.letter}) সমাধানের শুরুতে ছবি যোগ করুন", { solutionStartAdder.pick(null) },
+                                enabled = !viewModel.saving && !solutionStartAdder.importing, dashed = true,
+                            )
                         }
-                        viewModel.solutionTexts[i].forEachIndexed { partIndex, part ->
+                    }
+                    val solutionTextValues = viewModel.solutionTexts[i]
+                    val solutionParts = viewModel.solutionPartsByLabel[i].sortedBy { it.position }
+                    val needsInitialText = solutionParts.none { it.partType != "IMAGE" }
+                    val visibleSolutionParts = if (needsInitialText) solutionParts + QuestionSolutionPart(
+                        "edit-solution-first-text-${label.letter}", "TEXT", solutionParts.size.toLong(), textContent = "",
+                    ) else solutionParts
+                    var solutionTextIndex = 0
+                    visibleSolutionParts.forEachIndexed { partOrder, part ->
+                        if (part.partType == "IMAGE" && part.imageId != null) {
+                            EdThumbnail(
+                                pipeline = imagePipeline,
+                                imageId = part.imageId,
+                                imageScope = ImageScope.TYPE_CQ,
+                                enabled = !viewModel.saving && !solutionStartAdder.importing,
+                                onReplace = { solutionStartAdder.pick(part.partId) },
+                                onRemove = {
+                                    viewModel.changeSolutionImageParts(
+                                        label,
+                                        solutionParts.filterNot { it.partId == part.partId }.mapIndexed { index, row -> row.copy(position = index.toLong()) },
+                                    )
+                                },
+                            ) {
+                                TextButton(
+                                    onClick = { viewModel.changeSolutionImageParts(label, moveSolutionPart(solutionParts, part.partId, -1)) },
+                                    enabled = !viewModel.saving && partOrder > 0,
+                                ) { Text("←") }
+                                TextButton(
+                                    onClick = { viewModel.changeSolutionImageParts(label, moveSolutionPart(solutionParts, part.partId, 1)) },
+                                    enabled = !viewModel.saving && partOrder < solutionParts.lastIndex,
+                                ) { Text("→") }
+                            }
+                        } else {
+                            val partIndex = solutionTextIndex++
                             EdTextArea(
-                                value = part,
-                                onValueChange = { viewModel.changeSolutionText(label, partIndex, it) },
+                                value = solutionTextValues.getOrElse(partIndex) { part.textContent.orEmpty() },
+                                onValueChange = { next ->
+                                    if (viewModel.solutionTexts[i].isEmpty()) viewModel.addSolutionText(label)
+                                    viewModel.changeSolutionText(label, partIndex, next)
+                                },
                                 enabled = !viewModel.saving,
                                 placeholder = "সমাধান ${partIndex + 1} লিখুন",
-                                minHeight = 128.dp,
+                                minHeight = if (viewModel.editorMode == EditorMode.FULL) 112.dp else 88.dp,
                                 showMathBar = viewModel.editorMode == EditorMode.FULL,
                                 previewTitle = "সমাধান ${partIndex + 1} প্রিভিউ (KaTeX)",
                                 showPreviewToggle = false,
                             )
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                TextButton(onClick = { viewModel.moveSolutionText(label, partIndex, partIndex - 1) }, enabled = !viewModel.saving && partIndex > 0) { Text("↑") }
-                                TextButton(onClick = { viewModel.moveSolutionText(label, partIndex, partIndex + 1) }, enabled = !viewModel.saving && partIndex < viewModel.solutionTexts[i].lastIndex) { Text("↓") }
-                                TextButton(onClick = { viewModel.removeSolutionText(label, partIndex) }, enabled = !viewModel.saving) { Text("এই অংশ সরান") }
+                            if (solutionTextValues.size > 1) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    TextButton(onClick = { viewModel.moveSolutionText(label, partIndex, partIndex - 1) }, enabled = !viewModel.saving && partIndex > 0) { Text("↑") }
+                                    TextButton(onClick = { viewModel.moveSolutionText(label, partIndex, partIndex + 1) }, enabled = !viewModel.saving && partIndex < solutionTextValues.lastIndex) { Text("↓") }
+                                    TextButton(onClick = { viewModel.removeSolutionText(label, partIndex) }, enabled = !viewModel.saving) { Text("এই অংশ সরান") }
+                                }
                             }
                         }
-                        if (solutionPreviewOpen) {
-                            EdInlinePreviewCard(
-                                title = "${label.letter}) সমাধানের প্রিভিউ (KaTeX)",
-                                text = viewModel.solutionTexts[i].filter { it.isNotBlank() }.joinToString("\n\n"),
+                    }
+                    if (solutionPreviewOpen) {
+                        EdInlinePreviewCard(
+                            title = "${label.letter}) সমাধানের প্রিভিউ (KaTeX)",
+                            text = solutionTextValues.filter { it.isNotBlank() }.joinToString("\n\n"),
+                        )
+                    }
+                    if (solutionStartAdder.error.isNotBlank()) Text(solutionStartAdder.error, color = MaterialTheme.colorScheme.error)
+                    if (solutionEndAdder.error.isNotBlank()) Text(solutionEndAdder.error, color = MaterialTheme.colorScheme.error)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+                        EdIconButton(
+                            EdIcon.IMAGE_ADD, "${label.letter}) সমাধানের শেষে ছবি যোগ করুন", { solutionEndAdder.pick(null) },
+                            enabled = !viewModel.saving && !solutionEndAdder.importing, dashed = true,
+                        )
+                        EdIconButton(
+                            EdIcon.PLUS_BOX, "${label.letter}) সমাধানের আরেকটি অংশ যোগ করুন", { viewModel.addSolutionText(label) },
+                            enabled = !viewModel.saving, dashed = true,
+                        )
+                    }
+
+                    // The short-answer field is a Full Editor extra and follows the solution.
+                    if (viewModel.editorMode == EditorMode.FULL) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("সংক্ষিপ্ত উত্তর (ঐচ্ছিক)", style = MaterialTheme.typography.labelLarge)
+                            EdIconButton(
+                                EdIcon.EYE, "${label.letter}) সংক্ষিপ্ত উত্তরের প্রিভিউ", { answerPreviewOpen = !answerPreviewOpen },
+                                enabled = !viewModel.saving, selected = answerPreviewOpen,
                             )
                         }
-                        TextButton(onClick = { viewModel.addSolutionText(label) }, enabled = !viewModel.saving) {
-                            Text("+ সমাধানের অংশ যোগ করুন")
-                        }
-                        SolutionImageAttachments(
-                            pipeline = imagePipeline,
-                            imageScope = ImageScope.TYPE_CQ,
-                            parts = viewModel.solutionPartsByLabel[i],
+                        EdTextArea(
+                            value = viewModel.answers[i],
+                            onValueChange = { viewModel.setAnswer(label, it) },
                             enabled = !viewModel.saving,
-                            onChange = { viewModel.changeSolutionImageParts(label, it) },
-                            showAddButton = false,
+                            minHeight = 76.dp,
+                            placeholder = "সংক্ষিপ্ত উত্তর (ঐচ্ছিক)",
+                            showMathBar = true,
+                            previewTitle = "${label.letter}) সংক্ষিপ্ত উত্তরের প্রিভিউ (KaTeX)",
+                            externalPreviewOpen = answerPreviewOpen,
+                            showPreviewToggle = false,
                         )
+                        if (answerPreviewOpen) {
+                            EdInlinePreviewCard(
+                                title = "${label.letter}) সংক্ষিপ্ত উত্তরের প্রিভিউ (KaTeX)",
+                                text = viewModel.answers[i],
+                            )
+                        }
                     }
                     }
                 }
