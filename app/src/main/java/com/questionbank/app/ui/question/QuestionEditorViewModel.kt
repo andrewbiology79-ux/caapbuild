@@ -238,6 +238,47 @@ class QuestionEditorViewModel(
 
     suspend fun addBoard(code: String, name: String): AddBoardResult = repository.addCustomBoard(code, name)
 
+    private fun <T> swappedList(list: List<T>, a: Int, b: Int): List<T> =
+        list.toMutableList().also { val t = it[a]; it[a] = it[b]; it[b] = t }
+
+    /** Editor design: moves a question block to another label slot (ক..ঘ) by swapping every per-label field of the two slots. */
+    fun swapBlocks(a: Int, b: Int) {
+        val last = CqLabel.entries.lastIndex
+        if (a == b || a !in 0..last || b !in 0..last) return
+        change(
+            draft.copy(
+                texts = swappedList(draft.texts, a, b),
+                answers = swappedList(draft.answers, a, b),
+                ratings = swappedList(draft.ratings, a, b),
+                boards = swappedList(draft.boards, a, b),
+                questionTypeIds = swappedList(draft.questionTypeIds, a, b),
+                marks = swappedList(draft.marks, a, b),
+                solutionTexts = swappedList(draft.solutionTexts, a, b),
+                solutionPartsByLabel = draft.solutionPartsByLabel?.let { swappedList(it, a, b) },
+            ),
+            "swap-$a-$b",
+        )
+    }
+
+    /** Editor design: empties one question block (text, answer, rating, boards, solution) and restores its label defaults. */
+    fun clearBlock(index: Int) {
+        val label = CqLabel.entries.getOrNull(index) ?: return
+        change(
+            draft.copy(
+                texts = draft.texts.toMutableList().also { it[index] = "" },
+                answers = draft.answers.toMutableList().also { it[index] = "" },
+                ratings = draft.ratings.toMutableList().also { it[index] = null },
+                boards = draft.boards.toMutableList().also { it[index] = emptyList() },
+                questionTypeIds = draft.questionTypeIds.toMutableList().also { it[index] = label.typeId },
+                marks = draft.marks.toMutableList().also { it[index] = label.marks },
+                solutionTexts = draft.solutionTexts.toMutableList().also { it[index] = emptyList() },
+                solutionPartsByLabel = draft.solutionPartsByLabel?.toMutableList()?.also { it[index] = emptyList() },
+            ),
+            "clear-block-$index",
+        )
+        scheduleDuplicateCheck()
+    }
+
     fun clearAll() = change(DraftText(stimulusImages = emptyList(), solutionPartsByLabel = List(4) { emptyList() }), "clear")
 
     @JvmName("applyEditorMode")

@@ -370,9 +370,11 @@ fun AppNavHost() {
                             )
                         }
                     )
+                    val editorTopicName by questionRepo.observeTopicName(topicId).collectAsState(initial = null)
                     QuestionEditorScreen(
                         viewModel = vm,
                         imagePipeline = container.imagePipeline,
+                        topicName = editorTopicName,
                         onSaved = { count ->
                             navController.previousBackStackEntry?.savedStateHandle?.set(Routes.SAVED_COUNT_KEY, count)
                             navController.popBackStack()

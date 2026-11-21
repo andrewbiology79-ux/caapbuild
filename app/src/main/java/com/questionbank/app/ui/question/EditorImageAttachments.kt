@@ -199,7 +199,7 @@ internal fun MediaThumbnail(pipeline: ImagePipeline, imageId: String, imageScope
     else Text("ছবি অনুপলব্ধ", style = MaterialTheme.typography.labelSmall, modifier = Modifier.height(48.dp))
 }
 
-private fun moveStimulusImage(images: List<QuestionStimulusImage>, imageId: String, delta: Int): List<QuestionStimulusImage> {
+internal fun moveStimulusImage(images: List<QuestionStimulusImage>, imageId: String, delta: Int): List<QuestionStimulusImage> {
     val ordered = images.sortedBy { it.position }.toMutableList()
     val from = ordered.indexOfFirst { it.imageId == imageId }
     val to = from + delta
@@ -209,7 +209,7 @@ private fun moveStimulusImage(images: List<QuestionStimulusImage>, imageId: Stri
     return ordered.mapIndexed { index, item -> item.copy(position = index.toLong()) }
 }
 
-private fun moveSolutionPart(parts: List<QuestionSolutionPart>, partId: String, delta: Int): List<QuestionSolutionPart> {
+internal fun moveSolutionPart(parts: List<QuestionSolutionPart>, partId: String, delta: Int): List<QuestionSolutionPart> {
     val ordered = parts.sortedBy { it.position }.toMutableList()
     val from = ordered.indexOfFirst { it.partId == partId }
     val to = from + delta

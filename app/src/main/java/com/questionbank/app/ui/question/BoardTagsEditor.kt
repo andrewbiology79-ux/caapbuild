@@ -114,7 +114,7 @@ fun BoardTagsEditor(
 
 /** Picker: choose one board, then a year from the window (recent years) or type another year, then "যোগ করুন". */
 @Composable
-private fun BoardYearDialog(
+internal fun BoardYearDialog(
     boards: List<BoardItem>,
     existing: List<BoardTag>,
     onAddBoard: suspend (String, String) -> AddBoardResult,
