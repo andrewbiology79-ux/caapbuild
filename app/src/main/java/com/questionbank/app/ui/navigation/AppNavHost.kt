@@ -364,9 +364,11 @@ fun AppNavHost() {
                         factory = QuestionEditorViewModel.factory {
                             QuestionEditorViewModel(
                                 topicId, questionRepo, container.appScope, container.typeCqData.observeQuestionTypes(),
+                                categoriesFlow = container.typeCqData.observeCategories(),
                                 duplicateChecker = { text -> container.typeCqData.isDuplicate(topicId, text) },
                                 editorDraftRepository = container.editorDrafts,
                                 defaultEditorMode = container.appSettings.defaultEditorMode,
+                                addCategoryAction = { name -> container.typeCqData.addCategory(name) },
                             )
                         }
                     )
@@ -400,6 +402,7 @@ fun AppNavHost() {
                                 editorDraftRepository = container.editorDrafts,
                                 defaultEditorMode = container.appSettings.defaultEditorMode,
                                 categoriesFlow = container.typeCqData.observeCategories(),
+                                addCategoryAction = { name -> container.typeCqData.addCategory(name) },
                             )
                         }
                     )
@@ -478,6 +481,7 @@ fun AppNavHost() {
                     ChapterCqWorkspaceScreen(
                         repository = container.chapterCq,
                         referenceRepository = container.typeCqData,
+                        categoryRepository = container.categories,
                         draftRepository = container.editorDrafts,
                         draftScope = container.appScope,
                         imagePipeline = container.imagePipeline,

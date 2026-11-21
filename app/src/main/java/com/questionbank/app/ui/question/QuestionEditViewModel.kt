@@ -71,6 +71,7 @@ private data class EditSnapshot(
     val solutionTexts: List<List<String>> = List(4) { emptyList() },
     val categoryIdsByLabel: List<List<String>> = List(4) { emptyList() },
     val deletedQuestionIds: Set<String> = emptySet(),
+    val addedOptionalQuestionLabels: Set<CqLabel> = emptySet(),
     val stimulusImages: List<QuestionStimulusImage> = emptyList(),
     val solutionPartsByLabel: List<List<QuestionSolutionPart>> = List(4) { emptyList() },
 )
@@ -98,6 +99,7 @@ class QuestionEditViewModel(
     private val editorDraftRepository: EditorDraftRepository? = null,
     categoriesFlow: Flow<List<TypeCqQuestionCategoriesEntity>> = flowOf(emptyList()),
     defaultEditorMode: EditorMode = EditorMode.MINIMUM,
+    private val addCategoryAction: suspend (String) -> Boolean = { false },
 ) : ViewModel() {
 
     var load by mutableStateOf(EditLoad.LOADING)
@@ -140,6 +142,9 @@ class QuestionEditViewModel(
     var categoryIdsByLabel by mutableStateOf(List(4) { emptyList<String>() })
         private set
     var deletedQuestionIds by mutableStateOf<Set<String>>(emptySet())
+        private set
+    /** Optional K/Kh cards explicitly added in Full Editor for this edit session. */
+    var addedOptionalQuestionLabels by mutableStateOf<Set<CqLabel>>(emptySet())
         private set
     /** The board catalog for the picker. */
     val boardCatalog: StateFlow<List<BoardItem>> =
@@ -344,7 +349,7 @@ class QuestionEditViewModel(
     /** True for a card with a stimulus: all four blocks and the stimulus can be edited. A single question edits only its own block. */
     val hasStimulus: Boolean get() = original?.stimulusId != null
 
-    /** The sub-question blocks shown on the screen, in label order. */
+    /** The sub-question blocks shown on the screen; minimum preserves G/Gh-only view and Full reveals saved or explicitly added blocks. */
     val editableLabels: List<CqLabel>
         get() {
             val group = original ?: return emptyList()
@@ -361,9 +366,29 @@ class QuestionEditViewModel(
                     boards.getOrNull(index).orEmpty().isNotEmpty() || ratings.getOrNull(index) != null ||
                     categoryIdsByLabel.getOrNull(index).orEmpty().isNotEmpty() ||
                     questionTypeIds.getOrNull(index) != label.typeId || marks.getOrNull(index) != label.marks
-                notDeleted && (editorMode == EditorMode.FULL || label == CqLabel.GA || label == CqLabel.GHA || alreadyHasData)
+                val explicitlyAdded = label in addedOptionalQuestionLabels
+                val visibleInMode = when {
+                    !hasStimulus -> alreadyHasData
+                    editorMode == EditorMode.FULL -> alreadyHasData || explicitlyAdded
+                    else -> label in setOf(CqLabel.GA, CqLabel.GHA)
+                }
+                notDeleted && visibleInMode
             }
         }
+
+    /** K/Kh are optional on an existing stimulus group and appear only after an explicit Full Editor action. */
+    fun canAddOptionalQuestion(label: CqLabel): Boolean {
+        if (saving || finished || editorMode != EditorMode.FULL || !hasStimulus || label !in setOf(CqLabel.KA, CqLabel.KHA)) return false
+        val group = original ?: return false
+        val existsInStoredGroup = group.subQuestions.any { it.label == label }
+        return !existsInStoredGroup && label !in addedOptionalQuestionLabels
+    }
+
+    fun addOptionalQuestion(label: CqLabel) {
+        if (!canAddOptionalQuestion(label)) return
+        addedOptionalQuestionLabels = addedOptionalQuestionLabels + label
+        record("add-optional-${label.letter}")
+    }
 
     val deletedQuestionLabels: List<CqLabel>
         get() = original?.subQuestions.orEmpty().filter { it.id in deletedQuestionIds }.mapNotNull { it.label }
@@ -410,7 +435,7 @@ class QuestionEditViewModel(
 
     private fun snapshot() = EditSnapshot(
         stimulus, referenceText, texts, answers, ratings, stimulusRating, boards, stimulusBoards,
-        questionTypeIds, marks, solutionTexts, categoryIdsByLabel, deletedQuestionIds, stimulusImages, solutionPartsByLabel,
+        questionTypeIds, marks, solutionTexts, categoryIdsByLabel, deletedQuestionIds, addedOptionalQuestionLabels, stimulusImages, solutionPartsByLabel,
     )
 
     private fun record(group: String) { history.record(snapshot(), group) }
@@ -420,6 +445,7 @@ class QuestionEditViewModel(
         ratings = value.ratings; stimulusRating = value.stimulusRating; boards = value.boards; stimulusBoards = value.stimulusBoards
         questionTypeIds = value.questionTypeIds; marks = value.marks; solutionTexts = value.solutionTexts
         categoryIdsByLabel = value.categoryIdsByLabel; deletedQuestionIds = value.deletedQuestionIds
+        addedOptionalQuestionLabels = value.addedOptionalQuestionLabels
         stimulusImages = value.stimulusImages; solutionPartsByLabel = value.solutionPartsByLabel
         result = null
         queueDraft()
@@ -515,6 +541,9 @@ class QuestionEditViewModel(
         queueDraft()
     }
 
+    suspend fun addCategory(name: String): Boolean =
+        if (saving || finished || name.isBlank()) false else runCatching { addCategoryAction(name.trim()) }.getOrDefault(false)
+
     fun deleteQuestion(label: CqLabel) {
         if (saving || finished || !canDeleteQuestion(label)) return
         val rowId = original?.subQuestions?.firstOrNull { it.label == label }?.id ?: return
@@ -554,19 +583,35 @@ class QuestionEditViewModel(
     fun changeQuestionType(label: CqLabel, value: String) { if (saving || finished) return; questionTypeIds = questionTypeIds.toMutableList().also { it[label.sortOrder - 1] = value }; record("type-${label.sortOrder}"); result = null; queueDraft() }
     fun changeMarks(label: CqLabel, value: Double) { if (saving || finished || !value.isFinite() || value <= 0.0) return; marks = marks.toMutableList().also { it[label.sortOrder - 1] = value }; record("marks-${label.sortOrder}"); result = null; queueDraft() }
     fun changeSolutionText(label: CqLabel, part: Int, value: String) { if (saving || finished) return; val i = label.sortOrder - 1; solutionTexts = solutionTexts.toMutableList().also { rows -> rows[i] = rows[i].toMutableList().also { if (part in it.indices) it[part] = value } }; syncMixedSolutionText(i); record("solution-${label.sortOrder}-$part"); result = null; queueDraft() }
-    fun addSolutionText(label: CqLabel) { if (saving || finished) return; val i = label.sortOrder - 1; solutionTexts = solutionTexts.toMutableList().also { rows -> rows[i] = rows[i] + "" }; syncMixedSolutionText(i); record("solution-add-${label.sortOrder}"); result = null; queueDraft() }
-    fun removeSolutionText(label: CqLabel, part: Int) { if (saving || finished) return; val i = label.sortOrder - 1; solutionTexts = solutionTexts.toMutableList().also { rows -> rows[i] = rows[i].toMutableList().also { if (part in it.indices) it.removeAt(part) } }; syncMixedSolutionText(i); record("solution-remove-${label.sortOrder}"); result = null; queueDraft() }
-    fun moveSolutionText(label: CqLabel, from: Int, to: Int) {
+    fun ensureSolutionText(label: CqLabel) { if (saving || finished) return; val i = label.sortOrder - 1; if (solutionTexts[i].isNotEmpty()) return; solutionTexts = solutionTexts.toMutableList().also { rows -> rows[i] = listOf("") }; syncMixedSolutionText(i); record("solution-init-${label.sortOrder}"); result = null; queueDraft() }
+    fun addSolutionText(label: CqLabel) { if (saving || finished) return; val i = label.sortOrder - 1; solutionTexts = solutionTexts.toMutableList().also { rows -> rows[i] = if (rows[i].isEmpty()) listOf("", "") else rows[i] + "" }; syncMixedSolutionText(i); record("solution-add-${label.sortOrder}"); result = null; queueDraft() }
+    fun removeSolutionText(label: CqLabel, part: Int) {
         if (saving || finished) return
         val i = label.sortOrder - 1
-        val current = solutionTexts[i]
-        if (from !in current.indices || to !in current.indices || from == to) return
-        val moved = current.toMutableList().also { row -> val item = row.removeAt(from); row.add(to, item) }
-        solutionTexts = solutionTexts.toMutableList().also { it[i] = moved }
-        syncMixedSolutionText(i)
-        record("solution-order-${label.sortOrder}"); result = null; queueDraft()
+        val currentTexts = solutionTexts.getOrNull(i).orEmpty()
+        if (part !in currentTexts.indices || currentTexts.size <= 1) return
+        val existing = solutionPartsByLabel.getOrNull(i).orEmpty().ifEmpty {
+            currentTexts.mapIndexed { textIndex, text ->
+                QuestionSolutionPart(
+                    "type_cq:$groupKey:${label.letter}:text:$textIndex",
+                    "TEXT",
+                    textIndex.toLong(),
+                    textContent = text,
+                )
+            }
+        }
+        val ordered = existing.sortedBy { it.position }
+        val target = ordered.filter { it.partType != "IMAGE" }.getOrNull(part) ?: return
+        val remaining = ordered.filterNot { it.partId == target.partId }
+            .mapIndexed { position, item -> item.copy(position = position.toLong()) }
+        solutionPartsByLabel = solutionPartsByLabel.toMutableList().also { it[i] = remaining }
+        solutionTexts = solutionTexts.toMutableList().also { rows ->
+            rows[i] = remaining.filter { it.partType != "IMAGE" }.map { it.textContent.orEmpty() }
+        }
+        record("solution-remove-${label.sortOrder}")
+        result = null
+        queueDraft()
     }
-
     /** Reconcile legacy text controls with the ordered mixed parts while retaining IMAGE rows and their IDs. */
     private fun syncMixedSolutionText(index: Int) {
         val previous = solutionPartsByLabel.getOrNull(index).orEmpty().sortedBy { it.position }

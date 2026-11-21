@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.AssistChip
@@ -33,7 +32,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
-import com.questionbank.app.domain.question.QuestionSolutionPart
 import com.questionbank.app.domain.question.QuestionStimulusImage
 import com.questionbank.app.media.ImagePipeline
 import com.questionbank.app.media.ImageScope
@@ -114,80 +112,6 @@ fun StimulusImageAttachments(
 }
 
 @Composable
-fun SolutionImageAttachments(
-    pipeline: ImagePipeline,
-    imageScope: ImageScope,
-    parts: List<QuestionSolutionPart>,
-    enabled: Boolean,
-    onChange: (List<QuestionSolutionPart>) -> Unit,
-    showAddButton: Boolean = true,
-) {
-    val coroutineScope = rememberCoroutineScope()
-    var importing by remember { mutableStateOf(false) }
-    var importError by remember { mutableStateOf("") }
-    var pickerScope by remember { mutableStateOf(imageScope) }
-    var replacementPartId by remember { mutableStateOf<String?>(null) }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null && enabled && !importing) {
-            val capturedScope = pickerScope
-            val replaceId = replacementPartId
-            coroutineScope.launch {
-                importing = true
-                try {
-                    importError = ""
-                    val imageId = pipeline.importImage(uri, capturedScope)
-                    val ordered = parts.sortedBy { it.position }
-                    val next = if (replaceId != null) {
-                        ordered.map { if (it.partId == replaceId) it.copy(imageId = imageId) else it }
-                    } else {
-                        ordered + QuestionSolutionPart("solution_image_$imageId", "IMAGE", ordered.size.toLong(), imageId = imageId)
-                    }
-                    onChange(next.mapIndexed { index, row -> row.copy(position = index.toLong()) })
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (failure: Exception) {
-                    importError = failure.message ?: "সমাধানের ছবি আমদানি করা যায়নি।"
-                } finally {
-                    replacementPartId = null
-                    importing = false
-                }
-            }
-        } else if (uri == null) {
-            replacementPartId = null
-        }
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("সমাধানের ছবি", style = MaterialTheme.typography.titleSmall)
-            if (showAddButton) {
-                OutlinedButton(enabled = enabled && !importing, onClick = { pickerScope = imageScope; launcher.launch(arrayOf("image/*")) }) {
-                    Text(if (importing) "আমদানি হচ্ছে…" else "ছবি যোগ করুন")
-                }
-            }
-        }
-        if (importError.isNotBlank()) Text(importError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-        val orderedParts = parts.sortedBy { it.position }
-        if (orderedParts.isNotEmpty()) Text("সমাধানের ক্রম (লেখা ও ছবি একসঙ্গে)", style = MaterialTheme.typography.labelMedium)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            itemsIndexed(orderedParts, key = { _, item -> item.partId }) { index, part ->
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    if (part.partType == "IMAGE") part.imageId?.let { MediaThumbnail(pipeline, it, imageScope) }
-                    else Text("লেখা: ${part.textContent.orEmpty().take(28)}", modifier = Modifier.width(112.dp), style = MaterialTheme.typography.bodySmall, maxLines = 3)
-                    Row {
-                        TextButton(enabled = enabled && index > 0, onClick = { onChange(moveSolutionPart(parts, part.partId, -1)) }) { Text("←") }
-                        TextButton(enabled = enabled && index < orderedParts.lastIndex, onClick = { onChange(moveSolutionPart(parts, part.partId, 1)) }) { Text("→") }
-                        if (part.partType == "IMAGE") {
-                            TextButton(enabled = enabled && !importing, onClick = { replacementPartId = part.partId; pickerScope = imageScope; launcher.launch(arrayOf("image/*")) }) { Text("প্রতিস্থাপন") }
-                            TextButton(enabled = enabled, onClick = { onChange(parts.filterNot { it.partId == part.partId }.mapIndexed { i, row -> row.copy(position = i.toLong()) }) }) { Text("সরান") }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
 internal fun MediaThumbnail(pipeline: ImagePipeline, imageId: String, imageScope: ImageScope) {
     val bitmap by produceState<Bitmap?>(initialValue = null, imageId, imageScope) {
         value = withContext(Dispatchers.IO) {
@@ -207,16 +131,6 @@ internal fun moveStimulusImage(images: List<QuestionStimulusImage>, imageId: Str
     val from = ordered.indexOfFirst { it.imageId == imageId }
     val to = from + delta
     if (from !in ordered.indices || to !in ordered.indices) return images
-    val row = ordered.removeAt(from)
-    ordered.add(to, row)
-    return ordered.mapIndexed { index, item -> item.copy(position = index.toLong()) }
-}
-
-internal fun moveSolutionPart(parts: List<QuestionSolutionPart>, partId: String, delta: Int): List<QuestionSolutionPart> {
-    val ordered = parts.sortedBy { it.position }.toMutableList()
-    val from = ordered.indexOfFirst { it.partId == partId }
-    val to = from + delta
-    if (from !in ordered.indices || to !in ordered.indices) return parts
     val row = ordered.removeAt(from)
     ordered.add(to, row)
     return ordered.mapIndexed { index, item -> item.copy(position = index.toLong()) }

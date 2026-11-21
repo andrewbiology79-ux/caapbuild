@@ -70,54 +70,6 @@ private fun resultText(result: SaveResult?): String? = when (result) {
 @Composable
 fun EditorModePicker(mode: EditorMode, enabled: Boolean, onChange: (EditorMode) -> Unit) = EditorModeTabs(mode, enabled, onChange)
 
-@Composable
-fun TypeAndMarksControls(
-    index: Int,
-    typeId: String,
-    marks: Double,
-    labels: Map<String, String>,
-    enabled: Boolean,
-    onType: (String) -> Unit,
-    onMarks: (Double) -> Unit,
-    onMarksValidity: (Boolean) -> Unit = {},
-) {
-    var expanded by remember { mutableStateOf(false) }
-    var rawMarks by remember(index) { mutableStateOf(marks.toString()) }
-    LaunchedEffect(marks) {
-        if (rawMarks.toDoubleOrNull() != marks) rawMarks = marks.toString()
-    }
-    LaunchedEffect(rawMarks) {
-        val parsed = rawMarks.toDoubleOrNull()
-        onMarksValidity(parsed != null && parsed.isFinite() && parsed > 0.0)
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("প্রশ্নের ধরন", style = MaterialTheme.typography.labelMedium)
-        Box {
-            TextButton(onClick = { expanded = true }, enabled = enabled) {
-                Text(labels[typeId] ?: typeId)
-            }
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                labels.forEach { (id, label) ->
-                    DropdownMenuItem(text = { Text(label) }, onClick = { expanded = false; onType(id) })
-                }
-            }
-        }
-        OutlinedTextField(
-            value = rawMarks,
-            onValueChange = { raw ->
-                rawMarks = raw
-                raw.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0.0 }?.let(onMarks)
-            },
-            label = { Text("নম্বর") },
-            enabled = enabled,
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            isError = rawMarks.toDoubleOrNull()?.let { !it.isFinite() || it <= 0.0 } ?: true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
-}
-
 /* ----------------------------------------------- the editor screen -------------------------------------------------- */
 
 private fun slotHasContent(d: DraftText, i: Int): Boolean =
@@ -139,10 +91,11 @@ fun QuestionEditorScreen(
     val draft = viewModel.draft
     val cs = MaterialTheme.colorScheme
     val boards by viewModel.boardCatalog.collectAsState()
-    val typeLabels by viewModel.questionTypeLabels.collectAsState()
+    val categories by viewModel.categoryCatalog.collectAsState()
     var showDuplicateConfirm by rememberSaveable { mutableStateOf(false) }
     var stimulusPreviewOpen by rememberSaveable { mutableStateOf(false) }
     var shownMask by rememberSaveable { mutableStateOf((1 shl 2) or (1 shl 3)) }
+    var sortedByLabel by rememberSaveable { mutableStateOf(false) }
     var topicOpen by rememberSaveable { mutableStateOf(true) }
     val invalidMarkFields = remember { mutableStateListOf<Int>() }
     val full = viewModel.editorMode == EditorMode.FULL
@@ -192,10 +145,11 @@ fun QuestionEditorScreen(
         // Which of the four label slots (ক..ঘ) have a card. Slots with content always show; the rest follow the add/move/delete buttons.
         val mask = (shownMask or contentMask(draft)).let { if (it == 0) ((1 shl 2) or (1 shl 3)) else it }
         // The legacy editor starts with গ, ঘ; Full-only additions (ক, খ) are appended after those two cards.
-        val cardDisplayOrder = listOf(CqLabel.GA, CqLabel.GHA, CqLabel.KA, CqLabel.KHA).map { it.sortOrder - 1 }
-        val addOrder = listOf(CqLabel.KA, CqLabel.KHA, CqLabel.GA, CqLabel.GHA).map { it.sortOrder - 1 }
-        val visible = cardDisplayOrder.filter { mask and (1 shl it) != 0 }
-        val freeSlots = addOrder.filter { mask and (1 shl it) == 0 }
+        val defaultOrder = listOf(CqLabel.GA, CqLabel.GHA, CqLabel.KA, CqLabel.KHA).map { it.sortOrder - 1 }
+        val sortedOrder = CqLabel.entries.map { it.sortOrder - 1 }
+        val visibleOrder = if (!full) defaultOrder.take(2) else if (sortedByLabel) sortedOrder else defaultOrder
+        val visible = visibleOrder.filter { mask and (1 shl it) != 0 }
+        val freeSlots = listOf(CqLabel.KA.sortOrder - 1, CqLabel.KHA.sortOrder - 1).filter { mask and (1 shl it) == 0 }
 
         val stimulusAdder = rememberStimulusImageAdder(
             pipeline = imagePipeline,
@@ -287,13 +241,40 @@ fun QuestionEditorScreen(
                     if ((draft.stimulusRating != null || draft.stimulusBoards.isNotEmpty()) && draft.stimulus.isBlank() && draft.referenceText.isBlank()) {
                         EdHint("উদ্দীপকের লেখা না থাকলে এর রেটিং ও বোর্ড সংরক্ষণ হয় না।")
                     }
-                    OutlinedTextField(
+                    EdReferenceField(
                         value = draft.referenceText,
                         onValueChange = viewModel::setReferenceText,
-                        placeholder = { Text("রেফারেন্স (ঐচ্ছিক)") },
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !busy,
                     )
+                }
+
+                // Full editor only: optional ক/খ cards and one-tap legacy order control.
+                if (full) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val canAddKa = mask and (1 shl (CqLabel.KA.sortOrder - 1)) == 0
+                        val canAddKha = mask and (1 shl (CqLabel.KHA.sortOrder - 1)) == 0
+                        EdPill(
+                            text = if (canAddKa) "+ ক যোগ করুন" else "ক যোগ হয়েছে",
+                            onClick = { shownMask = mask or (1 shl (CqLabel.KA.sortOrder - 1)) },
+                            enabled = canAddKa && !busy,
+                            dropdown = false,
+                            icon = EdIcon.PLUS_BOX,
+                        )
+                        EdPill(
+                            text = if (canAddKha) "+ খ যোগ করুন" else "খ যোগ হয়েছে",
+                            onClick = { shownMask = mask or (1 shl (CqLabel.KHA.sortOrder - 1)) },
+                            enabled = canAddKha && !busy,
+                            dropdown = false,
+                            icon = EdIcon.PLUS_BOX,
+                        )
+                        EdPill(
+                            text = "ক-খ-গ-ঘ সাজাও",
+                            onClick = { sortedByLabel = true },
+                            enabled = !busy && !sortedByLabel,
+                            dropdown = false,
+                            icon = EdIcon.SORT,
+                        )
+                    }
                 }
 
                 // --- question list ---
@@ -305,7 +286,8 @@ fun QuestionEditorScreen(
                             index = i,
                             full = full,
                             boards = boards,
-                            typeLabels = typeLabels,
+                            categories = categories.map { EdCategoryOption(it.categoryId, it.name, it.isArchived != 0L) },
+                            onAddCategory = viewModel::addCategory,
                             pipeline = imagePipeline,
                             canDelete = visible.size > 1,
                             labelOptions = if (full) freeSlots.map { it to CqLabel.entries[it].letter } else emptyList(),
@@ -322,26 +304,7 @@ fun QuestionEditorScreen(
                     }
                 }
 
-                if (full) {
-                    val nextFree = freeSlots.firstOrNull()
-                    val addShape = RoundedCornerShape(20.dp)
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .height(58.dp)
-                            .clip(addShape)
-                            .dashedBorder(if (nextFree != null && !busy) cs.primary else cs.outline, radius = 20.dp, width = 2.dp)
-                            .clickable(enabled = nextFree != null && !busy) { shownMask = mask or (1 shl nextFree!!) },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            if (nextFree != null) "+ আরও প্রশ্ন যোগ করো" else "চারটি প্রশ্নই যোগ করা হয়েছে",
-                            color = if (nextFree != null && !busy) cs.primary else cs.onSurfaceVariant,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 16.sp,
-                        )
-                    }
-                }
+
 
                 resultText(viewModel.result)?.let { Text(it, color = cs.error, style = MaterialTheme.typography.bodyMedium) }
                 TextButton(onClick = viewModel::clearAll, enabled = !busy && !draft.isBlank) { Text("সব লেখা মুছে ফেলুন") }
@@ -357,7 +320,8 @@ private fun QuestionBlockCard(
     index: Int,
     full: Boolean,
     boards: List<BoardItem>,
-    typeLabels: Map<String, String>,
+    categories: List<EdCategoryOption>,
+    onAddCategory: suspend (String) -> Boolean,
     pipeline: ImagePipeline,
     canDelete: Boolean,
     labelOptions: List<Pair<Int, String>>,
@@ -411,14 +375,6 @@ private fun QuestionBlockCard(
                 if (full) EdIconButton(EdIcon.TRASH, "${label.letter}) প্রশ্ন মুছুন", onDelete, enabled = !busy && canDelete, tintOverride = Color(0xFFE11D2E))
             }
         }
-        // Question type is a new-app data field (জ্ঞানমূলক/অনুধাবনমূলক/...), not one of the legacy row controls;
-        // keep it available in Full mode separately so the old control row retains its exact order and does not wrap.
-        if (full) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("প্রশ্নের ধরন", color = cs.onSurfaceVariant, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                EdTypePill(draft.questionTypeIds[index], typeLabels, !busy) { viewModel.setQuestionType(index, it) }
-            }
-        }
         EdTagChips(draft.boards[index], boards, !busy) { viewModel.changeBoards(index, it) }
         EdTextArea(
             value = draft.texts[index],
@@ -463,17 +419,15 @@ private fun QuestionBlockCard(
                             enabled = !busy && !solutionAdder.importing,
                             onReplace = { solutionAdder.pick(part.partId) },
                             onRemove = { viewModel.setSolutionImageParts(index, parts.filterNot { it.partId == part.partId }.mapIndexed { i, row -> row.copy(position = i.toLong()) }) },
-                        ) {
-                            TextButton(enabled = !busy && order > 0, onClick = { viewModel.setSolutionImageParts(index, moveSolutionPart(parts, part.partId, -1)) }) { Text("←") }
-                            TextButton(enabled = !busy && order < parts.lastIndex, onClick = { viewModel.setSolutionImageParts(index, moveSolutionPart(parts, part.partId, 1)) }) { Text("→") }
-                        }
+                        )
                     }
                 } else {
                     val t = textIndex
+                    Box {
                     EdTextArea(
                         value = textParts.getOrElse(t) { "" },
                         onValueChange = {
-                            if (placeholder) viewModel.addSolutionText(index)
+                            if (placeholder) viewModel.ensureSolutionText(index)
                             viewModel.setSolutionText(index, t, it)
                         },
                         enabled = !busy,
@@ -483,11 +437,12 @@ private fun QuestionBlockCard(
                         showPreviewToggle = false,
                     )
                     if (textParts.size > 1) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(onClick = { viewModel.moveSolutionText(index, t, t - 1) }, enabled = !busy && t > 0) { Text("↑") }
-                            TextButton(onClick = { viewModel.moveSolutionText(index, t, t + 1) }, enabled = !busy && t < textParts.lastIndex) { Text("↓") }
-                            TextButton(onClick = { viewModel.removeSolutionText(index, t) }, enabled = !busy) { Text("এই অংশ সরান") }
-                        }
+                        EdSolutionRemoveButton(
+                            onClick = { viewModel.removeSolutionText(index, t) },
+                            enabled = !busy,
+                            modifier = Modifier.align(Alignment.TopEnd).padding(5.dp),
+                        )
+                    }
                     }
                 }
             }
@@ -520,7 +475,7 @@ private fun QuestionBlockCard(
                 value = draft.answers[index],
                 onValueChange = { viewModel.setAnswer(index, it) },
                 enabled = !busy,
-                minHeight = 76.dp,
+                minHeight = 52.dp,
                 placeholder = "সংক্ষিপ্ত উত্তর (ঐচ্ছিক)",
                 showMathBar = true,
                 previewTitle = "${label.letter}) সংক্ষিপ্ত উত্তরের প্রিভিউ (KaTeX)",
@@ -528,5 +483,13 @@ private fun QuestionBlockCard(
                 showPreviewToggle = false,
             )
         }
+        HorizontalDivider(color = cs.outlineVariant)
+        EdCategoryDropdown(
+            categories = categories,
+            selectedIds = draft.categoryIdsByLabel?.getOrNull(index).orEmpty(),
+            enabled = !busy,
+            onToggle = { categoryId, selected -> viewModel.changeCategory(index, categoryId, selected) },
+            onAddCategory = onAddCategory,
+        )
     }
 }

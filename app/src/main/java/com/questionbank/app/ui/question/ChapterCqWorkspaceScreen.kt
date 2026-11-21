@@ -16,7 +16,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.ui.window.Dialog
@@ -68,6 +67,7 @@ import com.questionbank.app.domain.editor.EditorMode as CanonicalEditorMode
 import com.questionbank.app.domain.repository.ChapterCqRepository
 import com.questionbank.app.domain.repository.TypeCqRepository
 import com.questionbank.app.domain.repository.EditorDraftRepository
+import com.questionbank.app.domain.repository.CategoryRepository
 import com.questionbank.app.ui.components.AppHeader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
@@ -286,6 +286,7 @@ private fun chapterCqBoardText(tags: List<BoardTag>, catalog: List<BoardItem>): 
 fun ChapterCqWorkspaceScreen(
     repository: ChapterCqRepository,
     referenceRepository: TypeCqRepository,
+    categoryRepository: CategoryRepository,
     draftRepository: EditorDraftRepository,
     draftScope: CoroutineScope,
     imagePipeline: ImagePipeline,
@@ -869,7 +870,7 @@ fun ChapterCqWorkspaceScreen(
                                     externalPreviewOpen = stimulusPreviewOpen,
                                     showPreviewToggle = false,
                                 )
-                                OutlinedTextField(value = reference, onValueChange = { reference = it; recordForm("reference") }, label = { Text("রেফারেন্স (ঐচ্ছিক)") }, minLines = 1, modifier = Modifier.fillMaxWidth())
+                                EdReferenceField(value = reference, onValueChange = { reference = it; recordForm("reference") }, enabled = !savingQuestion)
                             }
 
                             EdCard {
@@ -967,22 +968,42 @@ fun ChapterCqWorkspaceScreen(
                                         } else {
                                             val index = textPartIndex++
                                             val content = solutionTexts.getOrElse(index) { part.textContent.orEmpty() }
-                                            EdTextArea(
-                                                value = content,
-                                                onValueChange = { next ->
-                                                    solutionTexts = solutionTexts.toMutableList().also { rows ->
-                                                        while (rows.size <= index) rows.add("")
-                                                        rows[index] = next
-                                                    }
-                                                    syncMixedSolutionText(); recordForm("solution-$index")
-                                                },
-                                                enabled = !savingQuestion,
-                                                placeholder = "সমাধান ${index + 1} লিখুন",
-                                                minHeight = if (editorMode == EditorMode.FULL) 112.dp else 88.dp,
-                                                showMathBar = editorMode == EditorMode.FULL,
-                                                previewTitle = "সমাধান ${index + 1} প্রিভিউ (KaTeX)",
-                                                showPreviewToggle = false,
-                                            )
+                                            Box {
+                                                EdTextArea(
+                                                    value = content,
+                                                    onValueChange = { next ->
+                                                        solutionTexts = solutionTexts.toMutableList().also { rows ->
+                                                            while (rows.size <= index) rows.add("")
+                                                            rows[index] = next
+                                                        }
+                                                        syncMixedSolutionText(); recordForm("solution-$index")
+                                                    },
+                                                    enabled = !savingQuestion,
+                                                    placeholder = "সমাধান ${index + 1} লিখুন",
+                                                    minHeight = if (editorMode == EditorMode.FULL) 112.dp else 88.dp,
+                                                    showMathBar = editorMode == EditorMode.FULL,
+                                                    previewTitle = "সমাধান ${index + 1} প্রিভিউ (KaTeX)",
+                                                    showPreviewToggle = false,
+                                                )
+                                                if (solutionTexts.size > 1) {
+                                                    EdSolutionRemoveButton(
+                                                        onClick = {
+                                                            val ordered = solutionPartsDraft.sortedBy { it.position }
+                                                            val target = ordered.filter { it.partType != "IMAGE" }.getOrNull(index)
+                                                            if (target != null && solutionTexts.size > 1) {
+                                                                val remaining = ordered.filterNot { it.partId == target.partId }
+                                                                    .mapIndexed { position, item -> item.copy(position = position.toLong()) }
+                                                                solutionPartsDraft = remaining
+                                                                solutionTexts = remaining.filter { it.partType != "IMAGE" }
+                                                                    .map { it.textContent.orEmpty() }
+                                                                recordForm("solution-remove-$index")
+                                                            }
+                                                        },
+                                                        enabled = !savingQuestion,
+                                                        modifier = Modifier.align(Alignment.TopEnd).padding(5.dp),
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                     if (solutionPreviewOpen) {
@@ -1018,7 +1039,7 @@ fun ChapterCqWorkspaceScreen(
                                         onValueChange = { shortAnswer = it; recordForm("answer") },
                                         enabled = !savingQuestion,
                                         placeholder = "সংক্ষিপ্ত উত্তর (ঐচ্ছিক)",
-                                        minHeight = 76.dp,
+                                        minHeight = 52.dp,
                                         showMathBar = true,
                                         previewTitle = "সংক্ষিপ্ত উত্তরের প্রিভিউ (KaTeX)",
                                         externalPreviewOpen = answerPreviewOpen,
@@ -1027,17 +1048,17 @@ fun ChapterCqWorkspaceScreen(
                                 }
                             }
                             EdCard {
-                                Text("ক্যাটাগরি", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-                                categories.filter { it.isArchived == 0L || it.categoryId in selectedCategories }.forEach { category ->
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Checkbox(checked = category.categoryId in selectedCategories, enabled = category.isArchived == 0L, onCheckedChange = { checked ->
-                                            if (checked && category.categoryId !in selectedCategories) selectedCategories.add(category.categoryId)
-                                            if (!checked) selectedCategories.remove(category.categoryId)
-                                            recordForm("categories")
-                                        })
-                                        Text(if (category.isArchived != 0L) "${category.name} (আর্কাইভড—আগের লিংক রাখা হয়েছে)" else category.name)
-                                    }
-                                }
+                                EdCategoryDropdown(
+                                    categories = categories.map { EdCategoryOption(it.categoryId, it.name, it.isArchived != 0L) },
+                                    selectedIds = selectedCategories.toList(),
+                                    enabled = !savingQuestion,
+                                    onToggle = { categoryId, selected ->
+                                        if (selected && categoryId !in selectedCategories) selectedCategories.add(categoryId)
+                                        if (!selected) selectedCategories.remove(categoryId)
+                                        recordForm("categories")
+                                    },
+                                    onAddCategory = { name -> categoryRepository.addChapterCategory(name) },
+                                )
                             }
                             if (saveError.isNotBlank()) Text(saveError, color = MaterialTheme.colorScheme.error)
                         }

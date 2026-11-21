@@ -13,7 +13,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -33,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.questionbank.app.domain.question.CqLabel
 import com.questionbank.app.domain.question.QuestionRules
 import com.questionbank.app.domain.question.QuestionSolutionPart
 import com.questionbank.app.domain.question.UpdateResult
@@ -61,10 +61,10 @@ fun QuestionEditScreen(
 ) {
     var askDiscard by rememberSaveable { mutableStateOf(false) }
     var stimulusPreviewOpen by rememberSaveable { mutableStateOf(false) }
+    var sortedByLabel by rememberSaveable { mutableStateOf(false) }
     var pendingDeleteLabel by remember { mutableStateOf<com.questionbank.app.domain.question.CqLabel?>(null) }
     val invalidMarkFields = remember { mutableStateListOf<Int>() }
     val catalog by viewModel.boardCatalog.collectAsState()
-    val typeLabels by viewModel.questionTypeLabels.collectAsState()
     val categories by viewModel.categoryCatalog.collectAsState()
     val needsAsk = viewModel.load == EditLoad.READY && viewModel.changed && !viewModel.saving
     val tryBack: () -> Unit = {
@@ -217,16 +217,42 @@ fun QuestionEditScreen(
                         adder = stimulusAdder,
                         onChange = viewModel::changeStimulusImages,
                     )
-                    OutlinedTextField(
+                    EdReferenceField(
                         value = viewModel.referenceText,
                         onValueChange = viewModel::changeReferenceText,
-                        label = { Text("রেফারেন্স (ঐচ্ছিক)") },
-                        minLines = 1,
-                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !viewModel.saving,
                     )
                     }
                 }
-                viewModel.editableLabels.forEach { label ->
+                if (viewModel.hasStimulus && viewModel.editorMode == EditorMode.FULL) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val canAddKa = viewModel.canAddOptionalQuestion(CqLabel.KA)
+                        val canAddKha = viewModel.canAddOptionalQuestion(CqLabel.KHA)
+                        EdPill(
+                            text = if (canAddKa) "+ ক যোগ করুন" else "ক আগে থেকেই আছে",
+                            onClick = { viewModel.addOptionalQuestion(CqLabel.KA) },
+                            enabled = canAddKa && !viewModel.saving,
+                            dropdown = false,
+                            icon = EdIcon.PLUS_BOX,
+                        )
+                        EdPill(
+                            text = if (canAddKha) "+ খ যোগ করুন" else "খ আগে থেকেই আছে",
+                            onClick = { viewModel.addOptionalQuestion(CqLabel.KHA) },
+                            enabled = canAddKha && !viewModel.saving,
+                            dropdown = false,
+                            icon = EdIcon.PLUS_BOX,
+                        )
+                        EdPill(
+                            text = "ক-খ-গ-ঘ সাজাও",
+                            onClick = { sortedByLabel = true },
+                            enabled = !viewModel.saving && !sortedByLabel && viewModel.editableLabels.size > 1,
+                            dropdown = false,
+                            icon = EdIcon.SORT,
+                        )
+                    }
+                }
+                val labelsToShow = if (sortedByLabel) viewModel.editableLabels.sortedBy { it.sortOrder } else viewModel.editableLabels
+                labelsToShow.forEach { label ->
                     val i = label.sortOrder - 1
                     var questionPreviewOpen by rememberSaveable(label.letter) { mutableStateOf(false) }
                     var answerPreviewOpen by rememberSaveable(label.letter) { mutableStateOf(false) }
@@ -281,13 +307,6 @@ fun QuestionEditScreen(
                         }
                     }
                     EdTagChips(viewModel.boards[i], catalog, !viewModel.saving) { viewModel.changeBoards(label, it) }
-                    // Keep this app-specific question-category selector, but do not split the legacy button row.
-                    if (viewModel.editorMode == EditorMode.FULL) {
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("প্রশ্নের ধরন", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            EdTypePill(viewModel.questionTypeIds[i], typeLabels, !viewModel.saving) { viewModel.changeQuestionType(label, it) }
-                        }
-                    }
                     EdTextArea(
                         value = viewModel.texts[i],
                         onValueChange = { viewModel.setText(label, it) },
@@ -300,31 +319,6 @@ fun QuestionEditScreen(
                         showPreviewToggle = false,
                     )
                     // The rating and the boards of a block are stored only with its question text.
-                    if (viewModel.texts[i].isNotBlank()) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            Text("${label.letter}) ক্যাটাগরি", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                            TextButton(onClick = onManageCategories, enabled = !viewModel.saving) { Text("ক্যাটাগরি পরিচালনা") }
-                        }
-                        val selectedCategoryIds = viewModel.categoryIdsByLabel[i]
-                        val availableCategories = categories.filter { it.isArchived == 0L || it.categoryId in selectedCategoryIds }
-                        if (availableCategories.isEmpty()) {
-                            Text("কোনো ক্যাটাগরি নেই। রেফারেন্স থেকে ক্যাটাগরি যোগ করুন।", style = MaterialTheme.typography.bodySmall)
-                        }
-                        availableCategories.forEach { category ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(
-                                    checked = category.categoryId in selectedCategoryIds,
-                                    enabled = !viewModel.saving && (category.isArchived == 0L || category.categoryId in selectedCategoryIds),
-                                    onCheckedChange = { checked -> viewModel.changeCategory(label, category.categoryId, checked) },
-                                )
-                                Text(if (category.isArchived != 0L) "${category.name} (আর্কাইভড—আগের লিংক রাখা হয়েছে)" else category.name)
-                            }
-                        }
-                    }
                     // Solution is available in both modes; its core controls remain identical.
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("সমাধান", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
@@ -360,22 +354,14 @@ fun QuestionEditScreen(
                                         solutionParts.filterNot { it.partId == part.partId }.mapIndexed { index, row -> row.copy(position = index.toLong()) },
                                     )
                                 },
-                            ) {
-                                TextButton(
-                                    onClick = { viewModel.changeSolutionImageParts(label, moveSolutionPart(solutionParts, part.partId, -1)) },
-                                    enabled = !viewModel.saving && partOrder > 0,
-                                ) { Text("←") }
-                                TextButton(
-                                    onClick = { viewModel.changeSolutionImageParts(label, moveSolutionPart(solutionParts, part.partId, 1)) },
-                                    enabled = !viewModel.saving && partOrder < solutionParts.lastIndex,
-                                ) { Text("→") }
-                            }
+                            )
                         } else {
                             val partIndex = solutionTextIndex++
+                            Box {
                             EdTextArea(
                                 value = solutionTextValues.getOrElse(partIndex) { part.textContent.orEmpty() },
                                 onValueChange = { next ->
-                                    if (viewModel.solutionTexts[i].isEmpty()) viewModel.addSolutionText(label)
+                                    if (viewModel.solutionTexts[i].isEmpty()) viewModel.ensureSolutionText(label)
                                     viewModel.changeSolutionText(label, partIndex, next)
                                 },
                                 enabled = !viewModel.saving,
@@ -386,11 +372,12 @@ fun QuestionEditScreen(
                                 showPreviewToggle = false,
                             )
                             if (solutionTextValues.size > 1) {
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    TextButton(onClick = { viewModel.moveSolutionText(label, partIndex, partIndex - 1) }, enabled = !viewModel.saving && partIndex > 0) { Text("↑") }
-                                    TextButton(onClick = { viewModel.moveSolutionText(label, partIndex, partIndex + 1) }, enabled = !viewModel.saving && partIndex < solutionTextValues.lastIndex) { Text("↓") }
-                                    TextButton(onClick = { viewModel.removeSolutionText(label, partIndex) }, enabled = !viewModel.saving) { Text("এই অংশ সরান") }
-                                }
+                                EdSolutionRemoveButton(
+                                    onClick = { viewModel.removeSolutionText(label, partIndex) },
+                                    enabled = !viewModel.saving,
+                                    modifier = Modifier.align(Alignment.TopEnd).padding(5.dp),
+                                )
+                            }
                             }
                         }
                     }
@@ -427,7 +414,7 @@ fun QuestionEditScreen(
                             value = viewModel.answers[i],
                             onValueChange = { viewModel.setAnswer(label, it) },
                             enabled = !viewModel.saving,
-                            minHeight = 76.dp,
+                            minHeight = 52.dp,
                             placeholder = "সংক্ষিপ্ত উত্তর (ঐচ্ছিক)",
                             showMathBar = true,
                             previewTitle = "${label.letter}) সংক্ষিপ্ত উত্তরের প্রিভিউ (KaTeX)",
@@ -441,6 +428,15 @@ fun QuestionEditScreen(
                             )
                         }
                     }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    EdCategoryDropdown(
+                        categories = categories.map { EdCategoryOption(it.categoryId, it.name, it.isArchived != 0L) },
+                        selectedIds = viewModel.categoryIdsByLabel[i],
+                        enabled = !viewModel.saving,
+                        onToggle = { categoryId, selected -> viewModel.changeCategory(label, categoryId, selected) },
+                        onAddCategory = viewModel::addCategory,
+                        onManageCategories = onManageCategories,
+                    )
                     }
                 }
 

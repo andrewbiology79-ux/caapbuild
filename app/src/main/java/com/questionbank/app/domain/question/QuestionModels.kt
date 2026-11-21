@@ -105,6 +105,8 @@ data class DraftText(
     val stimulusImages: List<QuestionStimulusImage>? = null,
     /** Null means legacy text-only draft; an empty row deliberately clears that label's mixed solution parts. */
     val solutionPartsByLabel: List<List<QuestionSolutionPart>>? = null,
+    /** Null means an older draft did not store per-question categories; present rows preserve each label's selected IDs. */
+    val categoryIdsByLabel: List<List<String>>? = null,
 ) {
     val isBlank: Boolean
         get() = stimulus.isBlank() && referenceText.isBlank() && texts.all { it.isBlank() } && answers.all { it.isBlank() } && solutionTexts.all { row -> row.all { it.isBlank() } } && stimulusImages.isNullOrEmpty() && (solutionPartsByLabel.isNullOrEmpty() || solutionPartsByLabel.all { it.isEmpty() })

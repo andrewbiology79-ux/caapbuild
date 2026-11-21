@@ -46,7 +46,7 @@ object TypeCqDraftAdapter {
                 questionTypeId = draft.questionTypeIds.getOrNull(index) ?: label.typeId,
                 rating = draft.ratings.getOrNull(index),
                 boardYears = draft.boards.getOrNull(index).orEmpty().map { EditorBoardYear(it.boardCode, it.year) },
-                categoryIds = prior?.categoryIds.orEmpty(),
+                categoryIds = draft.categoryIdsByLabel?.getOrNull(index) ?: prior?.categoryIds.orEmpty(),
                 solutionParts = parts,
             )
         }
@@ -94,6 +94,7 @@ object TypeCqDraftAdapter {
                     QuestionSolutionPart(part.partId, part.kind.name, part.position, part.text, part.imageId)
                 }
             },
+            categoryIdsByLabel = CqLabel.entries.map { label -> rows[label.letter]?.categoryIds.orEmpty() },
         )
     }
 

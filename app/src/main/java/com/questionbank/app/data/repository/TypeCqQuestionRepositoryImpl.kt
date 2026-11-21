@@ -497,6 +497,7 @@ class TypeCqQuestionRepositoryImpl(
             .put("ratings", JSONArray(d.ratings.map { it ?: 0 }))
             .put("stimulusBoards", tagsToJson(d.stimulusBoards))
             .put("boards", JSONArray(d.boards.map { tagsToJson(it) }))
+            .put("categoryIdsByLabel", d.categoryIdsByLabel?.let { rows -> JSONArray(rows.map { JSONArray(it) }) } ?: JSONObject.NULL)
             .toString()
 
         /** One tag list as `[{"b":"DHA","y":2019}, ...]` (v0.2.30c-2). */
@@ -534,6 +535,7 @@ class TypeCqQuestionRepositoryImpl(
                 questionTypeIds = o.optJSONArray("questionTypeIds").let { a -> List(4) { i -> a?.optString(i, CqLabel.entries[i].typeId)?.takeIf { it.isNotBlank() } ?: CqLabel.entries[i].typeId } },
                 marks = o.optJSONArray("marks").let { a -> List(4) { i -> a?.optDouble(i, CqLabel.entries[i].marks) ?: CqLabel.entries[i].marks } },
                 solutionTexts = o.optJSONArray("solutionTexts").let { a -> List(4) { i -> a?.optJSONArray(i).let { row -> List(row?.length() ?: 0) { j -> row?.optString(j, "").orEmpty() } } } },
+                categoryIdsByLabel = o.optJSONArray("categoryIdsByLabel")?.let { rows -> List(4) { i -> rows.optJSONArray(i).let { row -> List(row?.length() ?: 0) { j -> row?.optString(j, "").orEmpty() }.filter { it.isNotBlank() } } } },
             )
         } catch (e: Exception) {
             null

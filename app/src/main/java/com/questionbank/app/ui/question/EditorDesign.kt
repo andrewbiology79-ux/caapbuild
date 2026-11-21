@@ -30,6 +30,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -100,7 +103,7 @@ import kotlinx.coroutines.launch
  * button, and a segmented Minimum / Full Editor switch. No icon library is used; the few icons are drawn on a Canvas.
  * ------------------------------------------------------------------------------------------------------------------- */
 
-enum class EdIcon { EYE, IMAGE_ADD, PLUS_BOX, TRASH, CHECK, CLOSE, CHEVRON, LAYERS, REFRESH }
+enum class EdIcon { EYE, IMAGE_ADD, PLUS_BOX, TRASH, CHECK, CLOSE, CHEVRON, LAYERS, REFRESH, SORT }
 
 @Composable
 fun EdIconGlyph(icon: EdIcon, tint: Color, modifier: Modifier = Modifier.size(22.dp)) {
@@ -220,6 +223,15 @@ fun EdIconGlyph(icon: EdIcon, tint: Color, modifier: Modifier = Modifier.size(22
                 }
                 drawPath(head, tint, style = stroke)
             }
+            EdIcon.SORT -> {
+                // Lucide ArrowDownUp-like glyph used by the old "ক-খ-গ-ঘ সাজাও" control.
+                drawLine(tint, Offset(w * 0.30f, h * 0.16f), Offset(w * 0.30f, h * 0.82f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.14f, h * 0.66f), Offset(w * 0.30f, h * 0.82f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.46f, h * 0.66f), Offset(w * 0.30f, h * 0.82f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.70f, h * 0.84f), Offset(w * 0.70f, h * 0.18f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.54f, h * 0.34f), Offset(w * 0.70f, h * 0.18f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.86f, h * 0.34f), Offset(w * 0.70f, h * 0.18f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+            }
         }
     }
 }
@@ -279,6 +291,7 @@ fun EdPill(
     enabled: Boolean = true,
     accent: Boolean = false,
     dropdown: Boolean = true,
+    icon: EdIcon? = null,
 ) {
     val cs = MaterialTheme.colorScheme
     val dark = LocalDarkTheme.current
@@ -298,7 +311,8 @@ fun EdPill(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(text, color = content, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 72.dp))
+        if (icon != null) EdIconGlyph(icon, content, Modifier.size(14.dp))
+        Text(text, color = content, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 96.dp))
         if (dropdown) EdIconGlyph(EdIcon.CHEVRON, content, Modifier.size(12.dp))
     }
 }
@@ -475,25 +489,25 @@ private fun EdMathToolbar(enabled: Boolean, onInsert: (MathInsertSpec) -> Unit) 
         )
     }
     Row(
-        Modifier.fillMaxWidth().background(cs.surfaceVariant).horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        Modifier.fillMaxWidth().background(cs.surfaceVariant).horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         items.forEach { spec ->
             val shape = RoundedCornerShape(8.dp)
             Box(
-                Modifier.height(44.dp).clip(shape).background(cs.surface, shape)
+                Modifier.height(36.dp).clip(shape).background(cs.surface, shape)
                     .border(1.dp, cs.outlineVariant, shape).clickable(enabled = enabled) { onInsert(spec) }
-                    .padding(horizontal = 12.dp),
+                    .padding(horizontal = 9.dp),
                 contentAlignment = Alignment.Center,
             ) { Text(spec.label, fontWeight = FontWeight.Medium, color = cs.onSurface, maxLines = 1) }
         }
         Box {
             val shape = RoundedCornerShape(8.dp)
             Row(
-                Modifier.height(44.dp).clip(shape).background(cs.surface, shape)
+                Modifier.height(36.dp).clip(shape).background(cs.surface, shape)
                     .border(1.dp, cs.outlineVariant, shape).clickable(enabled = enabled) { greekOpen = true }
-                    .padding(horizontal = 12.dp),
+                    .padding(horizontal = 9.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
@@ -724,17 +738,6 @@ fun EdLabelChip(
             options.forEach { (slot, text) ->
                 DropdownMenuItem(text = { Text(text) }, onClick = { open = false; onPick(slot) })
             }
-        }
-    }
-}
-
-@Composable
-fun EdTypePill(typeId: String, labels: Map<String, String>, enabled: Boolean, onType: (String) -> Unit) {
-    var open by remember { mutableStateOf(false) }
-    Box {
-        EdPill(text = labels[typeId] ?: typeId, onClick = { open = true }, enabled = enabled && labels.isNotEmpty())
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            labels.forEach { (id, label) -> DropdownMenuItem(text = { Text(label) }, onClick = { open = false; onType(id) }) }
         }
     }
 }
@@ -974,4 +977,154 @@ fun EdStimulusImages(
         }
         if (adder.error.isNotBlank()) Text(adder.error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
     }
+}
+
+
+/** Category option shared by Type CQ and Chapter CQ editors. */
+data class EdCategoryOption(val id: String, val name: String, val archived: Boolean = false)
+
+/** Compact multi-select category dropdown with an inline add-category dialog. */
+@Composable
+fun EdCategoryDropdown(
+    categories: List<EdCategoryOption>,
+    selectedIds: List<String>,
+    enabled: Boolean,
+    onToggle: (String, Boolean) -> Unit,
+    onAddCategory: suspend (String) -> Boolean,
+    modifier: Modifier = Modifier,
+    label: String = "ক্যাটাগরি",
+    onManageCategories: (() -> Unit)? = null,
+) {
+    val cs = MaterialTheme.colorScheme
+    val scope = rememberCoroutineScope()
+    var expanded by remember { mutableStateOf(false) }
+    var addDialog by remember { mutableStateOf(false) }
+    var newName by rememberSaveable { mutableStateOf("") }
+    var adding by remember { mutableStateOf(false) }
+    var addError by remember { mutableStateOf("") }
+    val selectedNames = categories.filter { it.id in selectedIds }.joinToString(", ") { it.name }
+    Box(modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 38.dp).clip(RoundedCornerShape(9.dp))
+                .background(cs.surface).border(1.dp, cs.outlineVariant, RoundedCornerShape(9.dp))
+                .clickable(enabled = enabled) { expanded = true }
+                .padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                Text(label, color = cs.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    selectedNames.ifBlank { "ক্যাটাগরি নির্বাচন করুন" },
+                    color = if (selectedNames.isBlank()) cs.onSurfaceVariant else cs.onSurface,
+                    fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                )
+            }
+            EdIconGlyph(EdIcon.CHEVRON, cs.onSurfaceVariant, Modifier.size(16.dp))
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            val available = categories.filter { !it.archived || it.id in selectedIds }
+            if (available.isEmpty()) {
+                DropdownMenuItem(text = { Text("এখনো কোনো ক্যাটাগরি নেই") }, onClick = {}, enabled = false)
+            }
+            available.forEach { category ->
+                DropdownMenuItem(
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = category.id in selectedIds,
+                                enabled = enabled && (!category.archived || category.id in selectedIds),
+                                onCheckedChange = null,
+                            )
+                            Text(if (category.archived) "${category.name} (আর্কাইভড)" else category.name)
+                        }
+                    },
+                    onClick = { if (enabled && (!category.archived || category.id in selectedIds)) onToggle(category.id, category.id !in selectedIds) },
+                    enabled = enabled && (!category.archived || category.id in selectedIds),
+                )
+            }
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text("＋ নতুন ক্যাটাগরি যোগ করুন", color = cs.primary, fontWeight = FontWeight.SemiBold) },
+                onClick = { expanded = false; newName = ""; addError = ""; addDialog = true },
+                enabled = enabled && !adding,
+            )
+            if (onManageCategories != null) {
+                DropdownMenuItem(
+                    text = { Text("ক্যাটাগরি পরিচালনা") },
+                    onClick = { expanded = false; onManageCategories() },
+                    enabled = enabled,
+                )
+            }
+        }
+    }
+    if (addDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!adding) addDialog = false },
+            title = { Text("নতুন ক্যাটাগরি যোগ করুন") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = newName,
+                        onValueChange = { newName = it; addError = "" },
+                        singleLine = true,
+                        label = { Text("ক্যাটাগরির নাম") },
+                        enabled = !adding,
+                    )
+                    if (addError.isNotBlank()) Text(addError, color = cs.error, fontSize = 12.sp)
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !adding && newName.isNotBlank(),
+                    onClick = {
+                        adding = true
+                        scope.launch {
+                            val ok = runCatching { onAddCategory(newName.trim()) }.getOrDefault(false)
+                            adding = false
+                            if (ok) addDialog = false else addError = "ক্যাটাগরি যোগ করা যায়নি। নামটি আগে থেকেই আছে কি না দেখুন।"
+                        }
+                    },
+                ) { Text(if (adding) "যোগ হচ্ছে…" else "যোগ করুন") }
+            },
+            dismissButton = { TextButton(enabled = !adding, onClick = { addDialog = false }) { Text("বাতিল") } },
+        )
+    }
+}
+
+/** Legacy-sized, compact one-line reference field (36 dp). */
+@Composable
+fun EdReferenceField(value: String, onValueChange: (String) -> Unit, enabled: Boolean, modifier: Modifier = Modifier) {
+    val cs = MaterialTheme.colorScheme
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        enabled = enabled,
+        singleLine = true,
+        textStyle = LocalTextStyle.current.copy(color = cs.onSurface, fontSize = 12.sp),
+        cursorBrush = SolidColor(cs.primary),
+        modifier = modifier.fillMaxWidth().height(36.dp).clip(RoundedCornerShape(9.dp))
+            .background(cs.surface).border(1.dp, cs.outlineVariant, RoundedCornerShape(9.dp))
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        decorationBox = { inner ->
+            Box {
+                if (value.isEmpty()) Text("রেফারেন্স (ঐচ্ছিক)", color = cs.onSurfaceVariant, fontSize = 12.sp)
+                inner()
+            }
+        },
+    )
+}
+
+/** Small corner X shown only when a block has more than one solution text field. */
+@Composable
+fun EdSolutionRemoveButton(onClick: () -> Unit, enabled: Boolean, modifier: Modifier = Modifier) {
+    val cs = MaterialTheme.colorScheme
+    Box(
+        modifier.size(22.dp).clip(CircleShape)
+            .background(if (enabled) Color(0xFFFFE8E8) else cs.surfaceVariant)
+            .border(1.dp, Color(0xFFF2B8B8), CircleShape)
+            .clickable(enabled = enabled, onClick = onClick)
+            .semantics { contentDescription = "এই সমাধানের ঘর মুছুন" },
+        contentAlignment = Alignment.Center,
+    ) { EdIconGlyph(EdIcon.CLOSE, Color(0xFFB42318), Modifier.size(12.dp)) }
 }
