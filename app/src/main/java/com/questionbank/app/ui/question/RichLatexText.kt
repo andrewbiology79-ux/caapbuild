@@ -4,6 +4,7 @@ import android.graphics.Typeface
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
+import android.util.TypedValue
 import android.widget.TextView
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.questionbank.app.ui.theme.LocalQuestionBodyTextSize
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -84,7 +86,7 @@ fun RichLatexText(
     text: String,
     modifier: Modifier = Modifier,
     color: Color = Color(0xFF1B1F2A),
-    fontSize: TextUnit = 16.sp,
+    fontSize: TextUnit = LocalQuestionBodyTextSize.current.sp,
     lineSpacingMultiplier: Float = 1.18f,
     fontFamily: FontFamily? = null,
     fontWeight: FontWeight = FontWeight.Normal,
@@ -124,16 +126,16 @@ private fun InlineLatexRun(
     val textView = remember(key, context) {
         TextView(context).apply {
             setTextColor(color.toArgb())
-            textSize = textSizePx
+            setTextSize(TypedValue.COMPLEX_UNIT_PX, textSizePx)
             setLineSpacing(0f, lineSpacingMultiplier)
             includeFontPadding = true
             setTextIsSelectable(true)
         }
     }
 
-    LaunchedEffect(segments, color, fontSize, lineSpacingMultiplier, fontWeight, fontFamily) {
+    LaunchedEffect(segments, color, fontSize, textSizePx, lineSpacingMultiplier, fontWeight, fontFamily) {
         textView.setTextColor(color.toArgb())
-        textView.textSize = textSizePx
+        textView.setTextSize(TypedValue.COMPLEX_UNIT_PX, textSizePx)
         textView.setLineSpacing(0f, lineSpacingMultiplier)
         textView.typeface = Typeface.create(
             when (fontFamily) {

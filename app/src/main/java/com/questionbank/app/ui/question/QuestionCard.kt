@@ -152,7 +152,7 @@ fun QuestionCard(
             }
             if (group.stimulusText.isNotBlank()) {
                 Text("উদ্দীপক", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                RichLatexText(group.stimulusText, Modifier.fillMaxWidth(), fontSize = 18.sp)
+                RichLatexText(group.stimulusText, Modifier.fillMaxWidth())
             }
             if (group.referenceText.isNotBlank()) {
                 var showReference by remember(group.referenceText) { mutableStateOf(false) }
@@ -198,7 +198,7 @@ private fun QuestionCardSubQuestion(
             if (question.boards.isNotEmpty()) Text("বোর্ড/সাল", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (question.boards.isNotEmpty()) TagChipRow(question.boards, boards)
-        RichLatexText(question.text, Modifier.fillMaxWidth(), fontSize = 18.sp)
+        RichLatexText(question.text, Modifier.fillMaxWidth())
         if (question.shortAnswer.isNotBlank()) { Text("সংক্ষিপ্ত উত্তর:", style = MaterialTheme.typography.bodyMedium); RichLatexText(question.shortAnswer, Modifier.fillMaxWidth()) }
         val hasSolution = question.orderedSolutionParts.isNotEmpty() || question.solutionParts.any(String::isNotBlank)
         if (hasSolution) {

@@ -141,7 +141,7 @@ fun ProfileScreen(settings: AppSettings, backupStatus: String, onOpenBackup: () 
                     ) { Text("ডিফল্ট (${TextSizePolicy.DEFAULT.toBengali()})") }
                 }
                 Text(
-                    "আকার ${TextSizePolicy.MIN.toBengali()} থেকে ${TextSizePolicy.MAX.toBengali()} পর্যন্ত। পুরো অ্যাপের লেখা এর সাথে বদলায়।",
+                    "আকার ${TextSizePolicy.MIN.toBengali()} থেকে ${TextSizePolicy.MAX.toBengali()} পর্যন্ত। প্রশ্ন, উদ্দীপক, সংক্ষিপ্ত উত্তর ও সমাধানের মূল লেখায় এটি প্রযোজ্য; বাটন ও লেবেলের আকার অপরিবর্তিত থাকে।",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

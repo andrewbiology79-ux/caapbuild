@@ -4,7 +4,7 @@ import com.questionbank.app.ui.settings.TextSizePolicy
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** Text size from Settings (design 39.4): 12 to 28, default 16, size 16 must not change anything. */
+/** Settings body-text size is 12–28 sp, default 16; UI controls are not scaled by this policy. */
 class TextSizePolicyTest {
     @Test
     fun valuesOutsideTheRangeAreClamped() {
@@ -16,21 +16,11 @@ class TextSizePolicyTest {
     }
 
     @Test
-    fun defaultSizeChangesNothing() {
-        assertEquals(1f, TextSizePolicy.scale(TextSizePolicy.DEFAULT), 0.0001f)
-    }
-
-    @Test
-    fun scaleIsProportionalToTheDefault() {
-        assertEquals(1.5f, TextSizePolicy.scale(24), 0.0001f)
-        assertEquals(0.75f, TextSizePolicy.scale(12), 0.0001f)
-        assertEquals(1.75f, TextSizePolicy.scale(28), 0.0001f)
-    }
-
-    @Test
-    fun scaleOfAnOutOfRangeSizeUsesTheLimit() {
-        assertEquals(0.75f, TextSizePolicy.scale(3), 0.0001f)
-        assertEquals(1.75f, TextSizePolicy.scale(99), 0.0001f)
+    fun contentFontSizeUsesTheSelectedSettingValue() {
+        assertEquals(12, TextSizePolicy.contentFontSizeSp(-3))
+        assertEquals(16, TextSizePolicy.contentFontSizeSp(16))
+        assertEquals(24, TextSizePolicy.contentFontSizeSp(24))
+        assertEquals(28, TextSizePolicy.contentFontSizeSp(99))
     }
 
     @Test

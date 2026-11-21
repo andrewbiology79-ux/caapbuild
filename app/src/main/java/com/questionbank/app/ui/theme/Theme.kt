@@ -9,8 +9,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.questionbank.app.ui.settings.TextSizePolicy
 
@@ -91,17 +89,19 @@ val HeaderDark = Color(0xFF1E293B)
 /** True while the owner-chosen Dark theme is active. Read by components that need colours outside the Material scheme. */
 val LocalDarkTheme = staticCompositionLocalOf { false }
 
+/** User-selected size for question/stimulus/solution body text only; controls keep their designed typography. */
+val LocalQuestionBodyTextSize = staticCompositionLocalOf { TextSizePolicy.DEFAULT }
+
 /**
- * App-wide theme. Light/Dark and text size are chosen by the owner in Settings, not by the system (decision D-3).
- * Text size scales every sp value from the base size 16: size 16 changes nothing.
+ * App-wide theme. Light/Dark are chosen in Settings; content body text size is separately exposed to body-text components.
+ * The Settings text size is exposed only to question/stimulus/solution body text. Buttons, labels,
+ * navigation and editor controls retain their designed sizes. The device accessibility font scale is preserved.
  * Fixed brand colours (no dynamic colour) so screens look the same on every device.
  */
 @Composable
 fun QuestionBankTheme(darkTheme: Boolean, textSize: Int, highContrast: Boolean = false, content: @Composable () -> Unit) {
-    val base = LocalDensity.current
-    val scaled = Density(base.density, base.fontScale * TextSizePolicy.scale(textSize))
     CompositionLocalProvider(
-        LocalDensity provides scaled,
+        LocalQuestionBodyTextSize provides TextSizePolicy.contentFontSizeSp(textSize),
         LocalDarkTheme provides darkTheme,
     ) {
         MaterialTheme(

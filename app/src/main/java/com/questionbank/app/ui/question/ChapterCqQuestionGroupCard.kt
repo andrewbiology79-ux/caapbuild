@@ -29,7 +29,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.questionbank.app.data.local.dao.ChapterCqQuestionCardDb
 import com.questionbank.app.domain.question.BoardItem
 import com.questionbank.app.domain.question.BoardTag
@@ -155,7 +154,7 @@ internal fun ChapterCqQuestionGroupCard(
             }
             if (group.stimulusText.isNotBlank()) {
                 Text("উদ্দীপক", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
-                RichLatexText(group.stimulusText, Modifier.fillMaxWidth(), fontSize = 18.sp)
+                RichLatexText(group.stimulusText, Modifier.fillMaxWidth())
             }
             if (group.referenceText.isNotBlank()) {
                 var showReference by remember(group.referenceText) { mutableStateOf(false) }
@@ -179,7 +178,7 @@ internal fun ChapterCqQuestionGroupCard(
                         Text("রেটিং ${(q.rating?.toInt() ?: group.stimulusRating ?: group.fallbackRating).coerceIn(1, 5)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     if (item.boards.isNotEmpty()) TagChipRow(item.boards, boards)
-                    RichLatexText(q.questionText, Modifier.fillMaxWidth(), fontSize = 18.sp)
+                    RichLatexText(q.questionText, Modifier.fillMaxWidth())
                     if (q.shortAnswer.isNotBlank()) { Text("সংক্ষিপ্ত উত্তর:", style = MaterialTheme.typography.bodyMedium); RichLatexText(q.shortAnswer, Modifier.fillMaxWidth()) }
                     if (item.solutionParts.isNotEmpty()) {
                         var showSolution by remember(q.questionId) { mutableStateOf(false) }

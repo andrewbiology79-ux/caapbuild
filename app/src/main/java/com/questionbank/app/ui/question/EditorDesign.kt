@@ -91,6 +91,7 @@ import com.questionbank.app.ui.format.toBengali
 import com.questionbank.app.ui.theme.HeaderDark
 import com.questionbank.app.ui.theme.HeaderLight
 import com.questionbank.app.ui.theme.LocalDarkTheme
+import com.questionbank.app.ui.theme.LocalQuestionBodyTextSize
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -539,7 +540,7 @@ fun EdInlinePreviewCard(
             if (text.isBlank()) {
                 Text("উপরে লিখলে এখানে প্রিভিউ দেখা যাবে।", color = cs.onSurfaceVariant, fontSize = 12.sp)
             } else {
-                RichLatexText(text, Modifier.fillMaxWidth(), color = Color(0xFF1B1F2A), fontSize = 16.sp)
+                RichLatexText(text, Modifier.fillMaxWidth(), color = Color(0xFF1B1F2A))
             }
         }
     }
@@ -564,6 +565,7 @@ fun EdTextArea(
 ) {
     val cs = MaterialTheme.colorScheme
     val density = LocalDensity.current.density
+    val bodyTextSize = LocalQuestionBodyTextSize.current.sp
     var field by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
     var boxHeight by rememberSaveable { mutableStateOf(minHeight.value) }
     var internalPreviewOpen by rememberSaveable { mutableStateOf(false) }
@@ -606,7 +608,7 @@ fun EdTextArea(
                         if (it.text != value) onValueChange(it.text)
                     },
                     enabled = enabled,
-                    textStyle = LocalTextStyle.current.copy(color = cs.onSurface, fontSize = 17.sp, lineHeight = 26.sp),
+                    textStyle = LocalTextStyle.current.copy(color = cs.onSurface, fontSize = bodyTextSize, lineHeight = (LocalQuestionBodyTextSize.current * 1.5f).sp),
                     cursorBrush = SolidColor(cs.primary),
                     modifier = Modifier.fillMaxWidth().heightIn(min = boxHeight.dp, max = 620.dp),
                     decorationBox = { inner ->

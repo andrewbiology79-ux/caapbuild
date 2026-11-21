@@ -3,7 +3,6 @@ package com.questionbank.app.ui.question
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -22,6 +21,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.questionbank.app.ui.theme.LocalQuestionBodyTextSize
 import com.questionbank.app.domain.repository.ChapterCqRepository
 import com.questionbank.app.media.ImagePipeline
 import com.questionbank.app.media.ImageScope
@@ -71,6 +72,7 @@ fun ChapterCqQuestionDetailDialog(
         }
         loading = false
     }
+    val bodyTextSize = LocalQuestionBodyTextSize.current.sp
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("প্রশ্নের বিস্তারিত") },
@@ -90,7 +92,7 @@ fun ChapterCqQuestionDetailDialog(
                     }
                     Text("প্রশ্ন", color = MaterialTheme.colorScheme.primary)
                     RichLatexText(item.questionText, Modifier.fillMaxWidth())
-                    if (item.answer.isNotBlank()) { Text("উত্তর", color = MaterialTheme.colorScheme.primary); Text(item.answer) }
+                    if (item.answer.isNotBlank()) { Text("উত্তর", color = MaterialTheme.colorScheme.primary); Text(item.answer, fontSize = bodyTextSize) }
                     if (item.parts.isNotEmpty()) {
                         Text("সমাধান", color = MaterialTheme.colorScheme.primary)
                         item.parts.sortedBy { it.position }.forEach { part ->

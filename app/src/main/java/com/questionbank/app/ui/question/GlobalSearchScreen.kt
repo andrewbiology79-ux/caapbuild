@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.questionbank.app.ui.theme.LocalQuestionBodyTextSize
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.questionbank.app.data.local.entity.ChapterCqQuestionCategoriesEntity
 import com.questionbank.app.data.local.entity.TypeCqQuestionCategoriesEntity
@@ -226,6 +227,7 @@ private fun GlobalFilterDropdown(
 
 @Composable
 private fun GlobalSearchResultCard(hit: GlobalQuestionHit, query: String, highlightEnabled: Boolean, onOpen: () -> Unit) {
+    val bodyTextSize = LocalQuestionBodyTextSize.current.sp
     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -235,10 +237,10 @@ private fun GlobalSearchResultCard(hit: GlobalQuestionHit, query: String, highli
             Text("${hit.subjectName} › ${hit.chapterName} › ${hit.containerName}", style = MaterialTheme.typography.labelSmall)
             if (hit.stimulusText.isNotBlank()) {
                 Text("উদ্দীপক:", style = MaterialTheme.typography.labelSmall)
-                RichLatexText(hit.stimulusText, Modifier.fillMaxWidth(), fontSize = 14.sp)
+                RichLatexText(hit.stimulusText, Modifier.fillMaxWidth())
             }
-            if (hit.questionText.contains('$')) RichLatexText("${hit.label}) ${hit.questionText}", Modifier.fillMaxWidth(), fontSize = 16.sp)
-            else Text(highlightQuery("${hit.label}) ${hit.questionText}", query, highlightEnabled), style = MaterialTheme.typography.bodyLarge)
+            if (hit.questionText.contains('$')) RichLatexText("${hit.label}) ${hit.questionText}", Modifier.fillMaxWidth())
+            else Text(highlightQuery("${hit.label}) ${hit.questionText}", query, highlightEnabled), style = MaterialTheme.typography.bodyLarge, fontSize = bodyTextSize)
             if (hit.shortAnswer.isNotBlank()) {
                 Text("উত্তর:", style = MaterialTheme.typography.labelSmall)
                 RichLatexText(hit.shortAnswer, Modifier.fillMaxWidth())
