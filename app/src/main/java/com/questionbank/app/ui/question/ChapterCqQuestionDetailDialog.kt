@@ -79,7 +79,7 @@ fun ChapterCqQuestionDetailDialog(
                 else if (data == null) Text("প্রশ্নটি আর পাওয়া যাচ্ছে না।", color = MaterialTheme.colorScheme.error)
                 else {
                     val item = data!!
-                    if (item.stimulusText.isNotBlank()) { Text("উদ্দীপক", color = MaterialTheme.colorScheme.primary); Text(item.stimulusText) }
+                    if (item.stimulusText.isNotBlank()) { Text("উদ্দীপক", color = MaterialTheme.colorScheme.primary); RichLatexText(item.stimulusText, Modifier.fillMaxWidth()) }
                     if (item.referenceText.isNotBlank()) { Text("তথ্যসূত্র", color = MaterialTheme.colorScheme.primary); Text(item.referenceText) }
                     item.images.sortedBy { it.position }.forEach { image ->
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -88,12 +88,12 @@ fun ChapterCqQuestionDetailDialog(
                         }
                     }
                     Text("প্রশ্ন", color = MaterialTheme.colorScheme.primary)
-                    Text(item.questionText)
+                    RichLatexText(item.questionText, Modifier.fillMaxWidth())
                     if (item.answer.isNotBlank()) { Text("উত্তর", color = MaterialTheme.colorScheme.primary); Text(item.answer) }
                     if (item.parts.isNotEmpty()) {
                         Text("সমাধান", color = MaterialTheme.colorScheme.primary)
                         item.parts.sortedBy { it.position }.forEach { part ->
-                            if (part.partType == "TEXT") Text(part.textContent.orEmpty())
+                            if (part.partType == "TEXT") RichLatexText(part.textContent.orEmpty(), Modifier.fillMaxWidth())
                             else part.imageId?.let { MediaThumbnail(imagePipeline, it, ImageScope.CHAPTER_CQ) }
                         }
                     }

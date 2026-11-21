@@ -120,6 +120,7 @@ fun SolutionImageAttachments(
     parts: List<QuestionSolutionPart>,
     enabled: Boolean,
     onChange: (List<QuestionSolutionPart>) -> Unit,
+    showAddButton: Boolean = true,
 ) {
     val coroutineScope = rememberCoroutineScope()
     var importing by remember { mutableStateOf(false) }
@@ -158,8 +159,10 @@ fun SolutionImageAttachments(
     Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("সমাধানের ছবি", style = MaterialTheme.typography.titleSmall)
-            OutlinedButton(enabled = enabled && !importing, onClick = { pickerScope = imageScope; launcher.launch(arrayOf("image/*")) }) {
-                Text(if (importing) "আমদানি হচ্ছে…" else "ছবি যোগ করুন")
+            if (showAddButton) {
+                OutlinedButton(enabled = enabled && !importing, onClick = { pickerScope = imageScope; launcher.launch(arrayOf("image/*")) }) {
+                    Text(if (importing) "আমদানি হচ্ছে…" else "ছবি যোগ করুন")
+                }
             }
         }
         if (importError.isNotBlank()) Text(importError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)

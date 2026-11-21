@@ -1,25 +1,34 @@
 package com.questionbank.app.ui.question
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.InputChip
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,8 +38,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.questionbank.app.domain.question.AddBoardResult
 import com.questionbank.app.domain.question.BoardItem
 import com.questionbank.app.domain.question.BoardRules
@@ -39,7 +55,12 @@ import com.questionbank.app.ui.format.toBengali
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
-/** Read-only chips "ঢাকা · ২০১৯" in one line that scrolls sideways (used on the card). */
+private val LegacyBlue = Color(0xFF3B4FD8)
+private val LegacyBlueDark = Color(0xFF2A3BB0)
+private val LegacyBorder = Color(0xFFD5D9E2)
+private val LegacyMuted = Color(0xFF64748B)
+
+/** Read-only compact chips "ঢাকা'১৯" in one line (used on question cards). */
 @Composable
 fun TagChipRow(tags: List<BoardTag>, boards: List<BoardItem>, modifier: Modifier = Modifier) {
     Row(
@@ -60,11 +81,7 @@ fun TagChipRow(tags: List<BoardTag>, boards: List<BoardItem>, modifier: Modifier
     }
 }
 
-/**
- * Boards and years of ONE block (the stimulus or one question), v0.2.30c-2, UI-08: the chosen tags as chips (tap a chip to remove it)
- * and a button that opens the picker. [onChange] gets the full wanted list; the same tag twice is never added.
- * [onAddBoard] adds a custom board to the catalog (the picker's "নতুন বোর্ড" dialog calls it).
- */
+/** Board and year tags for one section. The picker follows the legacy flow: compact board menu -> year window. */
 @Composable
 fun BoardTagsEditor(
     title: String,
@@ -75,189 +92,332 @@ fun BoardTagsEditor(
     onAddBoard: suspend (String, String) -> AddBoardResult,
     modifier: Modifier = Modifier,
 ) {
-    var picking by rememberSaveable { mutableStateOf(false) }
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(title, style = MaterialTheme.typography.labelLarge)
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
+            BoardPickerButton(
+                tags = tags,
+                boards = boards,
+                enabled = enabled,
+                onAddBoard = onAddBoard,
+                onSelect = { onChange(BoardRules.addTag(tags, it)) },
+            )
+        }
         if (tags.isNotEmpty()) {
-            Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                for (tag in tags) {
-                    InputChip(
-                        selected = false,
-                        onClick = { onChange(BoardRules.removeTag(tags, tag)) },
-                        enabled = enabled,
-                        label = { Text(tagText(tag, boards)) },
-                        trailingIcon = { Text("✕") },
-                    )
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                tags.forEach { tag ->
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(7.dp))
+                            .background(Color(0xFFEEF2FF))
+                            .border(1.dp, LegacyBorder, RoundedCornerShape(7.dp))
+                            .clickable(enabled = enabled) { onChange(BoardRules.removeTag(tags, tag)) }
+                            .padding(start = 7.dp, end = 4.dp, top = 3.dp, bottom = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            "${tag.boardCode}'${tag.year.toString().takeLast(2)}",
+                            color = LegacyBlueDark,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text("×", color = LegacyMuted, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
-        }
-        TextButton(onClick = { picking = true }, enabled = enabled && !BoardRules.isFull(tags)) {
-            Text(if (tags.isEmpty()) "+ বোর্ড ও সাল যোগ করুন" else "+ আরও বোর্ড ও সাল")
         }
         if (BoardRules.isFull(tags)) {
-            Text("সর্বোচ্চ ${BoardRules.MAX_TAGS_PER_BLOCK.toBengali()}টি বোর্ড-সাল দেওয়া যায়।", style = MaterialTheme.typography.bodySmall)
+            Text("সর্বোচ্চ ${BoardRules.MAX_TAGS_PER_BLOCK.toBengali()}টি বোর্ড-সাল দেওয়া যায়।", style = MaterialTheme.typography.bodySmall, color = LegacyMuted)
         }
     }
-    if (picking) {
-        BoardYearDialog(
-            boards = boards.filter { !it.isArchived },
-            existing = tags,
-            onAddBoard = onAddBoard,
-            onConfirm = { tag ->
-                picking = false
-                onChange(BoardRules.addTag(tags, tag))
-            },
-            onDismiss = { picking = false },
-        )
-    }
 }
 
-/** Picker: choose one board, then a year from the window (recent years) or type another year, then "যোগ করুন". */
+/** The compact 54dp board selector used beside the stimulus/question controls in the old editor. */
 @Composable
-internal fun BoardYearDialog(
+fun EdBoardPill(
+    tags: List<BoardTag>,
     boards: List<BoardItem>,
-    existing: List<BoardTag>,
+    enabled: Boolean,
+    onChange: (List<BoardTag>) -> Unit,
     onAddBoard: suspend (String, String) -> AddBoardResult,
-    onConfirm: (BoardTag) -> Unit,
-    onDismiss: () -> Unit,
 ) {
-    var selectedCode by rememberSaveable { mutableStateOf<String?>(null) }
-    var pickedYear by rememberSaveable { mutableStateOf<Int?>(null) }
-    var otherYear by rememberSaveable { mutableStateOf(false) }
-    var typedYear by rememberSaveable { mutableStateOf("") }
-    var newBoard by rememberSaveable { mutableStateOf(false) }
-    val window = remember { BoardRules.yearWindow(Calendar.getInstance().get(Calendar.YEAR)) }
-
-    val year: Int? = if (otherYear) BoardRules.parseYear(typedYear) else pickedYear
-    val tag: BoardTag? = if (selectedCode != null && year != null) BoardTag(selectedCode!!, year) else null
-    val already = tag != null && tag in existing
-    val yearError = if (otherYear) yearInputError(typedYear, BoardRules::parseYear) else null
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("বোর্ড ও সাল") },
-        text = {
-            Column(
-                modifier = Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text("বোর্ড", style = MaterialTheme.typography.labelLarge)
-                for (board in boards) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clickable { selectedCode = board.code },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(selected = selectedCode == board.code, onClick = null)
-                        Text(board.displayName, modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 8.dp))
-                    }
-                }
-                TextButton(onClick = { newBoard = true }) { Text("+ নতুন বোর্ড") }
-
-                Text("সাল", style = MaterialTheme.typography.labelLarge)
-                Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    for (y in window) {
-                        FilterChip(
-                            selected = !otherYear && pickedYear == y,
-                            onClick = {
-                                otherYear = false
-                                pickedYear = y
-                            },
-                            label = { Text(y.toBengali()) },
-                        )
-                    }
-                    FilterChip(selected = otherYear, onClick = { otherYear = true }, label = { Text("অন্য সাল") })
-                }
-                if (otherYear) {
-                    OutlinedTextField(
-                        value = typedYear,
-                        onValueChange = { typedYear = it.take(4) },
-                        label = { Text("সাল লিখুন (যেমন ২০১৫)") },
-                        singleLine = true,
-                        isError = yearError != null,
-                        supportingText = yearError?.let { { Text(it) } },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-                if (already) {
-                    Text("এই বোর্ড ও সাল আগেই দেওয়া আছে।", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { tag?.let(onConfirm) }, enabled = tag != null && !already) { Text("যোগ করুন") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("বাতিল") } },
+    BoardPickerButton(
+        tags = tags,
+        boards = boards,
+        enabled = enabled,
+        onAddBoard = onAddBoard,
+        onSelect = { onChange(BoardRules.addTag(tags, it)) },
     )
-    if (newBoard) {
-        NewBoardDialog(
-            onAddBoard = onAddBoard,
-            onAdded = { code ->
-                selectedCode = code
-                newBoard = false
+}
+
+@Composable
+private fun BoardPickerButton(
+    tags: List<BoardTag>,
+    boards: List<BoardItem>,
+    enabled: Boolean,
+    onAddBoard: suspend (String, String) -> AddBoardResult,
+    onSelect: (BoardTag) -> Unit,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    var yearBoard by remember { mutableStateOf<BoardItem?>(null) }
+    var addBoardOpen by remember { mutableStateOf(false) }
+    val availableBoards = boards.filter { !it.isArchived }
+    val canAdd = enabled && !BoardRules.isFull(tags)
+
+    Box {
+        val shape = RoundedCornerShape(6.dp)
+        Row(
+            modifier = Modifier
+                .width(54.dp)
+                .height(32.dp)
+                .clip(shape)
+                .background(Color.White)
+                .border(1.dp, LegacyBorder, shape)
+                .clickable(enabled = canAdd) { menuOpen = true }
+                .padding(horizontal = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            Text("বোর্ড", color = LegacyBlueDark, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            EdIconGlyph(EdIcon.CHEVRON, LegacyBlueDark, Modifier.size(11.dp))
+        }
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            availableBoards.forEach { board ->
+                DropdownMenuItem(
+                    text = { Text(board.displayName, fontSize = 13.sp) },
+                    onClick = { menuOpen = false; yearBoard = board },
+                )
+            }
+            if (availableBoards.isNotEmpty()) {
+                HorizontalDivider(color = LegacyBorder)
+            }
+            DropdownMenuItem(
+                text = { Text("+ নতুন বোর্ড যুক্ত করুন", color = LegacyBlueDark, fontWeight = FontWeight.SemiBold, fontSize = 13.sp) },
+                onClick = { menuOpen = false; addBoardOpen = true },
+            )
+        }
+    }
+
+    yearBoard?.let { board ->
+        BoardYearWindow(
+            board = board,
+            addedYears = tags.filter { it.boardCode == board.code }.map { it.year },
+            onPickYear = { year ->
+                onSelect(BoardTag(board.code, year))
+                yearBoard = null
             },
-            onDismiss = { newBoard = false },
+            onClose = { yearBoard = null },
+        )
+    }
+    if (addBoardOpen) {
+        NewBoardWindow(
+            onAddBoard = onAddBoard,
+            onAdded = { board ->
+                addBoardOpen = false
+                yearBoard = board
+            },
+            onClose = { addBoardOpen = false },
         )
     }
 }
 
-private fun addBoardMessage(result: AddBoardResult): String? = when (result) {
-    is AddBoardResult.Added -> null
-    AddBoardResult.BadCode -> "কোড শুধু ইংরেজি অক্ষর (A-Z), সংখ্যা (0-9) ও _ দিয়ে হবে, সর্বোচ্চ ${BoardRules.MAX_CODE_LENGTH.toBengali()} অক্ষর।"
-    AddBoardResult.BadName -> "নাম লিখুন (সর্বোচ্চ ${BoardRules.MAX_NAME_LENGTH.toBengali()} অক্ষর)।"
-    AddBoardResult.CodeExists -> "এই কোডে বোর্ড আগেই আছে।"
-    AddBoardResult.NameExists -> "এই নামে বোর্ড আগেই আছে।"
-    is AddBoardResult.Failed -> "বোর্ড যোগ করা যায়নি; আবার চেষ্টা করুন।"
+/** Legacy year-picker card: year grid in four columns, then a manual year input and blue add button. */
+@Composable
+private fun BoardYearWindow(
+    board: BoardItem,
+    addedYears: List<Int>,
+    onPickYear: (Int) -> Unit,
+    onClose: () -> Unit,
+) {
+    var manualYear by rememberSaveable(board.code) { mutableStateOf("") }
+    var error by rememberSaveable(board.code) { mutableStateOf<String?>(null) }
+    val currentYear = remember { Calendar.getInstance().get(Calendar.YEAR) }
+    val years = remember(currentYear) { (currentYear downTo 2010).toList() }
+    val existing = remember(addedYears) { addedYears.toSet() }
+
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            shape = RoundedCornerShape(16.dp),
+            color = Color.White,
+            shadowElevation = 18.dp,
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Text("সাল বাছুন", color = LegacyBlueDark, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Text(board.displayName, color = LegacyMuted, fontSize = 11.sp, maxLines = 1)
+                    }
+                    Box(
+                        Modifier.size(36.dp).clip(CircleShape).clickable(onClick = onClose),
+                        contentAlignment = Alignment.Center,
+                    ) { Text("×", color = LegacyMuted, fontSize = 22.sp) }
+                }
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(4),
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 224.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    items(years) { year ->
+                        val already = year in existing
+                        val shape = RoundedCornerShape(11.dp)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .clip(shape)
+                                .background(if (already) Color(0xFFEEF2FF) else Color.White)
+                                .border(1.dp, if (already) Color(0xFFC7D2FE) else LegacyBorder, shape)
+                                .clickable(enabled = !already) { onPickYear(year) },
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                        ) {
+                            if (already) Text("✓ ", color = LegacyBlue, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text(year.toBengali(), color = if (already) Color(0xFF94A3B8) else Color(0xFF1B1F2A), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+                HorizontalDivider(color = Color(0xFFF2F4F8))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BoardTextInput(
+                        value = manualYear,
+                        onValueChange = { manualYear = it.filter { ch -> ch.isDigit() }.take(4); error = null },
+                        placeholder = "অন্য সাল (যেমন: ২০০৯)",
+                        modifier = Modifier.weight(1f),
+                        keyboardType = KeyboardType.Number,
+                    )
+                    BlueActionButton(text = "+ যোগ", enabled = manualYear.isNotBlank()) {
+                        val year = BoardRules.parseYear(manualYear)
+                        when {
+                            year == null || year !in 1990..2099 -> error = "সাল ১৯৯০–২০৯৯-এর মধ্যে চার অঙ্কের হতে হবে।"
+                            year in existing -> error = "এই বোর্ড ও সাল আগেই যোগ করা আছে।"
+                            else -> onPickYear(year)
+                        }
+                    }
+                }
+                error?.let { Text(it, color = Color(0xFFDC2626), fontSize = 11.sp) }
+            }
+        }
+    }
 }
 
-/** "নতুন বোর্ড" dialog: a code (A-Z, 0-9, _) and a name. [onAdded] gets the code of the new board. */
+/** Legacy add-board card: code and name side-by-side, followed by equal Save / Cancel buttons. */
 @Composable
-private fun NewBoardDialog(
+private fun NewBoardWindow(
     onAddBoard: suspend (String, String) -> AddBoardResult,
-    onAdded: (String) -> Unit,
-    onDismiss: () -> Unit,
+    onAdded: (BoardItem) -> Unit,
+    onClose: () -> Unit,
 ) {
     var code by rememberSaveable { mutableStateOf("") }
     var name by rememberSaveable { mutableStateOf("") }
-    var message by rememberSaveable { mutableStateOf<String?>(null) }
+    var error by rememberSaveable { mutableStateOf<String?>(null) }
     var busy by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    AlertDialog(
-        onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text("নতুন বোর্ড") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = code,
-                    onValueChange = { code = it.take(BoardRules.MAX_CODE_LENGTH + 5); message = null },
-                    label = { Text("কোড (ইংরেজি, যেমন BARISAL2)") },
-                    singleLine = true,
-                    enabled = !busy,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it.take(BoardRules.MAX_NAME_LENGTH + 10); message = null },
-                    label = { Text("বোর্ডের নাম") },
-                    singleLine = true,
-                    enabled = !busy,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                message?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+
+    Dialog(onDismissRequest = { if (!busy) onClose() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            shape = RoundedCornerShape(16.dp),
+            color = Color.White,
+            shadowElevation = 18.dp,
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("নতুন বোর্ড যুক্ত করুন", color = LegacyBlueDark, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BoardTextInput(
+                        value = code,
+                        onValueChange = { code = it.take(BoardRules.MAX_CODE_LENGTH + 5).uppercase(); error = null },
+                        placeholder = "কোড (যেমন: CTB)",
+                        modifier = Modifier.width(112.dp),
+                        keyboardType = KeyboardType.Ascii,
+                        capitalization = KeyboardCapitalization.Characters,
+                    )
+                    BoardTextInput(
+                        value = name,
+                        onValueChange = { name = it.take(BoardRules.MAX_NAME_LENGTH + 10); error = null },
+                        placeholder = "নাম (যেমন: চট্টগ্রাম বোর্ড)",
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                error?.let { Text(it, color = Color(0xFFDC2626), fontSize = 11.sp) }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BlueActionButton(text = if (busy) "সংরক্ষণ হচ্ছে…" else "সংরক্ষণ", enabled = !busy, modifier = Modifier.weight(1f)) {
+                        busy = true
+                        scope.launch {
+                            when (val result = onAddBoard(code, name)) {
+                                is AddBoardResult.Added -> onAdded(result.board)
+                                else -> error = addBoardMessage(result)
+                            }
+                            busy = false
+                        }
+                    }
+                    WhiteActionButton(text = "বাতিল", enabled = !busy, modifier = Modifier.weight(1f), onClick = onClose)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BoardTextInput(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    capitalization: KeyboardCapitalization = KeyboardCapitalization.None,
+) {
+    val shape = RoundedCornerShape(12.dp)
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = keyboardType, capitalization = capitalization),
+        textStyle = MaterialTheme.typography.bodySmall.copy(color = Color(0xFF1B1F2A), fontSize = 12.sp),
+        modifier = modifier.height(44.dp).clip(shape).background(Color.White).border(1.dp, LegacyBorder, shape)
+            .padding(horizontal = 12.dp, vertical = 13.dp),
+        decorationBox = { inner ->
+            Box {
+                if (value.isEmpty()) Text(placeholder, color = LegacyMuted, fontSize = 11.sp, maxLines = 1)
+                inner()
             }
         },
-        confirmButton = {
-            TextButton(
-                enabled = !busy,
-                onClick = {
-                    busy = true
-                    scope.launch {
-                        val result = onAddBoard(code, name)
-                        busy = false
-                        if (result is AddBoardResult.Added) onAdded(result.board.code) else message = addBoardMessage(result)
-                    }
-                },
-            ) { Text(if (busy) "যোগ হচ্ছে…" else "যোগ করুন") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("বাতিল") } },
     )
+}
+
+@Composable
+private fun BlueActionButton(text: String, enabled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(
+        modifier.height(44.dp).clip(RoundedCornerShape(12.dp)).background(if (enabled) LegacyBlue else LegacyBlue.copy(alpha = 0.5f))
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Text(text, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
+}
+
+@Composable
+private fun WhiteActionButton(text: String, enabled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(
+        modifier.height(44.dp).clip(RoundedCornerShape(12.dp)).background(Color.White)
+            .border(1.dp, LegacyBorder, RoundedCornerShape(12.dp))
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Text(text, color = Color(0xFF1B1F2A), fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
+}
+
+private fun addBoardMessage(result: AddBoardResult): String = when (result) {
+    is AddBoardResult.Added -> ""
+    AddBoardResult.BadCode -> "সংক্ষিপ্ত কোডটি A-Z, 0-9 বা _ দিয়ে লিখুন (সর্বোচ্চ ${BoardRules.MAX_CODE_LENGTH.toBengali()} অক্ষর)।"
+    AddBoardResult.BadName -> "বোর্ডের নাম লিখুন (সর্বোচ্চ ${BoardRules.MAX_NAME_LENGTH.toBengali()} অক্ষর)।"
+    AddBoardResult.CodeExists -> "এই কোডের বোর্ড আগে থেকেই আছে।"
+    AddBoardResult.NameExists -> "এই নামে বোর্ড আগে থেকেই আছে।"
+    is AddBoardResult.Failed -> "বোর্ড যোগ করা যায়নি; আবার চেষ্টা করুন।"
 }

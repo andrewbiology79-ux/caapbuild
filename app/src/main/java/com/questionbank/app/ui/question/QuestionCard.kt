@@ -152,7 +152,7 @@ fun QuestionCard(
             }
             if (group.stimulusText.isNotBlank()) {
                 Text("উদ্দীপক", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                Text(group.stimulusText, style = MaterialTheme.typography.bodyLarge)
+                RichLatexText(group.stimulusText, Modifier.fillMaxWidth(), fontSize = 18.sp)
             }
             if (group.referenceText.isNotBlank()) {
                 var showReference by remember(group.referenceText) { mutableStateOf(false) }
@@ -198,8 +198,8 @@ private fun QuestionCardSubQuestion(
             if (question.boards.isNotEmpty()) Text("বোর্ড/সাল", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (question.boards.isNotEmpty()) TagChipRow(question.boards, boards)
-        Text(question.text, style = MaterialTheme.typography.bodyLarge)
-        if (question.shortAnswer.isNotBlank()) Text("সংক্ষিপ্ত উত্তর: ${question.shortAnswer}", style = MaterialTheme.typography.bodyMedium)
+        RichLatexText(question.text, Modifier.fillMaxWidth(), fontSize = 18.sp)
+        if (question.shortAnswer.isNotBlank()) { Text("সংক্ষিপ্ত উত্তর:", style = MaterialTheme.typography.bodyMedium); RichLatexText(question.shortAnswer, Modifier.fillMaxWidth()) }
         val hasSolution = question.orderedSolutionParts.isNotEmpty() || question.solutionParts.any(String::isNotBlank)
         if (hasSolution) {
             TextButton(onClick = { showSolution = !showSolution }, modifier = Modifier.padding(0.dp)) {
@@ -217,10 +217,10 @@ private fun QuestionCardSubQuestion(
                                 val id = part.imageId
                                 if (id != null && imagePipeline != null) MediaThumbnail(imagePipeline, id, ImageScope.TYPE_CQ)
                                 else Text("সমাধানের ছবি অনুপলব্ধ", style = MaterialTheme.typography.labelSmall)
-                            } else if (!part.textContent.isNullOrBlank()) Text(part.textContent, style = MaterialTheme.typography.bodyMedium)
+                            } else if (!part.textContent.isNullOrBlank()) RichLatexText(part.textContent, Modifier.fillMaxWidth())
                         }
                     } else {
-                        question.solutionParts.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                        question.solutionParts.forEach { RichLatexText(it, Modifier.fillMaxWidth()) }
                     }
                 }
             }

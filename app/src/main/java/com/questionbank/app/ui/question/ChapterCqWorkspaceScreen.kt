@@ -1,12 +1,17 @@
 package com.questionbank.app.ui.question
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -14,6 +19,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.material3.Surface
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -41,6 +49,7 @@ import com.questionbank.app.data.local.entity.ChapterCqStimuliEntity
 import com.questionbank.app.data.local.entity.ChapterCqStimulusImagesEntity
 import com.questionbank.app.domain.question.QuestionSolutionPart
 import com.questionbank.app.domain.question.BoardItem
+import com.questionbank.app.domain.question.AddBoardResult
 import com.questionbank.app.domain.question.PaperUsage
 import com.questionbank.app.domain.question.BoardTag
 import com.questionbank.app.domain.question.QuestionStimulusImage
@@ -307,7 +316,11 @@ fun ChapterCqWorkspaceScreen(
     var draftOwnerId by rememberSaveable { mutableStateOf("") }
     var draftSaved by rememberSaveable { mutableStateOf(false) }
     var duplicateDialog by rememberSaveable { mutableStateOf(false) }
-    var previewDialog by rememberSaveable { mutableStateOf(false) }
+    var stimulusPreviewOpen by rememberSaveable { mutableStateOf(false) }
+    var questionPreviewOpen by rememberSaveable { mutableStateOf(false) }
+    var answerPreviewOpen by rememberSaveable { mutableStateOf(false) }
+    var solutionPreviewOpen by rememberSaveable { mutableStateOf(false) }
+    var editorCloseConfirm by rememberSaveable { mutableStateOf(false) }
     var pendingDeleteQuestionId by rememberSaveable { mutableStateOf<String?>(null) }
     var deleteError by rememberSaveable { mutableStateOf("") }
     var selectedQuestionIds by remember { mutableStateOf(emptySet<String>()) }
@@ -527,6 +540,20 @@ fun ChapterCqWorkspaceScreen(
                 selectedCategories.clear()
                 selectedCategories.addAll(repository.loadQuestionCategories(q.questionId).map { it.categoryId })
             }
+        } else if (stimulusId != null) {
+            // New question in an existing stimulus group: keep the group's stimulus and images intact.
+            val s = runCatching { repository.loadStimulus(stimulusId!!) }.getOrNull()
+            if (s == null) {
+                editorLoadError = "উদ্দীপক গ্রুপটি আর পাওয়া যাচ্ছে না। তালিকা রিফ্রেশ করে আবার চেষ্টা করুন।"
+                editorLoading = false
+                return@LaunchedEffect
+            }
+            stimulus = s.stimulusText
+            reference = s.referenceText
+            stimulusRating = s.rating?.toString().orEmpty()
+            stimulusImages = repository.loadStimulusImages(s.stimulusId).map {
+                QuestionStimulusImage(it.imageId, it.placement, it.position)
+            }
         }
         val rawDraft = runCatching { draftRepository.load("chapter_cq", draftOwnerId) }.getOrNull()
         rawDraft?.let {
@@ -544,14 +571,17 @@ fun ChapterCqWorkspaceScreen(
         editorLoading = false
     }
 
-    fun openNewQuestion() {
+    fun openNewQuestion(forStimulusId: String? = null) {
         editingId = null
-        stimulusId = null; stimulus = ""; reference = ""; stimulusRating = ""
-        label = "ক"; marks = "1"; questionText = ""; shortAnswer = ""; rating = ""
+        stimulusId = forStimulusId; stimulus = ""; reference = ""; stimulusRating = ""
+        val occupiedLabels = if (forStimulusId == null) emptySet() else
+            allQuestionGroups.firstOrNull { it.stimulusId == forStimulusId }?.questions?.map { it.row.label }?.toSet().orEmpty()
+        label = listOf("ক", "খ", "গ", "ঘ").firstOrNull { it !in occupiedLabels } ?: "ক"
+        marks = "1"; questionText = ""; shortAnswer = ""; rating = ""
         solutionTexts = listOf(""); boardCode = ""; boardYear = ""
-        selectedCategories.clear(); previousBoards = emptyList(); previousParts = emptyList(); stimulusImages = emptyList(); solutionPartsDraft = emptyList(); saveError = ""
+        selectedCategories.clear(); previousBoards = emptyList(); previousParts = emptyList(); stimulusImages = emptyList(); solutionPartsDraft = emptyList(); saveError = ""; editorLoadError = ""
         editorMode = defaultEditorMode
-        draftOwnerId = "new:$chapterId"
+        draftOwnerId = if (forStimulusId == null) "new:$chapterId" else "new:$chapterId:group:$forStimulusId"
         canonicalDraftTemplate = null
         draftSaved = false
         editorLoading = true
@@ -601,7 +631,7 @@ fun ChapterCqWorkspaceScreen(
                         val now = System.currentTimeMillis()
                         val qid = editingId ?: "ccq_${UUID.randomUUID()}"
                         val existing = editingId?.let { repository.loadQuestion(it) }
-                        val wantsStimulus = hasStimulusContent
+                        val wantsStimulus = hasStimulusContent || stimulusId != null
                         val targetStimulusId = if (wantsStimulus) (stimulusId ?: "ccs_${UUID.randomUUID()}") else null
                         val stimulusRow = if (targetStimulusId != null) ChapterCqStimuliEntity(
                             stimulusId = targetStimulusId,
@@ -718,22 +748,6 @@ fun ChapterCqWorkspaceScreen(
         )
     }
 
-    if (previewDialog) AlertDialog(
-        onDismissRequest = { previewDialog = false },
-        title = { Text("Chapter CQ প্রিভিউ") },
-        text = {
-            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (stimulus.isNotBlank()) Text("উদ্দীপক\n$stimulus")
-                if (reference.isNotBlank()) Text("রেফারেন্স\n$reference")
-                Text("$label) · $marks নম্বর", fontWeight = FontWeight.Bold)
-                Text(questionText)
-                shortAnswer.takeIf { it.isNotBlank() }?.let { Text("উত্তর: $it") }
-                solutionTexts.filter { it.isNotBlank() }.forEachIndexed { index, value -> Text("সমাধান ${index + 1}: $value") }
-            }
-        },
-        confirmButton = { TextButton(onClick = { previewDialog = false }) { Text("বন্ধ") } },
-    )
-
     if (duplicateDialog) AlertDialog(
         onDismissRequest = { if (!savingQuestion) duplicateDialog = false },
         title = { Text("একই লেখা আগে আছে") },
@@ -742,94 +756,260 @@ fun ChapterCqWorkspaceScreen(
         dismissButton = { TextButton(onClick = { duplicateDialog = false }, enabled = !savingQuestion) { Text("ফিরে যান") } },
     )
 
-    if (editorOpen) AlertDialog(
-        onDismissRequest = { if (!savingQuestion) editorOpen = false },
-        title = { Text(if (editingId == null) "Chapter CQ প্রশ্ন যোগ" else "Chapter CQ প্রশ্ন সম্পাদনা") },
-        text = {
-            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (editorLoading) Text(if (savingQuestion) "সংরক্ষণ হচ্ছে…" else "তথ্য লোড হচ্ছে…") else {
-                    EditorModePicker(editorMode, true) { editorMode = it; recordForm("mode") }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = { history.undo()?.let { restoreForm(it); queueEditorDraft() } }, enabled = history.canUndo) { Text("↶ Undo") }
-                        TextButton(onClick = { history.redo()?.let { restoreForm(it); queueEditorDraft() } }, enabled = history.canRedo) { Text("↷ Redo") }
-                    }
-                    Text(if (draftSaved) "ড্রাফট সংরক্ষিত ✓" else "পরিবর্তন ড্রাফটে সংরক্ষিত হবে…", style = MaterialTheme.typography.bodySmall)
-                    OutlinedTextField(value = stimulus, onValueChange = { stimulus = it; recordForm("stimulus") }, label = { Text("উদ্দীপক (ঐচ্ছিক)") }, minLines = 2)
-                    StimulusImageAttachments(
-                        pipeline = imagePipeline,
-                        imageScope = ImageScope.CHAPTER_CQ,
-                        images = stimulusImages,
-                        enabled = !savingQuestion,
-                        onChange = { stimulusImages = it; recordForm("stimulus-images") },
+    if (editorOpen) {
+        val closeEditor: () -> Unit = {
+            if (history.canUndo && !savingQuestion) editorCloseConfirm = true else if (!savingQuestion) editorOpen = false
+        }
+        val chapterStimulusAdder = rememberStimulusImageAdder(
+            pipeline = imagePipeline,
+            imageScope = ImageScope.CHAPTER_CQ,
+            images = stimulusImages,
+            enabled = !savingQuestion,
+        ) { images -> stimulusImages = images; recordForm("stimulus-images") }
+        val chapterSolutionAdder = rememberSolutionImageAdder(
+            pipeline = imagePipeline,
+            imageScope = ImageScope.CHAPTER_CQ,
+            parts = solutionPartsDraft,
+            enabled = !savingQuestion,
+        ) { parts ->
+            solutionPartsDraft = parts
+            solutionTexts = parts.filter { it.partType == "TEXT" }.sortedBy { it.position }.mapNotNull { it.textContent }.ifEmpty { listOf("") }
+            recordForm("solution-images")
+        }
+        Dialog(
+            onDismissRequest = closeEditor,
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                Column(Modifier.fillMaxSize()) {
+                    EditorTopBar(
+                        title = if (editingId == null) "প্রশ্ন যোগ" else "প্রশ্ন সম্পাদনা",
+                        unsaved = history.canUndo,
+                        canUndo = history.canUndo && !savingQuestion,
+                        canRedo = history.canRedo && !savingQuestion,
+                        saving = savingQuestion,
+                        saveEnabled = !editorLoading && !savingQuestion && questionText.isNotBlank() && (marks.toDoubleOrNull()?.let { it.isFinite() && it > 0.0 } == true),
+                        onClose = closeEditor,
+                        onUndo = { history.undo()?.let { restoreForm(it); queueEditorDraft() } },
+                        onRedo = { history.redo()?.let { restoreForm(it); queueEditorDraft() } },
+                        onSave = { saveQuestion() },
                     )
-                    OutlinedTextField(value = reference, onValueChange = { reference = it; recordForm("reference") }, label = { Text("রেফারেন্স (ঐচ্ছিক)") }, minLines = 2)
-                    OutlinedTextField(value = stimulusRating, onValueChange = { stimulusRating = it; recordForm("stimulus-rating") }, label = { Text("উদ্দীপক রেটিং (১–৫)") }, singleLine = true)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("উপপ্রশ্ন: $label")
-                        TextButton(onClick = { labelMenu = true }) { Text("পরিবর্তন") }
-                        DropdownMenu(expanded = labelMenu, onDismissRequest = { labelMenu = false }) {
-                            listOf("ক", "খ", "গ", "ঘ").forEach { item -> DropdownMenuItem(text = { Text(item) }, onClick = { label = item; labelMenu = false; recordForm("label") }) }
+                    Surface(color = MaterialTheme.colorScheme.surface) {
+                        Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                            EditorModeTabs(editorMode, !savingQuestion && !editorLoading) { mode -> editorMode = mode; recordForm("mode") }
                         }
                     }
-                    OutlinedTextField(value = marks, onValueChange = { marks = it; recordForm("marks") }, label = { Text("নম্বর") }, singleLine = true)
-                    if (editorMode == EditorMode.FULL) MathSymbolBar { symbol -> questionText += symbol; recordForm("question") }
-                    OutlinedTextField(value = questionText, onValueChange = { questionText = it; recordForm("question") }, label = { Text("প্রশ্ন") }, minLines = 3)
-                    OutlinedTextField(value = shortAnswer, onValueChange = { shortAnswer = it; recordForm("answer") }, label = { Text("সংক্ষিপ্ত উত্তর (ঐচ্ছিক)") }, minLines = 1)
-                    OutlinedTextField(value = rating, onValueChange = { rating = it; recordForm("rating") }, label = { Text("প্রশ্ন রেটিং (১–৫)") }, singleLine = true)
-                    if (editorMode == EditorMode.FULL) {
-                        TextButton(onClick = { previewDialog = true }) { Text("প্রিভিউ দেখুন") }
-                        solutionTexts.forEachIndexed { index, value ->
-                            MathSymbolBar { symbol -> solutionTexts = solutionTexts.toMutableList().also { it[index] = value + symbol }; syncMixedSolutionText(); recordForm("solution-$index") }
-                            OutlinedTextField(value = value, onValueChange = { v -> solutionTexts = solutionTexts.toMutableList().also { it[index] = v }; syncMixedSolutionText(); recordForm("solution-$index") }, label = { Text("সমাধান ${index + 1}") }, minLines = 2)
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                TextButton(onClick = {
-                                    if (index > 0) solutionTexts = solutionTexts.toMutableList().also { row -> val v = row.removeAt(index); row.add(index - 1, v) }
-                                    syncMixedSolutionText(); recordForm("solution-order")
-                                }, enabled = index > 0) { Text("↑") }
-                                TextButton(onClick = {
-                                    if (index < solutionTexts.lastIndex) solutionTexts = solutionTexts.toMutableList().also { row -> val v = row.removeAt(index); row.add(index + 1, v) }
-                                    syncMixedSolutionText(); recordForm("solution-order")
-                                }, enabled = index < solutionTexts.lastIndex) { Text("↓") }
-                                TextButton(onClick = { solutionTexts = solutionTexts.toMutableList().also { if (index in it.indices) it.removeAt(index) }; syncMixedSolutionText(); recordForm("solution-remove") }) { Text("সমাধান অংশ সরান") }
+                    if (editorLoading) {
+                        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                            Text(if (savingQuestion) "সংরক্ষণ হচ্ছে…" else "তথ্য লোড হচ্ছে…")
+                        }
+                    } else {
+                        Column(
+                            Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                        ) {
+                            Text(if (draftSaved) "ড্রাফট সংরক্ষিত ✓" else "পরিবর্তন ড্রাফটে সংরক্ষিত হবে…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (editorLoadError.isNotBlank()) Text(editorLoadError, color = MaterialTheme.colorScheme.error)
+
+                            // The hierarchy section is read-only in Chapter CQ; the chapter chosen in navigation owns this editor.
+                            EdCard {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    EdIconGlyph(EdIcon.LAYERS, MaterialTheme.colorScheme.primary)
+                                    Column(Modifier.weight(1f)) {
+                                        Text("বিষয় ও অধ্যায়", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                                        Text("${subjects.firstOrNull { it.subjectId == subjectId }?.name.orEmpty()}  ›  ${chapters.firstOrNull { it.chapterId == chapterId }?.name.orEmpty()}", style = MaterialTheme.typography.bodyMedium)
+                                    }
+                                }
                             }
+
+                            EdCard {
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text("উদ্দীপক", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                                    EdIconButton(
+                                        EdIcon.EYE, "উদ্দীপক প্রিভিউ", { stimulusPreviewOpen = !stimulusPreviewOpen },
+                                        selected = stimulusPreviewOpen,
+                                    )
+                                    EdRatingPill(stimulusRating.toIntOrNull(), !savingQuestion) { stimulusRating = it?.toString().orEmpty(); recordForm("stimulus-rating") }
+                                    EdIconButton(EdIcon.IMAGE_ADD, "উদ্দীপকে ছবি যোগ করুন", { chapterStimulusAdder.pick(null) }, enabled = !savingQuestion && !chapterStimulusAdder.importing, dashed = true)
+                                }
+                                EdStimulusImages(imagePipeline, ImageScope.CHAPTER_CQ, stimulusImages, !savingQuestion, chapterStimulusAdder) { images -> stimulusImages = images; recordForm("stimulus-images") }
+                                EdTextArea(
+                                    value = stimulus,
+                                    onValueChange = { stimulus = it; recordForm("stimulus") },
+                                    enabled = !savingQuestion,
+                                    placeholder = "উদ্দীপক লিখুন (ঐচ্ছিক)",
+                                    minHeight = 150.dp,
+                                    showMathBar = editorMode == EditorMode.FULL,
+                                    previewTitle = "লাইভ প্রিভিউ (KaTeX)",
+                                    externalPreviewOpen = stimulusPreviewOpen,
+                                    showPreviewToggle = false,
+                                )
+                                OutlinedTextField(value = reference, onValueChange = { reference = it; recordForm("reference") }, label = { Text("রেফারেন্স (ঐচ্ছিক)") }, minLines = 1, modifier = Modifier.fillMaxWidth())
+                            }
+
+                            EdCard {
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    EdLabelChip(label, listOf("ক", "খ", "গ", "ঘ").mapIndexed { index, value -> index to value }, !savingQuestion) { selected ->
+                                        label = listOf("ক", "খ", "গ", "ঘ").getOrElse(selected) { "ক" }; recordForm("label")
+                                    }
+                                    EdMarksField(0, marks.toDoubleOrNull() ?: 1.0, !savingQuestion, { marks = it.toString(); recordForm("marks") }, {})
+                                    EdBoardPill(
+                                        tags = if (boardCode.isNotBlank() && boardYear.toIntOrNull() != null) listOf(BoardTag(boardCode, boardYear.toInt())) else emptyList(),
+                                        boards = boardItems,
+                                        enabled = !savingQuestion,
+                                        onChange = { tag -> boardCode = tag.firstOrNull()?.boardCode.orEmpty(); boardYear = tag.firstOrNull()?.year?.toString().orEmpty(); recordForm("board") },
+                                        onAddBoard = { code, name ->
+                                            val added = referenceRepository.addBoard(code, name)
+                                            if (added) AddBoardResult.Added(BoardItem(code, name, true, false))
+                                            else AddBoardResult.Failed("বোর্ড যোগ করা যায়নি বা কোডটি আগে থেকেই আছে।")
+                                        },
+                                    )
+                                    EdIconButton(
+                                        EdIcon.EYE, "প্রশ্নের প্রিভিউ", { questionPreviewOpen = !questionPreviewOpen },
+                                        enabled = !savingQuestion, selected = questionPreviewOpen,
+                                    )
+                                    EdRatingPill(rating.toIntOrNull(), !savingQuestion) { rating = it?.toString().orEmpty(); recordForm("rating") }
+                                }
+                                if (boardCode.isNotBlank() && boardYear.toIntOrNull() != null) {
+                                    EdTagChips(
+                                        tags = listOf(BoardTag(boardCode, boardYear.toInt())),
+                                        boards = boardItems,
+                                        enabled = !savingQuestion,
+                                        onChange = { wanted ->
+                                            boardCode = wanted.firstOrNull()?.boardCode.orEmpty()
+                                            boardYear = wanted.firstOrNull()?.year?.toString().orEmpty()
+                                            recordForm("board")
+                                        },
+                                    )
+                                }
+                                EdTextArea(
+                                    value = questionText,
+                                    onValueChange = { questionText = it; recordForm("question") },
+                                    enabled = !savingQuestion,
+                                    placeholder = "প্রশ্ন লিখুন",
+                                    minHeight = 132.dp,
+                                    showMathBar = editorMode == EditorMode.FULL,
+                                    previewTitle = "প্রশ্নের প্রিভিউ (KaTeX)",
+                                    externalPreviewOpen = questionPreviewOpen,
+                                    showPreviewToggle = false,
+                                )
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("সংক্ষিপ্ত উত্তর (ঐচ্ছিক)", style = MaterialTheme.typography.labelLarge)
+                                    EdIconButton(
+                                        EdIcon.EYE, "সংক্ষিপ্ত উত্তরের প্রিভিউ", { answerPreviewOpen = !answerPreviewOpen },
+                                        enabled = !savingQuestion, selected = answerPreviewOpen,
+                                    )
+                                }
+                                EdTextArea(
+                                    value = shortAnswer,
+                                    onValueChange = { shortAnswer = it; recordForm("answer") },
+                                    enabled = !savingQuestion,
+                                    placeholder = "সংক্ষিপ্ত উত্তর (ঐচ্ছিক)",
+                                    minHeight = 76.dp,
+                                    showMathBar = editorMode == EditorMode.FULL,
+                                    previewTitle = "সংক্ষিপ্ত উত্তরের প্রিভিউ (KaTeX)",
+                                    externalPreviewOpen = answerPreviewOpen,
+                                    showPreviewToggle = false,
+                                )
+                            }
+
+                            if (editorMode == EditorMode.FULL) {
+                                EdCard {
+                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("সমাধান", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            EdIconButton(
+                                                EdIcon.EYE, "সমাধান প্রিভিউ", { solutionPreviewOpen = !solutionPreviewOpen },
+                                                selected = solutionPreviewOpen,
+                                            )
+                                            EdIconButton(
+                                                EdIcon.IMAGE_ADD, "সমাধানের শুরুতে ছবি যোগ করুন", { chapterSolutionAdder.pick(null) },
+                                                enabled = !savingQuestion && !chapterSolutionAdder.importing, dashed = true,
+                                            )
+                                        }
+                                    }
+                                    val displayedParts = solutionPartsDraft.sortedBy { it.position }.ifEmpty {
+                                        listOf(QuestionSolutionPart("chapter-empty-text", "TEXT", 0L, textContent = solutionTexts.firstOrNull().orEmpty()))
+                                    }
+                                    var textPartIndex = 0
+                                    displayedParts.forEachIndexed { order, part ->
+                                        if (part.partType == "IMAGE" && part.imageId != null) {
+                                            EdThumbnail(
+                                                pipeline = imagePipeline,
+                                                imageId = part.imageId,
+                                                imageScope = ImageScope.CHAPTER_CQ,
+                                                enabled = !savingQuestion && !chapterSolutionAdder.importing,
+                                                onReplace = { chapterSolutionAdder.pick(part.partId) },
+                                                onRemove = {
+                                                    solutionPartsDraft = solutionPartsDraft.filterNot { it.partId == part.partId }.mapIndexed { i, row -> row.copy(position = i.toLong()) }
+                                                    solutionTexts = solutionPartsDraft.filter { it.partType == "TEXT" }.sortedBy { it.position }.mapNotNull { it.textContent }.ifEmpty { listOf("") }
+                                                    recordForm("solution-image-remove")
+                                                },
+                                            )
+                                        } else {
+                                            val index = textPartIndex++
+                                            val content = solutionTexts.getOrElse(index) { part.textContent.orEmpty() }
+                                            EdTextArea(
+                                                value = content,
+                                                onValueChange = { next ->
+                                                    solutionTexts = solutionTexts.toMutableList().also { rows ->
+                                                        while (rows.size <= index) rows.add("")
+                                                        rows[index] = next
+                                                    }
+                                                    syncMixedSolutionText(); recordForm("solution-$index")
+                                                },
+                                                enabled = !savingQuestion,
+                                                placeholder = "সমাধান ${index + 1} লিখুন",
+                                                minHeight = 128.dp,
+                                                showMathBar = true,
+                                                previewTitle = "সমাধান ${index + 1} প্রিভিউ (KaTeX)",
+                                                showPreviewToggle = false,
+                                            )
+                                        }
+                                    }
+                                    if (solutionPreviewOpen) {
+                                        EdInlinePreviewCard(
+                                            title = "সমাধানের প্রিভিউ (KaTeX)",
+                                            text = solutionTexts.filter { it.isNotBlank() }.joinToString("\n\n"),
+                                        )
+                                    }
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+                                        EdIconButton(EdIcon.PLUS_BOX, "সমাধানের আরেকটি অংশ যোগ করুন", {
+                                            solutionTexts = solutionTexts + ""; syncMixedSolutionText(); recordForm("solution-add")
+                                        }, enabled = !savingQuestion, dashed = true)
+                                    }
+                                    if (chapterSolutionAdder.error.isNotBlank()) Text(chapterSolutionAdder.error, color = MaterialTheme.colorScheme.error)
+                                }
+                            }
+
+                            EdCard {
+                                Text("ক্যাটাগরি", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                                categories.filter { it.isArchived == 0L || it.categoryId in selectedCategories }.forEach { category ->
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(checked = category.categoryId in selectedCategories, enabled = category.isArchived == 0L, onCheckedChange = { checked ->
+                                            if (checked && category.categoryId !in selectedCategories) selectedCategories.add(category.categoryId)
+                                            if (!checked) selectedCategories.remove(category.categoryId)
+                                            recordForm("categories")
+                                        })
+                                        Text(if (category.isArchived != 0L) "${category.name} (আর্কাইভড—আগের লিংক রাখা হয়েছে)" else category.name)
+                                    }
+                                }
+                            }
+                            if (saveError.isNotBlank()) Text(saveError, color = MaterialTheme.colorScheme.error)
+                            if (chapterSolutionAdder.error.isNotBlank()) Text(chapterSolutionAdder.error, color = MaterialTheme.colorScheme.error)
                         }
-                        TextButton(onClick = { solutionTexts = solutionTexts + ""; syncMixedSolutionText(); recordForm("solution-add") }) { Text("+ সমাধান অংশ যোগ") }
-                        SolutionImageAttachments(
-                            pipeline = imagePipeline,
-                            imageScope = ImageScope.CHAPTER_CQ,
-                            parts = solutionPartsDraft,
-                            enabled = !savingQuestion,
-                            onChange = { parts -> solutionPartsDraft = parts; solutionTexts = parts.filter { it.partType == "TEXT" }.sortedBy { it.position }.mapNotNull { it.textContent }.ifEmpty { listOf("") }; recordForm("solution-images") },
-                        )
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("বোর্ড: ${boardCode.ifBlank { "নির্বাচন করুন" }}")
-                        TextButton(onClick = { boardMenu = true }) { Text("বোর্ড বাছাই") }
-                        DropdownMenu(expanded = boardMenu, onDismissRequest = { boardMenu = false }) {
-                            boards.filter { it.isArchived == 0L }.forEach { b -> DropdownMenuItem(text = { Text(b.displayName) }, onClick = { boardCode = b.code; boardMenu = false; recordForm("board") }) }
-                            DropdownMenuItem(text = { Text("বোর্ড বাদ দিন") }, onClick = { boardCode = ""; boardYear = ""; boardMenu = false; recordForm("board") })
-                        }
-                    }
-                    if (previousBoards.size > 1) Text("অতিরিক্ত ${previousBoards.size - 1}টি পুরোনো বোর্ড/সাল সম্পাদনার সময় অক্ষত থাকবে।", style = MaterialTheme.typography.bodySmall)
-                    if (boardCode.isNotBlank()) OutlinedTextField(value = boardYear, onValueChange = { boardYear = it; recordForm("board-year") }, label = { Text("বোর্ডের সাল") }, singleLine = true)
-                    Text("ক্যাটাগরি", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                    categories.filter { it.isArchived == 0L || it.categoryId in selectedCategories }.forEach { category ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(checked = category.categoryId in selectedCategories, enabled = category.isArchived == 0L, onCheckedChange = { checked ->
-                                if (checked && category.categoryId !in selectedCategories) selectedCategories.add(category.categoryId)
-                                if (!checked) selectedCategories.remove(category.categoryId)
-                                recordForm("categories")
-                            })
-                            Text(if (category.isArchived != 0L) "${category.name} (আর্কাইভড—আগের লিংক রাখা হয়েছে)" else category.name)
-                        }
-                    }
-                    if (editorLoadError.isNotBlank()) Text(editorLoadError, color = MaterialTheme.colorScheme.error)
-                    if (saveError.isNotBlank()) Text(saveError, color = MaterialTheme.colorScheme.error)
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = { saveQuestion() }, enabled = !editorLoading && !savingQuestion && editorLoadError.isBlank()) { Text(if (savingQuestion) "সংরক্ষণ হচ্ছে…" else "সংরক্ষণ") } },
-        dismissButton = { TextButton(onClick = { editorOpen = false }, enabled = !savingQuestion) { Text("বাতিল") } },
+        }
+    }
+
+    if (editorCloseConfirm) AlertDialog(
+        onDismissRequest = { editorCloseConfirm = false },
+        title = { Text("পরিবর্তন সংরক্ষিত হয়নি") },
+        text = { Text("এখন বন্ধ করলে সম্পাদনা থেকে বের হয়ে যাবেন। স্বয়ংক্রিয় ড্রাফট থাকলে পরে আবার ফিরে পেতে পারেন।") },
+        confirmButton = { TextButton(onClick = { editorCloseConfirm = false; editorOpen = false }) { Text("বন্ধ করুন") } },
+        dismissButton = { TextButton(onClick = { editorCloseConfirm = false }) { Text("সম্পাদনা চালিয়ে যান") } },
     )
 
     if (pendingBulkDeleteIds != null) AlertDialog(
@@ -901,7 +1081,7 @@ fun ChapterCqWorkspaceScreen(
                             DropdownMenuItem(text = { Text(title) }, onClick = { sortMode = key; sortMenuOpen = false })
                         }
                     }
-                    Button(onClick = ::openNewQuestion, enabled = chapterId.isNotBlank()) { Text("+ প্রশ্ন") }
+                    Button(onClick = { openNewQuestion() }, enabled = chapterId.isNotBlank()) { Text("+ প্রশ্ন") }
                 }
             }
             if (cards.isNotEmpty()) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
@@ -929,6 +1109,7 @@ fun ChapterCqWorkspaceScreen(
                     onEdit = { id -> editingId = id; draftOwnerId = "edit:$id"; draftSaved = false; editorLoading = true; saveError = ""; editorLoadError = ""; editorOpen = true },
                     onView = { id -> detailQuestionId = id },
                     onCopy = { id -> scope.launch { deleteError = if (repository.duplicateQuestion(id, chapterId)) "প্রশ্নের সম্পূর্ণ কপি তৈরি হয়েছে।" else "কপি তৈরি করা যায়নি; archived reference বা data restriction থাকতে পারে।" } },
+                    onAddToGroup = { stimulusIdToReuse -> openNewQuestion(stimulusIdToReuse) },
                     onDelete = { ids -> pendingBulkDeleteIds = ids },
                 )
             }

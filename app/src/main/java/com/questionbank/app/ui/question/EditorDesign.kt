@@ -75,6 +75,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import com.questionbank.app.domain.question.AddBoardResult
 import com.questionbank.app.domain.question.BoardItem
 import com.questionbank.app.domain.question.BoardRules
@@ -228,7 +231,7 @@ internal fun Modifier.dashedBorder(color: Color, radius: Dp = 12.dp, width: Dp =
     )
 }
 
-/** A 44 dp square icon button: filled light-blue, or a dashed outline for "add" actions. */
+/** Legacy-matched 32 dp square icon button: filled light-blue, or a dashed outline for "add" actions. */
 @Composable
 fun EdIconButton(
     icon: EdIcon,
@@ -238,24 +241,35 @@ fun EdIconButton(
     enabled: Boolean = true,
     dashed: Boolean = false,
     tintOverride: Color? = null,
+    selected: Boolean = false,
 ) {
     val cs = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(12.dp)
+    val shape = RoundedCornerShape(6.dp)
     val base = tintOverride ?: cs.primary
-    val tint = if (enabled) base else cs.onSurface.copy(alpha = 0.3f)
+    val tint = if (!enabled) cs.onSurface.copy(alpha = 0.3f) else if (selected) cs.onPrimary else base
+    val buttonBackground = when {
+        selected -> cs.primary
+        tintOverride != null -> Color(0xFFFEF2F2)
+        else -> cs.primaryContainer
+    }
+    val buttonBorder = when {
+        selected -> cs.primary
+        tintOverride != null -> tintOverride.copy(alpha = 0.28f)
+        else -> cs.outlineVariant
+    }
     Box(
         modifier = modifier
-            .size(44.dp)
+            .size(32.dp)
             .clip(shape)
-            .then(if (dashed) Modifier else Modifier.background(cs.primaryContainer, shape))
-            .then(if (dashed) Modifier.dashedBorder(if (enabled) base else tint) else Modifier.border(1.dp, cs.outlineVariant, shape))
+            .then(Modifier.background(buttonBackground, shape))
+            .then(if (dashed) Modifier.dashedBorder(if (enabled) base else tint) else Modifier.border(1.dp, buttonBorder, shape))
             .clickable(enabled = enabled, onClick = onClick)
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
-    ) { EdIconGlyph(icon, tint) }
+    ) { EdIconGlyph(icon, tint, Modifier.size(16.dp)) }
 }
 
-/** A rounded 44 dp pill with an optional dropdown arrow. [accent] gives the yellow rating look. */
+/** A compact 32 dp pill with an optional dropdown arrow. [accent] gives the yellow rating look. */
 @Composable
 fun EdPill(
     text: String,
@@ -267,24 +281,24 @@ fun EdPill(
 ) {
     val cs = MaterialTheme.colorScheme
     val dark = LocalDarkTheme.current
-    val shape = RoundedCornerShape(12.dp)
+    val shape = RoundedCornerShape(6.dp)
     val container = if (accent) (if (dark) Color(0xFF3A3210) else Color(0xFFFFF6CC)) else cs.surface
     val border = if (accent) (if (dark) Color(0xFF6B5B1A) else Color(0xFFF0D77A)) else cs.outlineVariant
     val content = if (accent) (if (dark) Color(0xFFFDE68A) else Color(0xFF7A4B00)) else cs.onSurface
     Row(
         modifier = modifier
-            .height(44.dp)
+            .height(32.dp)
             .clip(shape)
             .background(container, shape)
             .border(1.dp, border, shape)
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 12.dp)
+            .padding(horizontal = 6.dp)
             .alpha(if (enabled) 1f else 0.5f),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(text, color = content, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 180.dp))
-        if (dropdown) EdIconGlyph(EdIcon.CHEVRON, content, Modifier.size(16.dp))
+        Text(text, color = content, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 72.dp))
+        if (dropdown) EdIconGlyph(EdIcon.CHEVRON, content, Modifier.size(12.dp))
     }
 }
 
@@ -293,7 +307,7 @@ fun EdPill(
 fun EdCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     val cs = MaterialTheme.colorScheme
     Surface(
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(16.dp),
         color = cs.surface,
         border = BorderStroke(1.dp, cs.outlineVariant),
         shadowElevation = 1.dp,
@@ -323,20 +337,20 @@ fun EditorTopBar(
         Row(
             modifier = Modifier
                 .windowInsetsPadding(WindowInsets.statusBars)
-                .height(68.dp)
-                .padding(horizontal = 8.dp),
+                .height(56.dp)
+                .padding(start = 8.dp, end = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             Box(
                 Modifier.size(44.dp).clip(CircleShape).clickable(onClick = onClose).semantics { contentDescription = "বন্ধ করুন" },
                 contentAlignment = Alignment.Center,
-            ) { EdIconGlyph(EdIcon.CLOSE, Color.White, Modifier.size(24.dp)) }
+            ) { EdIconGlyph(EdIcon.CLOSE, Color.White, Modifier.size(20.dp)) }
             Text(
                 title,
                 color = Color.White,
-                fontSize = 19.sp,
-                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f).padding(start = 4.dp),
@@ -345,35 +359,35 @@ fun EditorTopBar(
                 Text(
                     "অসংরক্ষিত",
                     color = Color(0xFF5A3A00),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
                     modifier = Modifier
                         .background(Color(0xFFFFC21A), RoundedCornerShape(50))
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
                 )
             }
             Box(
                 Modifier
-                    .size(40.dp)
+                    .size(36.dp)
                     .clip(CircleShape)
                     .clickable(enabled = canUndo, onClick = onUndo)
                     .alpha(if (canUndo) 1f else 0.4f)
                     .semantics { contentDescription = "পূর্বাবস্থা" },
                 contentAlignment = Alignment.Center,
-            ) { Text("↶", color = Color.White, fontSize = 24.sp) }
+            ) { Text("↶", color = Color.White, fontSize = 20.sp) }
             Box(
                 Modifier
-                    .size(40.dp)
+                    .size(36.dp)
                     .clip(CircleShape)
                     .clickable(enabled = canRedo, onClick = onRedo)
                     .alpha(if (canRedo) 1f else 0.4f)
                     .semantics { contentDescription = "আবার করুন" },
                 contentAlignment = Alignment.Center,
-            ) { Text("↷", color = Color.White, fontSize = 24.sp) }
+            ) { Text("↷", color = Color.White, fontSize = 20.sp) }
             Box(
                 Modifier
                     .padding(start = 4.dp)
-                    .size(48.dp)
+                    .size(36.dp)
                     .clip(CircleShape)
                     .background(Color.White, CircleShape)
                     .clickable(enabled = saveEnabled, onClick = onSave)
@@ -381,8 +395,8 @@ fun EditorTopBar(
                     .semantics { contentDescription = "সংরক্ষণ করুন" },
                 contentAlignment = Alignment.Center,
             ) {
-                if (saving) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.5.dp, color = primary)
-                else EdIconGlyph(EdIcon.CHECK, primary, Modifier.size(26.dp))
+                if (saving) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = primary)
+                else EdIconGlyph(EdIcon.CHECK, primary, Modifier.size(20.dp))
             }
         }
     }
@@ -392,23 +406,23 @@ fun EditorTopBar(
 @Composable
 fun EditorModeTabs(mode: EditorMode, enabled: Boolean, onChange: (EditorMode) -> Unit) {
     val cs = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(8.dp)
     Row(
         Modifier
             .fillMaxWidth()
             .clip(shape)
             .background(cs.surfaceVariant, shape)
             .border(1.dp, cs.outlineVariant, shape)
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(2.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         listOf(EditorMode.MINIMUM to "Minimum", EditorMode.FULL to "Full Editor").forEach { (value, label) ->
             val selected = mode == value
-            val segment = RoundedCornerShape(12.dp)
+            val segment = RoundedCornerShape(6.dp)
             Box(
                 Modifier
                     .weight(1f)
-                    .height(42.dp)
+                    .height(26.dp)
                     .clip(segment)
                     .background(if (selected) cs.primary else Color.Transparent, segment)
                     .clickable(enabled = enabled && !selected) { onChange(value) },
@@ -417,7 +431,8 @@ fun EditorModeTabs(mode: EditorMode, enabled: Boolean, onChange: (EditorMode) ->
                 Text(
                     label,
                     color = if (selected) cs.onPrimary else cs.primary,
-                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
                     modifier = Modifier.alpha(if (enabled || selected) 1f else 0.5f),
                 )
             }
@@ -425,49 +440,114 @@ fun EditorModeTabs(mode: EditorMode, enabled: Boolean, onChange: (EditorMode) ->
     }
 }
 
-/** Compact toolbar above a text area. [onInsert] gets the text and how many characters the cursor moves back from its end. */
+/** Insertion instructions mirror the legacy LatexEditor selection/cursor behavior. */
+private data class MathInsertSpec(
+    val label: String,
+    val template: String,
+    val cursorBack: Int = 0,
+    val wrapSelection: Boolean = false,
+)
+
+/** The legacy toolbar order: inline, block, fraction, root, power, subscript, sum, integral, Greek. */
 @Composable
-private fun EdMathToolbar(enabled: Boolean, onInsert: (String, Int) -> Unit) {
+private fun EdMathToolbar(enabled: Boolean, onInsert: (MathInsertSpec) -> Unit) {
     val cs = MaterialTheme.colorScheme
     val items = remember {
         listOf(
-            Triple("$ ইনলাইন", "$$", 1),
-            Triple("$$ ব্লক", "$$\n\n$$", 3),
-            Triple("ভগ্নাংশ", "\\frac{}{}", 3),
-            Triple("বর্গমূল", "\\sqrt{}", 1),
-            Triple("√", "√", 0), Triple("π", "π", 0), Triple("×", "×", 0), Triple("÷", "÷", 0),
-            Triple("±", "±", 0), Triple("≤", "≤", 0), Triple("≥", "≥", 0), Triple("∞", "∞", 0),
-            Triple("²", "²", 0), Triple("³", "³", 0), Triple("()", "()", 1), Triple("{}", "{}", 1),
-            Triple("∑", "∑", 0), Triple("∫", "∫", 0),
+            MathInsertSpec("\$ ইনলাইন", "\$\$", 1, true),
+            MathInsertSpec("\$\$ ব্লক", "\n\$\$\n\n\$\$\n", 4),
+            MathInsertSpec("ভগ্নাংশ", "\\frac{}{}", 1, true),
+            MathInsertSpec("বর্গমূল", "\\sqrt{}", 1, true),
+            MathInsertSpec("ঘাত", "^{}", 1),
+            MathInsertSpec("সাবস্ক্রিপ্ট", "_{}", 1),
+            MathInsertSpec("∑", "\\sum "),
+            MathInsertSpec("∫", "\\int "),
+        )
+    }
+    var greekOpen by remember { mutableStateOf(false) }
+    val greekSymbols = remember {
+        listOf(
+            "α" to "\\alpha ", "β" to "\\beta ", "γ" to "\\gamma ", "δ" to "\\delta ",
+            "ε" to "\\epsilon ", "θ" to "\\theta ", "λ" to "\\lambda ", "μ" to "\\mu ",
+            "π" to "\\pi ", "ρ" to "\\rho ", "σ" to "\\sigma ", "τ" to "\\tau ",
+            "φ" to "\\phi ", "ω" to "\\omega ", "Δ" to "\\Delta ", "Ω" to "\\Omega ",
         )
     }
     Row(
-        Modifier
-            .fillMaxWidth()
-            .background(cs.surfaceVariant)
-            .horizontalScroll(rememberScrollState())
-            .padding(8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        Modifier.fillMaxWidth().background(cs.surfaceVariant).horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        items.forEach { (label, insert, back) ->
-            val shape = RoundedCornerShape(12.dp)
+        items.forEach { spec ->
+            val shape = RoundedCornerShape(8.dp)
             Box(
-                Modifier
-                    .height(44.dp)
-                    .clip(shape)
-                    .background(cs.surface, shape)
-                    .border(1.dp, cs.outlineVariant, shape)
-                    .clickable(enabled = enabled) { onInsert(insert, back) }
-                    .padding(horizontal = 16.dp),
+                Modifier.height(44.dp).clip(shape).background(cs.surface, shape)
+                    .border(1.dp, cs.outlineVariant, shape).clickable(enabled = enabled) { onInsert(spec) }
+                    .padding(horizontal = 12.dp),
                 contentAlignment = Alignment.Center,
-            ) { Text(label, fontWeight = FontWeight.Medium, color = cs.onSurface) }
+            ) { Text(spec.label, fontWeight = FontWeight.Medium, color = cs.onSurface, maxLines = 1) }
+        }
+        Box {
+            val shape = RoundedCornerShape(8.dp)
+            Row(
+                Modifier.height(44.dp).clip(shape).background(cs.surface, shape)
+                    .border(1.dp, cs.outlineVariant, shape).clickable(enabled = enabled) { greekOpen = true }
+                    .padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text("α β θ", color = cs.primary, fontWeight = FontWeight.SemiBold)
+                EdIconGlyph(EdIcon.CHEVRON, cs.primary, Modifier.size(14.dp))
+            }
+            DropdownMenu(expanded = greekOpen, onDismissRequest = { greekOpen = false }) {
+                greekSymbols.chunked(4).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.padding(horizontal = 4.dp)) {
+                        row.forEach { (symbol, latex) ->
+                            DropdownMenuItem(
+                                text = { Text(symbol, fontSize = 18.sp, fontWeight = FontWeight.SemiBold) },
+                                onClick = { greekOpen = false; onInsert(MathInsertSpec(symbol, latex)) },
+                                modifier = Modifier.width(48.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Inline KaTeX preview card matching the legacy LivePreview panel (never opens a separate screen/dialog). */
+@Composable
+fun EdInlinePreviewCard(
+    title: String,
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    val cs = MaterialTheme.colorScheme
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = Color(0xFFF8FAFF),
+        border = BorderStroke(1.dp, Color(0xFFD5D9E2)),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                EdIconGlyph(EdIcon.EYE, Color(0xFF2A3BB0), Modifier.size(16.dp))
+                Text(title, color = Color(0xFF2A3BB0), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            }
+            HorizontalDivider(color = Color(0xFFE2E8F0))
+            if (text.isBlank()) {
+                Text("উপরে লিখলে এখানে প্রিভিউ দেখা যাবে।", color = cs.onSurfaceVariant, fontSize = 12.sp)
+            } else {
+                RichLatexText(text, Modifier.fillMaxWidth(), color = Color(0xFF1B1F2A), fontSize = 16.sp)
+            }
         }
     }
 }
 
 /**
- * The large rounded text box. With [showMathBar] a toolbar sits on top; the tools insert at the cursor
- * (the old symbol bar appended at the end of the text).
+ * Rounded multiline editor matching the legacy React LatexEditor. The full mode adds the original math toolbar;
+ * both modes support manual LaTeX and an inline native rich-preview card directly below this field. The bottom-right grip resizes the field.
  */
 @Composable
 fun EdTextArea(
@@ -475,46 +555,90 @@ fun EdTextArea(
     onValueChange: (String) -> Unit,
     enabled: Boolean,
     modifier: Modifier = Modifier,
-    minHeight: Dp = 112.dp,
+    minHeight: Dp = 132.dp,
     placeholder: String? = null,
     showMathBar: Boolean = false,
+    previewTitle: String = "লাইভ প্রিভিউ (KaTeX)",
+    externalPreviewOpen: Boolean? = null,
+    showPreviewToggle: Boolean = true,
 ) {
     val cs = MaterialTheme.colorScheme
+    val density = LocalDensity.current.density
     var field by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
+    var boxHeight by rememberSaveable { mutableStateOf(minHeight.value) }
+    var internalPreviewOpen by rememberSaveable { mutableStateOf(false) }
+    val previewOpen = externalPreviewOpen ?: internalPreviewOpen
     LaunchedEffect(value) {
-        // The text changed from outside (undo, redo, clear): follow it.
         if (field.text != value) field = TextFieldValue(value, TextRange(value.length))
     }
     val shape = RoundedCornerShape(16.dp)
-    Column(modifier.fillMaxWidth().clip(shape).border(1.dp, cs.outline, shape)) {
-        if (showMathBar) {
-            EdMathToolbar(enabled) { token, back ->
-                val sel = field.selection
-                val start = minOf(sel.start, sel.end).coerceIn(0, field.text.length)
-                val end = maxOf(sel.start, sel.end).coerceIn(0, field.text.length)
-                val next = field.text.replaceRange(start, end, token)
-                field = TextFieldValue(next, TextRange(start + token.length - back))
-                onValueChange(next)
-            }
-            HorizontalDivider(color = cs.outlineVariant)
-        }
-        BasicTextField(
-            value = field,
-            onValueChange = {
-                field = it
-                if (it.text != value) onValueChange(it.text)
-            },
-            enabled = enabled,
-            textStyle = LocalTextStyle.current.copy(color = cs.onSurface, fontSize = 17.sp, lineHeight = 26.sp),
-            cursorBrush = SolidColor(cs.primary),
-            modifier = Modifier.fillMaxWidth().heightIn(min = minHeight),
-            decorationBox = { inner ->
-                Box(Modifier.padding(16.dp)) {
-                    if (field.text.isEmpty() && placeholder != null) Text(placeholder, color = cs.onSurfaceVariant, fontSize = 17.sp)
-                    inner()
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(Modifier.fillMaxWidth().clip(shape).background(cs.surface).border(1.dp, cs.outlineVariant, shape)) {
+            if (showMathBar) {
+                EdMathToolbar(enabled) { spec ->
+                    val sel = field.selection
+                    val start = minOf(sel.start, sel.end).coerceIn(0, field.text.length)
+                    val end = maxOf(sel.start, sel.end).coerceIn(0, field.text.length)
+                    val selected = field.text.substring(start, end)
+                    val insert = when {
+                        spec.template == "\$\$" && spec.wrapSelection && selected.isNotEmpty() -> "\$${selected}\$"
+                        spec.template == "\\frac{}{}" && spec.wrapSelection && selected.isNotEmpty() -> "\\frac{$selected}{}"
+                        spec.template == "\\sqrt{}" && spec.wrapSelection && selected.isNotEmpty() -> "\\sqrt{$selected}"
+                        else -> spec.template
+                    }
+                    val next = field.text.replaceRange(start, end, insert)
+                    val cursorBack = when {
+                        spec.template == "\$\$" && selected.isNotEmpty() -> 0
+                        spec.template == "\\sqrt{}" && selected.isNotEmpty() -> 0
+                        else -> spec.cursorBack
+                    }
+                    val cursor = (start + insert.length - cursorBack).coerceIn(0, next.length)
+                    field = TextFieldValue(next, TextRange(cursor))
+                    onValueChange(next)
                 }
-            },
-        )
+                HorizontalDivider(color = cs.outlineVariant)
+            }
+            Box(Modifier.fillMaxWidth().heightIn(min = boxHeight.dp, max = 620.dp)) {
+                BasicTextField(
+                    value = field,
+                    onValueChange = {
+                        field = it
+                        if (it.text != value) onValueChange(it.text)
+                    },
+                    enabled = enabled,
+                    textStyle = LocalTextStyle.current.copy(color = cs.onSurface, fontSize = 17.sp, lineHeight = 26.sp),
+                    cursorBrush = SolidColor(cs.primary),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = boxHeight.dp, max = 620.dp),
+                    decorationBox = { inner ->
+                        Box(Modifier.fillMaxWidth().padding(start = 16.dp, top = 16.dp, end = 30.dp, bottom = 28.dp)) {
+                            if (field.text.isEmpty() && placeholder != null) Text(placeholder, color = cs.onSurfaceVariant, fontSize = 17.sp)
+                            inner()
+                        }
+                    },
+                )
+                Text(
+                    "◢",
+                    color = Color(0xFF94A3B8),
+                    fontSize = 22.sp,
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(end = 6.dp, bottom = 2.dp)
+                        .pointerInput(enabled, boxHeight) {
+                            if (enabled) detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                boxHeight = (boxHeight + dragAmount.y / density).coerceIn(52f, 620f)
+                            }
+                        },
+                )
+            }
+        }
+        if (showPreviewToggle && externalPreviewOpen == null) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = { internalPreviewOpen = !internalPreviewOpen }, enabled = value.isNotBlank()) {
+                    EdIconGlyph(if (previewOpen) EdIcon.CLOSE else EdIcon.EYE, cs.primary, Modifier.size(16.dp))
+                    Text(if (previewOpen) "প্রিভিউ বন্ধ" else "প্রিভিউ দেখুন", color = cs.primary)
+                }
+            }
+        }
+        if (previewOpen) EdInlinePreviewCard(previewTitle, value)
     }
 }
 
@@ -538,7 +662,7 @@ fun EdMarksField(
     LaunchedEffect(raw) { onValidity(valid) }
     // A removed field must not keep the save button blocked.
     DisposableEffect(Unit) { onDispose { onValidity(true) } }
-    val shape = RoundedCornerShape(12.dp)
+    val shape = RoundedCornerShape(6.dp)
     BasicTextField(
         value = raw,
         onValueChange = { text ->
@@ -548,14 +672,14 @@ fun EdMarksField(
         enabled = enabled,
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-        textStyle = LocalTextStyle.current.copy(color = cs.onSurface, fontSize = 17.sp, textAlign = TextAlign.Center),
+        textStyle = LocalTextStyle.current.copy(color = cs.onSurface, fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center),
         cursorBrush = SolidColor(cs.primary),
-        modifier = modifier.width(64.dp).height(44.dp).semantics { contentDescription = "নম্বর" },
+        modifier = modifier.width(36.dp).height(32.dp).semantics { contentDescription = "নম্বর" },
         decorationBox = { inner ->
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .height(44.dp)
+                    .height(32.dp)
                     .clip(shape)
                     .border(1.dp, if (valid) cs.outlineVariant else cs.error, shape),
                 contentAlignment = Alignment.Center,
@@ -566,23 +690,30 @@ fun EdMarksField(
 
 /** Blue label chip (ক / খ / গ / ঘ). With [options] it opens a menu to move the question to another free label. */
 @Composable
-fun EdLabelChip(letter: String, options: List<Pair<Int, String>>, enabled: Boolean, onPick: (Int) -> Unit) {
+fun EdLabelChip(
+    letter: String,
+    options: List<Pair<Int, String>>,
+    enabled: Boolean,
+    onPick: (Int) -> Unit,
+    compact: Boolean = false,
+) {
     val cs = MaterialTheme.colorScheme
     var open by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(12.dp)
+    val shape = RoundedCornerShape(if (compact) 6.dp else 8.dp)
     Box {
         Row(
             Modifier
-                .height(44.dp)
+                .height(32.dp)
+                .widthIn(min = 32.dp)
                 .clip(shape)
                 .background(cs.primary, shape)
                 .clickable(enabled = enabled && options.isNotEmpty()) { open = true }
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = if (compact) 6.dp else 12.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text(letter, color = cs.onPrimary, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-            if (options.isNotEmpty()) EdIconGlyph(EdIcon.CHEVRON, cs.onPrimary, Modifier.size(16.dp))
+            Text(letter, color = cs.onPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            if (options.isNotEmpty()) EdIconGlyph(EdIcon.CHEVRON, cs.onPrimary, Modifier.size(12.dp))
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             options.forEach { (slot, text) ->
@@ -606,47 +737,23 @@ fun EdTypePill(typeId: String, labels: Map<String, String>, enabled: Boolean, on
 @Composable
 fun EdRatingPill(selected: Int?, enabled: Boolean, onSelect: (Int?) -> Unit) {
     var open by remember { mutableStateOf(false) }
+    val current = selected ?: 3
     Box {
         EdPill(
-            text = if (selected == null) "রেটিং" else "${selected.toBengali()}★",
+            text = "${current.toBengali()}★",
             onClick = { open = true },
             enabled = enabled,
-            accent = selected != null,
+            accent = true,
         )
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             for (v in RatingRules.MIN..RatingRules.MAX) {
                 DropdownMenuItem(
-                    text = { Text("${v.toBengali()}★ · ${RatingRules.name(v)}", fontWeight = if (selected == v) FontWeight.Bold else FontWeight.Normal) },
-                    onClick = { open = false; onSelect(if (selected == v) null else v) },
+                    text = { Text("${v.toBengali()}★ · ${RatingRules.name(v)}", fontSize = 12.sp, fontWeight = if (current == v) FontWeight.Bold else FontWeight.Normal) },
+                    onClick = { open = false; onSelect(v) },
+                    modifier = Modifier.height(36.dp),
                 )
             }
-            if (selected != null) DropdownMenuItem(text = { Text("রেটিং মুছুন") }, onClick = { open = false; onSelect(null) })
         }
-    }
-}
-
-/** "বোর্ড" pill: opens the board and year picker and adds the chosen tag. */
-@Composable
-fun EdBoardPill(
-    tags: List<BoardTag>,
-    boards: List<BoardItem>,
-    enabled: Boolean,
-    onChange: (List<BoardTag>) -> Unit,
-    onAddBoard: suspend (String, String) -> AddBoardResult,
-) {
-    var picking by rememberSaveable { mutableStateOf(false) }
-    EdPill(text = "বোর্ড", onClick = { picking = true }, enabled = enabled && !BoardRules.isFull(tags))
-    if (picking) {
-        BoardYearDialog(
-            boards = boards.filter { !it.isArchived },
-            existing = tags,
-            onAddBoard = onAddBoard,
-            onConfirm = { tag ->
-                picking = false
-                onChange(BoardRules.addTag(tags, tag))
-            },
-            onDismiss = { picking = false },
-        )
     }
 }
 
@@ -656,21 +763,23 @@ fun EdBoardPill(
 fun EdTagChips(tags: List<BoardTag>, boards: List<BoardItem>, enabled: Boolean, onChange: (List<BoardTag>) -> Unit) {
     if (tags.isEmpty()) return
     val cs = MaterialTheme.colorScheme
-    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
         tags.forEach { tag ->
-            val shape = RoundedCornerShape(10.dp)
+            val shape = RoundedCornerShape(7.dp)
             Row(
                 Modifier
+                    .height(20.dp)
                     .clip(shape)
-                    .background(cs.primaryContainer, shape)
+                    .background(Color(0xFFEEF2FF), shape)
+                    .border(1.dp, Color(0xFFD5D9E2), shape)
                     .clickable(enabled = enabled) { onChange(BoardRules.removeTag(tags, tag)) }
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                    .padding(start = 6.dp, end = 3.dp)
                     .semantics { contentDescription = "${tagText(tag, boards)} মুছুন" },
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
             ) {
-                Text(tagText(tag, boards), color = cs.onPrimaryContainer, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                EdIconGlyph(EdIcon.CLOSE, cs.onPrimaryContainer, Modifier.size(12.dp))
+                Text("${tag.boardCode}'${tag.year.toString().takeLast(2)}", color = Color(0xFF2A3BB0), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                Text("×", color = Color(0xFF64748B), fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
     }

@@ -84,6 +84,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
     implementation("androidx.work:work-runtime-ktx:2.12.0")
 
+    // Native offline LaTeX rendering, compatible with the KaTeX math syntax used by the legacy editor.
+    implementation("io.github.erweixin:ratex-android:0.1.15")
+
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.xerial:sqlite-jdbc:3.50.2.0")
     testImplementation("com.google.code.gson:gson:2.11.0")

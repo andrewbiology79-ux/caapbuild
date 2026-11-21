@@ -5,8 +5,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -129,13 +127,7 @@ private fun slotHasContent(d: DraftText, i: Int): Boolean =
 private fun contentMask(d: DraftText): Int =
     CqLabel.entries.indices.fold(0) { acc, i -> if (slotHasContent(d, i)) acc or (1 shl i) else acc }
 
-private fun blockPreviewText(d: DraftText, i: Int): String = buildString {
-    append(d.texts[i])
-    d.answers[i].takeIf { it.isNotBlank() }?.let { append("\n\nউত্তর: ").append(it) }
-    d.solutionTexts[i].filter { it.isNotBlank() }.forEachIndexed { n, v -> append("\n\nসমাধান ${n + 1}: ").append(v) }
-}
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun QuestionEditorScreen(
     viewModel: QuestionEditorViewModel,
@@ -149,9 +141,7 @@ fun QuestionEditorScreen(
     val boards by viewModel.boardCatalog.collectAsState()
     val typeLabels by viewModel.questionTypeLabels.collectAsState()
     var showDuplicateConfirm by rememberSaveable { mutableStateOf(false) }
-    var showPreview by rememberSaveable { mutableStateOf(false) }
-    var previewTitle by rememberSaveable { mutableStateOf<String?>(null) }
-    var previewBody by rememberSaveable { mutableStateOf("") }
+    var stimulusPreviewOpen by rememberSaveable { mutableStateOf(false) }
     var shownMask by rememberSaveable { mutableStateOf(0) }
     var topicOpen by rememberSaveable { mutableStateOf(true) }
     val invalidMarkFields = remember { mutableStateListOf<Int>() }
@@ -166,35 +156,6 @@ fun QuestionEditorScreen(
     }
     val canSave = !busy && !viewModel.checkingDuplicate && !draft.isBlank && invalidMarkFields.isEmpty()
 
-    if (showPreview) {
-        AlertDialog(
-            onDismissRequest = { showPreview = false },
-            title = { Text("প্রশ্ন প্রিভিউ") },
-            text = {
-                Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    draft.stimulus.takeIf { it.isNotBlank() }?.let { Text("উদ্দীপক\n$it") }
-                    draft.referenceText.takeIf { it.isNotBlank() }?.let { Text("রেফারেন্স\n$it") }
-                    CqLabel.entries.forEachIndexed { i, label ->
-                        if (draft.texts[i].isNotBlank()) {
-                            Text("${label.letter}) ${typeLabels[draft.questionTypeIds[i]] ?: label.typeLabel} · ${marksText(draft.marks[i])} নম্বর", fontWeight = FontWeight.Bold)
-                            Text(draft.texts[i])
-                            draft.answers[i].takeIf { it.isNotBlank() }?.let { Text("উত্তর: $it") }
-                            draft.solutionTexts[i].filter { it.isNotBlank() }.forEachIndexed { n, value -> Text("সমাধান ${n + 1}: $value") }
-                        }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { showPreview = false }) { Text("বন্ধ") } },
-        )
-    }
-    previewTitle?.let { title ->
-        AlertDialog(
-            onDismissRequest = { previewTitle = null },
-            title = { Text(title) },
-            text = { Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) { Text(previewBody.ifBlank { "এখনো কিছু লেখা হয়নি।" }) } },
-            confirmButton = { TextButton(onClick = { previewTitle = null }) { Text("বন্ধ") } },
-        )
-    }
     if (showDuplicateConfirm) {
         AlertDialog(
             onDismissRequest = { showDuplicateConfirm = false },
@@ -243,7 +204,7 @@ fun QuestionEditorScreen(
 
         Column(Modifier.fillMaxSize().padding(innerPadding).imePadding()) {
             Surface(color = cs.surface) {
-                Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
+                Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                     EditorModeTabs(
                         mode = viewModel.editorMode,
                         enabled = !busy && (invalidMarkFields.isEmpty() || full),
@@ -285,20 +246,27 @@ fun QuestionEditorScreen(
 
                 // --- stimulus card ---
                 EdCard {
-                    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(Modifier.height(44.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Box(Modifier.size(28.dp).border(2.dp, cs.primary, CircleShape), contentAlignment = Alignment.Center) {
-                                Text("?", color = cs.primary, fontWeight = FontWeight.Bold)
+                    // Legacy order and dimensions: section title | Board (54x32) | Preview (32x32) | Rating (32 high) | Image (32x32).
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Box(Modifier.size(16.dp).border(1.5.dp, cs.primary, CircleShape), contentAlignment = Alignment.Center) {
+                                Text("?", color = cs.primary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
-                            Text("উদ্দীপক", color = cs.primary, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                            Text("উদ্দীপক", color = Color(0xFF2A3BB0), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
-                        EdBoardPill(draft.stimulusBoards, boards, !busy, viewModel::changeStimulusBoards, viewModel::addBoard)
-                        EdIconButton(EdIcon.EYE, "উদ্দীপকের প্রিভিউ", {
-                            previewTitle = "উদ্দীপক"
-                            previewBody = listOf(draft.stimulus, draft.referenceText).filter { it.isNotBlank() }.joinToString("\n\n")
-                        })
-                        EdRatingPill(draft.stimulusRating, !busy, viewModel::changeStimulusRating)
-                        EdIconButton(EdIcon.IMAGE_ADD, "উদ্দীপকে ছবি যোগ করুন", { stimulusAdder.pick(null) }, enabled = !busy && !stimulusAdder.importing, dashed = true)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            EdBoardPill(draft.stimulusBoards, boards, !busy, viewModel::changeStimulusBoards, viewModel::addBoard)
+                            EdIconButton(
+                                EdIcon.EYE, "উদ্দীপকের প্রিভিউ", { stimulusPreviewOpen = !stimulusPreviewOpen },
+                                selected = stimulusPreviewOpen,
+                            )
+                            EdRatingPill(draft.stimulusRating, !busy, viewModel::changeStimulusRating)
+                            EdIconButton(EdIcon.IMAGE_ADD, "উদ্দীপকে ছবি যোগ করুন", { stimulusAdder.pick(null) }, enabled = !busy && !stimulusAdder.importing, dashed = true)
+                        }
                     }
                     EdTagChips(draft.stimulusBoards, boards, !busy, viewModel::changeStimulusBoards)
                     EdStimulusImages(imagePipeline, ImageScope.TYPE_CQ, draft.stimulusImages.orEmpty(), !busy, stimulusAdder, viewModel::setStimulusImages)
@@ -308,6 +276,9 @@ fun QuestionEditorScreen(
                         enabled = !busy,
                         placeholder = "উদ্দীপক লিখুন (ঐচ্ছিক)",
                         showMathBar = full,
+                        previewTitle = "লাইভ প্রিভিউ (KaTeX)",
+                        externalPreviewOpen = stimulusPreviewOpen,
+                        showPreviewToggle = false,
                     )
                     if ((draft.stimulusRating != null || draft.stimulusBoards.isNotEmpty()) && draft.stimulus.isBlank() && draft.referenceText.isBlank()) {
                         EdHint("উদ্দীপকের লেখা না থাকলে এর রেটিং ও বোর্ড সংরক্ষণ হয় না।")
@@ -342,7 +313,6 @@ fun QuestionEditorScreen(
                                 viewModel.clearBlock(i)
                                 shownMask = mask and (1 shl i).inv()
                             },
-                            onPreview = { title, body -> previewTitle = title; previewBody = body },
                             onMarksValidity = { valid -> if (valid) invalidMarkFields.remove(i) else if (i !in invalidMarkFields) invalidMarkFields.add(i) },
                         )
                     }
@@ -368,7 +338,6 @@ fun QuestionEditorScreen(
                 }
 
                 resultText(viewModel.result)?.let { Text(it, color = cs.error, style = MaterialTheme.typography.bodyMedium) }
-                if (full) TextButton(onClick = { showPreview = true }) { Text("প্রিভিউ দেখুন") }
                 TextButton(onClick = viewModel::clearAll, enabled = !busy && !draft.isBlank) { Text("সব লেখা মুছে ফেলুন") }
             }
         }
@@ -376,7 +345,6 @@ fun QuestionEditorScreen(
 }
 
 /** One question card (ক / খ / গ / ঘ): label, marks, board, preview, rating, text, solution parts and short answer. */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun QuestionBlockCard(
     viewModel: QuestionEditorViewModel,
@@ -389,7 +357,6 @@ private fun QuestionBlockCard(
     labelOptions: List<Pair<Int, String>>,
     onMove: (Int) -> Unit,
     onDelete: () -> Unit,
-    onPreview: (String, String) -> Unit,
     onMarksValidity: (Boolean) -> Unit,
 ) {
     val label = CqLabel.entries[index]
@@ -401,22 +368,42 @@ private fun QuestionBlockCard(
     }).sortedBy { it.position }
     val solutionAdder = rememberSolutionImageAdder(pipeline, ImageScope.TYPE_CQ, parts, !busy) { viewModel.setSolutionImageParts(index, it) }
     val textParts = draft.solutionTexts[index]
+    var questionPreviewOpen by rememberSaveable(index) { mutableStateOf(false) }
+    var solutionPreviewOpen by rememberSaveable(index) { mutableStateOf(false) }
+    var answerPreviewOpen by rememberSaveable(index) { mutableStateOf(false) }
 
     EdCard {
-        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            EdLabelChip(label.letter, labelOptions, !busy, onMove)
-            if (full) {
-                EdMarksField(index, draft.marks[index], !busy, { viewModel.setMarks(index, it) }, onMarksValidity)
-                EdTypePill(draft.questionTypeIds[index], typeLabels, !busy) { viewModel.setQuestionType(index, it) }
-            } else {
-                Row(Modifier.height(44.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("${marksText(draft.marks[index])} নম্বর", color = cs.primary, fontWeight = FontWeight.SemiBold)
+        // The legacy button row never wraps: label/marks stay left; Board, Eye, Rating and (Full) Delete stay right.
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                EdLabelChip(label.letter, labelOptions, !busy, onMove, compact = full)
+                if (full) {
+                    EdMarksField(index, draft.marks[index], !busy, { viewModel.setMarks(index, it) }, onMarksValidity)
+                } else {
+                    Text("${marksText(draft.marks[index])} নম্বর", color = cs.primary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
-            EdBoardPill(draft.boards[index], boards, !busy, { viewModel.changeBoards(index, it) }, viewModel::addBoard)
-            EdIconButton(EdIcon.EYE, "${label.letter}) প্রশ্নের প্রিভিউ", { onPreview("${label.letter}) প্রশ্ন", blockPreviewText(draft, index)) })
-            EdRatingPill(draft.ratings[index], !busy) { viewModel.changeRating(index, it) }
-            if (full) EdIconButton(EdIcon.TRASH, "${label.letter}) প্রশ্ন মুছুন", onDelete, enabled = !busy && canDelete, tintOverride = Color(0xFFE11D2E))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                EdBoardPill(draft.boards[index], boards, !busy, { viewModel.changeBoards(index, it) }, viewModel::addBoard)
+                EdIconButton(
+                    EdIcon.EYE, "${label.letter}) প্রশ্নের প্রিভিউ", { questionPreviewOpen = !questionPreviewOpen },
+                    selected = questionPreviewOpen,
+                )
+                EdRatingPill(draft.ratings[index], !busy) { viewModel.changeRating(index, it) }
+                if (full) EdIconButton(EdIcon.TRASH, "${label.letter}) প্রশ্ন মুছুন", onDelete, enabled = !busy && canDelete, tintOverride = Color(0xFFE11D2E))
+            }
+        }
+        // Question type is a new-app data field (জ্ঞানমূলক/অনুধাবনমূলক/...), not one of the legacy row controls;
+        // keep it available in Full mode separately so the old control row retains its exact order and does not wrap.
+        if (full) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("প্রশ্নের ধরন", color = cs.onSurfaceVariant, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                EdTypePill(draft.questionTypeIds[index], typeLabels, !busy) { viewModel.setQuestionType(index, it) }
+            }
         }
         EdTagChips(draft.boards[index], boards, !busy) { viewModel.changeBoards(index, it) }
         EdTextArea(
@@ -425,6 +412,9 @@ private fun QuestionBlockCard(
             enabled = !busy,
             placeholder = "প্রশ্ন লিখুন",
             showMathBar = full,
+            previewTitle = "${label.letter}) প্রশ্নের প্রিভিউ (KaTeX)",
+            externalPreviewOpen = questionPreviewOpen,
+            showPreviewToggle = false,
         )
         if ((draft.ratings[index] != null || draft.boards[index].isNotEmpty()) && draft.texts[index].isBlank()) {
             EdHint("প্রশ্নের লেখা না থাকলে এর রেটিং ও বোর্ড সংরক্ষণ হয় না।")
@@ -435,9 +425,10 @@ private fun QuestionBlockCard(
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             Text("সমাধান", color = cs.primary, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                EdIconButton(EdIcon.EYE, "সমাধানের প্রিভিউ", {
-                    onPreview("${label.letter}) সমাধান", textParts.filter { it.isNotBlank() }.joinToString("\n\n"))
-                })
+                EdIconButton(
+                    EdIcon.EYE, "সমাধানের প্রিভিউ", { solutionPreviewOpen = !solutionPreviewOpen },
+                    selected = solutionPreviewOpen,
+                )
                 EdIconButton(EdIcon.IMAGE_ADD, "সমাধানে ছবি যোগ করুন", { solutionAdder.pick(null) }, enabled = !busy && !solutionAdder.importing, dashed = true)
             }
         }
@@ -473,6 +464,7 @@ private fun QuestionBlockCard(
                         enabled = !busy,
                         placeholder = "সমাধান লিখুন",
                         showMathBar = full,
+                        showPreviewToggle = false,
                     )
                     if (textParts.size > 1) {
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -485,6 +477,12 @@ private fun QuestionBlockCard(
             }
             if (part.partType != "IMAGE") textIndex++
         }
+        if (solutionPreviewOpen) {
+            EdInlinePreviewCard(
+                title = "${label.letter}) সমাধানের প্রিভিউ (KaTeX)",
+                text = textParts.filter { it.isNotBlank() }.joinToString("\n\n"),
+            )
+        }
         if (solutionAdder.error.isNotBlank()) Text(solutionAdder.error, color = cs.error, style = MaterialTheme.typography.bodySmall)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
             EdIconButton(EdIcon.IMAGE_ADD, "সমাধানে ছবি যোগ করুন", { solutionAdder.pick(null) }, enabled = !busy && !solutionAdder.importing, dashed = true)
@@ -495,14 +493,21 @@ private fun QuestionBlockCard(
         HorizontalDivider(color = cs.outlineVariant)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             Text("সংক্ষিপ্ত উত্তর (ঐচ্ছিক)", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-            EdIconButton(EdIcon.EYE, "সংক্ষিপ্ত উত্তরের প্রিভিউ", { onPreview("${label.letter}) সংক্ষিপ্ত উত্তর", draft.answers[index]) })
+            EdIconButton(
+                EdIcon.EYE, "সংক্ষিপ্ত উত্তরের প্রিভিউ", { answerPreviewOpen = !answerPreviewOpen },
+                selected = answerPreviewOpen,
+            )
         }
-        OutlinedTextField(
+        EdTextArea(
             value = draft.answers[index],
             onValueChange = { viewModel.setAnswer(index, it) },
             enabled = !busy,
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier.fillMaxWidth(),
+            minHeight = 76.dp,
+            placeholder = "সংক্ষিপ্ত উত্তর (ঐচ্ছিক)",
+            showMathBar = full,
+            previewTitle = "${label.letter}) সংক্ষিপ্ত উত্তরের প্রিভিউ (KaTeX)",
+            externalPreviewOpen = answerPreviewOpen,
+            showPreviewToggle = false,
         )
     }
 }

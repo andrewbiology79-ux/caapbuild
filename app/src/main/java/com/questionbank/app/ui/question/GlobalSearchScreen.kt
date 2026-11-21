@@ -32,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.questionbank.app.data.local.entity.ChapterCqQuestionCategoriesEntity
 import com.questionbank.app.data.local.entity.TypeCqQuestionCategoriesEntity
@@ -232,9 +233,16 @@ private fun GlobalSearchResultCard(hit: GlobalQuestionHit, query: String, highli
                 Text("রেটিং ${hit.groupRating} · ${marksText(hit.marks)} নম্বর", style = MaterialTheme.typography.labelSmall)
             }
             Text("${hit.subjectName} › ${hit.chapterName} › ${hit.containerName}", style = MaterialTheme.typography.labelSmall)
-            if (hit.stimulusText.isNotBlank()) Text("উদ্দীপক: ${hit.stimulusText}", style = MaterialTheme.typography.bodySmall)
-            Text(highlightQuery("${hit.label}) ${hit.questionText}", query, highlightEnabled), style = MaterialTheme.typography.bodyLarge)
-            if (hit.shortAnswer.isNotBlank()) Text("উত্তর: ${hit.shortAnswer}", style = MaterialTheme.typography.bodyMedium)
+            if (hit.stimulusText.isNotBlank()) {
+                Text("উদ্দীপক:", style = MaterialTheme.typography.labelSmall)
+                RichLatexText(hit.stimulusText, Modifier.fillMaxWidth(), fontSize = 14.sp)
+            }
+            if (hit.questionText.contains('$')) RichLatexText("${hit.label}) ${hit.questionText}", Modifier.fillMaxWidth(), fontSize = 16.sp)
+            else Text(highlightQuery("${hit.label}) ${hit.questionText}", query, highlightEnabled), style = MaterialTheme.typography.bodyLarge)
+            if (hit.shortAnswer.isNotBlank()) {
+                Text("উত্তর:", style = MaterialTheme.typography.labelSmall)
+                RichLatexText(hit.shortAnswer, Modifier.fillMaxWidth())
+            }
             if (hit.questionTypeId != null) Text("Question Type: ${hit.questionTypeId}", style = MaterialTheme.typography.labelSmall)
             if (hit.boardYears.isNotBlank()) Text("বোর্ড/সাল: ${hit.boardYears}", style = MaterialTheme.typography.labelSmall)
             if (hit.categories.isNotBlank()) Text("Category: ${hit.categories}", style = MaterialTheme.typography.labelSmall)

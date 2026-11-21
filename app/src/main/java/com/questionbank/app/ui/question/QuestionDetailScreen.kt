@@ -22,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.questionbank.app.domain.question.SavedGroup
 import com.questionbank.app.domain.question.TypeCqQuestionRepository
 import com.questionbank.app.media.ImagePipeline
@@ -56,7 +57,7 @@ fun QuestionDetailScreen(
                     val data = group!!
                     if (data.stimulusText.isNotBlank()) {
                         Text("উদ্দীপক", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                        Text(data.stimulusText, style = MaterialTheme.typography.bodyLarge)
+                        RichLatexText(data.stimulusText, Modifier.fillMaxWidth(), fontSize = 18.sp)
                     }
                     if (data.referenceText.isNotBlank()) {
                         Text("তথ্যসূত্র", style = MaterialTheme.typography.titleSmall)
@@ -73,13 +74,13 @@ fun QuestionDetailScreen(
                     }
                     data.subQuestions.forEach { question ->
                         Text("${question.label?.letter ?: "প্রশ্ন"} · ${marksText(question.marks)} নম্বর", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-                        Text(question.text, style = MaterialTheme.typography.bodyLarge)
-                        if (question.shortAnswer.isNotBlank()) Text("সংক্ষিপ্ত উত্তর: ${question.shortAnswer}")
+                        RichLatexText(question.text, Modifier.fillMaxWidth(), fontSize = 18.sp)
+                        if (question.shortAnswer.isNotBlank()) { Text("সংক্ষিপ্ত উত্তর:"); RichLatexText(question.shortAnswer, Modifier.fillMaxWidth()) }
                         val parts = question.orderedSolutionParts.sortedBy { it.position }
                         if (parts.isNotEmpty()) {
                             Text("সমাধান", style = MaterialTheme.typography.labelLarge)
                             parts.forEach { part ->
-                                if (part.partType == "TEXT") Text(part.textContent.orEmpty())
+                                if (part.partType == "TEXT") RichLatexText(part.textContent.orEmpty(), Modifier.fillMaxWidth())
                                 else part.imageId?.let { MediaThumbnail(imagePipeline, it, ImageScope.TYPE_CQ) }
                             }
                         }

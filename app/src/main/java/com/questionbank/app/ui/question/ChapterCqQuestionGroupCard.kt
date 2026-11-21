@@ -82,6 +82,7 @@ internal fun ChapterCqQuestionGroupCard(
     onEdit: (String) -> Unit,
     onView: (String) -> Unit,
     onCopy: (String) -> Unit,
+    onAddToGroup: (String) -> Unit,
     onDelete: (List<String>) -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
@@ -109,6 +110,10 @@ internal fun ChapterCqQuestionGroupCard(
                         DropdownMenuItem(text = { Text("প্রশ্ন সম্পাদনা") }, onClick = { menuOpen = false; onEdit(first) })
                         DropdownMenuItem(text = { Text("বিস্তারিত / রেফারেন্স দেখুন") }, onClick = { menuOpen = false; onView(first) })
                         DropdownMenuItem(text = { Text("প্রশ্ন কপি") }, onClick = { menuOpen = false; onCopy(first) })
+                        val stimulusId = group.stimulusId
+                        if (!stimulusId.isNullOrBlank() && group.questions.size < 4) {
+                            DropdownMenuItem(text = { Text("এই উদ্দীপকে প্রশ্ন যোগ") }, onClick = { menuOpen = false; onAddToGroup(stimulusId) })
+                        }
                     }
                     DropdownMenuItem(text = { Text("সম্পূর্ণ গ্রুপ মুছুন", color = MaterialTheme.colorScheme.error) }, onClick = {
                         menuOpen = false
@@ -150,7 +155,7 @@ internal fun ChapterCqQuestionGroupCard(
             }
             if (group.stimulusText.isNotBlank()) {
                 Text("উদ্দীপক", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
-                Text(group.stimulusText, style = MaterialTheme.typography.bodyLarge)
+                RichLatexText(group.stimulusText, Modifier.fillMaxWidth(), fontSize = 18.sp)
             }
             if (group.referenceText.isNotBlank()) {
                 var showReference by remember(group.referenceText) { mutableStateOf(false) }
@@ -174,8 +179,8 @@ internal fun ChapterCqQuestionGroupCard(
                         Text("রেটিং ${(q.rating?.toInt() ?: group.stimulusRating ?: group.fallbackRating).coerceIn(1, 5)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     if (item.boards.isNotEmpty()) TagChipRow(item.boards, boards)
-                    Text(q.questionText, style = MaterialTheme.typography.bodyLarge)
-                    if (q.shortAnswer.isNotBlank()) Text("সংক্ষিপ্ত উত্তর: ${q.shortAnswer}", style = MaterialTheme.typography.bodyMedium)
+                    RichLatexText(q.questionText, Modifier.fillMaxWidth(), fontSize = 18.sp)
+                    if (q.shortAnswer.isNotBlank()) { Text("সংক্ষিপ্ত উত্তর:", style = MaterialTheme.typography.bodyMedium); RichLatexText(q.shortAnswer, Modifier.fillMaxWidth()) }
                     if (item.solutionParts.isNotEmpty()) {
                         var showSolution by remember(q.questionId) { mutableStateOf(false) }
                         TextButton(onClick = { showSolution = !showSolution }) { Text(if (showSolution) "সমাধান লুকান" else "সমাধান দেখুন") }
@@ -185,7 +190,7 @@ internal fun ChapterCqQuestionGroupCard(
                         ) {
                             item.solutionParts.sortedBy { it.position }.forEach { part ->
                                 if (part.partType == "IMAGE") part.imageId?.let { MediaThumbnail(imagePipeline, it, ImageScope.CHAPTER_CQ) }
-                                else part.textContent?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                                else part.textContent?.takeIf { it.isNotBlank() }?.let { RichLatexText(it, Modifier.fillMaxWidth()) }
                             }
                         }
                     }
