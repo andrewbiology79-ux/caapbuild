@@ -109,21 +109,23 @@ fun QuestionEditorScreen(
     val invalidMarkFields = remember { mutableStateListOf<Int>() }
     val full = viewModel.editorMode == EditorMode.FULL
     val busy = viewModel.saving
+    val imageImportTracker = remember { ImageImportTracker() }
 
-    val saveNow: () -> Unit = {
+    val saveNow: () -> Unit = save@{
+        if (imageImportTracker.isBusy) return@save
         viewModel.save {
             val n = (viewModel.result as? SaveResult.Saved)?.questionIds?.size ?: 0
             onSaved(n)
         }
     }
-    val canSave = !busy && !viewModel.checkingDuplicate && !draft.isBlank && invalidMarkFields.isEmpty()
+    val canSave = !busy && !imageImportTracker.isBusy && !viewModel.checkingDuplicate && !draft.isBlank && invalidMarkFields.isEmpty()
 
     if (showDuplicateConfirm) {
         AlertDialog(
             onDismissRequest = { showDuplicateConfirm = false },
             title = { Text("একই লেখা আগে থেকেই আছে") },
             text = { Text("এই টপিকে হুবহু একই প্রশ্নের লেখা পাওয়া গেছে। তবুও কি নতুন প্রশ্নটি সংরক্ষণ করবেন?") },
-            confirmButton = { TextButton(onClick = { showDuplicateConfirm = false; saveNow() }) { Text("তবু সংরক্ষণ করো") } },
+            confirmButton = { TextButton(onClick = { showDuplicateConfirm = false; saveNow() }, enabled = !imageImportTracker.isBusy) { Text("তবু সংরক্ষণ করো") } },
             dismissButton = { TextButton(onClick = { showDuplicateConfirm = false }) { Text("ফিরে যাও") } },
         )
     }
@@ -159,12 +161,25 @@ fun QuestionEditorScreen(
         val visible = visibleOrder.filter { mask and (1 shl it) != 0 }
         val freeSlots = listOf(CqLabel.KA.sortOrder - 1, CqLabel.KHA.sortOrder - 1).filter { mask and (1 shl it) == 0 }
 
-        val stimulusAdder = rememberStimulusImageAdder(
+        val stimulusTopAdder = rememberStimulusImageAdder(
             pipeline = imagePipeline,
             imageScope = ImageScope.TYPE_CQ,
             images = draft.stimulusImages.orEmpty(),
             enabled = !busy,
             onChange = viewModel::setStimulusImages,
+            tracker = imageImportTracker,
+            trackerKey = "type-cq-stimulus-top",
+            addPlacement = "TOP",
+        )
+        val stimulusBottomAdder = rememberStimulusImageAdder(
+            pipeline = imagePipeline,
+            imageScope = ImageScope.TYPE_CQ,
+            images = draft.stimulusImages.orEmpty(),
+            enabled = !busy,
+            onChange = viewModel::setStimulusImages,
+            tracker = imageImportTracker,
+            trackerKey = "type-cq-stimulus-bottom",
+            addPlacement = "BOTTOM",
         )
 
         Column(Modifier.fillMaxSize().padding(innerPadding).imePadding()) {
@@ -230,11 +245,11 @@ fun QuestionEditorScreen(
                                 selected = stimulusPreviewOpen,
                             )
                             EdRatingPill(draft.stimulusRating, !busy, viewModel::changeStimulusRating)
-                            EdIconButton(EdIcon.IMAGE_ADD, "উদ্দীপকে ছবি যোগ করুন", { stimulusAdder.pick(null) }, enabled = !busy && !stimulusAdder.importing, dashed = true)
+                            EdIconButton(EdIcon.IMAGE_ADD, "উদ্দীপকের শুরুতে ছবি যোগ করুন", { stimulusTopAdder.pick(null) }, enabled = !busy && !stimulusTopAdder.importing && !stimulusBottomAdder.importing, dashed = true)
                         }
                     }
                     EdTagChips(draft.stimulusBoards, boards, !busy, viewModel::changeStimulusBoards)
-                    EdStimulusImages(imagePipeline, ImageScope.TYPE_CQ, draft.stimulusImages.orEmpty(), !busy, stimulusAdder, viewModel::setStimulusImages)
+                    EdStimulusImages(imagePipeline, ImageScope.TYPE_CQ, draft.stimulusImages.orEmpty(), !busy && !stimulusTopAdder.importing && !stimulusBottomAdder.importing, stimulusTopAdder, viewModel::setStimulusImages, fullFeatures = full, placementFilter = "TOP")
                     EdTextArea(
                         value = draft.stimulus,
                         onValueChange = viewModel::setStimulus,
@@ -246,6 +261,7 @@ fun QuestionEditorScreen(
                         externalPreviewOpen = stimulusPreviewOpen,
                         showPreviewToggle = false,
                     )
+                    EdStimulusImages(imagePipeline, ImageScope.TYPE_CQ, draft.stimulusImages.orEmpty(), !busy && !stimulusTopAdder.importing && !stimulusBottomAdder.importing, stimulusBottomAdder, viewModel::setStimulusImages, fullFeatures = full, placementFilter = "BOTTOM")
                     if ((draft.stimulusRating != null || draft.stimulusBoards.isNotEmpty()) && draft.stimulus.isBlank() && draft.referenceText.isBlank()) {
                         EdHint("উদ্দীপকের লেখা না থাকলে এর রেটিং ও বোর্ড সংরক্ষণ হয় না।")
                     }
@@ -290,6 +306,7 @@ fun QuestionEditorScreen(
                             categories = categories.map { EdCategoryOption(it.categoryId, it.name, it.isArchived != 0L) },
                             onAddCategory = viewModel::addCategory,
                             pipeline = imagePipeline,
+                            imageImportTracker = imageImportTracker,
                             canDelete = visible.size > 1,
                             labelOptions = if (full) freeSlots.map { it to CqLabel.entries[it].letter } else emptyList(),
                             onMove = { to ->
@@ -324,6 +341,7 @@ private fun QuestionBlockCard(
     categories: List<EdCategoryOption>,
     onAddCategory: suspend (String) -> Boolean,
     pipeline: ImagePipeline,
+    imageImportTracker: ImageImportTracker,
     canDelete: Boolean,
     labelOptions: List<Pair<Int, String>>,
     onMove: (Int) -> Unit,
@@ -339,12 +357,18 @@ private fun QuestionBlockCard(
     }).sortedBy { it.position }
     val solutionStartAdder = rememberSolutionImageAdder(
         pipeline, ImageScope.TYPE_CQ, parts, !busy,
-        onChange = { viewModel.setSolutionImageParts(index, it) }, insertAtStart = true,
+        onChange = { viewModel.setSolutionImageParts(index, it) },
+        tracker = imageImportTracker,
+        trackerKey = "type-cq-solution-${label.letter}-start",
+        insertAtStart = true,
     )
     val solutionEndAdder = rememberSolutionImageAdder(
         pipeline, ImageScope.TYPE_CQ, parts, !busy,
         onChange = { viewModel.setSolutionImageParts(index, it) },
+        tracker = imageImportTracker,
+        trackerKey = "type-cq-solution-${label.letter}-end",
     )
+    val solutionImageImporting = solutionStartAdder.importing || solutionEndAdder.importing
     val solutionAdder = solutionEndAdder
     val textParts = draft.solutionTexts[index]
     var questionPreviewOpen by rememberSaveable(index) { mutableStateOf(false) }
@@ -401,7 +425,7 @@ private fun QuestionBlockCard(
                     EdIcon.EYE, "সমাধানের প্রিভিউ", { solutionPreviewOpen = !solutionPreviewOpen },
                     selected = solutionPreviewOpen,
                 )
-                EdIconButton(EdIcon.IMAGE_ADD, "সমাধানের শুরুতে ছবি যোগ করুন", { solutionStartAdder.pick(null) }, enabled = !busy && !solutionStartAdder.importing, dashed = true)
+                EdIconButton(EdIcon.IMAGE_ADD, "সমাধানের শুরুতে ছবি যোগ করুন", { solutionStartAdder.pick(null) }, enabled = !busy && !solutionImageImporting, dashed = true)
             }
         }
         // With no part yet, one empty box is shown; the first key stays the same once the part exists, so typing keeps its focus.
@@ -417,9 +441,13 @@ private fun QuestionBlockCard(
                             pipeline = pipeline,
                             imageId = imageId,
                             imageScope = ImageScope.TYPE_CQ,
-                            enabled = !busy && !solutionAdder.importing,
+                            enabled = !busy && !solutionImageImporting,
                             onReplace = { solutionAdder.pick(part.partId) },
                             onRemove = { viewModel.setSolutionImageParts(index, parts.filterNot { it.partId == part.partId }.mapIndexed { i, row -> row.copy(position = i.toLong()) }) },
+                            fullFeatures = full,
+                            onImageEdited = { newId -> viewModel.setSolutionImageParts(index, parts.map { if (it.partId == part.partId) it.copy(imageId = newId) else it }) },
+                            previewImageIds = parts.filter { it.partType == "IMAGE" }.mapNotNull { it.imageId },
+                            previewIndex = parts.filter { it.partType == "IMAGE" }.indexOfFirst { it.partId == part.partId }.coerceAtLeast(0),
                         )
                     }
                 } else {
@@ -458,8 +486,8 @@ private fun QuestionBlockCard(
         if (solutionStartAdder.error.isNotBlank()) Text(solutionStartAdder.error, color = cs.error, style = MaterialTheme.typography.bodySmall)
         if (solutionEndAdder.error.isNotBlank()) Text(solutionEndAdder.error, color = cs.error, style = MaterialTheme.typography.bodySmall)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
-            EdIconButton(EdIcon.IMAGE_ADD, "সমাধানের শেষে ছবি যোগ করুন", { solutionEndAdder.pick(null) }, enabled = !busy && !solutionEndAdder.importing, dashed = true)
-            EdIconButton(EdIcon.PLUS_BOX, "সমাধানের আরেকটি অংশ যোগ করুন", { viewModel.addSolutionText(index) }, enabled = !busy, dashed = true)
+            EdIconButton(EdIcon.IMAGE_ADD, "সমাধানের শেষে ছবি যোগ করুন", { solutionEndAdder.pick(null) }, enabled = !busy && !solutionImageImporting, dashed = true)
+            EdIconButton(EdIcon.PLUS_BOX, "সমাধানের আরেকটি অংশ যোগ করুন", { viewModel.addSolutionText(index) }, enabled = !busy && !solutionImageImporting, dashed = true)
         }
 
         // --- short answer: Full Editor only ---

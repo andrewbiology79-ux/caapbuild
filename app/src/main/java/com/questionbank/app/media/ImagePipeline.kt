@@ -1,6 +1,11 @@
 package com.questionbank.app.media
 
 import android.content.Context
+import android.content.ContentValues
+import android.media.MediaScannerConnection
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
@@ -131,6 +136,93 @@ class ImagePipeline(
         }
     }
     }
+    }
+
+/** Saves an edited bitmap as a NEW image asset. The source image is never overwritten. */
+    suspend fun importBitmap(bitmap: Bitmap, scope: ImageScope, originalName: String = "edited-image"): String {
+        recoveryGate.await()
+        require(bitmap.width > 0 && bitmap.height > 0) { "সম্পাদিত ছবিটি খালি" }
+        return MediaSnapshotCoordinator.withMutation { withContext(Dispatchers.IO) {
+            val id = "img_${UUID.randomUUID()}"
+            val now = System.currentTimeMillis()
+            val pendingDir = File(context.filesDir, "media/.pending").apply { mkdirs() }
+            val encoded = File(pendingDir, "$id.jpg.tmp")
+            val relative = "media/${scope.folder}/$id.jpg"
+            val destination = safeFile(relative).apply { parentFile?.mkdirs() }
+            var operationId: String? = null
+            try {
+                val stored = scaleWithinLimit(bitmap)
+                val storedWidth = stored.width
+                val storedHeight = stored.height
+                try {
+                    FileOutputStream(encoded).use { output ->
+                        check(stored.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, output)) { "সম্পাদিত ছবি কমপ্রেস করা যায়নি" }
+                        output.fd.sync()
+                    }
+                } finally {
+                    if (stored !== bitmap) stored.recycle()
+                }
+                val payload = JSONObject()
+                    .put("imageId", id).put("relativePath", relative).put("originalName", originalName.take(180))
+                    .put("storedName", "$id.jpg").put("mimeType", "image/jpeg")
+                    .put("width", storedWidth).put("height", storedHeight)
+                    .put("byteSize", encoded.length()).put("sha256", sha256(encoded))
+                    .put("createdAt", now).put("updatedAt", now).toString()
+                val journalId = "op_${UUID.randomUUID()}"
+                operationId = journalId
+                recordOperation(OperationJournalEntity(journalId, "IMAGE_IMPORT", scope.journalValue, payload, "PENDING", now, now))
+                atomicMove(encoded, destination)
+                insertMetadata(scope, metadataFromPayload(scope, payload))
+                check(updateOperation(journalId, "COMMITTED", payload, System.currentTimeMillis()) == 1) {
+                    "Operation journal commit failed"
+                }
+                id
+            } catch (error: Exception) {
+                encoded.delete()
+                destination.takeIf { it.exists() && metadataExists(scope, id).not() }?.delete()
+                operationId?.let { runCatching { updateOperation(it, "FAILED", "{}", System.currentTimeMillis()) } }
+                throw error
+            } finally {
+                encoded.delete()
+            }
+        } }
+    }
+
+    /** Exports an owned image to the public Pictures/QuestionBank folder (or MediaStore on scoped-storage Android). */
+    suspend fun exportImage(id: String, scope: ImageScope): String {
+        recoveryGate.await()
+        return withContext(Dispatchers.IO) {
+            val source = fileForImage(id, scope) ?: error("ছবিটি পাওয়া যায়নি")
+            val resolver = context.contentResolver
+            val fileName = "QuestionBank_${System.currentTimeMillis()}_${id.takeLast(8)}.jpg"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = ContentValues().apply {
+                    put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                    put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                    put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/QuestionBank")
+                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                }
+                val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                    ?: error("ছবি সংরক্ষণের স্থান তৈরি করা যায়নি")
+                try {
+                    resolver.openOutputStream(uri, "w")?.use { output -> source.inputStream().use { it.copyTo(output) } }
+                        ?: error("ছবি সংরক্ষণের ফাইল খোলা যায়নি")
+                    val completed = ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }
+                    resolver.update(uri, completed, null, null)
+                    uri.toString()
+                } catch (failure: Exception) {
+                    resolver.delete(uri, null, null)
+                    throw failure
+                }
+            } else {
+                val folder = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "QuestionBank")
+                check(folder.exists() || folder.mkdirs()) { "ছবি সংরক্ষণের ফোল্ডার তৈরি করা যায়নি" }
+                val target = File(folder, fileName)
+                source.copyTo(target, overwrite = false)
+                MediaScannerConnection.scanFile(context, arrayOf(target.absolutePath), arrayOf("image/jpeg"), null)
+                target.absolutePath
+            }
+        }
     }
 
 /** Rotate and/or centre-crop a stored image. Existing path and image ID stay stable. */

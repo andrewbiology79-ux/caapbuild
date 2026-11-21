@@ -65,6 +65,7 @@ fun QuestionEditScreen(
     var sortConfirmed by rememberSaveable { mutableStateOf(false) }
     var pendingDeleteLabel by remember { mutableStateOf<com.questionbank.app.domain.question.CqLabel?>(null) }
     val invalidMarkFields = remember { mutableStateListOf<Int>() }
+    val imageImportTracker = remember { ImageImportTracker() }
     val catalog by viewModel.boardCatalog.collectAsState()
     val categories by viewModel.categoryCatalog.collectAsState()
     val needsAsk = viewModel.load == EditLoad.READY && viewModel.changed && !viewModel.saving
@@ -114,11 +115,11 @@ fun QuestionEditScreen(
             canUndo = !viewModel.saving && viewModel.canUndo,
             canRedo = !viewModel.saving && viewModel.canRedo,
             saving = viewModel.saving,
-            saveEnabled = !viewModel.saving && viewModel.changed && invalidMarkFields.isEmpty(),
+            saveEnabled = !viewModel.saving && !imageImportTracker.isBusy && viewModel.changed && invalidMarkFields.isEmpty(),
             onClose = tryBack,
             onUndo = viewModel::undo,
             onRedo = viewModel::redo,
-            onSave = { viewModel.save(onSaved) },
+            onSave = { if (!imageImportTracker.isBusy) viewModel.save(onSaved) },
         )
     }) { innerPadding ->
         when (viewModel.load) {
@@ -175,12 +176,25 @@ fun QuestionEditScreen(
                     }
                 }
                 if (viewModel.hasStimulus) {
-                    val stimulusAdder = rememberStimulusImageAdder(
+                    val stimulusTopAdder = rememberStimulusImageAdder(
                         pipeline = imagePipeline,
                         imageScope = ImageScope.TYPE_CQ,
                         images = viewModel.stimulusImages,
                         enabled = !viewModel.saving,
                         onChange = viewModel::changeStimulusImages,
+                        tracker = imageImportTracker,
+                        trackerKey = "type-cq-edit-stimulus-top",
+                        addPlacement = "TOP",
+                    )
+                    val stimulusBottomAdder = rememberStimulusImageAdder(
+                        pipeline = imagePipeline,
+                        imageScope = ImageScope.TYPE_CQ,
+                        images = viewModel.stimulusImages,
+                        enabled = !viewModel.saving,
+                        onChange = viewModel::changeStimulusImages,
+                        tracker = imageImportTracker,
+                        trackerKey = "type-cq-edit-stimulus-bottom",
+                        addPlacement = "BOTTOM",
                     )
                     EdCard {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -193,12 +207,22 @@ fun QuestionEditScreen(
                             )
                             EdRatingPill(viewModel.stimulusRating, !viewModel.saving, viewModel::changeStimulusRating)
                             EdIconButton(
-                                EdIcon.IMAGE_ADD, "উদ্দীপকে ছবি যোগ করুন", { stimulusAdder.pick(null) },
-                                enabled = !viewModel.saving && !stimulusAdder.importing, dashed = true,
+                                EdIcon.IMAGE_ADD, "উদ্দীপকের শুরুতে ছবি যোগ করুন", { stimulusTopAdder.pick(null) },
+                                enabled = !viewModel.saving && !stimulusTopAdder.importing && !stimulusBottomAdder.importing, dashed = true,
                             )
                         }
                     }
                     EdTagChips(viewModel.stimulusBoards, catalog, !viewModel.saving, viewModel::changeStimulusBoards)
+                    EdStimulusImages(
+                        pipeline = imagePipeline,
+                        imageScope = ImageScope.TYPE_CQ,
+                        images = viewModel.stimulusImages,
+                        enabled = !viewModel.saving && !stimulusTopAdder.importing && !stimulusBottomAdder.importing,
+                        adder = stimulusTopAdder,
+                        onChange = viewModel::changeStimulusImages,
+                        fullFeatures = viewModel.editorMode == EditorMode.FULL,
+                        placementFilter = "TOP",
+                    )
                     EdTextArea(
                         value = viewModel.stimulus,
                         onValueChange = viewModel::changeStimulus,
@@ -214,9 +238,11 @@ fun QuestionEditScreen(
                         pipeline = imagePipeline,
                         imageScope = ImageScope.TYPE_CQ,
                         images = viewModel.stimulusImages,
-                        enabled = !viewModel.saving,
-                        adder = stimulusAdder,
+                        enabled = !viewModel.saving && !stimulusTopAdder.importing && !stimulusBottomAdder.importing,
+                        adder = stimulusBottomAdder,
                         onChange = viewModel::changeStimulusImages,
+                        fullFeatures = viewModel.editorMode == EditorMode.FULL,
+                        placementFilter = "BOTTOM",
                     )
                     EdReferenceField(
                         value = viewModel.referenceText,
@@ -261,6 +287,8 @@ fun QuestionEditScreen(
                         parts = viewModel.solutionPartsByLabel[i],
                         enabled = !viewModel.saving,
                         onChange = { viewModel.changeSolutionImageParts(label, it) },
+                        tracker = imageImportTracker,
+                        trackerKey = "type-cq-edit-solution-${label.letter}-start",
                         insertAtStart = true,
                     )
                     val solutionEndAdder = rememberSolutionImageAdder(
@@ -269,7 +297,10 @@ fun QuestionEditScreen(
                         parts = viewModel.solutionPartsByLabel[i],
                         enabled = !viewModel.saving,
                         onChange = { viewModel.changeSolutionImageParts(label, it) },
+                        tracker = imageImportTracker,
+                        trackerKey = "type-cq-edit-solution-${label.letter}-end",
                     )
+                    val solutionImageImporting = solutionStartAdder.importing || solutionEndAdder.importing
                     EdCard {
                     // Match the legacy editor's single non-wrapping control row:
                     // label + marks on the left; Board, Preview, Rating and (Full) Delete on the right.
@@ -327,7 +358,7 @@ fun QuestionEditScreen(
                             )
                             EdIconButton(
                                 EdIcon.IMAGE_ADD, "${label.letter}) সমাধানের শুরুতে ছবি যোগ করুন", { solutionStartAdder.pick(null) },
-                                enabled = !viewModel.saving && !solutionStartAdder.importing, dashed = true,
+                                enabled = !viewModel.saving && !solutionImageImporting, dashed = true,
                             )
                         }
                     }
@@ -344,7 +375,7 @@ fun QuestionEditScreen(
                                 pipeline = imagePipeline,
                                 imageId = part.imageId,
                                 imageScope = ImageScope.TYPE_CQ,
-                                enabled = !viewModel.saving && !solutionStartAdder.importing,
+                                enabled = !viewModel.saving && !solutionImageImporting,
                                 onReplace = { solutionStartAdder.pick(part.partId) },
                                 onRemove = {
                                     viewModel.changeSolutionImageParts(
@@ -352,6 +383,10 @@ fun QuestionEditScreen(
                                         solutionParts.filterNot { it.partId == part.partId }.mapIndexed { index, row -> row.copy(position = index.toLong()) },
                                     )
                                 },
+                                fullFeatures = viewModel.editorMode == EditorMode.FULL,
+                                onImageEdited = { newId -> viewModel.changeSolutionImageParts(label, solutionParts.map { if (it.partId == part.partId) it.copy(imageId = newId) else it }) },
+                                previewImageIds = solutionParts.filter { it.partType == "IMAGE" }.mapNotNull { it.imageId },
+                                previewIndex = solutionParts.filter { it.partType == "IMAGE" }.indexOfFirst { it.partId == part.partId }.coerceAtLeast(0),
                             )
                         } else {
                             val partIndex = solutionTextIndex++
@@ -390,11 +425,11 @@ fun QuestionEditScreen(
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
                         EdIconButton(
                             EdIcon.IMAGE_ADD, "${label.letter}) সমাধানের শেষে ছবি যোগ করুন", { solutionEndAdder.pick(null) },
-                            enabled = !viewModel.saving && !solutionEndAdder.importing, dashed = true,
+                            enabled = !viewModel.saving && !solutionImageImporting, dashed = true,
                         )
                         EdIconButton(
                             EdIcon.PLUS_BOX, "${label.letter}) সমাধানের আরেকটি অংশ যোগ করুন", { viewModel.addSolutionText(label) },
-                            enabled = !viewModel.saving, dashed = true,
+                            enabled = !viewModel.saving && !solutionImageImporting, dashed = true,
                         )
                     }
 

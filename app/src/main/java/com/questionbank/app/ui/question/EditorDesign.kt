@@ -30,7 +30,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.DropdownMenu
@@ -47,8 +46,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -81,6 +82,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
+import android.net.Uri
 import com.questionbank.app.domain.question.AddBoardResult
 import com.questionbank.app.domain.question.BoardItem
 import com.questionbank.app.domain.question.BoardRules
@@ -104,7 +108,7 @@ import kotlinx.coroutines.launch
  * button, and a segmented Minimum / Full Editor switch. No icon library is used; the few icons are drawn on a Canvas.
  * ------------------------------------------------------------------------------------------------------------------- */
 
-enum class EdIcon { EYE, IMAGE_ADD, PLUS, PLUS_BOX, TRASH, CHECK, CLOSE, CHEVRON, LAYERS, REFRESH, SORT }
+enum class EdIcon { EYE, IMAGE_ADD, PLUS, PLUS_BOX, TRASH, CHECK, CLOSE, CHEVRON, LAYERS, REFRESH, SORT, EDIT, DOWNLOAD, MAXIMIZE }
 
 @Composable
 fun EdIconGlyph(icon: EdIcon, tint: Color, modifier: Modifier = Modifier.size(22.dp)) {
@@ -227,6 +231,34 @@ fun EdIconGlyph(icon: EdIcon, tint: Color, modifier: Modifier = Modifier.size(22
                     lineTo(w * 0.62f, h * 0.34f)
                 }
                 drawPath(head, tint, style = stroke)
+            }
+            EdIcon.EDIT -> {
+                val pencil = Path().apply {
+                    moveTo(w * 0.18f, h * 0.82f)
+                    lineTo(w * 0.27f, h * 0.58f)
+                    lineTo(w * 0.68f, h * 0.17f)
+                    lineTo(w * 0.84f, h * 0.33f)
+                    lineTo(w * 0.43f, h * 0.74f)
+                    close()
+                }
+                drawPath(pencil, tint, style = stroke)
+                drawLine(tint, Offset(w * 0.12f, h * 0.88f), Offset(w * 0.42f, h * 0.82f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+            }
+            EdIcon.DOWNLOAD -> {
+                drawLine(tint, Offset(w * 0.5f, h * 0.12f), Offset(w * 0.5f, h * 0.68f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.25f, h * 0.47f), Offset(w * 0.5f, h * 0.72f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.75f, h * 0.47f), Offset(w * 0.5f, h * 0.72f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.18f, h * 0.86f), Offset(w * 0.82f, h * 0.86f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+            }
+            EdIcon.MAXIMIZE -> {
+                drawLine(tint, Offset(w * 0.14f, h * 0.36f), Offset(w * 0.14f, h * 0.14f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.14f, h * 0.14f), Offset(w * 0.36f, h * 0.14f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.64f, h * 0.14f), Offset(w * 0.86f, h * 0.14f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.86f, h * 0.14f), Offset(w * 0.86f, h * 0.36f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.14f, h * 0.64f), Offset(w * 0.14f, h * 0.86f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.14f, h * 0.86f), Offset(w * 0.36f, h * 0.86f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.64f, h * 0.86f), Offset(w * 0.86f, h * 0.86f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.86f, h * 0.64f), Offset(w * 0.86f, h * 0.86f), strokeWidth = stroke.width, cap = StrokeCap.Round)
             }
             EdIcon.SORT -> {
                 // Lucide ArrowDownUp-like glyph used by the old "ক-খ-গ-ঘ সাজাও" control.
@@ -685,10 +717,9 @@ fun EdTextArea(
                     cursorBrush = SolidColor(cs.primary),
                     modifier = Modifier.fillMaxWidth().height(boxHeight.dp),
                     decorationBox = { inner ->
-                        // Keep the writing area almost edge-to-edge; the old 16dp/30dp side insets made narrow fields look blank.
-                        // No horizontal inset: shrinking the field must not leave thick white rails on either side.
+                        // A modest side inset keeps text away from the border without wasting usable writing width.
                         // Reserve the bottom 26dp for the resize grip so one line remains fully readable above it.
-                        Box(Modifier.fillMaxWidth().height(boxHeight.dp).padding(start = 0.dp, top = 6.dp, end = 0.dp, bottom = 26.dp)) {
+                        Box(Modifier.fillMaxWidth().height(boxHeight.dp).padding(start = 8.dp, top = 6.dp, end = 8.dp, bottom = 26.dp)) {
                             if (field.text.isEmpty() && placeholder != null) Text(placeholder, color = cs.onSurfaceVariant, fontSize = bodyTextSize)
                             inner()
                         }
@@ -876,6 +907,23 @@ fun EdHint(text: String) {
 
 /* ------------------------------------------------ image helpers ----------------------------------------------------- */
 
+/** Tracks every active image picker/import so an editor cannot be saved halfway through an image operation. */
+@Stable
+class ImageImportTracker {
+    private val activeOperations = mutableStateMapOf<String, Boolean>()
+    val isBusy: Boolean get() = activeOperations.isNotEmpty()
+
+    fun tryStart(key: String): Boolean {
+        if (activeOperations.isNotEmpty()) return false
+        activeOperations[key] = true
+        return true
+    }
+
+    fun setBusy(key: String, busy: Boolean) {
+        if (busy) activeOperations[key] = true else activeOperations.remove(key)
+    }
+}
+
 /** What the image buttons need: [pick] opens the picker (a non-null id replaces that image, null adds a new one). */
 @Stable
 class ImageAdder(val importing: Boolean, val error: String, val pick: (String?) -> Unit)
@@ -887,41 +935,116 @@ fun rememberStimulusImageAdder(
     images: List<QuestionStimulusImage>,
     enabled: Boolean,
     onChange: (List<QuestionStimulusImage>) -> Unit,
+    tracker: ImageImportTracker,
+    trackerKey: String,
+    addPlacement: String = "TOP",
 ): ImageAdder {
     val coroutineScope = rememberCoroutineScope()
+    val latestImages = rememberUpdatedState(images)
+    val latestOnChange = rememberUpdatedState(onChange)
+    val latestEnabled = rememberUpdatedState(enabled)
     var importing by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var replaceId by remember { mutableStateOf<String?>(null) }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null && enabled && !importing) {
-            val target = replaceId
+    fun setImporting(value: Boolean) {
+        if (importing != value) importing = value
+        tracker.setBusy(trackerKey, value)
+    }
+    DisposableEffect(tracker, trackerKey) {
+        onDispose { tracker.setBusy(trackerKey, false) }
+    }
+
+    // Add supports multiple images, while replacing an existing thumbnail remains single-image.
+    // The busy flag covers both the system picker and the subsequent import to prevent overlapping pickers.
+    val addLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isEmpty()) {
+            setImporting(false)
+        } else if (!latestEnabled.value) {
+            error = "এডিটর সংরক্ষণ শুরু হওয়ায় ছবিগুলো যোগ করা হয়নি। আবার চেষ্টা করুন।"
+            setImporting(false)
+        } else {
+            setImporting(true)
             coroutineScope.launch {
-                importing = true
                 try {
                     error = ""
-                    val imageId = pipeline.importImage(uri, imageScope)
-                    val next = if (target != null) {
-                        images.map { if (it.imageId == target) it.copy(imageId = imageId) else it }
-                    } else {
-                        images.sortedBy { it.position } + QuestionStimulusImage(imageId, "TOP", images.size.toLong())
+                    val imported = mutableListOf<String>()
+                    var failures = 0
+                    uris.forEach { uri ->
+                        try { imported += pipeline.importImage(uri, imageScope) }
+                        catch (cancelled: CancellationException) { throw cancelled }
+                        catch (_: Exception) { failures++ }
                     }
-                    onChange(next.mapIndexed { index, row -> row.copy(position = index.toLong()) })
+                    if (imported.isNotEmpty() && latestEnabled.value) {
+                        val placement = addPlacement.takeIf { it == "BOTTOM" } ?: "TOP"
+                        val ordered = normalizeStimulusImageOrder(latestImages.value)
+                        val existingTop = ordered.filter { it.placement != "BOTTOM" }
+                        val existingBottom = ordered.filter { it.placement == "BOTTOM" }
+                        val newRows = imported.map { id -> QuestionStimulusImage(id, placement, 0L) }
+                        // Legacy behavior: newly chosen top images are prepended; bottom images are appended.
+                        val next = if (placement == "TOP") newRows + existingTop + existingBottom else existingTop + existingBottom + newRows
+                        latestOnChange.value(next.mapIndexed { index, row -> row.copy(position = index.toLong()) })
+                    }
+                    error = when {
+                        imported.isNotEmpty() && !latestEnabled.value -> "এডিটর সংরক্ষণ শুরু হওয়ায় ছবিগুলো যোগ করা হয়নি। আবার চেষ্টা করুন।"
+                        failures > 0 -> "${failures}টি ছবি আমদানি করা যায়নি${if (imported.isNotEmpty()) "। বাকি ছবিগুলো যোগ হয়েছে।" else "।"}"
+                        imported.isEmpty() -> "কোনো ছবি আমদানি করা যায়নি।"
+                        else -> ""
+                    }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (failure: Exception) {
                     error = failure.message ?: "ছবি আমদানি করা যায়নি।"
                 } finally {
-                    replaceId = null
-                    importing = false
+                    setImporting(false)
                 }
             }
-        } else if (uri == null) {
-            replaceId = null
         }
     }
-    return ImageAdder(importing, error) { id ->
-        replaceId = id
-        launcher.launch(arrayOf("image/*"))
+    val replaceLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val target = replaceId
+        if (uri == null || target == null) {
+            replaceId = null
+            setImporting(false)
+        } else if (!latestEnabled.value) {
+            error = "এডিটর সংরক্ষণ শুরু হওয়ায় ছবিটি প্রতিস্থাপন করা হয়নি। আবার চেষ্টা করুন।"
+            replaceId = null
+            setImporting(false)
+        } else {
+            setImporting(true)
+            coroutineScope.launch {
+                try {
+                    error = ""
+                    val imageId = pipeline.importImage(uri, imageScope)
+                    val current = latestImages.value
+                    if (latestEnabled.value && current.any { it.imageId == target }) {
+                        latestOnChange.value(current.map { if (it.imageId == target) it.copy(imageId = imageId) else it })
+                    } else {
+                        error = "ছবির তালিকা পরিবর্তিত হয়েছে; নতুন ছবিটি যুক্ত হয়নি। আবার চেষ্টা করুন।"
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    error = failure.message ?: "ছবি প্রতিস্থাপন করা যায়নি।"
+                } finally {
+                    replaceId = null
+                    setImporting(false)
+                }
+            }
+        }
+    }
+    return ImageAdder(importing || tracker.isBusy, error) { id ->
+        if (!latestEnabled.value || importing || !tracker.tryStart(trackerKey)) return@ImageAdder
+        setImporting(true)
+        error = ""
+        if (id == null) {
+            replaceId = null
+            runCatching { addLauncher.launch(arrayOf("image/*")) }
+                .onFailure { setImporting(false); error = it.message ?: "ছবি নির্বাচন করা যায়নি।" }
+        } else {
+            replaceId = id
+            runCatching { replaceLauncher.launch(arrayOf("image/*")) }
+                .onFailure { replaceId = null; setImporting(false); error = it.message ?: "ছবি নির্বাচন করা যায়নি।" }
+        }
     }
 }
 
@@ -932,53 +1055,119 @@ fun rememberSolutionImageAdder(
     parts: List<QuestionSolutionPart>,
     enabled: Boolean,
     onChange: (List<QuestionSolutionPart>) -> Unit,
+    tracker: ImageImportTracker,
+    trackerKey: String,
     insertAtStart: Boolean = false,
 ): ImageAdder {
     val coroutineScope = rememberCoroutineScope()
+    val latestParts = rememberUpdatedState(parts)
+    val latestOnChange = rememberUpdatedState(onChange)
+    val latestEnabled = rememberUpdatedState(enabled)
     var importing by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var replaceId by remember { mutableStateOf<String?>(null) }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null && enabled && !importing) {
-            val target = replaceId
-            coroutineScope.launch {
-                importing = true
-                try {
-                    error = ""
-                    val imageId = pipeline.importImage(uri, imageScope)
-                    val ordered = parts.sortedBy { it.position }
-                    val imagePart = QuestionSolutionPart("solution_image_$imageId", "IMAGE", 0L, imageId = imageId)
-                    val base = if (ordered.any { it.partType != "IMAGE" }) ordered else listOf(
-                        QuestionSolutionPart("solution_text_initial_$imageId", "TEXT", 0L, textContent = ""),
-                    )
-                    val next = if (target != null) {
-                        ordered.map { if (it.partId == target) it.copy(imageId = imageId) else it }
-                    } else if (insertAtStart) {
-                        listOf(imagePart) + base
+    fun setImporting(value: Boolean) {
+        if (importing != value) importing = value
+        tracker.setBusy(trackerKey, value)
+    }
+    DisposableEffect(tracker, trackerKey) {
+        onDispose { tracker.setBusy(trackerKey, false) }
+    }
+
+    suspend fun addPickedImages(uris: List<Uri>, target: String?) {
+        if (uris.isEmpty()) {
+            setImporting(false)
+            return
+        }
+        setImporting(true)
+        if (!latestEnabled.value) {
+            error = "এডিটর সংরক্ষণ শুরু হওয়ায় ছবিগুলো যোগ করা হয়নি। আবার চেষ্টা করুন।"
+            setImporting(false)
+            return
+        }
+        try {
+            error = ""
+            val imported = mutableListOf<String>()
+            var failures = 0
+            uris.forEach { uri ->
+                try { imported += pipeline.importImage(uri, imageScope) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { failures++ }
+            }
+            if (imported.isNotEmpty() && latestEnabled.value) {
+                val ordered = latestParts.value.sortedBy { it.position }
+                if (target != null) {
+                    if (ordered.any { it.partId == target }) {
+                        latestOnChange.value(ordered.map { part -> if (part.partId == target) part.copy(imageId = imported.first()) else part })
                     } else {
-                        base + imagePart.copy(position = base.size.toLong())
+                        error = "সমাধানের ছবিটি আর তালিকায় নেই; নতুন ছবিটি যুক্ত হয়নি।"
                     }
-                    onChange(next.mapIndexed { index, row -> row.copy(position = index.toLong()) })
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (failure: Exception) {
-                    error = failure.message ?: "সমাধানের ছবি আমদানি করা যায়নি।"
-                } finally {
-                    replaceId = null
-                    importing = false
+                } else {
+                    val imageParts = imported.mapIndexed { index, id ->
+                        QuestionSolutionPart("solution_image_$id", "IMAGE", index.toLong(), imageId = id)
+                    }
+                    val base = if (ordered.any { it.partType != "IMAGE" }) ordered else listOf(
+                        QuestionSolutionPart("solution_text_initial_${imported.first()}", "TEXT", 0L, textContent = ""),
+                    )
+                    val next = if (insertAtStart) {
+                        imageParts + base
+                    } else {
+                        val last = base.lastOrNull()
+                        if (last != null && last.partType == "TEXT" && last.textContent.orEmpty().isEmpty()) {
+                            base.dropLast(1) + imageParts + last
+                        } else {
+                            base + imageParts + QuestionSolutionPart("solution_text_after_${imported.last()}", "TEXT", 0L, textContent = "")
+                        }
+                    }
+                    latestOnChange.value(next.mapIndexed { index, row -> row.copy(position = index.toLong()) })
                 }
             }
-        } else if (uri == null) {
+            if (imported.isNotEmpty() && !latestEnabled.value) {
+                error = "এডিটর সংরক্ষণ শুরু হওয়ায় ছবিগুলো যোগ করা হয়নি। আবার চেষ্টা করুন।"
+            } else if (failures > 0) {
+                error = "${failures}টি ছবি আমদানি করা যায়নি${if (imported.isNotEmpty()) "। বাকি ছবিগুলো যোগ হয়েছে।" else "।"}"
+            } else if (imported.isEmpty()) {
+                error = "কোনো ছবি আমদানি করা যায়নি।"
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            error = failure.message ?: "সমাধানের ছবি আমদানি করা যায়নি।"
+        } finally {
             replaceId = null
+            setImporting(false)
         }
     }
-    return ImageAdder(importing, error) { id ->
-        replaceId = id
-        launcher.launch(arrayOf("image/*"))
+
+    val addLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        coroutineScope.launch { addPickedImages(uris, null) }
+    }
+    val replaceLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val target = replaceId
+        if (uri == null || target == null) {
+            replaceId = null
+            setImporting(false)
+        } else {
+            coroutineScope.launch { addPickedImages(listOf(uri), target) }
+        }
+    }
+    return ImageAdder(importing || tracker.isBusy, error) { id ->
+        if (!latestEnabled.value || importing || !tracker.tryStart(trackerKey)) return@ImageAdder
+        setImporting(true)
+        error = ""
+        if (id == null) {
+            replaceId = null
+            runCatching { addLauncher.launch(arrayOf("image/*")) }
+                .onFailure { setImporting(false); error = it.message ?: "ছবি নির্বাচন করা যায়নি।" }
+        } else {
+            replaceId = id
+            runCatching { replaceLauncher.launch(arrayOf("image/*")) }
+                .onFailure { replaceId = null; setImporting(false); error = it.message ?: "ছবি নির্বাচন করা যায়নি।" }
+        }
     }
 }
 
-/** A rounded thumbnail with the red remove button at its corner and a replace button under it. */
+/** A rounded thumbnail with remove, replace and Full Editor image actions underneath. */
 @Composable
 fun EdThumbnail(
     pipeline: ImagePipeline,
@@ -987,33 +1176,117 @@ fun EdThumbnail(
     enabled: Boolean,
     onReplace: () -> Unit,
     onRemove: () -> Unit,
+    fullFeatures: Boolean = false,
+    onImageEdited: (String) -> Unit = {},
+    previewImageIds: List<String> = listOf(imageId),
+    previewIndex: Int = 0,
     extra: @Composable () -> Unit = {},
 ) {
     val cs = MaterialTheme.colorScheme
+    val actionScope = rememberCoroutineScope()
+    val context = LocalContext.current
+    var editOpen by remember(imageId) { mutableStateOf(false) }
+    var previewOpen by remember(imageId) { mutableStateOf(false) }
+    var exporting by remember(imageId) { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Box {
             Box(
-                Modifier
-                    .padding(top = 10.dp, end = 10.dp)
+                Modifier.padding(top = 10.dp, end = 10.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .border(1.dp, cs.outlineVariant, RoundedCornerShape(16.dp)),
+                    .border(1.dp, cs.outlineVariant, RoundedCornerShape(16.dp))
+                    .then(if (fullFeatures) Modifier.clickable(enabled = enabled) { previewOpen = true } else Modifier),
             ) { MediaThumbnail(pipeline, imageId, imageScope) }
             Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .size(30.dp)
-                    .clip(CircleShape)
+                Modifier.align(Alignment.TopEnd).size(30.dp).clip(CircleShape)
                     .background(Color(0xFFE11D2E), CircleShape)
                     .clickable(enabled = enabled, onClick = onRemove)
                     .semantics { contentDescription = "ছবি সরান" },
                 contentAlignment = Alignment.Center,
             ) { EdIconGlyph(EdIcon.CLOSE, Color.White, Modifier.size(14.dp)) }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+        ) {
             EdIconButton(EdIcon.REFRESH, "ছবি প্রতিস্থাপন", onReplace, enabled = enabled)
             extra()
+            if (fullFeatures) {
+                EdIconButton(
+                    EdIcon.DOWNLOAD, "ছবি এক্সপোর্ট করুন",
+                    onClick = {
+                        if (!exporting) {
+                            exporting = true
+                            actionScope.launch {
+                                runCatching { pipeline.exportImage(imageId, imageScope) }
+                                    .onSuccess { Toast.makeText(context, "Pictures/QuestionBank ফোল্ডারে ছবি সংরক্ষিত হয়েছে", Toast.LENGTH_SHORT).show() }
+                                    .onFailure { Toast.makeText(context, it.message ?: "ছবি এক্সপোর্ট করা যায়নি", Toast.LENGTH_LONG).show() }
+                                exporting = false
+                            }
+                        }
+                    },
+                    enabled = enabled && !exporting,
+                )
+                EdIconButton(EdIcon.MAXIMIZE, "বড় প্রিভিউ দেখুন", { previewOpen = true }, enabled = enabled)
+                Row(
+                    modifier = Modifier.height(32.dp).clip(RoundedCornerShape(6.dp))
+                        .background(cs.primaryContainer).border(1.dp, cs.outlineVariant, RoundedCornerShape(6.dp))
+                        .clickable(enabled = enabled) { editOpen = true }
+                        .semantics { contentDescription = "ছবি এডিট করুন" }
+                        .padding(horizontal = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    EdIconGlyph(EdIcon.EDIT, cs.primary, Modifier.size(14.dp))
+                    Text("এডিট", color = cs.primary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
         }
     }
+    if (editOpen && fullFeatures) {
+        ImageEditDialog(
+            pipeline = pipeline,
+            imageId = imageId,
+            imageScope = imageScope,
+            onDismiss = { editOpen = false },
+            onSaved = { newId -> onImageEdited(newId); editOpen = false },
+        )
+    }
+    if (previewOpen && fullFeatures) {
+        ImagePreviewDialog(
+            pipeline = pipeline,
+            imageScope = imageScope,
+            imageIds = previewImageIds,
+            initialIndex = previewIndex,
+            onDismiss = { previewOpen = false },
+        )
+    }
+}
+
+/** Keeps legacy stimulus-image order: all above-text images first, then below-text images. */
+private fun normalizeStimulusImageOrder(images: List<QuestionStimulusImage>): List<QuestionStimulusImage> {
+    val ordered = images.sortedBy { it.position }
+    return (ordered.filter { it.placement != "BOTTOM" } + ordered.filter { it.placement == "BOTTOM" })
+        .mapIndexed { index, item -> item.copy(position = index.toLong()) }
+}
+
+/** Reorders within the selected top/bottom strip without moving images from the other strip. */
+private fun moveStimulusImageWithinPlacement(
+    images: List<QuestionStimulusImage>,
+    imageId: String,
+    delta: Int,
+    placement: String,
+): List<QuestionStimulusImage> {
+    val normalized = normalizeStimulusImageOrder(images)
+    val top = normalized.filter { it.placement != "BOTTOM" }.toMutableList()
+    val bottom = normalized.filter { it.placement == "BOTTOM" }.toMutableList()
+    val target = if (placement == "BOTTOM") bottom else top
+    val from = target.indexOfFirst { it.imageId == imageId }
+    val to = from + delta
+    if (from !in target.indices || to !in target.indices) return normalized
+    val row = target.removeAt(from)
+    target.add(to, row)
+    return (top + bottom).mapIndexed { index, item -> item.copy(position = index.toLong()) }
 }
 
 /** Stimulus image strip: thumbnails with remove / replace, reorder arrows and the top-or-bottom placement toggle. */
@@ -1025,12 +1298,15 @@ fun EdStimulusImages(
     enabled: Boolean,
     adder: ImageAdder,
     onChange: (List<QuestionStimulusImage>) -> Unit,
+    fullFeatures: Boolean = false,
+    placementFilter: String? = null,
 ) {
-    val ordered = images.sortedBy { it.position }
-    if (ordered.isEmpty() && adder.error.isBlank()) return
+    val ordered = images.sortedBy { it.position }.filter { placementFilter == null || it.placement == placementFilter }
+    val showBottomAdd = placementFilter == "BOTTOM"
+    if (ordered.isEmpty() && adder.error.isBlank() && !showBottomAdd) return
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (ordered.isNotEmpty()) {
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        if (ordered.isNotEmpty() || showBottomAdd) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
                 ordered.forEachIndexed { index, item ->
                     EdThumbnail(
                         pipeline = pipeline,
@@ -1038,15 +1314,31 @@ fun EdStimulusImages(
                         imageScope = imageScope,
                         enabled = enabled && !adder.importing,
                         onReplace = { adder.pick(item.imageId) },
-                        onRemove = { onChange(images.filterNot { it.imageId == item.imageId }.mapIndexed { i, row -> row.copy(position = i.toLong()) }) },
+                        onRemove = { onChange(normalizeStimulusImageOrder(images.filterNot { it.imageId == item.imageId })) },
+                        fullFeatures = fullFeatures,
+                        onImageEdited = { newId -> onChange(images.map { if (it.imageId == item.imageId) it.copy(imageId = newId) else it }) },
+                        previewImageIds = ordered.map { it.imageId },
+                        previewIndex = index,
                     ) {
                         TextButton(
                             enabled = enabled,
-                            onClick = { onChange(images.map { if (it.imageId == item.imageId) it.copy(placement = if (it.placement == "TOP") "BOTTOM" else "TOP") else it }) },
+                            onClick = {
+                                val moved = images.map { if (it.imageId == item.imageId) it.copy(placement = if (it.placement == "TOP") "BOTTOM" else "TOP") else it }
+                                onChange(normalizeStimulusImageOrder(moved))
+                            },
                         ) { Text(if (item.placement == "TOP") "উপরে" else "নিচে") }
-                        TextButton(enabled = enabled && index > 0, onClick = { onChange(moveStimulusImage(images, item.imageId, -1)) }) { Text("←") }
-                        TextButton(enabled = enabled && index < ordered.lastIndex, onClick = { onChange(moveStimulusImage(images, item.imageId, 1)) }) { Text("→") }
+                        TextButton(enabled = enabled && index > 0, onClick = { onChange(moveStimulusImageWithinPlacement(images, item.imageId, -1, item.placement)) }) { Text("←") }
+                        TextButton(enabled = enabled && index < ordered.lastIndex, onClick = { onChange(moveStimulusImageWithinPlacement(images, item.imageId, 1, item.placement)) }) { Text("→") }
                     }
+                }
+                if (showBottomAdd) {
+                    EdIconButton(
+                        EdIcon.IMAGE_ADD,
+                        "উদ্দীপকের শেষে ছবি যোগ করুন",
+                        { adder.pick(null) },
+                        enabled = enabled && !adder.importing,
+                        dashed = true,
+                    )
                 }
             }
         }

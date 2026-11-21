@@ -297,6 +297,7 @@ fun ChapterCqWorkspaceScreen(
     onBack: (() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
+    val chapterImageImportTracker = remember { ImageImportTracker() }
     val subjects by repository.observeSubjects().collectAsState(initial = emptyList())
     val boards by referenceRepository.observeBoards().collectAsState(initial = emptyList())
     val boardItems = remember(boards) { boards.map { BoardItem(it.code, it.displayName, it.boardKind == "CUSTOM", it.isArchived == 1L) } }
@@ -596,7 +597,7 @@ fun ChapterCqWorkspaceScreen(
 
     fun saveQuestion(forceDuplicate: Boolean = false) {
         // Guard synchronously before launching: rapid taps must not create multiple question IDs/rows.
-        if (savingQuestion || editorLoading || editorLoadError.isNotBlank()) return
+        if (savingQuestion || editorLoading || editorLoadError.isNotBlank() || chapterImageImportTracker.isBusy) return
         if (chapterId.isBlank()) { saveError = "আগে একটি অধ্যায় নির্বাচন করুন।"; return }
         val cleanText = questionText.trim()
         val markValue = marks.toDoubleOrNull()
@@ -772,12 +773,26 @@ fun ChapterCqWorkspaceScreen(
         val closeEditor: () -> Unit = {
             if (history.canUndo && !savingQuestion) editorCloseConfirm = true else if (!savingQuestion) editorOpen = false
         }
-        val chapterStimulusAdder = rememberStimulusImageAdder(
+        val chapterStimulusTopAdder = rememberStimulusImageAdder(
             pipeline = imagePipeline,
             imageScope = ImageScope.CHAPTER_CQ,
             images = stimulusImages,
             enabled = !savingQuestion,
-        ) { images -> stimulusImages = images; recordForm("stimulus-images") }
+            onChange = { images -> stimulusImages = images; recordForm("stimulus-images") },
+            tracker = chapterImageImportTracker,
+            trackerKey = "chapter-cq-stimulus-top",
+            addPlacement = "TOP",
+        )
+        val chapterStimulusBottomAdder = rememberStimulusImageAdder(
+            pipeline = imagePipeline,
+            imageScope = ImageScope.CHAPTER_CQ,
+            images = stimulusImages,
+            enabled = !savingQuestion,
+            onChange = { images -> stimulusImages = images; recordForm("stimulus-images") },
+            tracker = chapterImageImportTracker,
+            trackerKey = "chapter-cq-stimulus-bottom",
+            addPlacement = "BOTTOM",
+        )
         val onChapterSolutionPartsChanged: (List<QuestionSolutionPart>) -> Unit = { parts ->
             val ordered = parts.sortedBy { it.position }.toMutableList()
             if (ordered.none { it.partType != "IMAGE" }) {
@@ -793,6 +808,8 @@ fun ChapterCqWorkspaceScreen(
             parts = solutionPartsDraft,
             enabled = !savingQuestion,
             onChange = onChapterSolutionPartsChanged,
+            tracker = chapterImageImportTracker,
+            trackerKey = "chapter-cq-solution-start",
             insertAtStart = true,
         )
         val chapterSolutionEndAdder = rememberSolutionImageAdder(
@@ -801,7 +818,10 @@ fun ChapterCqWorkspaceScreen(
             parts = solutionPartsDraft,
             enabled = !savingQuestion,
             onChange = onChapterSolutionPartsChanged,
+            tracker = chapterImageImportTracker,
+            trackerKey = "chapter-cq-solution-end",
         )
+        val chapterSolutionImageImporting = chapterSolutionStartAdder.importing || chapterSolutionEndAdder.importing
         Dialog(
             onDismissRequest = closeEditor,
             properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -814,11 +834,11 @@ fun ChapterCqWorkspaceScreen(
                         canUndo = history.canUndo && !savingQuestion,
                         canRedo = history.canRedo && !savingQuestion,
                         saving = savingQuestion,
-                        saveEnabled = !editorLoading && !savingQuestion && questionText.isNotBlank() && (marks.toDoubleOrNull()?.let { it.isFinite() && it > 0.0 } == true),
+                        saveEnabled = !editorLoading && !savingQuestion && !chapterImageImportTracker.isBusy && questionText.isNotBlank() && (marks.toDoubleOrNull()?.let { it.isFinite() && it > 0.0 } == true),
                         onClose = closeEditor,
                         onUndo = { history.undo()?.let { restoreForm(it); queueEditorDraft() } },
                         onRedo = { history.redo()?.let { restoreForm(it); queueEditorDraft() } },
-                        onSave = { saveQuestion() },
+                        onSave = { if (!chapterImageImportTracker.isBusy) saveQuestion() },
                     )
                     Surface(color = MaterialTheme.colorScheme.surface) {
                         Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
@@ -856,9 +876,9 @@ fun ChapterCqWorkspaceScreen(
                                         selected = stimulusPreviewOpen,
                                     )
                                     EdRatingPill(stimulusRating.toIntOrNull(), !savingQuestion) { stimulusRating = it?.toString().orEmpty(); recordForm("stimulus-rating") }
-                                    EdIconButton(EdIcon.IMAGE_ADD, "উদ্দীপকে ছবি যোগ করুন", { chapterStimulusAdder.pick(null) }, enabled = !savingQuestion && !chapterStimulusAdder.importing, dashed = true)
+                                    EdIconButton(EdIcon.IMAGE_ADD, "উদ্দীপকের শুরুতে ছবি যোগ করুন", { chapterStimulusTopAdder.pick(null) }, enabled = !savingQuestion && !chapterStimulusTopAdder.importing && !chapterStimulusBottomAdder.importing, dashed = true)
                                 }
-                                EdStimulusImages(imagePipeline, ImageScope.CHAPTER_CQ, stimulusImages, !savingQuestion, chapterStimulusAdder) { images -> stimulusImages = images; recordForm("stimulus-images") }
+                                EdStimulusImages(imagePipeline, ImageScope.CHAPTER_CQ, stimulusImages, !savingQuestion && !chapterStimulusTopAdder.importing && !chapterStimulusBottomAdder.importing, chapterStimulusTopAdder, onChange = { images -> stimulusImages = images; recordForm("stimulus-images") }, fullFeatures = editorMode == EditorMode.FULL, placementFilter = "TOP")
                                 EdTextArea(
                                     value = stimulus,
                                     onValueChange = { stimulus = it; recordForm("stimulus") },
@@ -870,6 +890,7 @@ fun ChapterCqWorkspaceScreen(
                                     externalPreviewOpen = stimulusPreviewOpen,
                                     showPreviewToggle = false,
                                 )
+                                EdStimulusImages(imagePipeline, ImageScope.CHAPTER_CQ, stimulusImages, !savingQuestion && !chapterStimulusTopAdder.importing && !chapterStimulusBottomAdder.importing, chapterStimulusBottomAdder, onChange = { images -> stimulusImages = images; recordForm("stimulus-images") }, fullFeatures = editorMode == EditorMode.FULL, placementFilter = "BOTTOM")
                                 EdReferenceField(value = reference, onValueChange = { reference = it; recordForm("reference") }, enabled = !savingQuestion)
                             }
 
@@ -941,7 +962,7 @@ fun ChapterCqWorkspaceScreen(
                                             )
                                             EdIconButton(
                                                 EdIcon.IMAGE_ADD, "সমাধানের শুরুতে ছবি যোগ করুন", { chapterSolutionStartAdder.pick(null) },
-                                                enabled = !savingQuestion && !chapterSolutionStartAdder.importing, dashed = true,
+                                                enabled = !savingQuestion && !chapterSolutionImageImporting, dashed = true,
                                             )
                                         }
                                     }
@@ -956,7 +977,7 @@ fun ChapterCqWorkspaceScreen(
                                                 pipeline = imagePipeline,
                                                 imageId = part.imageId,
                                                 imageScope = ImageScope.CHAPTER_CQ,
-                                                enabled = !savingQuestion && !chapterSolutionStartAdder.importing,
+                                                enabled = !savingQuestion && !chapterSolutionImageImporting,
                                                 onReplace = { chapterSolutionStartAdder.pick(part.partId) },
                                                 onRemove = {
                                                     solutionPartsDraft = solutionPartsDraft.filterNot { it.partId == part.partId }.mapIndexed { i, row -> row.copy(position = i.toLong()) }
@@ -964,6 +985,14 @@ fun ChapterCqWorkspaceScreen(
                                                     syncMixedSolutionText()
                                                     recordForm("solution-image-remove")
                                                 },
+                                                fullFeatures = editorMode == EditorMode.FULL,
+                                                onImageEdited = { newId ->
+                                                    solutionPartsDraft = solutionPartsDraft.map { if (it.partId == part.partId) it.copy(imageId = newId) else it }
+                                                    syncMixedSolutionText()
+                                                    recordForm("solution-image-edit")
+                                                },
+                                                previewImageIds = solutionPartsDraft.filter { it.partType == "IMAGE" }.mapNotNull { it.imageId },
+                                                previewIndex = solutionPartsDraft.filter { it.partType == "IMAGE" }.indexOfFirst { it.partId == part.partId }.coerceAtLeast(0),
                                             )
                                         } else {
                                             val index = textPartIndex++
@@ -1015,11 +1044,11 @@ fun ChapterCqWorkspaceScreen(
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
                                         EdIconButton(
                                             EdIcon.IMAGE_ADD, "সমাধানের শেষে ছবি যোগ করুন", { chapterSolutionEndAdder.pick(null) },
-                                            enabled = !savingQuestion && !chapterSolutionEndAdder.importing, dashed = true,
+                                            enabled = !savingQuestion && !chapterSolutionImageImporting, dashed = true,
                                         )
                                         EdIconButton(EdIcon.PLUS_BOX, "সমাধানের আরেকটি অংশ যোগ করুন", {
                                             solutionTexts = solutionTexts + ""; syncMixedSolutionText(); recordForm("solution-add")
-                                        }, enabled = !savingQuestion, dashed = true)
+                                        }, enabled = !savingQuestion && !chapterSolutionImageImporting, dashed = true)
                                     }
                                     if (chapterSolutionStartAdder.error.isNotBlank()) Text(chapterSolutionStartAdder.error, color = MaterialTheme.colorScheme.error)
                                     if (chapterSolutionEndAdder.error.isNotBlank()) Text(chapterSolutionEndAdder.error, color = MaterialTheme.colorScheme.error)
