@@ -1,3 +1,11 @@
+LATEX HORIZONTAL-SCROLL FIX (22 Nov 2026) - SOURCE EDIT ONLY, NOT COMPILED / NOT DEVICE-TESTED
+- Requirement: formulas in every display surface must swipe horizontally when wider than the viewport; no visible scrollbars; never shrink formula font size to fit.
+- Centralized implementation in ui/question/RichLatexText.kt: inline formulas are now separate FlowRow items and display/block formulas use the same scrollable renderer. Each RaTeXView is hosted in a native HorizontalScrollView with horizontal/vertical indicators disabled and overscroll glow disabled. The configured fontSize is passed through unchanged. When formula/font/display/color changes, the scroll offset resets to the left and native layout is requested again.
+- Ordinary prose remains Compose Text and wraps within the available width. All app surfaces already call RichLatexText (question cards/details, search results, Chapter_CQ group/detail cards and editor previews), so the shared renderer covers those paths.
+- Gradle compile attempt was BLOCKED before compilation: wrapper needed Gradle 8.14.3 from services.gradle.org, but DNS/network returned UnknownHostException. No Kotlin compile, unit tests, APK build, emulator or device test was completed. Runtime scrolling and visual line wrapping therefore remain unverified. Manual acceptance checks still required: test long inline and block formulas in Type_CQ and Chapter_CQ live previews, saved-question details/cards, and search; swipe both directions; confirm bars are invisible, glyph size is unchanged, plain prose wraps normally, and editing a formula resets its offset.
+- No database, Room schema, SQL, or app version metadata change was made.
+- File changed: app/src/main/java/com/questionbank/app/ui/question/RichLatexText.kt.
+
 SAVE-ERROR MESSAGE FIX (22 Nov 2026) - SOURCE EDIT ONLY, NOT COMPILED, NOT TESTED
 - Problem: a failed save always showed one fixed sentence ("সংরক্ষণ করা যায়নি, কিছুই হারায়নি ... আবার চেষ্টা করুন"), although
   SaveResult.Failed / UpdateResult.Failed already carried the real reason. Also the DAO answers false for many refusals and the
