@@ -1,3 +1,12 @@
+SETTINGS PAGE + READING-TEXT SPACING (22 Nov 2026) - SOURCE EDIT ONLY, NOT COMPILED / NOT DEVICE-TESTED
+- Profile tab has a new "Settings" card with a button opening a new Settings page (route profile/settings). The old "text size" card was MOVED there (same behaviour, 12-28, default 16, body text only).
+- Four options, each with minus / plus / default: (1) line spacing 100-200 percent of the font size, step 5, default 118 (old fixed 1.18); (2) "<br>" gap 0-24 dp, default 4 (new; was 0); (3) display-formula ($$...$$) gap 0-24 dp, default 2 (old fixed 2dp); (4) body font size. A live sample sits at the top of the page.
+- Applied centrally: AppSettings (SharedPreferences keys line_spacing_percent, break_gap_dp, block_gap_dp, not part of the backup) -> QuestionBankTheme -> LocalLineSpacingMultiplier / LocalBreakGapDp / LocalBlockGapDp -> RichLatexText. Every surface already calls RichLatexText. The editor typing box line height (1.5x) is NOT changed by option 1.
+- New pure logic ui/settings/SpacingPolicy.kt with unit test SpacingPolicyTest (6 cases). NOT run here (no Kotlin/Gradle); the step arithmetic was desk-checked in Python only.
+- Files changed: data/settings/AppSettings.kt, ui/theme/Theme.kt, MainActivity.kt, ui/question/RichLatexText.kt, ui/profile/ProfileScreen.kt, ui/navigation/AppNavHost.kt; new: ui/settings/SpacingPolicy.kt, ui/settings/SettingsScreen.kt, test/.../SpacingPolicyTest.kt.
+- Manual checks needed: open Profile > Settings, change each value and watch the sample; restart the app (values must persist); check a saved question card, details, search and an editor preview; confirm back arrow returns to Profile and the bottom bar stays visible.
+- No database, Room schema, SQL or app version metadata change.
+
 EDITOR TEXT AREA BOTTOM INSET (22 Nov 2026) - SOURCE EDIT ONLY, NOT COMPILED / NOT DEVICE-TESTED
 - EdTextArea (ui/question/EditorDesign.kt): decoration Box bottom padding changed 26.dp -> 8.dp. Nothing else changed in this edit.
 

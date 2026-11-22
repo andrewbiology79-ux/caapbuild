@@ -28,14 +28,19 @@ import com.questionbank.app.data.settings.AppSettings
 import com.questionbank.app.ui.question.EditorMode
 import com.questionbank.app.ui.components.AppHeader
 import com.questionbank.app.ui.format.toBengali
-import com.questionbank.app.ui.settings.TextSizePolicy
 
 /**
  * Profile tab (design 39.3): the hub for backup and settings. Statistics and categories come with later packages.
  * Settings changes apply at once to the whole app and are remembered.
  */
 @Composable
-fun ProfileScreen(settings: AppSettings, backupStatus: String, onOpenBackup: () -> Unit, onOpenMedia: () -> Unit) {
+fun ProfileScreen(
+    settings: AppSettings,
+    backupStatus: String,
+    onOpenBackup: () -> Unit,
+    onOpenMedia: () -> Unit,
+    onOpenSettings: () -> Unit,
+) {
     val context = LocalContext.current
     val versionName = remember(context) {
         try {
@@ -45,8 +50,6 @@ fun ProfileScreen(settings: AppSettings, backupStatus: String, onOpenBackup: () 
             "?"
         }
     }
-    val size = settings.textSize
-
     Column(modifier = Modifier.fillMaxSize()) {
         AppHeader(title = "প্রোফাইল (Profile)", subtitle = "পরিসংখ্যান, ব্যাকআপ ও সেটিংস")
         Column(
@@ -61,6 +64,11 @@ fun ProfileScreen(settings: AppSettings, backupStatus: String, onOpenBackup: () 
             SectionCard("ছবি ও মিডিয়া") {
                 Text("অফলাইন ছবি আমদানি, যাচাই, Rotate/Crop, Export এবং নিরাপদ মুছে ফেলা।")
                 Button(onClick = onOpenMedia) { Text("মিডিয়া লাইব্রেরি খুলুন") }
+            }
+
+            SectionCard("সেটিংস") {
+                Text("লাইন স্পেসিং, <br> ফাঁক, ব্লক সূত্রের ফাঁক এবং লেখার আকার (ফন্ট সাইজ)।")
+                Button(onClick = onOpenSettings) { Text("সেটিংস খুলুন") }
             }
 
             SectionCard("থিম") {
@@ -122,29 +130,6 @@ fun ProfileScreen(settings: AppSettings, backupStatus: String, onOpenBackup: () 
 
             SectionCard("ছবির সংরক্ষণ নীতি") {
                 Text("JPEG · সর্বোচ্চ ২০৪৮ px · quality ৮৮। Paper Builder-এ যোগ করা ছবি আলাদা paper_media কপিতে থাকে; মূল প্রশ্ন মুছলেও paper snapshot-এর ছবি রাখা হয়।", style = MaterialTheme.typography.bodySmall)
-            }
-
-            SectionCard("লেখার আকার") {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(
-                        onClick = { settings.updateTextSize(TextSizePolicy.step(size, -1)) },
-                        enabled = size > TextSizePolicy.MIN,
-                    ) { Text("−") }
-                    Text(size.toBengali(), style = MaterialTheme.typography.titleMedium)
-                    OutlinedButton(
-                        onClick = { settings.updateTextSize(TextSizePolicy.step(size, 1)) },
-                        enabled = size < TextSizePolicy.MAX,
-                    ) { Text("+") }
-                    TextButton(
-                        onClick = { settings.updateTextSize(TextSizePolicy.DEFAULT) },
-                        enabled = size != TextSizePolicy.DEFAULT,
-                    ) { Text("ডিফল্ট (${TextSizePolicy.DEFAULT.toBengali()})") }
-                }
-                Text(
-                    "আকার ${TextSizePolicy.MIN.toBengali()} থেকে ${TextSizePolicy.MAX.toBengali()} পর্যন্ত। প্রশ্ন, উদ্দীপক, সংক্ষিপ্ত উত্তর ও সমাধানের মূল লেখায় এটি প্রযোজ্য; বাটন ও লেবেলের আকার অপরিবর্তিত থাকে।",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
 
             SectionCard("অ্যাক্টিভিটি লগ (Activity log)") {

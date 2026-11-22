@@ -46,6 +46,7 @@ import com.questionbank.app.ui.hierarchy.ReferenceHomeScreen
 import com.questionbank.app.ui.hierarchy.ReferenceCatalogScreen
 import com.questionbank.app.ui.hierarchy.ReferenceRow
 import com.questionbank.app.ui.profile.ProfileScreen
+import com.questionbank.app.ui.settings.SettingsScreen
 import com.questionbank.app.ui.paper.PaperBuilderScreen
 import com.questionbank.app.ui.media.ImageLibraryScreen
 import com.questionbank.app.domain.question.QuestionGroupKey
@@ -79,6 +80,7 @@ object Routes {
     const val PROFILE_HOME = "profile/home"
     const val BACKUP = "profile/backup"
     const val MEDIA_LIBRARY = "profile/media"
+    const val SETTINGS = "profile/settings"
 
     const val SUBJECTS = "type_cq/subjects"
     const val CHAPTERS = "type_cq/subjects/{subjectId}/chapters"
@@ -537,7 +539,12 @@ fun AppNavHost() {
                         backupStatus = backupStatusLine(container.backupPrefs),
                         onOpenBackup = { navController.navigate(Routes.BACKUP) },
                         onOpenMedia = { navController.navigate(Routes.MEDIA_LIBRARY) },
+                        onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                     )
+                }
+
+                composable(Routes.SETTINGS) {
+                    SettingsScreen(settings = container.appSettings, onBack = { navController.popBackStack() })
                 }
 
                 composable(Routes.MEDIA_LIBRARY) {

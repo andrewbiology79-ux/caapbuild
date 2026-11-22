@@ -32,6 +32,9 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.questionbank.app.ui.theme.LocalBlockGapDp
+import com.questionbank.app.ui.theme.LocalBreakGapDp
+import com.questionbank.app.ui.theme.LocalLineSpacingMultiplier
 import com.questionbank.app.ui.theme.LocalQuestionBodyTextSize
 import io.ratex.RaTeXView
 import kotlinx.coroutines.CancellationException
@@ -48,13 +51,15 @@ fun RichLatexText(
     modifier: Modifier = Modifier,
     color: Color = Color(0xFF1B1F2A),
     fontSize: TextUnit = LocalQuestionBodyTextSize.current.sp,
-    lineSpacingMultiplier: Float = 1.18f,
+    lineSpacingMultiplier: Float = LocalLineSpacingMultiplier.current,
     fontFamily: FontFamily? = null,
     fontWeight: FontWeight = FontWeight.Normal,
 ) {
     val segments = remember(text) { tokenizeLatexText(text) }
     val runs = remember(segments) { buildRenderRuns(segments) }
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    // Settings: gap above/below a display formula. Text lines inside one paragraph are not affected by it.
+    val blockGap = LocalBlockGapDp.current.dp
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(blockGap)) {
         runs.forEach { run ->
             when (run) {
                 is LatexRenderRun.Inline -> InlineLatexRun(
@@ -89,7 +94,8 @@ private fun InlineLatexRun(
 ) {
     val density = LocalDensity.current
     // One FlowRow per visual line: a "<br>" always starts a fresh row below the previous one.
-    Column(modifier = Modifier.fillMaxWidth()) {
+    // Settings: gap between lines that were split with the manual "<br>" marker (a normal single line is unaffected).
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(LocalBreakGapDp.current.dp)) {
         lines.forEach { line ->
             if (line.isEmpty()) {
                 // Deliberate blank line (two "<br>" in a row).

@@ -10,6 +10,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.questionbank.app.ui.settings.SpacingPolicy
 import com.questionbank.app.ui.settings.TextSizePolicy
 
 /** Colours follow the owner's design (plan 39.4, decision D-4: brand #3B4FD8). */
@@ -92,6 +93,11 @@ val LocalDarkTheme = staticCompositionLocalOf { false }
 /** User-selected size for question/stimulus/solution body text only; controls keep their designed typography. */
 val LocalQuestionBodyTextSize = staticCompositionLocalOf { TextSizePolicy.DEFAULT }
 
+/** Owner-chosen reading-text spacing (Settings): line-height multiplier, gap between "<br>" lines, gap around display formulas. */
+val LocalLineSpacingMultiplier = staticCompositionLocalOf { SpacingPolicy.lineMultiplier(SpacingPolicy.LINE_DEFAULT) }
+val LocalBreakGapDp = staticCompositionLocalOf { SpacingPolicy.BREAK_GAP_DEFAULT }
+val LocalBlockGapDp = staticCompositionLocalOf { SpacingPolicy.BLOCK_GAP_DEFAULT }
+
 /**
  * App-wide theme. Light/Dark are chosen in Settings; content body text size is separately exposed to body-text components.
  * The Settings text size is exposed only to question/stimulus/solution body text. Buttons, labels,
@@ -99,9 +105,20 @@ val LocalQuestionBodyTextSize = staticCompositionLocalOf { TextSizePolicy.DEFAUL
  * Fixed brand colours (no dynamic colour) so screens look the same on every device.
  */
 @Composable
-fun QuestionBankTheme(darkTheme: Boolean, textSize: Int, highContrast: Boolean = false, content: @Composable () -> Unit) {
+fun QuestionBankTheme(
+    darkTheme: Boolean,
+    textSize: Int,
+    highContrast: Boolean = false,
+    lineSpacingPercent: Int = SpacingPolicy.LINE_DEFAULT,
+    breakGapDp: Int = SpacingPolicy.BREAK_GAP_DEFAULT,
+    blockGapDp: Int = SpacingPolicy.BLOCK_GAP_DEFAULT,
+    content: @Composable () -> Unit,
+) {
     CompositionLocalProvider(
         LocalQuestionBodyTextSize provides TextSizePolicy.contentFontSizeSp(textSize),
+        LocalLineSpacingMultiplier provides SpacingPolicy.lineMultiplier(lineSpacingPercent),
+        LocalBreakGapDp provides SpacingPolicy.clampBreakGap(breakGapDp),
+        LocalBlockGapDp provides SpacingPolicy.clampBlockGap(blockGapDp),
         LocalDarkTheme provides darkTheme,
     ) {
         MaterialTheme(

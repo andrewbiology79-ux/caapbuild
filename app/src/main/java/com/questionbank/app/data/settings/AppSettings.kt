@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.questionbank.app.ui.settings.SpacingPolicy
 import com.questionbank.app.ui.settings.TextSizePolicy
 import com.questionbank.app.ui.question.EditorMode
 
@@ -37,6 +38,18 @@ class AppSettings(context: Context) {
     var highContrast by mutableStateOf(prefs.getBoolean(KEY_HIGH_CONTRAST, false))
         private set
 
+    /** Line height of ordinary text as a percent of the font size (see [SpacingPolicy]). */
+    var lineSpacingPercent by mutableIntStateOf(SpacingPolicy.clampLine(prefs.getInt(KEY_LINE_SPACING, SpacingPolicy.LINE_DEFAULT)))
+        private set
+
+    /** Extra gap in dp between lines split with the manual "<br>" marker. */
+    var breakGapDp by mutableIntStateOf(SpacingPolicy.clampBreakGap(prefs.getInt(KEY_BREAK_GAP, SpacingPolicy.BREAK_GAP_DEFAULT)))
+        private set
+
+    /** Gap in dp above and below a display formula written with double dollar signs. */
+    var blockGapDp by mutableIntStateOf(SpacingPolicy.clampBlockGap(prefs.getInt(KEY_BLOCK_GAP, SpacingPolicy.BLOCK_GAP_DEFAULT)))
+        private set
+
     fun updateDarkTheme(dark: Boolean) {
         darkTheme = dark
         prefs.edit().putBoolean(KEY_DARK, dark).apply()
@@ -46,6 +59,24 @@ class AppSettings(context: Context) {
         val value = TextSizePolicy.clamp(size)
         textSize = value
         prefs.edit().putInt(KEY_TEXT_SIZE, value).apply()
+    }
+
+    fun updateLineSpacing(percent: Int) {
+        val value = SpacingPolicy.clampLine(percent)
+        lineSpacingPercent = value
+        prefs.edit().putInt(KEY_LINE_SPACING, value).apply()
+    }
+
+    fun updateBreakGap(dp: Int) {
+        val value = SpacingPolicy.clampBreakGap(dp)
+        breakGapDp = value
+        prefs.edit().putInt(KEY_BREAK_GAP, value).apply()
+    }
+
+    fun updateBlockGap(dp: Int) {
+        val value = SpacingPolicy.clampBlockGap(dp)
+        blockGapDp = value
+        prefs.edit().putInt(KEY_BLOCK_GAP, value).apply()
     }
 
     fun updateDefaultEditorMode(mode: EditorMode) {
@@ -70,5 +101,8 @@ class AppSettings(context: Context) {
         private const val KEY_EDITOR_MODE = "default_editor_mode"
         private const val KEY_SEARCH_HIGHLIGHT = "search_highlight_terms"
         private const val KEY_HIGH_CONTRAST = "high_contrast"
+        private const val KEY_LINE_SPACING = "line_spacing_percent"
+        private const val KEY_BREAK_GAP = "break_gap_dp"
+        private const val KEY_BLOCK_GAP = "block_gap_dp"
     }
 }

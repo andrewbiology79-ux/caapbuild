@@ -64,6 +64,9 @@ class MainActivity : ComponentActivity() {
             val dark = settings.darkTheme
             val textSize = settings.textSize
             val highContrast = settings.highContrast
+            val lineSpacingPercent = settings.lineSpacingPercent
+            val breakGapDp = settings.breakGapDp
+            val blockGapDp = settings.blockGapDp
             // The header bar is always dark enough for light status-bar icons; the navigation bar follows the owner's theme.
             SideEffect {
                 enableEdgeToEdge(
@@ -75,7 +78,14 @@ class MainActivity : ComponentActivity() {
                     },
                 )
             }
-            QuestionBankTheme(darkTheme = dark, textSize = textSize, highContrast = highContrast) {
+            QuestionBankTheme(
+                darkTheme = dark,
+                textSize = textSize,
+                highContrast = highContrast,
+                lineSpacingPercent = lineSpacingPercent,
+                breakGapDp = breakGapDp,
+                blockGapDp = blockGapDp,
+            ) {
                 AppNavHost()
                 if (showStorageAccessPrompt && !storageAccessGranted) {
                     AlertDialog(
