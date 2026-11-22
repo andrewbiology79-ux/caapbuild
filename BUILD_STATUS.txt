@@ -1,3 +1,16 @@
+IMAGE-LOSS FIX (22 Nov 2026) - SOURCE EDIT ONLY, NOT COMPILED, NOT TESTED
+- Bug: after the app restarted, stored question images were deleted by the startup orphan collector. It compared a canonical
+  managed root with a non-canonical context.filesDir (/data/user/0/... vs /data/data/...), so every image looked orphaned.
+- Fix: ImagePipeline.reconcileAndCollectOrphans now passes filesDir.canonicalFile; OrphanMediaCollector compares canonical
+  paths, MOVES unknown files to media/.quarantine (purged after 30 days) instead of deleting, and skips the whole pass when the
+  database knows files but none on disk match.
+- UI: MediaThumbnail separates Loading (blank placeholder) from Missing ("ছবি অনুপলব্ধ"); ThumbnailCache (new) adds an LRU cache and
+  at most 3 parallel decodes.
+- New unit test: OrphanMediaCollectorTest (6 cases, includes a symlink reproduction). Not run here (no Gradle/Kotlin available).
+- Images already deleted by the old bug cannot be recovered; they must be added again.
+- Files changed: media/ImagePipeline.kt, media/recovery/OrphanMediaCollector.kt, ui/question/EditorImageAttachments.kt,
+  ui/question/ThumbnailCache.kt (new), test/.../OrphanMediaCollectorTest.kt (new), BUILD_STATUS.txt.
+
 CI RESULTS v1.70 SOURCE (20 Nov 2026) - see PROJECT_PLAN_v1_71_COMPILEFIX_CI.txt section 80
 - Run A: compileDebugKotlin FAILED, 8 errors; fixed in compilefix1.
 - Run B (compilefix1): compile OK; unit tests 147 of 148 passed (stale .db vs .qbbak expectation in RestoreSwapTest); androidTest compile OK; release assemble OK.

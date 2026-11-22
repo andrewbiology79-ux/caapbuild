@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -111,6 +112,12 @@ fun StimulusImageAttachments(
     }
 }
 
+private sealed interface ThumbnailState {
+    object Loading : ThumbnailState
+    object Missing : ThumbnailState
+    class Ready(val bitmap: Bitmap) : ThumbnailState
+}
+
 @Composable
 internal fun MediaThumbnail(
     pipeline: ImagePipeline,
@@ -119,21 +126,36 @@ internal fun MediaThumbnail(
     modifier: Modifier = Modifier.size(100.dp),
     contentScale: ContentScale = ContentScale.Crop,
 ) {
-    val bitmap by produceState<Bitmap?>(initialValue = null, imageId, imageScope) {
+    // Loading and Missing are different states: while the file is still being read nothing is claimed about it.
+    val state by produceState<ThumbnailState>(initialValue = ThumbnailState.Loading, imageId, imageScope) {
         value = withContext(Dispatchers.IO) {
             try {
-                val file = pipeline.fileForImage(imageId, imageScope) ?: return@withContext null
-                BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply { inSampleSize = 4 })
+                val file = pipeline.fileForImage(imageId, imageScope) ?: return@withContext ThumbnailState.Missing
+                val cacheKey = "${file.absolutePath}|${file.lastModified()}|${file.length()}|4"
+                val cached = ThumbnailCache.get(cacheKey)
+                if (cached != null) return@withContext ThumbnailState.Ready(cached)
+                val bitmap = ThumbnailCache.throttled {
+                    BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply { inSampleSize = 4 })
+                }
+                if (bitmap != null) {
+                    ThumbnailCache.put(cacheKey, bitmap)
+                    ThumbnailState.Ready(bitmap)
+                } else ThumbnailState.Missing
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
-                null
+                ThumbnailState.Missing
             } catch (_: OutOfMemoryError) {
-                null
+                ThumbnailState.Missing
             }
         }
     }
     // Do not recycle here: Compose draws the bitmap later on the render thread; the GC frees it.
-    if (bitmap != null) Image(bitmap!!.asImageBitmap(), contentDescription = "সংযুক্ত ছবি", modifier = modifier, contentScale = contentScale)
-    else Text("ছবি অনুপলব্ধ", style = MaterialTheme.typography.labelSmall, modifier = Modifier.height(48.dp))
+    when (val current = state) {
+        is ThumbnailState.Ready -> Image(current.bitmap.asImageBitmap(), contentDescription = "সংযুক্ত ছবি", modifier = modifier, contentScale = contentScale)
+        ThumbnailState.Loading -> Box(modifier)
+        ThumbnailState.Missing -> Text("ছবি অনুপলব্ধ", style = MaterialTheme.typography.labelSmall, modifier = Modifier.height(48.dp))
+    }
 }
 
 internal fun moveStimulusImage(images: List<QuestionStimulusImage>, imageId: String, delta: Int): List<QuestionStimulusImage> {

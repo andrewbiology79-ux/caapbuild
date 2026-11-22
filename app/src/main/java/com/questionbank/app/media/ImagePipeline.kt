@@ -427,11 +427,17 @@ class ImagePipeline(
             .mapNotNull { operation -> runCatching { JSONObject(operation.payloadJson).optString("imageId").takeIf { id -> id.isNotBlank() } }.getOrNull() }
             .toSet()
 
+        // filesDir is compared in canonical form: safeFile() returns canonical paths, and on Android the raw
+        // filesDir (/data/user/0/...) differs from its canonical form (/data/data/...). Comparing the two
+        // forms made every stored image look like an orphan. Unknown files are quarantined, never deleted.
+        val canonicalFilesDir = context.filesDir.canonicalFile
+        val quarantineRoot = File(canonicalFilesDir, "media/.quarantine")
         for (scope in ImageScope.entries) {
             // Ownership boundary is exactly media/type_cq and media/chapter_cq. Never pass paper_media here.
             val managedRoot = safeFile("media/${scope.folder}")
-            orphanCollector.collect(managedRoot, context.filesDir, knownByScope.getValue(scope), activeIds)
+            orphanCollector.collect(managedRoot, canonicalFilesDir, knownByScope.getValue(scope), activeIds, quarantineRoot)
         }
+        orphanCollector.purgeQuarantine(quarantineRoot)
 
         // Import staging files are private to ImagePipeline; keep only those tied to active journal entries.
         orphanCollector.collectPending(safeFile("media/.pending"), activeIds)
