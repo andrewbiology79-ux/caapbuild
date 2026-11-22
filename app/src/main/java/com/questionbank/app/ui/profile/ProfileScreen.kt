@@ -30,13 +30,14 @@ import com.questionbank.app.ui.components.AppHeader
 import com.questionbank.app.ui.format.toBengali
 
 /**
- * Profile tab (design 39.3): the hub for backup and settings. Statistics and categories come with later packages.
+ * Profile tab (design 39.3): the hub for category management, backup, media and settings.
  * Settings changes apply at once to the whole app and are remembered.
  */
 @Composable
 fun ProfileScreen(
     settings: AppSettings,
     backupStatus: String,
+    onOpenCategories: () -> Unit,
     onOpenBackup: () -> Unit,
     onOpenMedia: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -56,6 +57,11 @@ fun ProfileScreen(
             modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            SectionCard("ক্যাটাগরি") {
+                Text("প্রশ্নপত্রের ক্যাটাগরি তৈরি, নাম পরিবর্তন, সাজানো এবং ক্যাটাগরি বা তার ভেতরের প্রশ্নপত্র মুছে ফেলা।")
+                Button(onClick = onOpenCategories) { Text("ক্যাটাগরি পরিচালনা") }
+            }
+
             SectionCard("ব্যাকআপ ও রিস্টোর") {
                 Text(backupStatus)
                 Button(onClick = onOpenBackup) { Text("ব্যাকআপ ও রিস্টোর খুলুন") }

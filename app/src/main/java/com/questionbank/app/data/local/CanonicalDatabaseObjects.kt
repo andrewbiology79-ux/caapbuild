@@ -78,9 +78,47 @@ END""",
         """CREATE TRIGGER IF NOT EXISTS trg_chapter_question_fts_delete AFTER DELETE ON chapter_cq_questions BEGIN
  DELETE FROM chapter_cq_question_fts WHERE rowid=OLD.fts_id;
 END""",
-        """INSERT OR IGNORE INTO paper_categories (paper_category_id, name, description, color, icon, sort_order, is_system, created_at, updated_at) VALUES ('system_uncategorized', 'অশ্রেণিবদ্ধ', 'সিস্টেমের ডিফল্ট ক্যাটাগরি', '', '', 0, 1, 0, 0)"""
     )
 
-    /** Base objects plus triggers that re-create the canonical CHECK constraints Room cannot declare. */
-    val statements: List<String> = baseStatements + CheckEmulationTriggers.statements
+    /**
+     * Idempotent repair run whenever the database is opened (including after a restored backup).
+     * A legacy/imported row using either known spelling of the uncategorized name is adopted as the permanent system row when possible;
+     * any additional spelling variants are merged into it before the unique name is normalized.
+     */
+    val uncategorizedRepairStatements: List<String> = listOf(
+        """UPDATE paper_categories
+           SET paper_category_id = 'system_uncategorized', name = 'অশ্রেণিবদ্ধ',
+               description = CASE WHEN trim(description) = '' THEN 'সিস্টেমের ডিফল্ট ক্যাটাগরি' ELSE description END,
+               sort_order = 0, is_system = 1
+           WHERE paper_category_id = (
+               SELECT paper_category_id FROM paper_categories
+               WHERE trim(name) IN ('অশ্রেণিবদ্ধ', 'অশ্রেণীবদ্ধ') AND paper_category_id <> 'system_uncategorized'
+               ORDER BY CASE
+                          WHEN name = 'অশ্রেণিবদ্ধ' THEN 0
+                          WHEN name = 'অশ্রেণীবদ্ধ' THEN 1
+                          ELSE 2
+                        END,
+                        is_system DESC, sort_order, created_at, paper_category_id LIMIT 1
+           )
+           AND NOT EXISTS (SELECT 1 FROM paper_categories WHERE paper_category_id = 'system_uncategorized')""",
+        """INSERT OR IGNORE INTO paper_categories
+           (paper_category_id, name, description, color, icon, sort_order, is_system, created_at, updated_at)
+           VALUES ('system_uncategorized', 'অশ্রেণিবদ্ধ', 'সিস্টেমের ডিফল্ট ক্যাটাগরি', '', '', 0, 1, 0, 0)""",
+        """UPDATE papers SET paper_category_id = 'system_uncategorized'
+           WHERE paper_category_id IN (
+             SELECT paper_category_id FROM paper_categories
+             WHERE trim(name) IN ('অশ্রেণিবদ্ধ', 'অশ্রেণীবদ্ধ') AND paper_category_id <> 'system_uncategorized'
+           )""",
+        """UPDATE paper_categories SET is_system = 0
+           WHERE paper_category_id <> 'system_uncategorized' AND trim(name) IN ('অশ্রেণিবদ্ধ', 'অশ্রেণীবদ্ধ')""",
+        """DELETE FROM paper_categories
+           WHERE paper_category_id <> 'system_uncategorized' AND trim(name) IN ('অশ্রেণিবদ্ধ', 'অশ্রেণীবদ্ধ')""",
+        """UPDATE paper_categories
+           SET name = 'অশ্রেণিবদ্ধ', description = 'সিস্টেমের ডিফল্ট ক্যাটাগরি',
+               sort_order = 0, is_system = 1
+           WHERE paper_category_id = 'system_uncategorized'""",
+    )
+
+    /** Base objects plus triggers, CHECK emulation and restore-safe singleton repair. */
+    val statements: List<String> = baseStatements + CheckEmulationTriggers.statements + uncategorizedRepairStatements
 }

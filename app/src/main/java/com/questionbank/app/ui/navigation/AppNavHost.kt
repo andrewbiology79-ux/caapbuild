@@ -46,6 +46,7 @@ import com.questionbank.app.ui.hierarchy.ReferenceHomeScreen
 import com.questionbank.app.ui.hierarchy.ReferenceCatalogScreen
 import com.questionbank.app.ui.hierarchy.ReferenceRow
 import com.questionbank.app.ui.profile.ProfileScreen
+import com.questionbank.app.ui.profile.PaperCategoryManagementScreen
 import com.questionbank.app.ui.settings.SettingsScreen
 import com.questionbank.app.ui.paper.PaperBuilderScreen
 import com.questionbank.app.ui.media.ImageLibraryScreen
@@ -78,6 +79,7 @@ object Routes {
     const val CHAPTER_CQ_QUESTIONS = "chapter_cq/subjects/{subjectId}/chapters/{chapterId}/questions"
     const val FILTER_HOME = "filter/home"
     const val PROFILE_HOME = "profile/home"
+    const val PROFILE_CATEGORIES = "profile/categories"
     const val BACKUP = "profile/backup"
     const val MEDIA_LIBRARY = "profile/media"
     const val SETTINGS = "profile/settings"
@@ -537,10 +539,15 @@ fun AppNavHost() {
                     ProfileScreen(
                         settings = container.appSettings,
                         backupStatus = backupStatusLine(container.backupPrefs),
+                        onOpenCategories = { navController.navigate(Routes.PROFILE_CATEGORIES) },
                         onOpenBackup = { navController.navigate(Routes.BACKUP) },
                         onOpenMedia = { navController.navigate(Routes.MEDIA_LIBRARY) },
                         onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                     )
+                }
+
+                composable(Routes.PROFILE_CATEGORIES) {
+                    PaperCategoryManagementScreen(repository = container.papers, onBack = { navController.popBackStack() })
                 }
 
                 composable(Routes.SETTINGS) {

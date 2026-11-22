@@ -460,15 +460,15 @@ fun PaperBuilderScreen(repository: PaperRepository) {
         AlertDialog(
             onDismissRequest = { categoryDeleteConfirm = false },
             title = { Text("Category মুছবেন?") },
-            text = { Text("শুধু কোনো প্রশ্নপত্র না থাকা custom Category মুছতে পারবেন।") },
+            text = { Text("এই Category এবং এর ভেতরের সব প্রশ্নপত্র ও snapshot item স্থায়ীভাবে মুছে যাবে। মূল Type_CQ / Chapter_CQ প্রশ্ন অক্ষত থাকবে। অশ্রেণিবদ্ধ মুছতে পারবেন না।") },
             confirmButton = {
                 TextButton(onClick = {
                     scope.launch {
-                        val deleted = repository.deleteEmptyCategory(selectedCategory.paperCategoryId)
+                        val deleted = repository.deleteCategoryAndContents(selectedCategory.paperCategoryId)
                         if (deleted) {
                             selectedCategoryId = PaperRepository.DEFAULT_CATEGORY_ID
-                            status = "খালি Category মুছে ফেলা হয়েছে"
-                        } else status = "Category-তে প্রশ্নপত্র আছে, অথবা এটি system Category"
+                            status = "Category ও এর ভেতরের প্রশ্নপত্র মুছে ফেলা হয়েছে"
+                        } else status = "Category মুছে ফেলা যায়নি; অশ্রেণিবদ্ধ স্থায়ী"
                         categoryDeleteConfirm = false
                     }
                 }) { Text("মুছুন") }

@@ -1,3 +1,11 @@
+# সর্বশেষ আপডেট — Profile Category Management (22 Nov 2026)
+
+এই সোর্স প্যাকেজে Profile থেকে প্রশ্নপত্রের ক্যাটাগরি পরিচালনা যোগ করা হয়েছে: ক্যাটাগরি তৈরি/নাম সম্পাদনা/রিঅর্ডার, ক্যাটাগরি ও প্রশ্নপত্রে multi-select এবং delete। ক্যাটাগরি মুছলে তার ভেতরের সব প্রশ্নপত্র ও snapshot data মুছে যায়; মূল Type CQ / Chapter CQ source question অক্ষত থাকে। `অশ্রেণীবদ্ধ` স্থায়ী এবং restore/open-এর সময় duplicate variant merge করে একটিমাত্র system category রাখা হয়। Version: **0.2.45-profile-categories (code 50)**। বিস্তারিত `CHANGELOG_PROFILE_CATEGORIES_BN.md`।
+
+**যাচাই সীমাবদ্ধতা:** SQLite schema/runtime installer, duplicate repair ও delete cascade Python SQLite-এ যাচাই করা হয়েছে। Gradle 8.14.3 ডাউনলোডে `services.gradle.org` DNS/network ব্যর্থ হওয়ায় Android Gradle compile/test/APK build এবং device UI test এই পরিবেশে সম্পন্ন হয়নি।
+
+---
+
 # v1.71: CI compile errors fixed (compilefix2), plan: PROJECT_PLAN_v1_71_COMPILEFIX_CI.txt, not yet re-run.
 
 # সর্বশেষ সোর্স প্রার্থী — v1.70 (Phase 0–16, source-only)
@@ -48,3 +56,10 @@
   3. **`$$...$$` স্পেসিং** (০–২৪ dp, ডিফল্ট ২): ব্লক সূত্র ও তার আগের-পরের লেখার মাঝের দূরত্ব।
   4. **মূল অ্যাপের ফন্ট সাইজ** (১২–২৮, ডিফল্ট ১৬): আগের "লেখার আকার" অপশনটি এখন এখানে; প্রশ্ন, উদ্দীপক, উত্তর ও সমাধানের লেখায় প্রযোজ্য, বাটন-লেবেলে নয়।
 - মানগুলো ফোনেই জমা থাকে, ব্যাকআপে যায় না।
+
+
+PROFILE CATEGORY RECHECK (22 Nov 2026)
+- Canonical fixed folder name matches the original SQL/old Caa source exactly: `অশ্রেণিবদ্ধ` (হ্রস্ব ই).
+- Restore repair merges both the canonical spelling and the previously introduced long-ঈ spelling, including whitespace variants.
+- The fixed folder displays the same row menu, with rename/delete disabled.
+- Android Gradle tests remain unrun because Gradle 8.14.3 cannot be downloaded in this environment (DNS unavailable).

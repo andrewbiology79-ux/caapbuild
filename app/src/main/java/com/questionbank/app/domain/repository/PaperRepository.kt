@@ -5,10 +5,14 @@ import com.questionbank.app.data.local.entity.PaperCategoriesEntity
 import com.questionbank.app.data.local.entity.PaperQuestionItemsEntity
 import com.questionbank.app.data.local.entity.PaperSectionsEntity
 import com.questionbank.app.data.local.entity.PapersEntity
+import com.questionbank.app.domain.model.PaperCategorySummary
+import com.questionbank.app.domain.model.PaperListSummary
 import kotlinx.coroutines.flow.Flow
 
 interface PaperRepository {
     fun observeCategories(): Flow<List<PaperCategoriesEntity>>
+    fun observeCategorySummaries(): Flow<List<PaperCategorySummary>>
+    fun observePaperSummaries(categoryId: String): Flow<List<PaperListSummary>>
     fun observePapers(categoryId: String): Flow<List<PapersEntity>>
     fun observeSections(paperId: String): Flow<List<PaperSectionsEntity>>
     fun observeItems(paperId: String): Flow<List<PaperQuestionItemsEntity>>
@@ -18,7 +22,10 @@ interface PaperRepository {
     suspend fun createPaper(title: String, categoryId: String = DEFAULT_CATEGORY_ID): String
     suspend fun createCategory(name: String): String
     suspend fun renameCategory(categoryId: String, name: String): Boolean
-    suspend fun deleteEmptyCategory(categoryId: String): Boolean
+    suspend fun deleteCategoryAndContents(categoryId: String): Boolean
+    suspend fun deleteCategoriesAndContents(categoryIds: List<String>): Int
+    suspend fun reorderCategories(orderedCategoryIds: List<String>): Boolean
+    suspend fun deletePapersByIds(paperIds: List<String>): Int
     suspend fun deletePaper(paperId: String): Boolean
     suspend fun addSection(paperId: String, title: String): String
     suspend fun moveSection(paperId: String, sectionId: String, direction: Int): Boolean

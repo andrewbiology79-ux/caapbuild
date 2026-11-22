@@ -79,6 +79,74 @@ class CanonicalSqlContractTest {
     }
 
     @Test
+    fun importedUncategorizedVariantsAreMergedIntoOnePermanentSystemRow() {
+        DriverManager.getConnection("jdbc:sqlite::memory:").use { connection ->
+            connection.createStatement().use { st ->
+                st.execute("PRAGMA foreign_keys = ON")
+                st.execute("CREATE TABLE paper_categories (paper_category_id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL UNIQUE, description TEXT NOT NULL DEFAULT '', color TEXT NOT NULL DEFAULT '', icon TEXT NOT NULL DEFAULT '', sort_order INTEGER NOT NULL DEFAULT 0, is_system INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
+                st.execute("CREATE TABLE papers (paper_id TEXT PRIMARY KEY NOT NULL, paper_category_id TEXT NOT NULL, short_name TEXT NOT NULL DEFAULT '', title TEXT NOT NULL, subject_line TEXT NOT NULL DEFAULT '', duration_text TEXT NOT NULL DEFAULT '', total_marks REAL, note_text TEXT NOT NULL DEFAULT '', sort_order INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, FOREIGN KEY(paper_category_id) REFERENCES paper_categories(paper_category_id) ON UPDATE CASCADE ON DELETE RESTRICT)")
+                // Original app / schema spelling is short ই. The long ঈ spelling is a legacy typo to absorb.
+                st.execute("INSERT INTO paper_categories(paper_category_id,name,created_at,updated_at) VALUES('old_uncat','অশ্রেণিবদ্ধ',1,1)")
+                st.execute("INSERT INTO paper_categories(paper_category_id,name,created_at,updated_at) VALUES('legacy_uncat_copy','অশ্রেণীবদ্ধ ',2,2)")
+                st.execute("INSERT INTO papers(paper_id,paper_category_id,title,created_at,updated_at) VALUES('p1','legacy_uncat_copy','legacy paper',2,2)")
+            }
+            CanonicalDatabaseObjects.uncategorizedRepairStatements.forEach { statement ->
+                connection.createStatement().use { it.execute(statement) }
+            }
+            // Running the on-open repair again must remain safe and leave the same singleton.
+            CanonicalDatabaseObjects.uncategorizedRepairStatements.forEach { statement ->
+                connection.createStatement().use { it.execute(statement) }
+            }
+            connection.createStatement().use { st ->
+                st.executeQuery("SELECT paper_category_id, name, is_system FROM paper_categories").use { rs ->
+                    assertTrue(rs.next())
+                    assertEquals("system_uncategorized", rs.getString(1))
+                    assertEquals("অশ্রেণিবদ্ধ", rs.getString(2))
+                    assertEquals(1, rs.getInt(3))
+                    assertFalse(rs.next())
+                }
+                st.executeQuery("SELECT paper_category_id FROM papers WHERE paper_id='p1'").use { rs ->
+                    assertTrue(rs.next())
+                    assertEquals("system_uncategorized", rs.getString(1))
+                }
+                st.executeQuery("PRAGMA foreign_key_check").use { rs -> assertFalse(rs.next()) }
+            }
+        }
+    }
+
+    @Test
+    fun existingPermanentCategoryAbsorbsImportedSpellingAndWhitespaceDuplicates() {
+        DriverManager.getConnection("jdbc:sqlite::memory:").use { connection ->
+            connection.createStatement().use { st ->
+                st.execute("PRAGMA foreign_keys = ON")
+                st.execute("CREATE TABLE paper_categories (paper_category_id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL UNIQUE, description TEXT NOT NULL DEFAULT '', color TEXT NOT NULL DEFAULT '', icon TEXT NOT NULL DEFAULT '', sort_order INTEGER NOT NULL DEFAULT 0, is_system INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
+                st.execute("CREATE TABLE papers (paper_id TEXT PRIMARY KEY NOT NULL, paper_category_id TEXT NOT NULL, title TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, FOREIGN KEY(paper_category_id) REFERENCES paper_categories(paper_category_id) ON UPDATE CASCADE ON DELETE RESTRICT)")
+                st.execute("INSERT INTO paper_categories(paper_category_id,name,is_system,created_at,updated_at) VALUES('system_uncategorized','অশ্রেণিবদ্ধ',1,0,0)")
+                st.execute("INSERT INTO paper_categories(paper_category_id,name,created_at,updated_at) VALUES('copy_short',' অশ্রেণিবদ্ধ  ',1,1)")
+                st.execute("INSERT INTO paper_categories(paper_category_id,name,created_at,updated_at) VALUES('copy_long','অশ্রেণীবদ্ধ',2,2)")
+                st.execute("INSERT INTO papers VALUES('p-short','copy_short','short spelling paper',1,1)")
+                st.execute("INSERT INTO papers VALUES('p-long','copy_long','long spelling paper',2,2)")
+            }
+            CanonicalDatabaseObjects.uncategorizedRepairStatements.forEach { statement ->
+                connection.createStatement().use { it.execute(statement) }
+            }
+            connection.createStatement().use { st ->
+                st.executeQuery("SELECT COUNT(*), MIN(name), MIN(is_system) FROM paper_categories").use { rs ->
+                    assertTrue(rs.next())
+                    assertEquals(1, rs.getInt(1))
+                    assertEquals("অশ্রেণিবদ্ধ", rs.getString(2))
+                    assertEquals(1, rs.getInt(3))
+                }
+                st.executeQuery("SELECT COUNT(*) FROM papers WHERE paper_category_id='system_uncategorized'").use { rs ->
+                    assertTrue(rs.next())
+                    assertEquals(2, rs.getInt(1))
+                }
+                st.executeQuery("PRAGMA foreign_key_check").use { rs -> assertFalse(rs.next()) }
+            }
+        }
+    }
+
+    @Test
     fun canonicalSqlExecutesAndPassesIntegrityAndFtsChecks() {
         val sql = javaClass.classLoader!!.getResource("QuestionBank_SQLite_Schema_v1_1.sql")!!.readText()
         DriverManager.getConnection("jdbc:sqlite::memory:").use { connection ->

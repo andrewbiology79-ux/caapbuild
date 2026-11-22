@@ -13,8 +13,8 @@ android {
         applicationId = "com.questionbank.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 49
-        versionName = "0.2.44-crop-scan-undo"
+        versionCode = 50
+        versionName = "0.2.45-profile-categories"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

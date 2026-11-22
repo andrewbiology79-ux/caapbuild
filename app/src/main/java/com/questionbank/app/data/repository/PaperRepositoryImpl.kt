@@ -3,6 +3,8 @@ package com.questionbank.app.data.repository
 import com.questionbank.app.data.local.dao.ChapterCqDataDao
 import com.questionbank.app.data.local.dao.PaperSourceRowDb
 import com.questionbank.app.data.local.dao.SharedDataDao
+import com.questionbank.app.domain.model.PaperCategorySummary
+import com.questionbank.app.domain.model.PaperListSummary
 import com.questionbank.app.data.local.dao.TypeCqQuestionDao
 import com.questionbank.app.data.local.entity.PaperImagesEntity
 import com.questionbank.app.data.local.entity.PaperItemImagesEntity
@@ -18,7 +20,11 @@ import com.questionbank.app.media.ImageScope
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import org.json.JSONObject
+
+private fun isReservedUncategorizedName(name: String): Boolean =
+    name.trim() in setOf("অশ্রেণিবদ্ধ", "অশ্রেণীবদ্ধ")
 
 class PaperRepositoryImpl(
     private val dao: SharedDataDao,
@@ -29,6 +35,12 @@ class PaperRepositoryImpl(
     private val clock: () -> Long = { System.currentTimeMillis() },
 ) : PaperRepository {
     override fun observeCategories() = dao.observePaperCategories()
+    override fun observeCategorySummaries() = dao.observePaperCategorySummaries().map { rows ->
+        rows.map { PaperCategorySummary(it.categoryId, it.name, it.sortOrder, it.isSystem != 0L, it.paperCount, it.questionCount) }
+    }
+    override fun observePaperSummaries(categoryId: String) = dao.observePaperListSummaries(categoryId).map { rows ->
+        rows.map { PaperListSummary(it.paperId, it.title, it.subjectLine, it.sortOrder, it.questionCount) }
+    }
     override fun observePapers(categoryId: String) = dao.observePapers(categoryId)
     override fun observeSections(paperId: String) = dao.observePaperSections(paperId)
     override fun observeItems(paperId: String) = dao.observePaperItems(paperId)
@@ -52,6 +64,8 @@ class PaperRepositoryImpl(
     override suspend fun createCategory(name: String): String {
         val clean = name.trim().take(60)
         require(clean.isNotEmpty()) { "ক্যাটাগরির নাম লিখুন" }
+        require(!isReservedUncategorizedName(clean)) { "অশ্রেণিবদ্ধ ক্যাটাগরিটি স্থায়ী; এই নামে নতুন ক্যাটাগরি তৈরি করা যাবে না" }
+        require(dao.paperCategoryNameExists(clean) == 0) { "এই নামে ক্যাটাগরি আগে থেকেই আছে" }
         beforeWrite()
         val now = clock()
         val id = "paper_category_${UUID.randomUUID()}"
@@ -90,15 +104,37 @@ class PaperRepositoryImpl(
 
     override suspend fun renameCategory(categoryId: String, name: String): Boolean {
         val clean = name.trim().take(60)
-        if (clean.isEmpty()) return false
+        if (clean.isEmpty() || categoryId == PaperRepository.DEFAULT_CATEGORY_ID || isReservedUncategorizedName(clean)) return false
+        if (dao.paperCategoryNameExists(clean) > 0) {
+            val current = dao.allPaperCategories().firstOrNull { it.paperCategoryId == categoryId }
+            if (current?.name?.trim()?.equals(clean, ignoreCase = true) != true) return false
+        }
         beforeWrite()
-        return dao.renamePaperCategory(categoryId, clean, clock()) == 1
+        return runCatching { dao.renamePaperCategory(categoryId, clean, clock()) == 1 }.getOrDefault(false)
     }
 
-    override suspend fun deleteEmptyCategory(categoryId: String): Boolean {
-        if (categoryId == PaperRepository.DEFAULT_CATEGORY_ID) return false
+    override suspend fun deleteCategoryAndContents(categoryId: String): Boolean =
+        deleteCategoriesAndContents(listOf(categoryId)) == 1
+
+    override suspend fun deleteCategoriesAndContents(categoryIds: List<String>): Int {
+        if (categoryIds.isEmpty() || categoryIds.all { it == PaperRepository.DEFAULT_CATEGORY_ID }) return 0
         beforeWrite()
-        return dao.deleteEmptyPaperCategory(categoryId) == 1
+        val deleted = dao.deletePaperCategoriesWithPapers(categoryIds.filter { it != PaperRepository.DEFAULT_CATEGORY_ID })
+        if (deleted > 0) collectOrphanMedia()
+        return deleted
+    }
+
+    override suspend fun reorderCategories(orderedCategoryIds: List<String>): Boolean {
+        beforeWrite()
+        return dao.reorderPaperCategories(orderedCategoryIds, clock())
+    }
+
+    override suspend fun deletePapersByIds(paperIds: List<String>): Int {
+        if (paperIds.isEmpty()) return 0
+        beforeWrite()
+        val deleted = dao.deletePapers(paperIds)
+        if (deleted > 0) collectOrphanMedia()
+        return deleted
     }
 
     override suspend fun deletePaper(paperId: String): Boolean {

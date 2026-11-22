@@ -216,3 +216,22 @@ DEEP STATIC RECHECK v1.54
 - No Gradle build, Kotlin compile, KSP, unit/instrumented/emulator/phone tests run, as requested by owner. ZIP integrity is not app verification.
 - Phase 6/7/8 remain PARTIAL / UNVERIFIED. Phase 4/5 M0 NOT PASSED. Room identityHash not checked. Version remains code 36 / 0.2.31-phase5-wip2.
 - See PROJECT_PLAN_v1_54_UPDATED.txt and STATIC_RECHECK_REPORT_v1_54.txt.
+
+
+PROFILE CATEGORY MANAGEMENT (22 Nov 2026) - SOURCE UPDATE, SQLITE-VALIDATED, ANDROID BUILD UNVERIFIED
+- Profile now opens a category manager with create, rename, reorder, select-all, multi-select and delete.
+- Category detail lists its papers and supports paper multi-select / bulk delete. No bottom action panel is used.
+- Deleting a category also deletes all its papers, sections, snapshot items and item-image links; orphan paper media is collected. Source Type CQ / Chapter CQ questions remain untouched.
+- `অশ্রেণিবদ্ধ` (the exact original SQL/old Caa spelling, short ই) is the permanent category. UI/repository prevent rename/delete; the SQLite trigger prevents direct deletion; the repository prevents creation/rename using either spelling. The on-open/restore repair merges both spelling variants and whitespace variants into `system_uncategorized`, moving their papers there.
+- SQLite schema/runtime installer, restore duplicate repair (including a pre-existing canonical row), foreign-key integrity and delete cascade were checked with Python SQLite.
+- `./gradlew :app:testDebugUnitTest --no-daemon` was attempted, but the wrapper could not download Gradle 8.14.3 because `services.gradle.org` returned `UnknownHostException`. No Android/Kotlin/Compose compile, Gradle unit test, APK build, emulator or device test could be completed.
+- Version: code 50 / `0.2.45-profile-categories`; no Room entity/schema version change.
+- See `CHANGELOG_PROFILE_CATEGORIES_BN.md`.
+
+
+PROFILE CATEGORY CAREFUL RECHECK (22 Nov 2026)
+- Found and corrected a spelling mismatch: the original SQL seed and old Caa source both use `অশ্রেণিবদ্ধ` (short ই), while the first category patch used `অশ্রেণীবদ্ধ` (long ঈ).
+- Restore repair now recognizes both spellings plus leading/trailing spaces; it keeps only one canonical `system_uncategorized` row named `অশ্রেণিবদ্ধ`, and moves papers from aliases into that row.
+- Regression scenarios passed in Python SQLite: existing canonical row + aliases, missing canonical ID + legacy adoption, wrong canonical spelling, repeated/idempotent repair, protected-row deletion, and full paper/section/snapshot cascade while preserving source CQ questions.
+- The category row menu is shown for the permanent category, but rename/delete are disabled.
+- Gradle 8.14.3 download was retried and again failed with `UnknownHostException`; Android/Compose compile and Android tests remain unverified.

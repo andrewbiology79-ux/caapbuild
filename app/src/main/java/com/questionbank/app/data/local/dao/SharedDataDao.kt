@@ -8,6 +8,28 @@ import androidx.room.Transaction
 import com.questionbank.app.data.local.entity.*
 import kotlinx.coroutines.flow.Flow
 
+
+
+data class PaperCategorySummaryDb(
+    val categoryId: String,
+    val name: String,
+    val sortOrder: Long,
+    val isSystem: Long,
+    val paperCount: Int,
+    val questionCount: Int,
+)
+
+data class PaperListSummaryDb(
+    val paperId: String,
+    val title: String,
+    val subjectLine: String,
+    val sortOrder: Long,
+    val questionCount: Int,
+)
+
+
+
+
 /** Shared catalog, metadata, journal and paper persistence. No question-scope tables are exposed here. */
 @Dao
 abstract class SharedDataDao {
@@ -67,6 +89,37 @@ abstract class SharedDataDao {
 
     @Query("SELECT * FROM paper_categories ORDER BY sort_order, name, paper_category_id")
     abstract fun observePaperCategories(): Flow<List<PaperCategoriesEntity>>
+
+    @Query("""
+        SELECT c.paper_category_id AS categoryId, c.name AS name, c.sort_order AS sortOrder,
+               c.is_system AS isSystem, COUNT(DISTINCT p.paper_id) AS paperCount,
+               COUNT(DISTINCT i.item_id) AS questionCount
+        FROM paper_categories c
+        LEFT JOIN papers p ON p.paper_category_id = c.paper_category_id
+        LEFT JOIN paper_question_items i ON i.paper_id = p.paper_id
+        GROUP BY c.paper_category_id, c.name, c.sort_order, c.is_system
+        ORDER BY CASE WHEN c.is_system = 1 THEN 0 ELSE 1 END, c.sort_order, c.name, c.paper_category_id
+    """)
+    abstract fun observePaperCategorySummaries(): Flow<List<PaperCategorySummaryDb>>
+
+    @Query("""
+        SELECT p.paper_id AS paperId, p.title AS title, p.subject_line AS subjectLine,
+               p.sort_order AS sortOrder, COUNT(i.item_id) AS questionCount
+        FROM papers p LEFT JOIN paper_question_items i ON i.paper_id = p.paper_id
+        WHERE p.paper_category_id = :categoryId
+        GROUP BY p.paper_id, p.title, p.subject_line, p.sort_order
+        ORDER BY p.sort_order, p.title, p.paper_id
+    """)
+    abstract fun observePaperListSummaries(categoryId: String): Flow<List<PaperListSummaryDb>>
+
+    @Query("SELECT * FROM paper_categories ORDER BY sort_order, name, paper_category_id")
+    abstract suspend fun allPaperCategories(): List<PaperCategoriesEntity>
+
+    @Query("SELECT COUNT(*) FROM paper_categories WHERE lower(trim(name)) = lower(trim(:name))")
+    abstract suspend fun paperCategoryNameExists(name: String): Int
+
+    @Query("UPDATE paper_categories SET sort_order = :sortOrder, updated_at = :now WHERE paper_category_id = :categoryId AND is_system = 0")
+    abstract suspend fun updatePaperCategoryOrder(categoryId: String, sortOrder: Long, now: Long): Int
 
     /** One database-level keyset page across both independent question scopes; no deep OFFSET scan. */
     @Query("""
@@ -133,8 +186,40 @@ abstract class SharedDataDao {
     @Query("UPDATE paper_categories SET name = :name, updated_at = :now WHERE paper_category_id = :categoryId AND is_system = 0")
     abstract suspend fun renamePaperCategory(categoryId: String, name: String, now: Long): Int
 
-    @Query("DELETE FROM paper_categories WHERE paper_category_id = :categoryId AND is_system = 0 AND NOT EXISTS (SELECT 1 FROM papers WHERE paper_category_id = :categoryId)")
-    abstract suspend fun deleteEmptyPaperCategory(categoryId: String): Int
+    @Query("SELECT is_system FROM paper_categories WHERE paper_category_id = :categoryId LIMIT 1")
+    abstract suspend fun paperCategoryIsSystem(categoryId: String): Long?
+
+    @Query("SELECT paper_id FROM papers WHERE paper_category_id = :categoryId ORDER BY sort_order, title, paper_id")
+    abstract suspend fun paperIdsInCategory(categoryId: String): List<String>
+
+    @Query("DELETE FROM paper_categories WHERE paper_category_id = :categoryId AND is_system = 0")
+    abstract suspend fun deletePaperCategory(categoryId: String): Int
+
+    @Transaction
+    open suspend fun deletePaperCategoriesWithPapers(categoryIds: List<String>): Int {
+        var deleted = 0
+        categoryIds.distinct().forEach { categoryId ->
+            if (paperCategoryIsSystem(categoryId) != 0L) return@forEach
+            paperIdsInCategory(categoryId).forEach { paperId -> deletePaper(paperId) }
+            deleted += deletePaperCategory(categoryId)
+        }
+        return deleted
+    }
+
+    @Transaction
+    open suspend fun deletePapers(paperIds: List<String>): Int =
+        paperIds.distinct().sumOf { deletePaper(it) }
+
+    @Transaction
+    open suspend fun reorderPaperCategories(orderedCategoryIds: List<String>, now: Long): Boolean {
+        val currentIds = allPaperCategories().filter { it.isSystem == 0L }.map { it.paperCategoryId }.toSet()
+        if (orderedCategoryIds.toSet() != currentIds || orderedCategoryIds.size != currentIds.size) return false
+        orderedCategoryIds.forEachIndexed { index, id ->
+            if (updatePaperCategoryOrder(id, index + 1L, now) != 1) return false
+        }
+        return true
+    }
+
 
     @Query("SELECT * FROM paper_sections WHERE paper_id = :paperId ORDER BY sort_order, section_id")
     abstract fun observePaperSections(paperId: String): Flow<List<PaperSectionsEntity>>
