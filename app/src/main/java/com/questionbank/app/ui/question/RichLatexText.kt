@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -23,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
@@ -33,55 +36,11 @@ import com.questionbank.app.ui.theme.LocalQuestionBodyTextSize
 import io.ratex.RaTeXView
 import kotlinx.coroutines.CancellationException
 
-private data class LatexSegment(val content: String, val math: Boolean, val block: Boolean = false)
-private sealed interface LatexRenderRun {
-    data class Inline(val segments: List<LatexSegment>) : LatexRenderRun
-    data class Block(val formula: String) : LatexRenderRun
-}
-
-/** Matches the legacy RichText convention: ordinary text + $inline$ + $$display$$. */
-private fun tokenizeLatexText(raw: String): List<LatexSegment> {
-    if (raw.isEmpty()) return emptyList()
-    val matcher = Regex("(\\$\\$[\\s\\S]*?\\$\\$|\\$[^\\$\\n]+?\\$)")
-    val result = mutableListOf<LatexSegment>()
-    var cursor = 0
-    matcher.findAll(raw).forEach { match ->
-        if (match.range.first > cursor) result += LatexSegment(raw.substring(cursor, match.range.first), false)
-        val token = match.value
-        if (token.startsWith("$$") && token.endsWith("$$") && token.length >= 4) {
-            result += LatexSegment(token.substring(2, token.length - 2).trim(), true, true)
-        } else if (token.startsWith("$") && token.endsWith("$") && token.length >= 2) {
-            result += LatexSegment(token.substring(1, token.length - 1).trim(), true, false)
-        } else result += LatexSegment(token, false)
-        cursor = match.range.last + 1
-    }
-    if (cursor < raw.length) result += LatexSegment(raw.substring(cursor), false)
-    return result
-}
-
-private fun buildRenderRuns(segments: List<LatexSegment>): List<LatexRenderRun> {
-    val runs = mutableListOf<LatexRenderRun>()
-    val inline = mutableListOf<LatexSegment>()
-    fun flushInline() {
-        if (inline.isNotEmpty()) {
-            runs += LatexRenderRun.Inline(inline.toList())
-            inline.clear()
-        }
-    }
-    segments.forEach { segment ->
-        if (segment.math && segment.block) {
-            flushInline()
-            runs += LatexRenderRun.Block(segment.content)
-        } else inline += segment
-    }
-    flushInline()
-    return runs
-}
-
 /**
  * Offline native KaTeX-compatible rich-text renderer.
  * Every formula is independently horizontally scrollable; the scroll indicators are hidden and
  * the requested font size is passed through unchanged. Ordinary text remains line-wrapped.
+ * Writing "<br>" anywhere starts the following content on a new line (see LatexLineBreaks.kt).
  */
 @Composable
 fun RichLatexText(
@@ -99,7 +58,7 @@ fun RichLatexText(
         runs.forEach { run ->
             when (run) {
                 is LatexRenderRun.Inline -> InlineLatexRun(
-                    segments = run.segments,
+                    lines = run.lines,
                     color = color,
                     fontSize = fontSize,
                     lineSpacingMultiplier = lineSpacingMultiplier,
@@ -121,37 +80,48 @@ fun RichLatexText(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun InlineLatexRun(
-    segments: List<LatexSegment>,
+    lines: List<List<LatexSegment>>,
     color: Color,
     fontSize: TextUnit,
     lineSpacingMultiplier: Float,
     fontFamily: FontFamily?,
     fontWeight: FontWeight,
 ) {
-    // FlowRow lets normal prose wrap while keeping each math expression as its own scroll target.
-    FlowRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(0.dp),
-        verticalArrangement = Arrangement.spacedBy(0.dp),
-    ) {
-        segments.forEach { segment ->
-            if (segment.math) {
-                ScrollableLatexFormula(
-                    formula = segment.content,
-                    color = color,
-                    fontSize = fontSize,
-                    displayMode = false,
-                    modifier = Modifier.align(Alignment.CenterVertically),
-                )
-            } else if (segment.content.isNotEmpty()) {
-                Text(
-                    text = segment.content,
-                    color = color,
-                    fontSize = fontSize,
-                    lineHeight = fontSize * lineSpacingMultiplier,
-                    fontFamily = fontFamily,
-                    fontWeight = fontWeight,
-                )
+    val density = LocalDensity.current
+    // One FlowRow per visual line: a "<br>" always starts a fresh row below the previous one.
+    Column(modifier = Modifier.fillMaxWidth()) {
+        lines.forEach { line ->
+            if (line.isEmpty()) {
+                // Deliberate blank line (two "<br>" in a row).
+                Spacer(Modifier.fillMaxWidth().height(with(density) { (fontSize * lineSpacingMultiplier).toDp() }))
+            } else {
+                // FlowRow lets normal prose wrap while keeping each math expression as its own scroll target.
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(0.dp),
+                    verticalArrangement = Arrangement.spacedBy(0.dp),
+                ) {
+                    line.forEach { segment ->
+                        if (segment.math) {
+                            ScrollableLatexFormula(
+                                formula = segment.content,
+                                color = color,
+                                fontSize = fontSize,
+                                displayMode = false,
+                                modifier = Modifier.align(Alignment.CenterVertically),
+                            )
+                        } else if (segment.content.isNotEmpty()) {
+                            Text(
+                                text = segment.content,
+                                color = color,
+                                fontSize = fontSize,
+                                lineHeight = fontSize * lineSpacingMultiplier,
+                                fontFamily = fontFamily,
+                                fontWeight = fontWeight,
+                            )
+                        }
+                    }
+                }
             }
         }
     }

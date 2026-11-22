@@ -741,8 +741,8 @@ fun EdTextArea(
                     modifier = Modifier.fillMaxWidth().height(boxHeight.dp),
                     decorationBox = { inner ->
                         // A modest side inset keeps text away from the border without wasting usable writing width.
-                        // Reserve the bottom 26dp for the resize grip so one line remains fully readable above it.
-                        Box(Modifier.fillMaxWidth().height(boxHeight.dp).padding(start = 8.dp, top = 6.dp, end = 8.dp, bottom = 26.dp)) {
+                        // Bottom inset is 8dp (was 26dp); the resize grip is 26dp tall and now overlaps the last lines slightly.
+                        Box(Modifier.fillMaxWidth().height(boxHeight.dp).padding(start = 8.dp, top = 6.dp, end = 8.dp, bottom = 8.dp)) {
                             if (field.text.isEmpty() && placeholder != null) Text(placeholder, color = cs.onSurfaceVariant, fontSize = bodyTextSize)
                             inner()
                         }

@@ -1,3 +1,15 @@
+EDITOR TEXT AREA BOTTOM INSET (22 Nov 2026) - SOURCE EDIT ONLY, NOT COMPILED / NOT DEVICE-TESTED
+- EdTextArea (ui/question/EditorDesign.kt): decoration Box bottom padding changed 26.dp -> 8.dp. Nothing else changed in this edit.
+
+LATEX LINE-BREAK MARKER <br> (22 Nov 2026) - SOURCE EDIT ONLY, NOT COMPILED / NOT DEVICE-TESTED
+- Requirement: a manual symbol that starts the following content on a new line, so step-by-step formula lines can sit one below another. Chosen marker: <br> (NOT backslash-n: it starts \neq, \nu, \nabla; NOT double backslash: it is used inside aligned/matrix).
+- Rules: <br> may follow a formula, sit between formulas or sit inside a formula (the formula is split in two). Text without <br> renders exactly as before; a plain Enter behaves as before. Two <br> in a row leave one blank row. A <br> touching a $$block$$ formula is ignored (a block already has its own row). Spaces around <br> are dropped; trailing <br> adds no blank row.
+- Implementation: new pure file ui/question/LatexLineBreaks.kt (tokenizer moved here unchanged, plus expandLineBreaks / buildInlineLines / buildRenderRuns). RichLatexText.kt renders one FlowRow per visual line inside a Column; scrolling, hidden scrollbars and unchanged font size are untouched.
+- New unit test: LatexLineBreakTest (10 cases). NOT run here (no Kotlin/Gradle). The same cases were desk-checked with a Python port of the logic only.
+- Known limitation: every line is its own formula, so '=' signs are not aligned under each other. For alignment use one $$\begin{aligned}...\end{aligned}$$ block (RaTeX support of aligned not verified).
+- No database, Room schema, SQL or version metadata change.
+- Files changed: ui/question/RichLatexText.kt, ui/question/LatexLineBreaks.kt (new), test/.../LatexLineBreakTest.kt (new), BUILD_STATUS.txt, README_BN.md.
+
 LATEX HORIZONTAL-SCROLL FIX (22 Nov 2026) - SOURCE EDIT ONLY, NOT COMPILED / NOT DEVICE-TESTED
 - Requirement: formulas in every display surface must swipe horizontally when wider than the viewport; no visible scrollbars; never shrink formula font size to fit.
 - Centralized implementation in ui/question/RichLatexText.kt: inline formulas are now separate FlowRow items and display/block formulas use the same scrollable renderer. Each RaTeXView is hosted in a native HorizontalScrollView with horizontal/vertical indicators disabled and overscroll glow disabled. The configured fontSize is passed through unchanged. When formula/font/display/color changes, the scroll offset resets to the left and native layout is requested again.
