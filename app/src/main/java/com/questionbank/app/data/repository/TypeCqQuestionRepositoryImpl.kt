@@ -135,7 +135,7 @@ class TypeCqQuestionRepositoryImpl(
                 rows, clock(), draftKey(snapshot.topicId), snapshot.editorDraftKey,
                 snapshot.stimulusImages.map { NewStimulusImageRow(it.imageId, it.placement, it.position) },
             )
-            if (!written) return SaveResult.TopicMissing
+            if (!written) return explainCreateRefusal(snapshot.topicId, rows, snapshot.stimulusImages)
             // The DAO performs all read-back checks before removing the draft, inside the same Room transaction.
             SaveResult.Saved(stimulusId, rows.map { it.id })
         } catch (e: CancellationException) {
@@ -144,6 +144,62 @@ class TypeCqQuestionRepositoryImpl(
             SaveResult.Failed(e.message ?: e.javaClass.simpleName)
         }
     }
+
+    /**
+     * The DAO answers `false` for every refusal before it writes anything. Saying "the topic is gone" for all of them hid
+     * the real cause (a missing image row, an inactive question type, a removed category). Nothing was written, so it is
+     * safe to look again and name the first thing that is wrong.
+     */
+    private suspend fun explainCreateRefusal(
+        topicId: String,
+        rows: List<NewQuestionRow>,
+        stimulusImages: List<QuestionStimulusImage>,
+    ): SaveResult = try {
+        when {
+            topicId.isBlank() || dao.countTopic(topicId) == 0 -> SaveResult.TopicMissing
+            rows.any { dao.activeQuestionTypeExists(it.typeId) == 0 } ->
+                SaveResult.Failed("প্রশ্নের ধরন ডাটাবেজে সক্রিয় নেই")
+            rows.any { row -> row.categoryIds.any { dao.activeCategory(it) == 0 } } ->
+                SaveResult.Failed("বাছাই করা কোনো ক্যাটাগরি মুছে গেছে বা আর্কাইভ করা হয়েছে")
+            stimulusImages.any { dao.imageExistsForQuestion(it.imageId) == 0 } ->
+                SaveResult.Failed("উদ্দীপকের কোনো ছবির তথ্য ডাটাবেজে নেই (ছবির ফাইল মুছে যাওয়ায় এমন হতে পারে)। ছবিটি সরিয়ে আবার যোগ করুন")
+            rows.any { row -> row.orderedSolutionParts.any { part -> part.partType == "IMAGE" && missingImageRow(part.imageId) } } ->
+                SaveResult.Failed("সমাধানের কোনো ছবির তথ্য ডাটাবেজে নেই (ছবির ফাইল মুছে যাওয়ায় এমন হতে পারে)। ছবিটি সরিয়ে আবার যোগ করুন")
+            else -> SaveResult.Failed("লেখার আগের যাচাইয়ে কোনো মান অবৈধ পাওয়া গেছে (যেমন পুনরাবৃত্ত ক্রম বা অবস্থান)")
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        SaveResult.Failed("সংরক্ষণ প্রত্যাখ্যাত হয়েছে, কিন্তু কারণ যাচাই করা যায়নি")
+    }
+
+    private suspend fun explainUpdateRefusal(
+        topicId: String,
+        stimulusId: String?,
+        stimulusImageIds: List<String>,
+        solutionImageIds: List<String?>,
+        questionTypeIds: List<String>,
+    ): UpdateResult = try {
+        when {
+            topicId.isBlank() || dao.countTopic(topicId) == 0 -> UpdateResult.GroupMissing
+            stimulusId != null && dao.countStimulus(stimulusId, topicId) == 0 -> UpdateResult.GroupMissing
+            questionTypeIds.any { dao.activeQuestionTypeExists(it) == 0 } ->
+                UpdateResult.Failed("প্রশ্নের ধরন ডাটাবেজে সক্রিয় নেই")
+            stimulusImageIds.any { dao.imageExistsForQuestion(it) == 0 } ->
+                UpdateResult.Failed("উদ্দীপকের কোনো ছবির তথ্য ডাটাবেজে নেই (ছবির ফাইল মুছে যাওয়ায় এমন হতে পারে)। ছবিটি সরিয়ে আবার যোগ করুন")
+            solutionImageIds.any { missingImageRow(it) } ->
+                UpdateResult.Failed("সমাধানের কোনো ছবির তথ্য ডাটাবেজে নেই (ছবির ফাইল মুছে যাওয়ায় এমন হতে পারে)। ছবিটি সরিয়ে আবার যোগ করুন")
+            else -> UpdateResult.Failed("লেখার আগের যাচাইয়ে কোনো পরিবর্তন অবৈধ পাওয়া গেছে (যেমন গ্রুপে না থাকা প্রশ্ন, ক্যাটাগরি বা পুনরাবৃত্ত মান)")
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        UpdateResult.Failed("সংরক্ষণ প্রত্যাখ্যাত হয়েছে, কিন্তু কারণ যাচাই করা যায়নি")
+    }
+
+    private suspend fun missingImageRow(imageId: String?): Boolean =
+        imageId.isNullOrBlank() || dao.imageExistsForQuestion(imageId) == 0
+
 
     override suspend fun search(topicId: String, rawQuery: String, filter: BoardFilter?): SearchOutcome {
         val f = filter?.takeIf { !it.isEmpty }
@@ -325,7 +381,13 @@ class TypeCqQuestionRepositoryImpl(
                 },
                 stimulusImageReplacement = snapshot.stimulusImages?.map { NewStimulusImageRow(it.imageId, it.placement, it.position) },
             )
-            if (!written) return UpdateResult.GroupMissing
+            if (!written) return explainUpdateRefusal(
+                topicId = snapshot.topicId,
+                stimulusId = original.stimulusId,
+                stimulusImageIds = snapshot.stimulusImages.orEmpty().map { it.imageId },
+                solutionImageIds = snapshot.solutionPartsByLabel.orEmpty().values.flatten().filter { it.partType == "IMAGE" }.map { it.imageId },
+                questionTypeIds = rows.map { it.typeId },
+            )
             // The DAO verifies the updated question/metadata/solution/stimulus/board rows before deleting the draft,
             // all inside the same Room transaction. No post-commit check can now report failure after a committed save.
             UpdateResult.Updated

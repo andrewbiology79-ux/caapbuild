@@ -63,7 +63,7 @@ private fun resultText(result: SaveResult?): String? = when (result) {
     is SaveResult.MissingQuestionText -> "${result.label.letter}) এর উত্তর লেখা আছে, কিন্তু প্রশ্ন খালি। প্রশ্ন লিখুন বা উত্তরটি মুছুন।"
     is SaveResult.TooLong -> "${result.field} অনেক বড় (সর্বোচ্চ ${QuestionRules.MAX_TEXT_LENGTH} অক্ষর)।"
     SaveResult.TopicMissing -> "টপিকটি আর নেই। আপনার লেখা ড্রাফটে আছে; ফিরে গিয়ে আবার চেষ্টা করুন।"
-    is SaveResult.Failed -> "সংরক্ষণ করা যায়নি, কিছুই হারায়নি। আপনার লেখা ড্রাফটে আছে; আবার চেষ্টা করুন।"
+    is SaveResult.Failed -> com.questionbank.app.domain.question.SaveFailureText.message(result.reason, "কিছুই হারায়নি, আপনার লেখা ড্রাফটে আছে")
 }
 
 /** Minimum | Full Editor switch (segmented design, shared with the edit screens). */

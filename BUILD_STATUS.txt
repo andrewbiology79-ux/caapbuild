@@ -1,3 +1,13 @@
+SAVE-ERROR MESSAGE FIX (22 Nov 2026) - SOURCE EDIT ONLY, NOT COMPILED, NOT TESTED
+- Problem: a failed save always showed one fixed sentence ("সংরক্ষণ করা যায়নি, কিছুই হারায়নি ... আবার চেষ্টা করুন"), although
+  SaveResult.Failed / UpdateResult.Failed already carried the real reason. Also the DAO answers false for many refusals and the
+  repository reported every one as "topic missing" / "group missing".
+- Fix: new domain/question/SaveFailureText.kt turns the reason into a Bengali cause + the original technical text in brackets;
+  QuestionEditorScreen and QuestionEditScreen now show it. TypeCqQuestionRepositoryImpl.explainCreateRefusal / explainUpdateRefusal
+  look again (nothing was written) and name the real cause (inactive question type, removed category, missing image row);
+  TopicMissing / GroupMissing are kept only when the topic / group really is gone.
+- New unit test: SaveFailureTextTest (7 cases). Not run here.
+
 IMAGE-LOSS FIX (22 Nov 2026) - SOURCE EDIT ONLY, NOT COMPILED, NOT TESTED
 - Bug: after the app restarted, stored question images were deleted by the startup orphan collector. It compared a canonical
   managed root with a non-canonical context.filesDir (/data/user/0/... vs /data/data/...), so every image looked orphaned.

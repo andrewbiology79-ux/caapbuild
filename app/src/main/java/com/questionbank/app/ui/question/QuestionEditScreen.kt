@@ -48,7 +48,7 @@ private fun editResultText(result: UpdateResult?): String? = when (result) {
     is UpdateResult.MissingQuestionText -> "${result.label.letter}) এর উত্তর লেখা আছে, কিন্তু প্রশ্ন খালি। প্রশ্ন লিখুন বা উত্তরটি মুছুন।"
     is UpdateResult.TooLong -> "${result.field} অনেক বড় (সর্বোচ্চ ${QuestionRules.MAX_TEXT_LENGTH} অক্ষর)।"
     UpdateResult.GroupMissing -> "প্রশ্নটি আর নেই। ফিরে গিয়ে তালিকা দেখুন।"
-    is UpdateResult.Failed -> "সংরক্ষণ করা যায়নি; আগের লেখা অক্ষত আছে। আবার চেষ্টা করুন।"
+    is UpdateResult.Failed -> com.questionbank.app.domain.question.SaveFailureText.message(result.reason, "আগের লেখা অক্ষত আছে")
 }
 
 /** Edit screen of one existing card (v0.2.28; automatic edit draft v0.2.29; rating buttons v0.2.30b; board + year picker v0.2.30c-2). Full screen like the new-question editor. */
