@@ -13,8 +13,8 @@ android {
         applicationId = "com.questionbank.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 38
-        versionName = "0.2.33-image-tools-rechecked"
+        versionCode = 40
+        versionName = "0.2.35-image-crash-fix2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

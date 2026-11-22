@@ -1169,6 +1169,7 @@ fun rememberSolutionImageAdder(
 }
 
 /** A rounded thumbnail with remove, replace and Full Editor image actions underneath. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun EdThumbnail(
     pipeline: ImagePipeline,
@@ -1181,6 +1182,7 @@ fun EdThumbnail(
     onImageEdited: (String) -> Unit = {},
     previewImageIds: List<String> = listOf(imageId),
     previewIndex: Int = 0,
+    actionsScrollable: Boolean = true,
     extra: @Composable () -> Unit = {},
 ) {
     val cs = MaterialTheme.colorScheme
@@ -1205,10 +1207,10 @@ fun EdThumbnail(
                 contentAlignment = Alignment.Center,
             ) { EdIconGlyph(EdIcon.CLOSE, Color.White, Modifier.size(14.dp)) }
         }
-        Row(
+        // No horizontalScroll here: this block can sit inside another scrollable strip (infinite width) and must never nest scrolls.
+        FlowRow(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             EdIconButton(EdIcon.REFRESH, "ছবি প্রতিস্থাপন", onReplace, enabled = enabled)
             extra()
@@ -1320,6 +1322,7 @@ fun EdStimulusImages(
                         onImageEdited = { newId -> onChange(images.map { if (it.imageId == item.imageId) it.copy(imageId = newId) else it }) },
                         previewImageIds = ordered.map { it.imageId },
                         previewIndex = index,
+                        actionsScrollable = false,
                     ) {
                         TextButton(
                             enabled = enabled,
