@@ -115,13 +115,17 @@ fun StimulusImageAttachments(
 internal fun MediaThumbnail(pipeline: ImagePipeline, imageId: String, imageScope: ImageScope) {
     val bitmap by produceState<Bitmap?>(initialValue = null, imageId, imageScope) {
         value = withContext(Dispatchers.IO) {
-            val file = pipeline.fileForImage(imageId, imageScope) ?: return@withContext null
-            BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply { inSampleSize = 4 })
+            try {
+                val file = pipeline.fileForImage(imageId, imageScope) ?: return@withContext null
+                BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply { inSampleSize = 4 })
+            } catch (_: Exception) {
+                null
+            } catch (_: OutOfMemoryError) {
+                null
+            }
         }
     }
-    DisposableEffect(bitmap) {
-        onDispose { bitmap?.takeUnless { it.isRecycled }?.recycle() }
-    }
+    // Do not recycle here: Compose draws the bitmap later on the render thread; the GC frees it.
     if (bitmap != null) Image(bitmap!!.asImageBitmap(), contentDescription = "সংযুক্ত ছবি", modifier = Modifier.size(100.dp), contentScale = ContentScale.Crop)
     else Text("ছবি অনুপলব্ধ", style = MaterialTheme.typography.labelSmall, modifier = Modifier.height(48.dp))
 }

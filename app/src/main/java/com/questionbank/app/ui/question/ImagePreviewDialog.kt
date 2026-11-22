@@ -57,9 +57,6 @@ internal fun ImagePreviewDialog(
     var scale by remember(imageId) { mutableFloatStateOf(1f) }
     var offsetX by remember(imageId) { mutableFloatStateOf(0f) }
     var offsetY by remember(imageId) { mutableFloatStateOf(0f) }
-    DisposableEffect(imageId) {
-        onDispose { bitmapState.value?.takeUnless { it.isRecycled }?.recycle() }
-    }
     LaunchedEffect(imageId) {
         bitmapState.value = withContext(Dispatchers.IO) {
             val file = pipeline.fileForImage(imageId, imageScope) ?: return@withContext null

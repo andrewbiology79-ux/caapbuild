@@ -79,13 +79,6 @@ internal fun ImageEditDialog(
     val currentPreviewKey = "$rotation|$top|$bottom|$left|$right|${scan.name}"
     val hasEdits = rotation != 0 || top > 0f || bottom > 0f || left > 0f || right > 0f || scan != ImageScanMode.ORIGINAL
 
-    DisposableEffect(imageId) {
-        onDispose {
-            previewState.value?.takeUnless { it.isRecycled }?.recycle()
-            sourceState.value?.takeUnless { it.isRecycled }?.recycle()
-        }
-    }
-
     LaunchedEffect(imageId) {
         loading = true
         error = ""
@@ -105,10 +98,8 @@ internal fun ImageEditDialog(
         val next = withContext(Dispatchers.Default) {
             renderEditedBitmap(source, rotation, top, bottom, left, right, scan)
         }
-        val previous = previewState.value
         previewState.value = next
         previewKey = renderKey
-        if (previous !== source && previous !== next) previous?.takeUnless { it.isRecycled }?.recycle()
     }
 
     fun updateCrop(side: CropSide, raw: Float) {

@@ -48,6 +48,7 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -1311,6 +1312,7 @@ fun EdStimulusImages(
         if (ordered.isNotEmpty() || showBottomAdd) {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
                 ordered.forEachIndexed { index, item ->
+                    key(item.imageId) {
                     EdThumbnail(
                         pipeline = pipeline,
                         imageId = item.imageId,
@@ -1333,6 +1335,7 @@ fun EdStimulusImages(
                         ) { Text(if (item.placement == "TOP") "উপরে" else "নিচে") }
                         TextButton(enabled = enabled && index > 0, onClick = { onChange(moveStimulusImageWithinPlacement(images, item.imageId, -1, item.placement)) }) { Text("←") }
                         TextButton(enabled = enabled && index < ordered.lastIndex, onClick = { onChange(moveStimulusImageWithinPlacement(images, item.imageId, 1, item.placement)) }) { Text("→") }
+                    }
                     }
                 }
                 if (showBottomAdd) {
