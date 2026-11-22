@@ -13,8 +13,8 @@ android {
         applicationId = "com.questionbank.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 42
-        versionName = "0.2.37-image-hardening"
+        versionCode = 47
+        versionName = "0.2.42-resize-dropdown"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

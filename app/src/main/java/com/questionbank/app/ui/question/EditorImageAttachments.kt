@@ -112,7 +112,13 @@ fun StimulusImageAttachments(
 }
 
 @Composable
-internal fun MediaThumbnail(pipeline: ImagePipeline, imageId: String, imageScope: ImageScope) {
+internal fun MediaThumbnail(
+    pipeline: ImagePipeline,
+    imageId: String,
+    imageScope: ImageScope,
+    modifier: Modifier = Modifier.size(100.dp),
+    contentScale: ContentScale = ContentScale.Crop,
+) {
     val bitmap by produceState<Bitmap?>(initialValue = null, imageId, imageScope) {
         value = withContext(Dispatchers.IO) {
             try {
@@ -126,7 +132,7 @@ internal fun MediaThumbnail(pipeline: ImagePipeline, imageId: String, imageScope
         }
     }
     // Do not recycle here: Compose draws the bitmap later on the render thread; the GC frees it.
-    if (bitmap != null) Image(bitmap!!.asImageBitmap(), contentDescription = "সংযুক্ত ছবি", modifier = Modifier.size(100.dp), contentScale = ContentScale.Crop)
+    if (bitmap != null) Image(bitmap!!.asImageBitmap(), contentDescription = "সংযুক্ত ছবি", modifier = modifier, contentScale = contentScale)
     else Text("ছবি অনুপলব্ধ", style = MaterialTheme.typography.labelSmall, modifier = Modifier.height(48.dp))
 }
 

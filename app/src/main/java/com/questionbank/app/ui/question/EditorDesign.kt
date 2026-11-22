@@ -77,6 +77,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -1192,14 +1193,15 @@ fun EdThumbnail(
     var editOpen by remember(imageId) { mutableStateOf(false) }
     var previewOpen by remember(imageId) { mutableStateOf(false) }
     var exporting by remember(imageId) { mutableStateOf(false) }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    // Fixed width: the action buttons wrap under the picture (like the old app) instead of running off the screen inside the image strip.
+    Column(Modifier.width(196.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Box {
             Box(
                 Modifier.padding(top = 10.dp, end = 10.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .border(1.dp, cs.outlineVariant, RoundedCornerShape(16.dp))
                     .then(if (fullFeatures) Modifier.clickable(enabled = enabled) { previewOpen = true } else Modifier),
-            ) { MediaThumbnail(pipeline, imageId, imageScope) }
+            ) { MediaThumbnail(pipeline, imageId, imageScope, Modifier.size(width = 186.dp, height = 130.dp).background(Color.White), ContentScale.Fit) }
             Box(
                 Modifier.align(Alignment.TopEnd).size(30.dp).clip(CircleShape)
                     .background(Color(0xFFE11D2E), CircleShape)
@@ -1208,13 +1210,12 @@ fun EdThumbnail(
                 contentAlignment = Alignment.Center,
             ) { EdIconGlyph(EdIcon.CLOSE, Color.White, Modifier.size(14.dp)) }
         }
-        // No horizontalScroll here: this block can sit inside another scrollable strip (infinite width) and must never nest scrolls.
+        // Under the picture: replace, save (export), edit. Tapping the picture opens the large preview. No horizontalScroll here (nested scroll crash).
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             EdIconButton(EdIcon.REFRESH, "ছবি প্রতিস্থাপন", onReplace, enabled = enabled)
-            extra()
             if (fullFeatures) {
                 EdIconButton(
                     EdIcon.DOWNLOAD, "ছবি এক্সপোর্ট করুন",
@@ -1231,7 +1232,6 @@ fun EdThumbnail(
                     },
                     enabled = enabled && !exporting,
                 )
-                EdIconButton(EdIcon.MAXIMIZE, "বড় প্রিভিউ দেখুন", { previewOpen = true }, enabled = enabled)
                 Row(
                     modifier = Modifier.height(32.dp).clip(RoundedCornerShape(6.dp))
                         .background(cs.primaryContainer).border(1.dp, cs.outlineVariant, RoundedCornerShape(6.dp))
@@ -1245,6 +1245,7 @@ fun EdThumbnail(
                     Text("এডিট", color = cs.primary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
+            extra()
         }
     }
     if (editOpen && fullFeatures) {
@@ -1324,18 +1325,7 @@ fun EdStimulusImages(
                         onImageEdited = { newId -> onChange(images.map { if (it.imageId == item.imageId) it.copy(imageId = newId) else it }) },
                         previewImageIds = ordered.map { it.imageId },
                         previewIndex = index,
-                        actionsScrollable = false,
-                    ) {
-                        TextButton(
-                            enabled = enabled,
-                            onClick = {
-                                val moved = images.map { if (it.imageId == item.imageId) it.copy(placement = if (it.placement == "TOP") "BOTTOM" else "TOP") else it }
-                                onChange(normalizeStimulusImageOrder(moved))
-                            },
-                        ) { Text(if (item.placement == "TOP") "উপরে" else "নিচে") }
-                        TextButton(enabled = enabled && index > 0, onClick = { onChange(moveStimulusImageWithinPlacement(images, item.imageId, -1, item.placement)) }) { Text("←") }
-                        TextButton(enabled = enabled && index < ordered.lastIndex, onClick = { onChange(moveStimulusImageWithinPlacement(images, item.imageId, 1, item.placement)) }) { Text("→") }
-                    }
+                    )
                     }
                 }
                 if (showBottomAdd) {
