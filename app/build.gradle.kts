@@ -13,8 +13,8 @@ android {
         applicationId = "com.questionbank.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 47
-        versionName = "0.2.42-resize-dropdown"
+        versionCode = 49
+        versionName = "0.2.44-crop-scan-undo"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

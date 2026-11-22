@@ -552,7 +552,7 @@ private data class MathInsertSpec(
 
 /** The legacy toolbar order: inline, block, fraction, root, power, subscript, sum, integral, Greek. */
 @Composable
-private fun EdMathToolbar(enabled: Boolean, onInsert: (MathInsertSpec) -> Unit) {
+private fun EdMathToolbar(enabled: Boolean, modifier: Modifier = Modifier, onInsert: (MathInsertSpec) -> Unit) {
     val cs = MaterialTheme.colorScheme
     val items = remember {
         listOf(
@@ -576,7 +576,7 @@ private fun EdMathToolbar(enabled: Boolean, onInsert: (MathInsertSpec) -> Unit) 
         )
     }
     Row(
-        Modifier.fillMaxWidth().background(cs.surfaceVariant).horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp),
+        modifier.background(cs.surfaceVariant).horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -616,6 +616,22 @@ private fun EdMathToolbar(enabled: Boolean, onInsert: (MathInsertSpec) -> Unit) 
             }
         }
     }
+}
+
+/** Small ∑ switch that opens or closes the LaTeX toolbar. The toolbar starts closed so the editor stays compact. */
+@Composable
+private fun EdMathToolbarToggle(open: Boolean, onClick: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(8.dp)
+    Box(
+        Modifier.padding(horizontal = 8.dp, vertical = 4.dp).height(30.dp).clip(shape)
+            .background(if (open) cs.primaryContainer else cs.surface, shape)
+            .border(1.dp, cs.outlineVariant, shape)
+            .clickable(onClick = onClick)
+            .semantics { contentDescription = if (open) "LaTeX টুলবার বন্ধ করুন" else "LaTeX টুলবার খুলুন" }
+            .padding(horizontal = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) { Text(if (open) "∑ ▴" else "∑ ▾", color = cs.primary, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, maxLines = 1) }
 }
 
 /** Inline KaTeX preview card matching the legacy LivePreview panel (never opens a separate screen/dialog). */
@@ -674,6 +690,7 @@ fun EdTextArea(
     var field by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
     var boxHeight by rememberSaveable(minHeight.value) { mutableStateOf(minHeight.value.coerceAtLeast(oneLineMinimum)) }
     var internalPreviewOpen by rememberSaveable { mutableStateOf(false) }
+    var mathBarOpen by rememberSaveable { mutableStateOf(false) }
     val previewOpen = externalPreviewOpen ?: internalPreviewOpen
     LaunchedEffect(value) {
         if (field.text != value) field = TextFieldValue(value, TextRange(value.length))
@@ -685,26 +702,29 @@ fun EdTextArea(
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Column(Modifier.fillMaxWidth().clip(shape).background(cs.surface).border(1.dp, cs.outlineVariant, shape)) {
             if (showMathBar) {
-                EdMathToolbar(enabled) { spec ->
-                    val sel = field.selection
-                    val start = minOf(sel.start, sel.end).coerceIn(0, field.text.length)
-                    val end = maxOf(sel.start, sel.end).coerceIn(0, field.text.length)
-                    val selected = field.text.substring(start, end)
-                    val insert = when {
-                        spec.template == "\$\$" && spec.wrapSelection && selected.isNotEmpty() -> "\$${selected}\$"
-                        spec.template == "\\frac{}{}" && spec.wrapSelection && selected.isNotEmpty() -> "\\frac{$selected}{}"
-                        spec.template == "\\sqrt{}" && spec.wrapSelection && selected.isNotEmpty() -> "\\sqrt{$selected}"
-                        else -> spec.template
+                Row(Modifier.fillMaxWidth().background(cs.surfaceVariant), verticalAlignment = Alignment.CenterVertically) {
+                    EdMathToolbarToggle(open = mathBarOpen, onClick = { mathBarOpen = !mathBarOpen })
+                    if (mathBarOpen) EdMathToolbar(enabled, Modifier.weight(1f)) { spec ->
+                        val sel = field.selection
+                        val start = minOf(sel.start, sel.end).coerceIn(0, field.text.length)
+                        val end = maxOf(sel.start, sel.end).coerceIn(0, field.text.length)
+                        val selected = field.text.substring(start, end)
+                        val insert = when {
+                            spec.template == "\$\$" && spec.wrapSelection && selected.isNotEmpty() -> "\$${selected}\$"
+                            spec.template == "\\frac{}{}" && spec.wrapSelection && selected.isNotEmpty() -> "\\frac{$selected}{}"
+                            spec.template == "\\sqrt{}" && spec.wrapSelection && selected.isNotEmpty() -> "\\sqrt{$selected}"
+                            else -> spec.template
+                        }
+                        val next = field.text.replaceRange(start, end, insert)
+                        val cursorBack = when {
+                            spec.template == "\$\$" && selected.isNotEmpty() -> 0
+                            spec.template == "\\sqrt{}" && selected.isNotEmpty() -> 0
+                            else -> spec.cursorBack
+                        }
+                        val cursor = (start + insert.length - cursorBack).coerceIn(0, next.length)
+                        field = TextFieldValue(next, TextRange(cursor))
+                        onValueChange(next)
                     }
-                    val next = field.text.replaceRange(start, end, insert)
-                    val cursorBack = when {
-                        spec.template == "\$\$" && selected.isNotEmpty() -> 0
-                        spec.template == "\\sqrt{}" && selected.isNotEmpty() -> 0
-                        else -> spec.cursorBack
-                    }
-                    val cursor = (start + insert.length - cursorBack).coerceIn(0, next.length)
-                    field = TextFieldValue(next, TextRange(cursor))
-                    onValueChange(next)
                 }
                 HorizontalDivider(color = cs.outlineVariant)
             }
@@ -1193,15 +1213,18 @@ fun EdThumbnail(
     var editOpen by remember(imageId) { mutableStateOf(false) }
     var previewOpen by remember(imageId) { mutableStateOf(false) }
     var exporting by remember(imageId) { mutableStateOf(false) }
+    // Full editor: a smaller picture with replace / export / edit under it. Minimum editor: only a small picture with the red cross.
+    val pictureWidth = if (fullFeatures) 150.dp else 112.dp
+    val pictureHeight = if (fullFeatures) 104.dp else 80.dp
     // Fixed width: the action buttons wrap under the picture (like the old app) instead of running off the screen inside the image strip.
-    Column(Modifier.width(196.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.width(pictureWidth + 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Box {
             Box(
                 Modifier.padding(top = 10.dp, end = 10.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .border(1.dp, cs.outlineVariant, RoundedCornerShape(16.dp))
                     .then(if (fullFeatures) Modifier.clickable(enabled = enabled) { previewOpen = true } else Modifier),
-            ) { MediaThumbnail(pipeline, imageId, imageScope, Modifier.size(width = 186.dp, height = 130.dp).background(Color.White), ContentScale.Fit) }
+            ) { MediaThumbnail(pipeline, imageId, imageScope, Modifier.size(width = pictureWidth, height = pictureHeight).background(Color.White), ContentScale.Fit) }
             Box(
                 Modifier.align(Alignment.TopEnd).size(30.dp).clip(CircleShape)
                     .background(Color(0xFFE11D2E), CircleShape)
@@ -1210,40 +1233,39 @@ fun EdThumbnail(
                 contentAlignment = Alignment.Center,
             ) { EdIconGlyph(EdIcon.CLOSE, Color.White, Modifier.size(14.dp)) }
         }
-        // Under the picture: replace, save (export), edit. Tapping the picture opens the large preview. No horizontalScroll here (nested scroll crash).
-        FlowRow(
+        // Full editor only. Under the picture: replace, save (export), edit. Tapping the picture opens the large preview.
+        // The minimum editor shows just the picture (no replace button). No horizontalScroll here (nested scroll crash).
+        if (fullFeatures) FlowRow(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             EdIconButton(EdIcon.REFRESH, "ছবি প্রতিস্থাপন", onReplace, enabled = enabled)
-            if (fullFeatures) {
-                EdIconButton(
-                    EdIcon.DOWNLOAD, "ছবি এক্সপোর্ট করুন",
-                    onClick = {
-                        if (!exporting) {
-                            exporting = true
-                            actionScope.launch {
-                                runCatching { pipeline.exportImage(imageId, imageScope) }
-                                    .onSuccess { Toast.makeText(context, "Pictures/QuestionBank ফোল্ডারে ছবি সংরক্ষিত হয়েছে", Toast.LENGTH_SHORT).show() }
-                                    .onFailure { Toast.makeText(context, it.message ?: "ছবি এক্সপোর্ট করা যায়নি", Toast.LENGTH_LONG).show() }
-                                exporting = false
-                            }
+            EdIconButton(
+                EdIcon.DOWNLOAD, "ছবি এক্সপোর্ট করুন",
+                onClick = {
+                    if (!exporting) {
+                        exporting = true
+                        actionScope.launch {
+                            runCatching { pipeline.exportImage(imageId, imageScope) }
+                                .onSuccess { Toast.makeText(context, "Pictures/QuestionBank ফোল্ডারে ছবি সংরক্ষিত হয়েছে", Toast.LENGTH_SHORT).show() }
+                                .onFailure { Toast.makeText(context, it.message ?: "ছবি এক্সপোর্ট করা যায়নি", Toast.LENGTH_LONG).show() }
+                            exporting = false
                         }
-                    },
-                    enabled = enabled && !exporting,
-                )
-                Row(
-                    modifier = Modifier.height(32.dp).clip(RoundedCornerShape(6.dp))
-                        .background(cs.primaryContainer).border(1.dp, cs.outlineVariant, RoundedCornerShape(6.dp))
-                        .clickable(enabled = enabled) { editOpen = true }
-                        .semantics { contentDescription = "ছবি এডিট করুন" }
-                        .padding(horizontal = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(3.dp),
-                ) {
-                    EdIconGlyph(EdIcon.EDIT, cs.primary, Modifier.size(14.dp))
-                    Text("এডিট", color = cs.primary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                }
+                    }
+                },
+                enabled = enabled && !exporting,
+            )
+            Row(
+                modifier = Modifier.height(32.dp).clip(RoundedCornerShape(6.dp))
+                    .background(cs.primaryContainer).border(1.dp, cs.outlineVariant, RoundedCornerShape(6.dp))
+                    .clickable(enabled = enabled) { editOpen = true }
+                    .semantics { contentDescription = "ছবি এডিট করুন" }
+                    .padding(horizontal = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                EdIconGlyph(EdIcon.EDIT, cs.primary, Modifier.size(14.dp))
+                Text("এডিট", color = cs.primary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
             }
             extra()
         }
@@ -1311,21 +1333,28 @@ fun EdStimulusImages(
     if (ordered.isEmpty() && adder.error.isBlank() && !showBottomAdd) return
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (ordered.isNotEmpty() || showBottomAdd) {
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                ordered.forEachIndexed { index, item ->
-                    key(item.imageId) {
-                    EdThumbnail(
-                        pipeline = pipeline,
-                        imageId = item.imageId,
-                        imageScope = imageScope,
-                        enabled = enabled && !adder.importing,
-                        onReplace = { adder.pick(item.imageId) },
-                        onRemove = { onChange(normalizeStimulusImageOrder(images.filterNot { it.imageId == item.imageId })) },
-                        fullFeatures = fullFeatures,
-                        onImageEdited = { newId -> onChange(images.map { if (it.imageId == item.imageId) it.copy(imageId = newId) else it }) },
-                        previewImageIds = ordered.map { it.imageId },
-                        previewIndex = index,
-                    )
+            // The pictures follow one another on the left (and scroll); the add button stays pinned at the far top-right corner.
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+                Row(
+                    Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    ordered.forEachIndexed { index, item ->
+                        key(item.imageId) {
+                        EdThumbnail(
+                            pipeline = pipeline,
+                            imageId = item.imageId,
+                            imageScope = imageScope,
+                            enabled = enabled && !adder.importing,
+                            onReplace = { adder.pick(item.imageId) },
+                            onRemove = { onChange(normalizeStimulusImageOrder(images.filterNot { it.imageId == item.imageId })) },
+                            fullFeatures = fullFeatures,
+                            onImageEdited = { newId -> onChange(images.map { if (it.imageId == item.imageId) it.copy(imageId = newId) else it }) },
+                            previewImageIds = ordered.map { it.imageId },
+                            previewIndex = index,
+                        )
+                        }
                     }
                 }
                 if (showBottomAdd) {
@@ -1333,6 +1362,7 @@ fun EdStimulusImages(
                         EdIcon.IMAGE_ADD,
                         "উদ্দীপকের শেষে ছবি যোগ করুন",
                         { adder.pick(null) },
+                        modifier = Modifier.padding(top = 10.dp),
                         enabled = enabled && !adder.importing,
                         dashed = true,
                     )
