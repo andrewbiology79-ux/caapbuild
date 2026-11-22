@@ -20,6 +20,7 @@ object CrashLog {
         val app = context.applicationContext
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
+            runCatching { ActivityLog.crash(thread, error) }
             runCatching { write(app, thread, error) }
             previous?.uncaughtException(thread, error)
         }

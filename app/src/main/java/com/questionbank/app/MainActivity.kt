@@ -12,6 +12,8 @@ import android.os.Bundle
 import android.os.Build
 import android.os.Environment
 import android.provider.Settings
+import android.view.KeyEvent
+import android.view.MotionEvent
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -98,6 +100,18 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /** Diagnostic: every touch is recorded in the activity log (position, tap/long-press/swipe, current screen). Never consumes it. */
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        val metrics = resources.displayMetrics
+        ActivityLog.touch(ev, metrics.density, metrics.widthPixels, metrics.heightPixels)
+        return super.dispatchTouchEvent(ev)
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) ActivityLog.back()
+        return super.dispatchKeyEvent(event)
     }
 
     private fun hasRequiredStorageAccess(): Boolean {

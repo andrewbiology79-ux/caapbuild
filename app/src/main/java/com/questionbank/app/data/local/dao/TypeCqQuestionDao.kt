@@ -305,6 +305,10 @@ abstract class TypeCqQuestionDao {
     @Query("SELECT * FROM type_cq_solution_parts WHERE question_id = :questionId ORDER BY position, part_id")
     abstract suspend fun solutionParts(questionId: String): List<TypeCqSolutionPartsEntity>
 
+    /** Diagnostic only (activity log): which question already owns this solution part id. */
+    @Query("SELECT question_id FROM type_cq_solution_parts WHERE part_id = :partId LIMIT 1")
+    abstract suspend fun ownerOfPart(partId: String): String?
+
     @Query("""
         SELECT DISTINCT pq.type_cq_question_id AS question_id, p.paper_id AS paper_id,
                p.short_name AS short_name, p.title AS title
@@ -334,6 +338,18 @@ abstract class TypeCqQuestionDao {
 
     @Insert
     abstract suspend fun insertSolutionPart(row: TypeCqSolutionPartsEntity)
+
+    /**
+     * part_id is a table-wide PRIMARY KEY, but the editors build ids that are only unique per draft. If another question
+     * already owns [wanted] (callers delete the question's own parts first), store the part under a fresh id instead of
+     * failing the whole save with "UNIQUE constraint failed: type_cq_solution_parts.part_id". Content is unchanged.
+     */
+    private suspend fun safePartId(wanted: String): String {
+        if (ownerOfPart(wanted) == null) return wanted
+        val fresh = UUID.randomUUID().toString()
+        com.questionbank.app.ActivityLog.event("DB-FIX", "part_id $wanted already belongs to another question; stored as $fresh")
+        return fresh
+    }
 
     // Called only from updateGroup(), whose enclosing Room transaction owns this write.
     private suspend fun replaceTextSolutionPartsWithinUpdate(questionId: String, texts: List<String>, now: Long) {
@@ -507,7 +523,7 @@ abstract class TypeCqQuestionDao {
             item.categoryIds.forEach { categoryId -> insertCategoryLink(TypeCqQuestionCategoryLinksEntity(item.id, categoryId, now)) }
             if (item.orderedSolutionParts.isNotEmpty()) {
                 item.orderedSolutionParts.sortedWith(compareBy<NewSolutionPartRow> { it.position }.thenBy { it.partId }).forEach { part ->
-                    insertSolutionPart(TypeCqSolutionPartsEntity(part.partId, item.id, part.position, part.partType, part.textContent, part.imageId, now))
+                    insertSolutionPart(TypeCqSolutionPartsEntity(safePartId(part.partId), item.id, part.position, part.partType, part.textContent, part.imageId, now))
                 }
             } else {
                 item.solutionParts.forEachIndexed { index, text -> insertSolutionPart(TypeCqSolutionPartsEntity(UUID.randomUUID().toString(), item.id, index.toLong(), "TEXT", text, null, now)) }
@@ -646,7 +662,7 @@ abstract class TypeCqQuestionDao {
         for (u in solutionPartUpdates) {
             deleteSolutionParts(u.questionId)
             u.parts.sortedWith(compareBy<NewSolutionPartRow> { it.position }.thenBy { it.partId }).forEach { part ->
-                insertSolutionPart(TypeCqSolutionPartsEntity(part.partId, u.questionId, part.position, part.partType, part.textContent, part.imageId, now))
+                insertSolutionPart(TypeCqSolutionPartsEntity(safePartId(part.partId), u.questionId, part.position, part.partType, part.textContent, part.imageId, now))
             }
             check(touchQuestion(u.questionId, now) == 1) { "question mixed solution was not updated" }
         }
@@ -702,7 +718,7 @@ abstract class TypeCqQuestionDao {
                 item.categoryIds.forEach { categoryId -> insertCategoryLink(TypeCqQuestionCategoryLinksEntity(item.id, categoryId, now)) }
                 if (item.orderedSolutionParts.isNotEmpty()) {
                     item.orderedSolutionParts.sortedWith(compareBy<NewSolutionPartRow> { it.position }.thenBy { it.partId }).forEach { part ->
-                        insertSolutionPart(TypeCqSolutionPartsEntity(part.partId, item.id, part.position, part.partType, part.textContent, part.imageId, now))
+                        insertSolutionPart(TypeCqSolutionPartsEntity(safePartId(part.partId), item.id, part.position, part.partType, part.textContent, part.imageId, now))
                     }
                 } else {
                     item.solutionParts.forEachIndexed { index, text -> insertSolutionPart(TypeCqSolutionPartsEntity(UUID.randomUUID().toString(), item.id, index.toLong(), "TEXT", text, null, now)) }

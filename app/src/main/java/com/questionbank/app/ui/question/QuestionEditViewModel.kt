@@ -1,5 +1,6 @@
 package com.questionbank.app.ui.question
 
+import com.questionbank.app.ActivityLog
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -386,6 +387,7 @@ class QuestionEditViewModel(
     }
 
     fun addOptionalQuestion(label: CqLabel) {
+        ActivityLog.action("EDIT", "addOptionalQuestion pressed", "label=${label.letter} saving=$saving finished=$finished")
         if (!canAddOptionalQuestion(label)) return
         addedOptionalQuestionLabels = addedOptionalQuestionLabels + label
         record("add-optional-${label.letter}")
@@ -449,7 +451,10 @@ class QuestionEditViewModel(
         questionTypeIds, marks, solutionTexts, categoryIdsByLabel, deletedQuestionIds, addedOptionalQuestionLabels, stimulusImages, solutionPartsByLabel,
     )
 
-    private fun record(group: String) { history.record(snapshot(), group) }
+    private fun record(group: String) {
+        history.record(snapshot(), group)
+        ActivityLog.changed(group, 1, stimulus, referenceText, texts, answers, solutionTexts)
+    }
 
     private fun applySnapshot(value: EditSnapshot) {
         stimulus = value.stimulus; referenceText = value.referenceText; texts = value.texts; answers = value.answers
@@ -465,11 +470,12 @@ class QuestionEditViewModel(
     @JvmName("applyEditorMode")
     fun setEditorMode(mode: EditorMode) {
         if (saving || finished || editorMode == mode) return
+        ActivityLog.action("EDIT", "editor mode switched", "$editorMode -> $mode")
         editorMode = mode
         queueDraft()
     }
-    fun undo() { if (!saving && !finished) history.undo()?.let(::applySnapshot) }
-    fun redo() { if (!saving && !finished) history.redo()?.let(::applySnapshot) }
+    fun undo() { ActivityLog.action("EDIT", "UNDO pressed"); if (!saving && !finished) history.undo()?.let(::applySnapshot) }
+    fun redo() { ActivityLog.action("EDIT", "REDO pressed"); if (!saving && !finished) history.redo()?.let(::applySnapshot) }
 
     /** True when the typed text differs from what is stored (after the same cleaning a save does). Blanking something counts as a change. */
     val changed: Boolean
@@ -547,6 +553,7 @@ class QuestionEditViewModel(
         val next = if (checked) (current + categoryId).distinct() else current.filterNot { it == categoryId }
         if (next == current) return
         categoryIdsByLabel = categoryIdsByLabel.toMutableList().also { it[index] = next }
+        ActivityLog.action("EDIT", "category ${if (checked) "selected" else "unselected"}", "label=${label.letter} categoryId=$categoryId")
         record("categories-${label.sortOrder}")
         result = null
         queueDraft()
@@ -556,6 +563,7 @@ class QuestionEditViewModel(
         if (saving || finished || name.isBlank()) false else runCatching { addCategoryAction(name.trim()) }.getOrDefault(false)
 
     fun deleteQuestion(label: CqLabel) {
+        ActivityLog.action("EDIT", "deleteQuestion pressed", "label=${label.letter} saving=$saving finished=$finished")
         if (saving || finished || !canDeleteQuestion(label)) return
         val rowId = original?.subQuestions?.firstOrNull { it.label == label && it.id !in deletedQuestionIds }?.id
         if (rowId != null) {
@@ -580,6 +588,7 @@ class QuestionEditViewModel(
     }
 
     fun restoreDeletedQuestion(label: CqLabel) {
+        ActivityLog.action("EDIT", "restoreDeletedQuestion pressed", "label=${label.letter} saving=$saving finished=$finished")
         if (saving || finished) return
         val rowId = original?.subQuestions?.firstOrNull { it.label == label }?.id ?: return
         if (rowId !in deletedQuestionIds) return
@@ -591,6 +600,7 @@ class QuestionEditViewModel(
 
     fun changeStimulusImages(value: List<QuestionStimulusImage>) { if (saving || finished || !hasStimulus) return; stimulusImages = value.mapIndexed { index, row -> row.copy(position = index.toLong()) }; record("stimulus-images"); result = null; queueDraft() }
     fun changeSolutionImageParts(label: CqLabel, value: List<QuestionSolutionPart>) {
+        ActivityLog.action("EDIT", "solution images/parts changed", "label=${label.letter} parts=" + value.joinToString { "${it.partType}#${it.position}:${it.partId}" })
         if (saving || finished) return
         val index = label.sortOrder - 1
         val sorted = value.sortedBy { it.position }
@@ -665,6 +675,13 @@ class QuestionEditViewModel(
         saving = true
         result = null
         val input = buildInput()
+        ActivityLog.action("EDIT", "SAVE (✓) pressed", "group=$groupKey")
+        ActivityLog.event(
+            "SAVE-DATA",
+            "solution parts sent: " + input.solutionPartsByLabel.orEmpty().entries.joinToString("; ") { (l, ps) ->
+                "${l.letter}=[" + ps.joinToString(", ") { "${it.partType}#${it.position}:${it.partId}" } + "]"
+            },
+        )
         val snapshot = currentDraft() ?: EditDraftSnapshot(
             text = draftOf(),
             categoryIdsByLabel = categoryIdsByLabel.map { it.toList() },
@@ -678,6 +695,7 @@ class QuestionEditViewModel(
             // NonCancellable: if the person leaves while saving, the transaction still finishes (it is atomic either way).
             val outcome = withContext(NonCancellable) { repository.updateGroup(input) }
             result = outcome
+            ActivityLog.event("SAVE-RESULT", "edit save outcome = $outcome")
             if (outcome is UpdateResult.Updated) {
                 // The repository removed the draft in the same transaction.
                 finished = true
@@ -708,6 +726,7 @@ class QuestionEditViewModel(
 
     /** "Discard" (the person chose to throw the typed changes away): stops the writer, removes the draft, then calls [onDone]. */
     fun discard(onDone: () -> Unit) {
+        ActivityLog.action("EDIT", "DISCARD (clear all / throw away changes) pressed", "group=$groupKey")
         if (saving || finished) return
         finished = true
         viewModelScope.launch {

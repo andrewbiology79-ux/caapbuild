@@ -114,6 +114,7 @@ class TypeCqQuestionRepositoryImpl(
             QuestionRules.Checked.BadCategories -> return SaveResult.Failed("ক্যাটাগরি আইডি সঠিক নয়")
             is QuestionRules.Checked.Ok -> checked
         }
+        val partsForLog = mutableListOf<Triple<String, String, String>>()
         return try {
             val unknownBoard = unknownBoardCode(ok.stimulusBoards + ok.boards.values.flatten())
             if (unknownBoard != null) return SaveResult.Failed("অজানা বোর্ড: $unknownBoard")
@@ -128,6 +129,12 @@ class TypeCqQuestionRepositoryImpl(
                     },
                 )
             }
+            rows.forEach { row -> row.orderedSolutionParts.forEach { partsForLog += Triple(row.id, it.partId, "${it.partType}#${it.position}") } }
+            com.questionbank.app.ActivityLog.event(
+                "DB-WRITE",
+                "saveGroup(create) topic=${snapshot.topicId} questions=${rows.size} parts=" +
+                    partsForLog.joinToString { "[q=${it.first.take(8)} ${it.second} ${it.third}]" },
+            )
             val stimulusRating = if (stimulusId != null) ok.stimulusRating else null
             val stimulusTags = if (stimulusId != null) tagRows(ok.stimulusBoards) else emptyList()
             val written = dao.insertGroup(
@@ -141,6 +148,7 @@ class TypeCqQuestionRepositoryImpl(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            logSaveFailure("saveGroup(create)", e, partsForLog)
             SaveResult.Failed(e.message ?: e.javaClass.simpleName)
         }
     }
@@ -323,10 +331,36 @@ class TypeCqQuestionRepositoryImpl(
         )
     }
 
+    /** Diagnostic (activity log): full stack trace and, for a UNIQUE failure, which question already owns each part id. */
+    private suspend fun logSaveFailure(where: String, e: Exception, parts: List<Triple<String, String, String>>) {
+        com.questionbank.app.ActivityLog.error("DB-FAIL", "$where failed: ${e.javaClass.simpleName}: ${e.message}", e)
+        if (e.message?.contains("UNIQUE") == true || e.message?.contains("part_id") == true) {
+            parts.forEach { (questionId, partId, desc) ->
+                val owner = runCatching { dao.ownerOfPart(partId) }.getOrNull()
+                val verdict = when {
+                    owner == null -> "free (no owner now)"
+                    owner == questionId -> "owned by the SAME question (ok)"
+                    else -> "ALREADY OWNED BY ANOTHER QUESTION $owner  <== COLLISION"
+                }
+                com.questionbank.app.ActivityLog.event("DB-DIAG", "part_id=$partId ($desc) of question $questionId: $verdict")
+            }
+        }
+    }
+
     override suspend fun updateGroup(input: GroupEditInput): UpdateResult {
+        val partsForLog = mutableListOf<Triple<String, String, String>>()
         return try {
             val snapshot = com.questionbank.app.domain.editor.EditorSaveCommand.typeCqEdit(input).input
             val original = loadOriginal(snapshot.topicId, snapshot.groupKey) ?: return UpdateResult.GroupMissing
+            snapshot.solutionPartsByLabel.orEmpty().forEach { (label, parts) ->
+                val qid = original.subQuestions.firstOrNull { it.label == label }?.id.orEmpty()
+                parts.forEach { partsForLog += Triple(qid, it.partId, "${it.partType}#${it.position}") }
+            }
+            com.questionbank.app.ActivityLog.event(
+                "DB-WRITE",
+                "updateGroup(edit) topic=${snapshot.topicId} group=${snapshot.groupKey} parts=" +
+                    partsForLog.joinToString { "[q=${it.first.take(8)} ${it.second} ${it.third}]" },
+            )
             val ok = when (val checked = QuestionEditRules.check(original, snapshot)) {
                 QuestionEditRules.Checked.NoChange -> return UpdateResult.NoChange
                 QuestionEditRules.Checked.BlankedStimulus -> return UpdateResult.BlankedStimulus
@@ -394,6 +428,7 @@ class TypeCqQuestionRepositoryImpl(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            logSaveFailure("updateGroup(edit)", e, partsForLog)
             UpdateResult.Failed(e.message ?: e.javaClass.simpleName)
         }
     }

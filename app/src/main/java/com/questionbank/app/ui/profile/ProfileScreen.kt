@@ -147,6 +147,26 @@ fun ProfileScreen(settings: AppSettings, backupStatus: String, onOpenBackup: () 
                 )
             }
 
+            SectionCard("অ্যাক্টিভিটি লগ (Activity log)") {
+                Text(
+                    "কোন স্ক্রিনে কোথায় ট্যাপ করেছেন, কী লিখেছেন (দৈর্ঘ্য ও সামান্য অংশ), কোন বাটন চেপেছেন এবং সেভে কী হয়েছে — সব সময়ক্রমে লেখা হয়।",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text("ফাইল: ${com.questionbank.app.ActivityLog.location()}", style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = {
+                        val text = com.questionbank.app.ActivityLog.read(150_000)
+                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("activity_log", text))
+                        android.widget.Toast.makeText(context, if (text.isEmpty()) "লগ খালি" else "লগ কপি হয়েছে", android.widget.Toast.LENGTH_SHORT).show()
+                    }) { Text("লগ কপি করুন") }
+                    OutlinedButton(onClick = {
+                        com.questionbank.app.ActivityLog.clear()
+                        android.widget.Toast.makeText(context, "লগ মুছে ফেলা হয়েছে", android.widget.Toast.LENGTH_SHORT).show()
+                    }) { Text("লগ মুছুন") }
+                }
+            }
+
             SectionCard("অ্যাপ তথ্য") {
                 Text("Question Bank (প্রশ্নব্যাংক)")
                 Text("সংস্করণ: $versionName")

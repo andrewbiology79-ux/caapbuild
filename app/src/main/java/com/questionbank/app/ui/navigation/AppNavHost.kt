@@ -12,6 +12,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -132,6 +133,22 @@ private val TABS = listOf(
 @Composable
 fun AppNavHost() {
     val navController = rememberNavController()
+    // Diagnostic: every screen change (and its arguments) goes to the activity log.
+    DisposableEffect(navController) {
+        val listener = object : androidx.navigation.NavController.OnDestinationChangedListener {
+            override fun onDestinationChanged(
+                controller: androidx.navigation.NavController,
+                destination: androidx.navigation.NavDestination,
+                arguments: android.os.Bundle?,
+            ) {
+                @Suppress("DEPRECATION")
+                val args = arguments?.keySet()?.joinToString(", ") { key -> "$key=${arguments.get(key)}" }.orEmpty()
+                com.questionbank.app.ActivityLog.screen(destination.route, args)
+            }
+        }
+        navController.addOnDestinationChangedListener(listener)
+        onDispose { navController.removeOnDestinationChangedListener(listener) }
+    }
     val context = LocalContext.current
     val container = (context.applicationContext as QuestionBankApp).container
     val repo = container.typeCqHierarchy

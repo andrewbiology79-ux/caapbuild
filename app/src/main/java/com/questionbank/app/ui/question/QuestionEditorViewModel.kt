@@ -1,5 +1,6 @@
 package com.questionbank.app.ui.question
 
+import com.questionbank.app.ActivityLog
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -397,6 +398,7 @@ class QuestionEditorViewModel(
 
     private fun change(next: DraftText, historyGroup: String) {
         if (saving || !loaded) return
+        ActivityLog.changed(historyGroup, 0, next.stimulus, next.referenceText, next.texts, next.answers, next.solutionTexts)
         history.record(next, historyGroup)
         draft = next
         result = null
@@ -409,6 +411,13 @@ class QuestionEditorViewModel(
         if (saving || !loaded) return
         saving = true
         val snapshot = draft
+        ActivityLog.action("CREATE", "SAVE (✓) pressed", "topic=$topicId")
+        ActivityLog.event(
+            "SAVE-DATA",
+            "solution parts sent: " + snapshot.solutionPartsByLabel.orEmpty().withIndex().joinToString("; ") { (i, ps) ->
+                "${CqLabel.entries[i].letter}=[" + ps.joinToString(", ") { "${it.partType}#${it.position}:${it.partId}" } + "]"
+            },
+        )
         viewModelScope.launch {
             pending.close()
             writer?.cancelAndJoin()
@@ -446,6 +455,7 @@ class QuestionEditorViewModel(
                     )
                 )
             }
+            ActivityLog.event("SAVE-RESULT", "create save outcome = $outcome")
             if (outcome is SaveResult.Saved) {
                 draft = DraftText()
                 history.reset(draft)
