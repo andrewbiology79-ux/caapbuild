@@ -94,12 +94,45 @@ class BackupRestoreTest {
         return saved
     }
 
-    /** Make a current v4 test database structurally match its pre-v4 v3 schema. */
+    /**
+     * Make a current v4 test database structurally match its pre-v4 v3 schema.
+     *
+     * SQLite refuses `ALTER TABLE ... DROP COLUMN` for a column that is part of a FOREIGN KEY
+     * ("unknown column card_category_id in foreign key definition"), so both tables are rebuilt in
+     * their exact v3 shape instead. Dropping a table also drops its triggers; the canonical triggers
+     * are installed again when Room opens the database (CANONICAL_OBJECTS_CALLBACK.onOpen).
+     * legacy_alter_table avoids SQLite re-validating the other triggers that still mention the
+     * table while it is briefly missing during the rename.
+     */
     private fun removeCardCategoryV4Columns(connection: androidx.sqlite.SQLiteConnection) {
-        connection.execSQL("DROP INDEX IF EXISTS index_type_cq_questions_card_category_id")
-        connection.execSQL("DROP INDEX IF EXISTS index_type_cq_stimuli_card_category_id")
-        connection.execSQL("ALTER TABLE type_cq_questions DROP COLUMN card_category_id")
-        connection.execSQL("ALTER TABLE type_cq_stimuli DROP COLUMN card_category_id")
+        connection.execSQL("PRAGMA foreign_keys = OFF")
+        connection.execSQL("PRAGMA legacy_alter_table = ON")
+        connection.execSQL("BEGIN")
+        try {
+            rebuildAsV3(connection, "type_cq_questions", V3_QUESTIONS_DDL, V3_QUESTIONS_COLUMNS, V3_QUESTIONS_INDEXES)
+            rebuildAsV3(connection, "type_cq_stimuli", V3_STIMULI_DDL, V3_STIMULI_COLUMNS, V3_STIMULI_INDEXES)
+            connection.execSQL("COMMIT")
+        } catch (t: Throwable) {
+            connection.execSQL("ROLLBACK")
+            throw t
+        } finally {
+            connection.execSQL("PRAGMA legacy_alter_table = OFF")
+        }
+    }
+
+    private fun rebuildAsV3(
+        connection: androidx.sqlite.SQLiteConnection,
+        table: String,
+        createSql: String,
+        columns: String,
+        indexSql: List<String>,
+    ) {
+        connection.execSQL("DROP INDEX IF EXISTS index_${table}_card_category_id")
+        connection.execSQL(createSql.replace("`$table`", "`${table}_v3`"))
+        connection.execSQL("INSERT INTO `${table}_v3`($columns) SELECT $columns FROM `$table`")
+        connection.execSQL("DROP TABLE `$table`")
+        connection.execSQL("ALTER TABLE `${table}_v3` RENAME TO `$table`")
+        indexSql.forEach { connection.execSQL(it) }
     }
 
     private fun androidx.sqlite.SQLiteConnection.firstLong(sql: String): Long {
@@ -444,3 +477,33 @@ class BackupRestoreTest {
         assertFalse(RestoreSwap.pendingFile(liveFile).exists())
     }
 }
+
+
+// ---- Exact pre-v4 (v3) table shapes, taken from the Room v4 schema minus card_category_id. ----
+private const val V3_QUESTIONS_DDL =
+    "CREATE TABLE IF NOT EXISTS `type_cq_questions` (`question_id` TEXT NOT NULL, `fts_id` INTEGER NOT NULL, `stimulus_id` TEXT, " +
+        "`topic_id` TEXT NOT NULL, `question_type_id` TEXT NOT NULL, `subquestion_label` TEXT NOT NULL, `marks` REAL NOT NULL, " +
+        "`question_text` TEXT NOT NULL DEFAULT '', `short_answer` TEXT NOT NULL DEFAULT '', `rating` INTEGER, " +
+        "`sort_order` INTEGER NOT NULL DEFAULT 0, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, " +
+        "PRIMARY KEY(`question_id`), " +
+        "FOREIGN KEY(`question_type_id`) REFERENCES `type_cq_question_types`(`question_type_id`) ON UPDATE CASCADE ON DELETE RESTRICT , " +
+        "FOREIGN KEY(`topic_id`) REFERENCES `type_cq_topics`(`topic_id`) ON UPDATE CASCADE ON DELETE RESTRICT , " +
+        "FOREIGN KEY(`stimulus_id`) REFERENCES `type_cq_stimuli`(`stimulus_id`) ON UPDATE CASCADE ON DELETE RESTRICT )"
+private const val V3_QUESTIONS_COLUMNS =
+    "question_id, fts_id, stimulus_id, topic_id, question_type_id, subquestion_label, marks, question_text, " +
+        "short_answer, rating, sort_order, created_at, updated_at"
+private val V3_QUESTIONS_INDEXES = listOf(
+    "CREATE UNIQUE INDEX IF NOT EXISTS `index_type_cq_questions_fts_id` ON `type_cq_questions` (`fts_id`)",
+    "CREATE INDEX IF NOT EXISTS `index_type_cq_questions_question_type_id_sort_order` ON `type_cq_questions` (`question_type_id`, `sort_order`)",
+    "CREATE INDEX IF NOT EXISTS `index_type_cq_questions_stimulus_id_sort_order` ON `type_cq_questions` (`stimulus_id`, `sort_order`)",
+    "CREATE INDEX IF NOT EXISTS `index_type_cq_questions_topic_id_sort_order` ON `type_cq_questions` (`topic_id`, `sort_order`)",
+)
+private const val V3_STIMULI_DDL =
+    "CREATE TABLE IF NOT EXISTS `type_cq_stimuli` (`stimulus_id` TEXT NOT NULL, `topic_id` TEXT NOT NULL, " +
+        "`stimulus_text` TEXT NOT NULL DEFAULT '', `rating` INTEGER, `reference_text` TEXT NOT NULL DEFAULT '', " +
+        "`created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`stimulus_id`), " +
+        "FOREIGN KEY(`topic_id`) REFERENCES `type_cq_topics`(`topic_id`) ON UPDATE CASCADE ON DELETE RESTRICT )"
+private const val V3_STIMULI_COLUMNS = "stimulus_id, topic_id, stimulus_text, rating, reference_text, created_at, updated_at"
+private val V3_STIMULI_INDEXES = listOf(
+    "CREATE INDEX IF NOT EXISTS `index_type_cq_stimuli_topic_id_updated_at` ON `type_cq_stimuli` (`topic_id`, `updated_at`)",
+)

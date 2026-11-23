@@ -4,8 +4,13 @@ name: Android Instrumented Tests and Scale Benchmark
 on:
   workflow_dispatch:
     inputs:
+      run_benchmark:
+        description: "Also run the slow scale benchmark (off = fast functional tests only)"
+        type: boolean
+        required: false
+        default: false
       benchmark_rows:
-        description: "Number of questions to import in the benchmark (300000 = real target)"
+        description: "Questions to import when run_benchmark is on (300000 = real target)"
         required: false
         default: "20000"
       api_level:
@@ -20,7 +25,8 @@ jobs:
   instrumented:
     name: Room runtime tests and benchmark on emulator
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    # Functional tests normally finish in a few minutes; only the benchmark may need the long limit.
+    timeout-minutes: ${{ inputs.run_benchmark && 120 || 25 }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -52,6 +58,7 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         env:
           BENCHMARK_ROWS: ${{ inputs.benchmark_rows }}
+          RUN_BENCHMARK: ${{ inputs.run_benchmark }}
         with:
           api-level: ${{ inputs.api_level }}
           arch: x86_64
