@@ -246,8 +246,10 @@ abstract class ChapterCqDataDao {
 
     @Query("""
         SELECT DISTINCT pq.chapter_cq_question_id AS question_id, p.paper_id AS paper_id,
-               p.short_name AS short_name, p.title AS title
-        FROM paper_question_items pq JOIN papers p ON p.paper_id=pq.paper_id
+               p.short_name AS short_name, p.title AS title, pc.name AS category_name
+        FROM paper_question_items pq
+        JOIN papers p ON p.paper_id=pq.paper_id
+        JOIN paper_categories pc ON pc.paper_category_id=p.paper_category_id
         WHERE pq.chapter_cq_question_id = :questionId
         ORDER BY p.short_name, p.title, p.paper_id
     """)
