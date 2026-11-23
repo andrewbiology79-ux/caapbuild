@@ -106,6 +106,89 @@ class BackupRestoreTest {
     private fun count(db: QuestionBankDatabase, sql: String): Long = runBlocking { db.useReaderConnection { it.scalarLong(sql) } }
 
     @Test
+    fun v1DatabaseRunsBothProductionRoomMigrationsWithoutLosingQuestionData() = runBlocking {
+        addQuestions(source, groups = 2)
+        val originalCounts = DatabaseSnapshot.liveCounts(source)
+        val file = context.getDatabasePath(sourceName)
+        source.close()
+
+        val legacyHash = "786b471dfa14c9ae4739bb81479bab25"
+        val raw = BundledSQLiteDriver().open(file.absolutePath)
+        try {
+            raw.execSQL("DROP TABLE IF EXISTS type_cq_concept_parts")
+            raw.execSQL("DROP TABLE IF EXISTS type_cq_concepts")
+            raw.execSQL("UPDATE room_master_table SET identity_hash = '$legacyHash' WHERE id = 42")
+            raw.execSQL("PRAGMA user_version = 1")
+        } finally {
+            raw.close()
+        }
+
+        source = QuestionBankDatabase.create(context, sourceName)
+        opened += source
+        val migratedCounts = DatabaseSnapshot.liveCounts(source)
+        val currentHash = DatabaseSnapshot.liveIdentityHash(source)
+        assertEquals(originalCounts, migratedCounts)
+        assertEquals(3L, source.useReaderConnection { it.scalarLong("PRAGMA user_version") })
+        assertTrue(source.useReaderConnection { it.scalarLong("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('type_cq_concepts','type_cq_concept_parts')") } == 2L)
+        val inspected = BackupInspector.inspect(file, expectedHash = currentHash)
+        assertTrue("v1 migration failed: ${inspected.problem}", inspected.ok)
+        assertEquals(originalCounts, inspected.counts)
+    }
+
+    @Test
+    fun v2DatabaseGetsOneTimeOldestFirstQuestionOrderMigration() = runBlocking {
+        addQuestions(source, groups = 2)
+        val topicId = source.useReaderConnection { it.scalarText("SELECT topic_id FROM type_cq_topics LIMIT 1") }
+        val single = TypeCqQuestionRepositoryImpl(source.typeCqQuestionDao()).saveGroup(
+            QuestionGroupInput(topicId, "", listOf(SubQuestionInput(CqLabel.KA, "স্বতন্ত্র প্রশ্ন", "উত্তর")))
+        ) as SaveResult.Saved
+        val singleQuestionId = single.questionIds.single()
+        val file = context.getDatabasePath(sourceName)
+        val hash = DatabaseSnapshot.liveIdentityHash(source)
+        val oldestStimulus = source.useReaderConnection { it.scalarText("SELECT stimulus_id FROM type_cq_stimuli ORDER BY stimulus_id LIMIT 1") }
+        source.close()
+        val raw = BundledSQLiteDriver().open(file.absolutePath)
+        try {
+            raw.execSQL("UPDATE type_cq_stimuli SET created_at = CASE stimulus_id WHEN '$oldestStimulus' THEN 100 ELSE 200 END")
+            raw.execSQL("UPDATE type_cq_questions SET sort_order = CASE WHEN question_id IN (SELECT question_id FROM type_cq_questions ORDER BY question_id LIMIT 2) THEN 100 ELSE 10 END")
+            raw.execSQL("PRAGMA user_version = 2")
+        } finally {
+            raw.close()
+        }
+        source = QuestionBankDatabase.create(context, sourceName)
+        opened += source
+        assertEquals(3L, source.useReaderConnection { it.scalarLong("PRAGMA user_version") })
+        val order = source.useReaderConnection { connection ->
+            val st = connection.prepare("SELECT stimulus_id FROM type_cq_questions WHERE stimulus_id IS NOT NULL GROUP BY stimulus_id ORDER BY MAX(sort_order) DESC")
+            try { buildList { while (st.step()) add(st.getText(0)) } } finally { st.close() }
+        }
+        assertEquals(2, order.size)
+        assertEquals(oldestStimulus, order.first())
+        val cardOrder = source.useReaderConnection { connection ->
+            val st = connection.prepare("""
+                SELECT COALESCE(stimulus_id, 'single:' || question_id) AS group_key
+                FROM type_cq_questions
+                GROUP BY COALESCE(stimulus_id, 'single:' || question_id)
+                ORDER BY MAX(sort_order) DESC
+            """.trimIndent())
+            try { buildList { while (st.step()) add(st.getText(0)) } } finally { st.close() }
+        }
+        assertEquals(3, cardOrder.size)
+        assertEquals("s-$oldestStimulus", "s-${cardOrder.first()}")
+        assertEquals("single:$singleQuestionId", cardOrder.last())
+        val oldestLabels = source.useReaderConnection { connection ->
+            val st = connection.prepare("SELECT subquestion_label FROM type_cq_questions WHERE stimulus_id = ? ORDER BY sort_order DESC")
+            try {
+                st.bindText(1, oldestStimulus)
+                buildList { while (st.step()) add(st.getText(0)) }
+            } finally { st.close() }
+        }
+        assertEquals(listOf("ক", "গ"), oldestLabels)
+        assertEquals(hash, DatabaseSnapshot.liveIdentityHash(source))
+        assertTrue(BackupInspector.inspect(file, expectedHash = hash).ok)
+    }
+
+    @Test
     fun snapshotOfALiveDatabasePassesInspectionAndMatchesTheLiveCounts() = runBlocking {
         val expected = addQuestions(source, groups = 3) // 6 questions, still partly in the -wal file
         val file = temp("snapshot_test.db")

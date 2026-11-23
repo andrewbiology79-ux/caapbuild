@@ -226,20 +226,29 @@ class BackupService(
             }
 
             val liveHash = DatabaseSnapshot.liveIdentityHash(database())
-            val check = BackupInspector.inspect(file, expectedHash = liveHash)
-            val counts = check.counts
-            if (!check.ok || counts == null) {
+                ?: error("বর্তমান ডাটাবেসের schema পরিচয় যাচাই করা যায়নি।")
+            // First validate the backup against its own manifest/schema identity. Older v1/v2 files
+            // are then opened through the production Room migrations in an isolated database copy.
+            val sourceCheck = BackupInspector.inspect(file)
+            val sourceCounts = sourceCheck.counts
+            if (!sourceCheck.ok || sourceCounts == null) {
                 discardCandidate()
-                return@withContext PrepareResult.Rejected(check.problem ?: "ব্যাকআপ ফাইলটি ঠিক নয়।")
+                return@withContext PrepareResult.Rejected(sourceCheck.problem ?: "ব্যাকআপ ফাইলটি ঠিক নয়।")
             }
+            require(sourceCheck.databaseVersion?.let { it in 1..3 } == true) { "এই ব্যাকআপের Database Version সমর্থিত নয়।" }
             archiveMetadata?.let { metadata ->
-                require(metadata.databaseVersion == check.databaseVersion && metadata.identityHash == check.identityHash) {
-                    "Manifest-এর database version বা schema hash আসল ডাটাবেসের সঙ্গে মেলেনি"
+                require(metadata.databaseVersion == sourceCheck.databaseVersion && metadata.identityHash == sourceCheck.identityHash) {
+                    "Manifest-এর database version বা schema hash ব্যাকআপের ডাটাবেসের সঙ্গে মেলেনি"
                 }
             }
+            val migratedCheck = migrateCandidateToCurrent(file, liveHash, sourceCounts)
+                ?: run {
+                    discardCandidate()
+                    return@withContext PrepareResult.Rejected("পুরোনো ব্যাকআপটি নিরাপদে বর্তমান Database Version-এ রূপান্তর করা যায়নি।")
+                }
             PrepareResult.Ready(
                 RestorePreview(
-                    backup = counts,
+                    backup = migratedCheck.counts ?: sourceCounts,
                     current = DatabaseSnapshot.liveCounts(database()),
                     mediaFileCount = candidateMediaCount,
                     includesMedia = candidateIncludesMedia,
@@ -253,6 +262,64 @@ class BackupService(
             PrepareResult.Rejected("ফাইলটি পরীক্ষা করা যায়নি: ${e.message ?: e.javaClass.simpleName}")
         } finally {
             source.delete()
+        }
+    }
+
+    /**
+     * Migrate an isolated candidate through the same Room migrations used by the app.
+     * A restore is accepted only after Room has opened it and the resulting file matches the
+     * currently running schema identity, integrity checks, foreign keys, and row counts.
+     */
+    private suspend fun migrateCandidateToCurrent(
+        candidateFile: File,
+        expectedIdentityHash: String,
+        sourceCounts: DbCounts,
+    ): InspectResult? {
+        val name = "restore-verify-${UUID.randomUUID()}.db"
+        val stagedFile = context.getDatabasePath(name)
+        val replacementFile = File(candidateFile.path + ".verified")
+        val previousFile = File(candidateFile.path + ".before-migration")
+        stagedFile.parentFile?.mkdirs()
+        listOf("", "-wal", "-shm", "-journal").forEach { File(stagedFile.path + it).delete() }
+        replacementFile.delete()
+        previousFile.delete()
+        var stagedDatabase: QuestionBankDatabase? = null
+        try {
+            FileInputStream(candidateFile).use { input ->
+                FileOutputStream(stagedFile).use { output -> input.copyTo(output); output.fd.sync() }
+            }
+            stagedDatabase = QuestionBankDatabase.create(context, name)
+            val migratedCounts = DatabaseSnapshot.liveCounts(stagedDatabase)
+            val migratedHash = DatabaseSnapshot.liveIdentityHash(stagedDatabase)
+            if (migratedCounts != sourceCounts || migratedHash != expectedIdentityHash) {
+                return null
+            }
+            stagedDatabase.close()
+            stagedDatabase = null
+            val migrated = BackupInspector.inspect(stagedFile, expectedHash = expectedIdentityHash)
+            if (!migrated.ok || migrated.databaseVersion != 3 || migrated.counts != sourceCounts) return null
+            FileInputStream(stagedFile).use { input ->
+                FileOutputStream(replacementFile).use { output -> input.copyTo(output); output.fd.sync() }
+            }
+            val replacementCheck = BackupInspector.inspect(replacementFile, expectedHash = expectedIdentityHash)
+            if (!replacementCheck.ok || replacementCheck.databaseVersion != 3 || replacementCheck.counts != sourceCounts) return null
+            if (!candidateFile.renameTo(previousFile)) return null
+            if (!replacementFile.renameTo(candidateFile)) {
+                previousFile.renameTo(candidateFile)
+                return null
+            }
+            previousFile.delete()
+            return BackupInspector.inspect(candidateFile, expectedHash = expectedIdentityHash).takeIf {
+                it.ok && it.databaseVersion == 3 && it.counts == sourceCounts
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return null
+        } finally {
+            runCatching { stagedDatabase?.close() }
+            listOf("", "-wal", "-shm", "-journal").forEach { File(stagedFile.path + it).delete() }
+            listOf(replacementFile, File(replacementFile.path + "-wal"), File(replacementFile.path + "-shm"), previousFile).forEach { it.delete() }
         }
     }
 

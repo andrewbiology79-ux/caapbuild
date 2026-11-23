@@ -355,11 +355,35 @@ fun AppNavHost() {
                             QuestionGroupKey.of(group)?.let { navController.navigate(Routes.questionEdit(topicId, it)) }
                         },
                         onDelete = vm::deleteGroup,
-                        onCopy = vm::duplicateGroup,
                         onBulkDelete = vm::deleteGroups,
                         onView = { group -> QuestionGroupKey.of(group)?.let { navController.navigate(Routes.questionDetail(topicId, it)) } },
                         imagePipeline = container.imagePipeline,
                         onBack = { navController.popBackStack() },
+                        onBreadcrumbHome = {
+                            if (!navController.popBackStack(Routes.SUBJECTS, false)) navController.navigate(Routes.SUBJECTS)
+                        },
+                        onBreadcrumbSubject = {
+                            vm.breadcrumb.value?.subjectId?.let { subjectId ->
+                                val destination = Routes.chapters(subjectId)
+                                if (!navController.popBackStack(destination, false)) {
+                                    navController.navigate(destination) {
+                                        launchSingleTop = true
+                                        popUpTo(Routes.SUBJECTS) { inclusive = false }
+                                    }
+                                }
+                            }
+                        },
+                        onBreadcrumbChapter = {
+                            vm.breadcrumb.value?.chapterId?.let { chapterId ->
+                                val destination = Routes.topics(chapterId)
+                                if (!navController.popBackStack(destination, false)) {
+                                    navController.navigate(destination) {
+                                        launchSingleTop = true
+                                        popUpTo(Routes.SUBJECTS) { inclusive = false }
+                                    }
+                                }
+                            }
+                        },
                     )
                 }
 

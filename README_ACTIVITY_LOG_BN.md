@@ -28,3 +28,7 @@
 - ট্যাপে বাটনের নাম নয়, অবস্থান (x,y) লেখা হয়। নাম পেতে ওপরের ACTION লাইন দেখুন।
 - লেখার পূর্ণ বিষয়বস্তু নয়, শুধু দৈর্ঘ্য ও প্রথম ৪০ অক্ষর রাখা হয়।
 - এটি ডাটাবেজ পড়ে/বদলে না (কেবল ব্যর্থতার পর part_id-র মালিক খুঁজতে একটি SELECT চলে)।
+
+## Type CQ Concept ও কার্ড অ্যাকশন
+- Concept save ব্যর্থ হলে `CONCEPT-WRITE` Activity Log-এ কারণ ও stack trace লেখা হয়।
+- Type CQ card category পরিবর্তন, clipboard, card deletion এবং move-এর ফল UI-তে status message হিসেবে দেখানো হয়; database transaction ব্যর্থ হলে সফলতার বার্তা দেখানো হয় না।

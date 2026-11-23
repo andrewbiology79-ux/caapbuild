@@ -51,7 +51,8 @@ fun PaperCategoryManagementScreen(
     onBack: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    val categories by repository.observeCategorySummaries().collectAsState(initial = emptyList())
+    val categorySummariesFlow = remember(repository) { repository.observeCategorySummaries() }
+    val categories by categorySummariesFlow.collectAsState(initial = emptyList())
     var activeCategoryId by remember { mutableStateOf<String?>(null) }
     val activeCategory = categories.firstOrNull { it.categoryId == activeCategoryId }
     val papersFlow = remember(activeCategoryId) {

@@ -11,7 +11,9 @@ import com.questionbank.app.data.local.dao.QuestionTextUpdate
 import com.questionbank.app.data.local.dao.QuestionMetadataUpdate as DbQuestionMetadataUpdate
 import com.questionbank.app.data.local.dao.QuestionSolutionUpdate as DbQuestionSolutionUpdate
 import com.questionbank.app.data.local.dao.NewSolutionPartRow
+import com.questionbank.app.data.local.dao.NewConceptPartRow
 import com.questionbank.app.data.local.dao.NewStimulusImageRow
+import com.questionbank.app.data.local.dao.MoveQuestionGroupDb
 import com.questionbank.app.data.local.dao.QuestionSolutionPartsDb
 import com.questionbank.app.data.local.dao.TypeCqQuestionDao
 import com.questionbank.app.data.local.entity.BoardCatalogEntity
@@ -21,6 +23,10 @@ import com.questionbank.app.domain.question.BoardItem
 import com.questionbank.app.domain.question.BoardRules
 import com.questionbank.app.domain.question.BoardTag
 import com.questionbank.app.domain.question.CqLabel
+import com.questionbank.app.domain.question.ConceptContentPart
+import com.questionbank.app.domain.question.QuestionBreadcrumb
+import com.questionbank.app.domain.question.SavedQuestionConcept
+import com.questionbank.app.domain.question.QuestionConceptSummary
 import com.questionbank.app.domain.question.DraftText
 import com.questionbank.app.domain.question.GroupEditInput
 import com.questionbank.app.domain.question.QuestionEditRules
@@ -44,6 +50,7 @@ import com.questionbank.app.domain.question.TypeCqQuestionRepository
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import org.json.JSONArray
@@ -68,24 +75,42 @@ class TypeCqQuestionRepositoryImpl(
 
     override fun observeTopicName(topicId: String): Flow<String?> = dao.observeTopicName(topicId)
 
+    override fun observeBreadcrumb(topicId: String): Flow<QuestionBreadcrumb?> = dao.observeBreadcrumb(topicId).map { row ->
+        row?.let { QuestionBreadcrumb(it.subjectId, it.subjectName, it.subjectOrder, it.chapterId, it.chapterName, it.chapterOrder, it.topicId, it.topicName, it.topicOrder) }
+    }
+
     override fun observeGroups(topicId: String): Flow<List<SavedGroup>> =
         dao.observeByTopic(topicId).mapLatest { rows ->
-            if (rows.isEmpty()) emptyList() else enrichGroups(group(rows, tagsOfTopic(topicId)))
+            if (rows.isEmpty()) emptyList() else enrichGroups(topicId, group(rows, tagsOfTopic(topicId)))
         }
 
     /** Attach ordered solution text/images and stimulus image placement for both normal and searched card results. */
-    private suspend fun enrichGroups(groups: List<SavedGroup>): List<SavedGroup> {
+    private suspend fun enrichGroups(topicId: String, groups: List<SavedGroup>): List<SavedGroup> {
         if (groups.isEmpty()) return emptyList()
         val questionIds = groups.flatMap { it.subQuestions }.map { it.id }.distinct()
         val solutionRows = dao.solutionPartsIn(questionIds).groupBy { it.questionId }
-        val paperRows = dao.paperUsagesForQuestions(questionIds).groupBy { it.questionId }
-        val imageRows = groups.mapNotNull { it.stimulusId }.distinct().associateWith { dao.stimulusImagesFor(it) }
+        val conceptRows = dao.conceptPartsOfQuestions(questionIds).groupBy { it.questionId }
+        val stimulusIds = groups.mapNotNull { it.stimulusId }.distinct()
+        // Search may return only the matching sub-questions; Paper Category chips still describe the complete card.
+        val fullQuestionIdsByStimulus: Map<String, List<String>> = if (stimulusIds.isEmpty()) emptyMap() else
+            dao.questionIdsForStimuli(stimulusIds).groupBy({ it.stimulusId }, { it.questionId })
+        val allPaperQuestionIds = (questionIds + fullQuestionIdsByStimulus.values.flatten()).distinct()
+        // DAO rows are globally ordered by newest paper-link time; keep that order when collecting usages for each card.
+        val paperRows = if (allPaperQuestionIds.isEmpty()) emptyList() else dao.paperUsagesForQuestions(allPaperQuestionIds)
+        val imageRows = if (stimulusIds.isEmpty()) emptyMap() else dao.stimulusImagesForAll(stimulusIds).groupBy { it.stimulusId }
+        val categoryRows = dao.categoryLinksOfTopic(topicId).groupBy({ it.questionId }, { it.categoryId })
         return groups.map { saved ->
+            val cardQuestionIds = saved.stimulusId?.let { fullQuestionIdsByStimulus[it].orEmpty() }
+                ?: saved.subQuestions.map { it.id }
+            val completeCardCategoryIds = cardQuestionIds.flatMap { categoryRows[it].orEmpty() }.distinct()
             saved.copy(
                 stimulusImages = imageRows[saved.stimulusId].orEmpty().map { QuestionStimulusImage(it.imageId, it.placement, it.position) },
-                paperUsages = saved.subQuestions.flatMap { question ->
-                    paperRows[question.id].orEmpty().map { PaperUsage(it.paperId, it.shortName, it.title) }
-                }.distinctBy { it.paperId },
+                questionCategoryIds = completeCardCategoryIds,
+                paperUsages = paperRows.asSequence()
+                    .filter { row -> row.questionId in (saved.stimulusId?.let { fullQuestionIdsByStimulus[it] } ?: saved.subQuestions.map { q -> q.id }) }
+                    .distinctBy { it.paperId }
+                    .map { PaperUsage(it.paperId, it.shortName, it.title, it.categoryName) }
+                    .toList(),
                 subQuestions = saved.subQuestions.map { question ->
                     val parts = solutionRows[question.id].orEmpty().map { part ->
                         QuestionSolutionPart(part.partId, part.partType, part.position, part.textContent, part.imageId)
@@ -93,6 +118,9 @@ class TypeCqQuestionRepositoryImpl(
                     question.copy(
                         solutionParts = parts.filter { it.partType == "TEXT" }.mapNotNull { it.textContent },
                         orderedSolutionParts = parts,
+                        conceptParts = conceptRows[question.id].orEmpty().map { part ->
+                            ConceptContentPart(part.partId, part.partType, part.position, part.textContent, part.imageId)
+                        },
                     )
                 },
             )
@@ -126,6 +154,9 @@ class TypeCqQuestionRepositoryImpl(
                     tagRows(ok.boards[it.label].orEmpty()), it.solutionParts, ok.categories[it.label].orEmpty(),
                     snapshot.solutionPartsByLabel[it.label].orEmpty().map { part ->
                         NewSolutionPartRow(part.partId, part.partType, part.position, part.textContent, part.imageId)
+                    },
+                    snapshot.conceptsByLabel[it.label].orEmpty().map { part ->
+                        NewConceptPartRow(newId(), part.partType, part.position, part.textContent, part.imageId)
                     },
                 )
             }
@@ -217,7 +248,7 @@ class TypeCqQuestionRepositoryImpl(
         // null when every word is a hashtag word (or there is no word): then nothing is asked from FTS5 (v0.2.29).
         val match = QuestionSearchRules.ftsQuery(tokens)
         return try {
-            val groups = enrichGroups(group(dao.selectByTopic(topicId), tagsOfTopic(topicId)))
+            val groups = enrichGroups(topicId, group(dao.selectByTopic(topicId), tagsOfTopic(topicId)))
             val found = if (tokens.isEmpty()) {
                 // No text, only the board / year filter (v0.2.30c-3).
                 QuestionSearchRules.filterByBoards(groups, null, emptySet(), f!!)
@@ -254,6 +285,74 @@ class TypeCqQuestionRepositoryImpl(
         null
     }
 
+    override suspend fun updateQuestionCategories(questionId: String, categoryIds: List<String>): Boolean = try {
+        if (categoryIds.distinct().size != categoryIds.size || categoryIds.any(String::isBlank)) return false
+        beforeWrite()
+        dao.replaceQuestionCategories(questionId, categoryIds, clock())
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        com.questionbank.app.ActivityLog.error("QUESTION-CATEGORY", "Category update failed for $questionId", e)
+        false
+    }
+
+    override suspend fun updateGroupQuestionCategories(topicId: String, groupKey: String, categoryIds: List<String>): Boolean = try {
+        if (topicId.isBlank() || categoryIds.distinct().size != categoryIds.size || categoryIds.any(String::isBlank)) return false
+        val group = loadOriginal(topicId, groupKey) ?: return false
+        val questionIds = group.subQuestions.map { it.id }
+        if (questionIds.isEmpty() || questionIds.distinct().size != questionIds.size) return false
+        beforeWrite()
+        dao.replaceQuestionCategoriesForGroup(questionIds, categoryIds, clock())
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        com.questionbank.app.ActivityLog.error("QUESTION-CATEGORY", "Group category update failed", e)
+        false
+    }
+
+    override fun observeConcept(questionId: String): Flow<SavedQuestionConcept?> = combine(
+        dao.observeConcept(questionId),
+        dao.observeConceptParts(questionId),
+    ) { concept, parts ->
+        if (concept == null) null else SavedQuestionConcept(
+            questionId = questionId,
+            parts = parts.map { ConceptContentPart(it.partId, it.partType, it.position, it.textContent, it.imageId) },
+        )
+    }
+
+    override suspend fun saveConcept(questionId: String, parts: List<ConceptContentPart>): Boolean = try {
+        val normalized = parts.filter { part ->
+            when (part.partType) {
+                "TEXT" -> part.textContent != null && part.imageId == null
+                "IMAGE" -> !part.imageId.isNullOrBlank() && part.textContent == null
+                else -> false
+            }
+        }.mapIndexed { index, part -> part.copy(partId = part.partId.ifBlank { newId() }, position = index.toLong()) }
+        if (normalized.map { it.partId }.distinct().size != normalized.size) return false
+        beforeWrite()
+        dao.replaceConcept(questionId, normalized, clock())
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        com.questionbank.app.ActivityLog.error("CONCEPT-WRITE", "Concept save failed for $questionId", e)
+        false
+    }
+
+    override suspend fun conceptsInTopic(topicId: String): List<QuestionConceptSummary> {
+        if (topicId.isBlank()) return emptyList()
+        val summary = dao.conceptSummariesForTopic(topicId)
+        return summary.map { row ->
+            val concept = dao.conceptForQuestion(row.questionId)
+            val parts = concept?.let { dao.conceptPartsFor(it.conceptId) }.orEmpty()
+            QuestionConceptSummary(
+                questionId = row.questionId,
+                label = row.label,
+                questionText = row.questionText,
+                previewText = parts.filter { it.partType == "TEXT" }.mapNotNull { it.textContent }.joinToString("\n"),
+            )
+        }
+    }
+
     override suspend fun deleteGroup(topicId: String, groupKey: String): Boolean = try {
         val current = loadOriginal(topicId, groupKey) ?: return false
         val ids = current.subQuestions.map { it.id }
@@ -279,6 +378,34 @@ class TypeCqQuestionRepositoryImpl(
         false
     }
 
+    override suspend fun moveGroups(sourceTopicId: String, targetTopicId: String, groupKeys: List<String>): Boolean = try {
+        if (sourceTopicId.isBlank() || targetTopicId.isBlank() || groupKeys.isEmpty() || groupKeys.distinct().size != groupKeys.size) return false
+        val targets = groupKeys.map { key -> loadOriginal(sourceTopicId, key) ?: return false }
+        val plan = targets.map { group ->
+            MoveQuestionGroupDb(group.stimulusId, group.subQuestions.map { it.id })
+        }
+        beforeWrite()
+        dao.moveQuestionGroups(sourceTopicId, targetTopicId, plan, clock())
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        com.questionbank.app.ActivityLog.error("QUESTION-MOVE", "Type CQ card move failed", e)
+        false
+    }
+
+    override suspend fun reorderGroups(topicId: String, orderedGroupKeys: List<String>): Boolean = try {
+        if (topicId.isBlank() || orderedGroupKeys.isEmpty() || orderedGroupKeys.distinct().size != orderedGroupKeys.size) return false
+        val targets = orderedGroupKeys.map { key -> loadOriginal(topicId, key) ?: return false }
+        val plan = targets.map { group -> MoveQuestionGroupDb(group.stimulusId, group.subQuestions.map { it.id }) }
+        beforeWrite()
+        dao.reorderQuestionGroups(topicId, plan)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        com.questionbank.app.ActivityLog.error("QUESTION-ORDER", "Type CQ card ordering failed", e)
+        false
+    }
+
     override suspend fun duplicateGroup(topicId: String, groupKey: String): SaveResult {
         val original = loadOriginal(topicId, groupKey) ?: return SaveResult.Failed("প্রশ্ন কার্ডটি আর পাওয়া যাচ্ছে না")
         val subQuestions = original.subQuestions.mapNotNull { question ->
@@ -297,6 +424,9 @@ class TypeCqQuestionRepositoryImpl(
             categoriesByLabel = original.subQuestions.mapNotNull { q -> q.label?.let { it to q.categoryIds } }.toMap(),
             stimulusImages = original.stimulusImages,
             solutionPartsByLabel = original.subQuestions.mapNotNull { q -> q.label?.let { it to q.orderedSolutionParts.map { part -> part.copy(partId = newId()) } } }.toMap(),
+            conceptsByLabel = original.subQuestions.mapNotNull { q -> q.label?.let { label ->
+                label to q.conceptParts.map { part -> part.copy(partId = newId()) }
+            } }.toMap(),
         )
         return saveGroup(input)
     }
@@ -325,9 +455,18 @@ class TypeCqQuestionRepositoryImpl(
         val orderedParts = if (questionIds.isEmpty()) emptyMap() else dao.solutionPartsIn(questionIds).groupBy({ it.questionId }, { part ->
             com.questionbank.app.domain.question.QuestionSolutionPart(part.partId, part.partType, part.position, part.textContent, part.imageId)
         })
+        val concepts = if (questionIds.isEmpty()) emptyMap() else dao.conceptPartsOfQuestions(questionIds).groupBy({ it.questionId }, { part ->
+            ConceptContentPart(part.partId, part.partType, part.position, part.textContent, part.imageId)
+        })
+        val completeCardCategoryIds = dao.categoryIdsOfCard(
+            topicId, base.stimulusId, base.subQuestions.firstOrNull()?.id.orEmpty(),
+        )
         return base.copy(
             stimulusImages = stimulusImageRows,
-            subQuestions = base.subQuestions.map { sub -> sub.copy(orderedSolutionParts = orderedParts[sub.id].orEmpty()) },
+            questionCategoryIds = completeCardCategoryIds,
+            subQuestions = base.subQuestions.map { sub ->
+                sub.copy(orderedSolutionParts = orderedParts[sub.id].orEmpty(), conceptParts = concepts[sub.id].orEmpty())
+            },
         )
     }
 

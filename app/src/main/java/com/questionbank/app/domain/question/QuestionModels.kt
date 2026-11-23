@@ -84,6 +84,8 @@ data class QuestionGroupInput(
     val stimulusImages: List<QuestionStimulusImage> = emptyList(),
     /** Complete mixed TEXT/IMAGE solution order for labels in this group; absent labels use [SubQuestionInput.solutionParts]. */
     val solutionPartsByLabel: Map<CqLabel, List<QuestionSolutionPart>> = emptyMap(),
+    /** Concept content to copy with a duplicated/pasted card, keyed per sub-question. */
+    val conceptsByLabel: Map<CqLabel, List<ConceptContentPart>> = emptyMap(),
 )
 
 /** Raw editor text, used for the automatic draft. Index 0..3 = ক, খ, গ, ঘ. */
@@ -129,10 +131,43 @@ data class SavedSubQuestion(
     val categoryIds: List<String> = emptyList(),
     /** Full ordered TEXT/IMAGE solution representation; text-only preview remains in [solutionParts]. */
     val orderedSolutionParts: List<QuestionSolutionPart> = emptyList(),
+    /** Separate ordered Concept content owned by this individual sub-question. */
+    val conceptParts: List<ConceptContentPart> = emptyList(),
 )
 
 /** One saved Paper that references a question; shown as a usage chip on Collection cards. */
-data class PaperUsage(val paperId: String, val shortName: String, val title: String)
+data class PaperUsage(val paperId: String, val shortName: String, val title: String, val categoryName: String = "")
+
+
+/** Ordered TEXT / IMAGE concept content, independent from a question's Solution. */
+data class ConceptContentPart(
+    val partId: String,
+    val partType: String,
+    val position: Long,
+    val textContent: String? = null,
+    val imageId: String? = null,
+)
+
+data class SavedQuestionConcept(val questionId: String, val parts: List<ConceptContentPart>)
+
+data class QuestionConceptSummary(
+    val questionId: String,
+    val label: String,
+    val questionText: String,
+    val previewText: String,
+)
+
+data class QuestionBreadcrumb(
+    val subjectId: String,
+    val subjectName: String,
+    val subjectOrder: Long,
+    val chapterId: String,
+    val chapterName: String,
+    val chapterOrder: Long,
+    val topicId: String,
+    val topicName: String,
+    val topicOrder: Long,
+)
 
 /** One stimulus with its sub-questions, or one single question without a stimulus. */
 data class SavedGroup(
@@ -149,6 +184,8 @@ data class SavedGroup(
     val unfilteredFallbackRating: Int? = null,
     /** Distinct Paper references across the complete saved group, retained for partial-search cards. */
     val paperUsages: List<PaperUsage> = emptyList(),
+    /** Union of Question Category IDs across the complete card, including hidden sub-questions in filtered results. */
+    val questionCategoryIds: List<String> = emptyList(),
 )
 
 sealed interface SaveResult {

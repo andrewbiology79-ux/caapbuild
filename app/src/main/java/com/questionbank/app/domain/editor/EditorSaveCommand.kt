@@ -63,6 +63,7 @@ sealed interface EditorSaveCommand {
                 categoriesByLabel = immutableMap(source.categoriesByLabel.mapValues { (_, ids) -> immutableList(ids) }),
                 stimulusImages = immutableList(source.stimulusImages),
                 solutionPartsByLabel = immutableMap(source.solutionPartsByLabel.mapValues { (_, parts) -> immutableList(parts) }),
+                conceptsByLabel = immutableMap(source.conceptsByLabel.mapValues { (_, parts) -> immutableList(parts) }),
             )
             return TypeCqCreate(snapshot)
         }

@@ -1,3 +1,27 @@
+TYPE CQ / EDITOR / CLIPBOARD / ROOM MIGRATION UPDATE (23 Nov 2026) - SOURCE UPDATED; BUILD NOT VERIFIED
+- Version metadata: 0.2.48-typecq-window, versionCode 53.
+- Added/restored compact translucent Add Question Extended FAB, selected + visible/total count row, breadcrumb fallback, Caa-style card ribbon and high-contrast checkbox.
+- Card menu now has Edit / Reference / Copy / Cut / Paste After / Paste Before / Delete. Copy/Cut uses complete-group clipboard; relative paste reindexes complete cards atomically. Type ribbon menu retains visible-only Select All, Deselect, Copy, Cut, Paste, Delete and All Concepts.
+- Question category is stored and edited per sub-question from Type CQ reference categories. Paper Category remains independent. Stimulus Board row wraps RTL (starts right); sub-question boards are beside their small solution toggles.
+- Stimulus images preserve placement and aspect ratio: TOP -> stimulus -> BOTTOM. Concept editor discard/save now cleans only imported images with zero live references.
+- Room DB v3: 1->2 creates Concept tables using both SupportSQLiteDatabase and SQLiteConnection migration entry points; 2->3 assigns all legacy groups oldest-first, preserving IDs and subquestion label order. Future cards append to bottom. Concept part-ID collisions check the Concept table.
+- Restore validation migrates isolated legacy backups through production Room migrations and checks v3 identity, row counts, integrity and foreign keys before accepting a candidate.
+- Also fixed Paper Category Flow recomposition, batched stimulus image enrich, and breadcrumb route fallback. Minimum/Full editor and formula scrolling/hidden scrollbars/unchanged formula font size/`<br>` remain intact.
+- Verified: all supplied ZIP archives pass `unzip -t`; Python SQLite test of v2->v3 SQL passes and retains question/stimulus IDs, chronological card order, standalone cards and subquestion order.
+- Attempted `./gradlew --no-daemon testDebugUnitTest assembleDebug`; wrapper could not download Gradle 8.14.3 from services.gradle.org due DNS UnknownHostException. Build did not begin. No APK, Kotlin type-check, Room KSP schema export, unit/instrumented test execution, or device UI test is claimed.
+- Required after network/Gradle is available: run Gradle build + testDebugUnitTest + connectedDebugAndroidTest; inspect generated Room v2/v3 schema exports and test migration/backup/clipboard on a device.
+
+TYPE CQ WINDOW + CONCEPT + CARD CLIPBOARD (23 Nov 2026) - SOURCE UPDATED; ANDROID BUILD BLOCKED BEFORE COMPILATION
+- Added Type CQ breadcrumb/count row, colorful Caa-style cards, Paper Category chips, right-wrapped Board/year tags, full-aspect-ratio TOP/BOTTOM stimulus images, sub-question solution toggles, group-level Question Category selection, and Concept button/editor.
+- Concept persists per individual sub-question in Room v2 tables (`type_cq_concepts`, `type_cq_concept_parts`); includes TEXT/IMAGE ordered parts, Minimum/Full editor mode, math toolbar and KaTeX preview. Backup already carries the database and full `media/type_cq` folder.
+- Type menu: visible-result Select All, Deselect, Copy, Cut, Paste only when clipboard populated, Delete, and all Concepts list. COPY duplicates full card and content; CUT keeps source IDs / paper references; cross-topic stimulus moves use transactional detach -> parent move -> reattach to satisfy DB topic-match triggers.
+- New questions get `min(sort_order)-1`, preserving prior order and appearing last.
+- Kotlin PSI parser: 168 files parsed successfully (syntax only; not a type-check). SQLite tests passed: fresh schema, v1.1->v2 migration, one stimulus with multiple subquestions counts as one card, group categories, Concept TEXT/IMAGE and image FK, delete cascade + paper snapshot, cross-topic CUT + source IDs, and new-question-last ordering. Integrity and foreign-key checks passed.
+- Build command `./gradlew --offline :app:assembleDebug --no-daemon` did not reach Gradle compilation: wrapper could not resolve `services.gradle.org` (UnknownHostException) while obtaining Gradle 8.14.3. No APK or emulator/device UI test produced. Do not treat this source ZIP as build-verified.
+- Careful recheck (23 Nov): old Caa card semantics confirmed (stimulus-only top board strip; individual question boards beside solutions); paper category usage order follows newest question-to-paper link first; search debounce Select All race closed; process-wide observable clipboard prevents stale Paste counts across Types; blank Concept text-block copy/paste validation aligned; duplicate imports removed; Gradle wrapper executable bit restored.
+- Recheck: 168 Kotlin source files parsed with 0 PSI syntax errors; fresh v2 schema + v1.1-to-v2 migration, Concept image FK, card counting, cross-topic CUT, paper Snapshot/source link and cascade tests passed. Full Android Gradle compile still blocked before compilation by DNS resolution of services.gradle.org; no APK or device UI tests.
+- Version metadata bumped to versionCode 52 / versionName 0.2.47-typecq-window. Detailed source/test notes: CHANGELOG_TYPE_CQ_BN.md.
+
 SETTINGS PAGE + READING-TEXT SPACING (22 Nov 2026) - SOURCE EDIT ONLY, NOT COMPILED / NOT DEVICE-TESTED
 - Profile tab has a new "Settings" card with a button opening a new Settings page (route profile/settings). The old "text size" card was MOVED there (same behaviour, 12-28, default 16, body text only).
 - Four options, each with minus / plus / default: (1) line spacing 100-200 percent of the font size, step 5, default 118 (old fixed 1.18); (2) "<br>" gap 0-24 dp, default 4 (new; was 0); (3) display-formula ($$...$$) gap 0-24 dp, default 2 (old fixed 2dp); (4) body font size. A live sample sits at the top of the page.
@@ -235,3 +259,6 @@ PROFILE CATEGORY CAREFUL RECHECK (22 Nov 2026)
 - Regression scenarios passed in Python SQLite: existing canonical row + aliases, missing canonical ID + legacy adoption, wrong canonical spelling, repeated/idempotent repair, protected-row deletion, and full paper/section/snapshot cascade while preserving source CQ questions.
 - The category row menu is shown for the permanent category, but rename/delete are disabled.
 - Gradle 8.14.3 download was retried and again failed with `UnknownHostException`; Android/Compose compile and Android tests remain unverified.
+
+- Additional careful recheck: Paper usage order now prioritizes `paper_question_items.created_at`, so the most recently attached Paper Category is first/leftmost; Concept save validation preserves explicit empty TEXT blocks instead of filtering them out.
+- Final card-order check: upper stimulus image -> stimulus text -> lower stimulus image -> optional reference -> sub-questions, matching the reference card flow.

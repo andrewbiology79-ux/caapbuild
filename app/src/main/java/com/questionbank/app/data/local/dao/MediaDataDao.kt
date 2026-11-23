@@ -43,7 +43,7 @@ abstract class MediaDataDao {
     @Query("DELETE FROM chapter_cq_images WHERE image_id = :id")
     abstract suspend fun deleteChapterImage(id: String): Int
 
-    @Query("SELECT (SELECT COUNT(*) FROM type_cq_stimulus_images WHERE image_id = :id) + (SELECT COUNT(*) FROM type_cq_solution_parts WHERE image_id = :id)")
+    @Query("SELECT (SELECT COUNT(*) FROM type_cq_stimulus_images WHERE image_id = :id) + (SELECT COUNT(*) FROM type_cq_solution_parts WHERE image_id = :id) + (SELECT COUNT(*) FROM type_cq_concept_parts WHERE image_id = :id)")
     abstract suspend fun typeImageReferenceCount(id: String): Int
 
     @Query("SELECT (SELECT COUNT(*) FROM chapter_cq_stimulus_images WHERE image_id = :id) + (SELECT COUNT(*) FROM chapter_cq_solution_parts WHERE image_id = :id)")

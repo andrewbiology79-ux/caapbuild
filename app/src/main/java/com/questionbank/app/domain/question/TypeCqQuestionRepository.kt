@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.Flow
  */
 interface TypeCqQuestionRepository {
     fun observeTopicName(topicId: String): Flow<String?>
+    fun observeBreadcrumb(topicId: String): Flow<QuestionBreadcrumb?>
     fun observeGroups(topicId: String): Flow<List<SavedGroup>>
 
     suspend fun saveGroup(input: QuestionGroupInput): SaveResult
@@ -29,11 +30,28 @@ interface TypeCqQuestionRepository {
     /** One card as saved now, for the edit screen (v0.2.28). Null when it no longer exists. [groupKey] comes from [QuestionGroupKey]. */
     suspend fun loadGroup(topicId: String, groupKey: String): SavedGroup?
 
+    /** Replaces the complete Question Category set for one individual sub-question. */
+    suspend fun updateQuestionCategories(questionId: String, categoryIds: List<String>): Boolean
+
+    /** Applies one card-level category set to every sub-question in the complete card atomically. */
+    suspend fun updateGroupQuestionCategories(topicId: String, groupKey: String, categoryIds: List<String>): Boolean
+
+    /** Observe/load/save an individual question's separate Concept content. */
+    fun observeConcept(questionId: String): Flow<SavedQuestionConcept?>
+    suspend fun saveConcept(questionId: String, parts: List<ConceptContentPart>): Boolean
+    suspend fun conceptsInTopic(topicId: String): List<QuestionConceptSummary>
+
     /** Deletes one card atomically; referenced source questions may be restricted by saved paper items. */
     suspend fun deleteGroup(topicId: String, groupKey: String): Boolean
 
-    /** Deletes selected complete cards in one database transaction; any restricted paper reference rolls back the whole batch. */
+    /** Deletes selected complete cards in one database transaction. Paper snapshots remain valid if a source link is cleared. */
     suspend fun deleteGroups(topicId: String, groupKeys: List<String>): Boolean
+
+    /** Moves complete cards between Type CQ topics, preserving question IDs and linked paper references. */
+    suspend fun moveGroups(sourceTopicId: String, targetTopicId: String, groupKeys: List<String>): Boolean
+
+    /** Re-indexes every card in one topic to the given complete order (cards stay grouped). */
+    suspend fun reorderGroups(topicId: String, orderedGroupKeys: List<String>): Boolean
 
     /** Creates a full copy of a card, including tags, categories, ordered solutions and media links. */
     suspend fun duplicateGroup(topicId: String, groupKey: String): SaveResult

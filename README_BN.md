@@ -1,3 +1,11 @@
+# সর্বশেষ প্রজেক্ট আপডেট — Type CQ / Editor / Migration (২৩ নভেম্বর ২০২৬)
+
+এই সোর্স প্যাকেজে Type CQ card menu-র Cut/Copy/Paste Before/After, per-sub-question Question Category ও Concept, compact translucent Add Question button, RTL Board chips, full-width stimulus images, visible/total counts এবং legacy card order migration একত্র করা হয়েছে। Minimum/Full Editor, formula horizontal scroll, hidden scrollbar, unchanged formula font size ও `<br>` line break বজায় আছে। Version: **0.2.48-typecq-window (code 53)**। বিস্তারিত `CHANGELOG_TYPE_CQ_BN.md` এবং `BUILD_STATUS.txt`।
+
+**Build limitation:** Gradle wrapper 8.14.3 distribution download করতে `services.gradle.org` DNS `UnknownHostException` হয়েছে; Android compile/test/APK/device UI এখনো verified নয়।
+
+---
+
 # সর্বশেষ আপডেট — Profile Category Management (22 Nov 2026)
 
 এই সোর্স প্যাকেজে Profile থেকে প্রশ্নপত্রের ক্যাটাগরি পরিচালনা যোগ করা হয়েছে: ক্যাটাগরি তৈরি/নাম সম্পাদনা/রিঅর্ডার, ক্যাটাগরি ও প্রশ্নপত্রে multi-select এবং delete। ক্যাটাগরি মুছলে তার ভেতরের সব প্রশ্নপত্র ও snapshot data মুছে যায়; মূল Type CQ / Chapter CQ source question অক্ষত থাকে। `অশ্রেণীবদ্ধ` স্থায়ী এবং restore/open-এর সময় duplicate variant merge করে একটিমাত্র system category রাখা হয়। Version: **0.2.45-profile-categories (code 50)**। বিস্তারিত `CHANGELOG_PROFILE_CATEGORIES_BN.md`।
@@ -63,3 +71,10 @@ PROFILE CATEGORY RECHECK (22 Nov 2026)
 - Restore repair merges both the canonical spelling and the previously introduced long-ঈ spelling, including whitespace variants.
 - The fixed folder displays the same row menu, with rename/delete disabled.
 - Android Gradle tests remain unrun because Gradle 8.14.3 cannot be downloaded in this environment (DNS unavailable).
+
+## Type CQ Window আপডেট (v0.2.47)
+- Type CQ-তে Home → Subject → Chapter → Type breadcrumb, selected/visible/total card count এবং ছোট, semi-transparent Add Question action।
+- প্রশ্ন কার্ডে old Caa-ধাঁচের নীল ribbon, serial/checkbox/rating/kebab; Paper Category chip, Board/year tags, uncropped full-width stimulus images এবং expandable solutions।
+- পুরো card-এর জন্য Question Category dropdown; Concept প্রতিটি sub-question-এর জন্য আলাদা করে text/image আকারে সংরক্ষিত হয়। Concept editor-এ Minimum/Full mode, mixed text/image parts, Math toolbar ও KaTeX preview রয়েছে।
+- Type menu-তে filtered Select All, Deselect, Copy, Cut, Paste, Delete ও সব Concept দেখুন। নতুন প্রশ্ন পুরোনো card order বজায় রেখে নিচে যোগ হয়।
+- সম্পূর্ণ পরিবর্তন ও পরীক্ষা-ফল `CHANGELOG_TYPE_CQ_BN.md`-এ লেখা আছে। Android Gradle build এই পরিবেশে চালানো যায়নি, কারণ Gradle 8.14.3 distribution server DNS সংযোগ ব্যর্থ হয়েছে; তাই APK/device UI verified নয়।
