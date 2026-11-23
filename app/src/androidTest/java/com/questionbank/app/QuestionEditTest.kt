@@ -234,7 +234,7 @@ class QuestionEditTest {
         save(topicId, "", Triple(CqLabel.KA, "প্রথম একক", ""))
         save(topicId, "", Triple(CqLabel.KA, "দ্বিতীয় একক", ""))
         save(otherTopicId, "অন্য উদ্দীপক", Triple(CqLabel.KA, "অন্য প্রশ্ন", ""))
-        val untouchedSameTopic = groups()[1]
+        val untouchedSameTopic = groups()[0] // the older card; the newest is the last one
         val untouchedOtherTopic = groups(otherTopicId)
         val key = keyOfNewest()
         now = 2_000L
@@ -242,7 +242,7 @@ class QuestionEditTest {
         val result = repo.updateGroup(edit(key, "", Triple(CqLabel.KA, "বদলানো একক", "")))
 
         assertEquals(UpdateResult.Updated, result)
-        assertEquals(untouchedSameTopic, groups()[1])
+        assertEquals(untouchedSameTopic, groups()[0])
         assertEquals(untouchedOtherTopic, groups(otherTopicId))
         assertEquals(1_000L, updatedAtOfQuestion(untouchedSameTopic.subQuestions[0].id))
         assertEquals(3L, ftsRows())
