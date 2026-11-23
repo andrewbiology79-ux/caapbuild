@@ -38,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -161,7 +162,7 @@ internal fun TypeCqConceptComposerWindow(
     Dialog(onDismissRequest = { requestDismiss() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(
             modifier = Modifier.fillMaxSize(),
-            shape = androidx.compose.foundation.shape.RectangleShape,
+            shape = RectangleShape,
             color = MaterialTheme.colorScheme.surface,
         ) {
             Column(
@@ -330,7 +331,7 @@ internal fun TypeCqConceptComposerWindow(
 @Composable
 private fun ConceptLoadingWindow(questionText: String, error: String, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize(), shape = androidx.compose.foundation.shape.RectangleShape, color = MaterialTheme.colorScheme.surface) {
+        Surface(Modifier.fillMaxSize(), shape = RectangleShape, color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                 if (error.isBlank()) CircularProgressIndicator() else Text(error, color = MaterialTheme.colorScheme.error)
                 Text(questionText, style = MaterialTheme.typography.bodySmall, maxLines = 2)
