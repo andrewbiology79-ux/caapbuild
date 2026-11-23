@@ -101,7 +101,7 @@ class TypeCqQuestionRepositoryTest {
         repo.saveGroup(group("", Triple(CqLabel.KA, "আরেকটি", "")))
         val groups = repo.observeGroups(topicId).first()
         assertEquals(2, groups.size)
-        assertEquals("আরেকটি", groups[0].subQuestions[0].text) // newest first
+        assertEquals("একক প্রশ্ন", groups[0].subQuestions[0].text) // oldest first; new questions go to the bottom
         assertEquals("", groups[0].stimulusText)
         assertEquals(0L, count("SELECT COUNT(*) FROM type_cq_stimuli"))
     }

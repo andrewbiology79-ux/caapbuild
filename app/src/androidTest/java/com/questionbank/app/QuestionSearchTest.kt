@@ -163,10 +163,10 @@ class QuestionSearchTest {
     fun resultsAreNewestFirstAndNewQuestionsAreFoundAtOnce() = runBlocking {
         save(topicId, "", Triple(CqLabel.KA, "আলো এক", ""))
         save(topicId, "", Triple(CqLabel.KA, "আলো দুই", ""))
-        assertEquals(listOf("আলো দুই", "আলো এক"), texts(found("আলো")))
+        assertEquals(listOf("আলো এক", "আলো দুই"), texts(found("আলো")))
 
         save(topicId, "", Triple(CqLabel.KA, "আলো তিন", ""))
-        assertEquals(listOf("আলো তিন", "আলো দুই", "আলো এক"), texts(found("আলো")))
+        assertEquals(listOf("আলো এক", "আলো দুই", "আলো তিন"), texts(found("আলো")))
         assertEquals(3L, db.useReaderConnection { it.scalarLong("SELECT COUNT(*) FROM type_cq_question_fts") })
     }
 
