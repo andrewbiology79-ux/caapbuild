@@ -52,6 +52,7 @@ import com.questionbank.app.domain.question.CqLabel
 import com.questionbank.app.domain.question.DraftText
 import com.questionbank.app.domain.question.QuestionRules
 import com.questionbank.app.domain.question.QuestionSolutionPart
+import com.questionbank.app.domain.question.ConceptContentPart
 import com.questionbank.app.domain.question.SaveResult
 import com.questionbank.app.media.ImagePipeline
 import com.questionbank.app.media.ImageScope
@@ -80,7 +81,7 @@ private fun slotHasContent(d: DraftText, i: Int): Boolean {
         d.solutionPartsByLabel?.getOrNull(i)?.any { it.partType == "IMAGE" } == true ||
         d.boards.getOrNull(i).orEmpty().isNotEmpty() ||
         d.ratings.getOrNull(i) != null ||
-        d.categoryIdsByLabel?.getOrNull(i).orEmpty().isNotEmpty() ||
+        d.conceptPartsByLabel?.getOrNull(i).orEmpty().isNotEmpty() ||
         d.questionTypeIds.getOrNull(i) != label.typeId ||
         d.marks.getOrNull(i) != label.marks
 }
@@ -270,6 +271,14 @@ fun QuestionEditorScreen(
                         onValueChange = viewModel::setReferenceText,
                         enabled = !busy,
                     )
+                    EdCategoryDropdown(
+                        categories = categories.map { EdCategoryOption(it.categoryId, it.name, it.isArchived != 0L) },
+                        selectedIds = draft.cardCategoryId?.let(::listOf).orEmpty(),
+                        enabled = !busy,
+                        onToggle = { categoryId, selected -> viewModel.changeGroupCategory(categoryId.takeIf { selected }) },
+                        onAddCategory = viewModel::addCategory,
+                        singleSelection = true,
+                    )
                 }
 
                 // Full editor only: optional ক/খ cards and one-tap legacy order control.
@@ -318,6 +327,7 @@ fun QuestionEditorScreen(
                                 shownMask = mask and (1 shl i).inv()
                             },
                             onMarksValidity = { valid -> if (valid) invalidMarkFields.remove(i) else if (i !in invalidMarkFields) invalidMarkFields.add(i) },
+                            imagePipeline = imagePipeline,
                         )
                     }
                 }
@@ -347,6 +357,7 @@ private fun QuestionBlockCard(
     onMove: (Int) -> Unit,
     onDelete: () -> Unit,
     onMarksValidity: (Boolean) -> Unit,
+    imagePipeline: ImagePipeline,
 ) {
     val label = CqLabel.entries[index]
     val draft = viewModel.draft
@@ -374,6 +385,17 @@ private fun QuestionBlockCard(
     var questionPreviewOpen by rememberSaveable(index) { mutableStateOf(false) }
     var solutionPreviewOpen by rememberSaveable(index) { mutableStateOf(false) }
     var answerPreviewOpen by rememberSaveable(index) { mutableStateOf(false) }
+    var conceptEditorOpen by rememberSaveable(index) { mutableStateOf(false) }
+    val conceptParts = draft.conceptPartsByLabel?.getOrNull(index).orEmpty()
+
+    if (conceptEditorOpen && full) TypeCqConceptComposerWindow(
+        questionText = draft.texts.getOrNull(index).orEmpty().ifBlank { "${label.letter}) প্রশ্ন" },
+        initialParts = conceptParts,
+        imagePipeline = imagePipeline,
+        onDismiss = { conceptEditorOpen = false },
+        onSave = { updated -> viewModel.setConceptParts(index, updated); true },
+        deferAcceptedImagesToParentDraft = true,
+    )
 
     EdCard {
         // The legacy button row never wraps: label/marks stay left; Board, Eye, Rating and (Full) Delete stay right.
@@ -513,12 +535,13 @@ private fun QuestionBlockCard(
             )
         }
         HorizontalDivider(color = cs.outlineVariant)
-        EdCategoryDropdown(
-            categories = categories,
-            selectedIds = draft.categoryIdsByLabel?.getOrNull(index).orEmpty(),
-            enabled = !busy,
-            onToggle = { categoryId, selected -> viewModel.changeCategory(index, categoryId, selected) },
-            onAddCategory = onAddCategory,
-        )
+        if (full) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Concept", color = cs.primary, fontWeight = FontWeight.SemiBold)
+                TextButton(onClick = { conceptEditorOpen = true }, enabled = !busy) {
+                    Text(if (conceptParts.isEmpty()) "+ Concept" else "Concept · Edit")
+                }
+            }
+        }
     }
 }

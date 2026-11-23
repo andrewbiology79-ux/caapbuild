@@ -24,6 +24,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import com.questionbank.app.ui.theme.HeaderDark
 import com.questionbank.app.ui.theme.HeaderLight
@@ -39,13 +40,14 @@ fun AppHeader(
     subtitle: String? = null,
     onBack: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
+    height: Dp = 56.dp,
 ) {
     val container = if (LocalDarkTheme.current) HeaderDark else HeaderLight
     Surface(color = container, contentColor = Color.White, modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .windowInsetsPadding(WindowInsets.statusBars)
-                .height(56.dp)
+                .height(height)
                 .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

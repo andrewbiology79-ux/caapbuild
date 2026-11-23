@@ -91,7 +91,7 @@ import com.questionbank.app.data.local.entity.TypeCqTopicsEntity
         TypeCqSubjectsEntity::class,
         TypeCqTopicsEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = true
 )
 abstract class QuestionBankDatabase : RoomDatabase() {
@@ -175,6 +175,18 @@ abstract class QuestionBankDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) = db.execSQL(TYPE_CQ_REORDER_SQL)
         }
 
+        /** Adds a separate nullable card-level category without touching legacy per-question category links. */
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            private fun migrateSql(exec: (String) -> Unit) {
+                exec("ALTER TABLE type_cq_questions ADD COLUMN card_category_id TEXT REFERENCES type_cq_question_categories(category_id) ON UPDATE CASCADE ON DELETE RESTRICT")
+                exec("ALTER TABLE type_cq_stimuli ADD COLUMN card_category_id TEXT REFERENCES type_cq_question_categories(category_id) ON UPDATE CASCADE ON DELETE RESTRICT")
+                exec("CREATE INDEX IF NOT EXISTS index_type_cq_questions_card_category_id ON type_cq_questions(card_category_id)")
+                exec("CREATE INDEX IF NOT EXISTS index_type_cq_stimuli_card_category_id ON type_cq_stimuli(card_category_id)")
+            }
+            override fun migrate(connection: SQLiteConnection) = migrateSql { connection.execSQL(it) }
+            override fun migrate(db: SupportSQLiteDatabase) = migrateSql { db.execSQL(it) }
+        }
+
         val CANONICAL_OBJECTS_CALLBACK = object : RoomDatabase.Callback() {
             override fun onCreate(connection: SQLiteConnection) = installCanonicalObjects(connection)
             override fun onOpen(connection: SQLiteConnection) = installCanonicalObjects(connection)
@@ -193,7 +205,7 @@ abstract class QuestionBankDatabase : RoomDatabase() {
             Room.databaseBuilder(context, QuestionBankDatabase::class.java, databaseName)
                 .setDriver(BundledSQLiteDriver())
                 .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .addCallback(CANONICAL_OBJECTS_CALLBACK)
                 .build()
     }

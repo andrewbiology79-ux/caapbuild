@@ -1,3 +1,68 @@
+TYPE CQ CARD CATEGORY SEPARATION — VERSION 1.73 (23 Nov 2026) — SOURCE UPDATED; ANDROID BUILD NOT VERIFIED
+- Version metadata: `0.2.50-typecq-card-category`, versionCode 55. Base: `QuestionBank_TypeCQ_CIfix6.zip`; candidate: `QuestionBank_TypeCQ_CIfix7.zip`.
+- প্রশ্ন কার্ডের রিবন ও Minimum/Full—দুই Editor-এই একটি মাত্র নতুন card-level single-selection category। একটি Stimulus card-এর সব ক/খ/গ/ঘ প্রশ্নে একই category প্রযোজ্য। Reference-এর ঠিক নিচে দুই Editor mode-এই card-category dropdown থাকে। Standalone no-stimulus question নিজস্ব card-category value রাখে।
+- পুরোনো per-sub-question category data আলাদা করে সংরক্ষিত: `type_cq_question_category_links`-এ কোনো DELETE/UPDATE/overwrite নেই। পুরোনো কার্ডের new card-category field migration-এর পর NULL, তাই রিবনে প্রথম পুরোনো category auto-show করা হয় না; ব্যবহারকারী নিজে নির্বাচন না করা পর্যন্ত নতুন category খালি থাকে।
+- Room Database version 3 থেকে 4: `type_cq_stimuli.card_category_id` ও `type_cq_questions.card_category_id` nullable FK column/index যোগ হয়েছে। Migration শুধু column/index যোগ করে; পুরোনো category links স্পর্শ করে না। SQL equivalent `database/migrations/3_to_4_type_cq_card_category.sql`-এ রাখা হয়েছে।
+- Create/edit, draft + canonical draft recovery, undo/redo, card ribbon update, duplicate/paste/move, DAO read-back and Type CQ category filter নতুন independent field ব্যবহার করে। Category filter old per-question links নয়, card-level category দেখে।
+- Backup/Restore validation database v1–v4 গ্রহণ করে এবং production Room migrations চালিয়ে final database version 4 ও current identity hash যাচাই করে।
+- যাচাই: main + unit test + androidTest মিলিয়ে all 211 Kotlin files Kotlin PSI parse — 0 syntax errors; production v2->v3->v4 SQLite migration simulation and Category Manager reference-count/reassign simulation — PASS; পুরোনো category links migration/selection/clear-এ unchanged, নতুন category initially NULL, stimulus child questions shared one value.
+- Gradle compile attempt failed before project configuration because Gradle 8.14.3 distribution download hit `UnknownHostException: services.gradle.org`. No Gradle type-check/compile, KSP Room schema export, unit/instrumented tests, APK, backup restore runtime test or device UI test is claimed.
+- Category Manager-এর `archive if unused` গণনায় এখন পুরোনো per-question links-এর পাশাপাশি নতুন card-category reference-ও গণনা হয়। স্পষ্ট `reassign & archive` করলে source থেকে target category-তে card-level question/stimulus references-ও transaction-এর মধ্যে সরানো হয়; সাধারণ card-category select/clear পুরোনো link table স্পর্শ করে না।
+- Static review: main + unit test + instrumented test মিলিয়ে 211টি Kotlin source PSI parse PASS (0 syntax errors)। Python SQLite-তে v2→v3→v4 migration ও legacy-link retention, card selection/clear, shared child category, archive-use count, explicit reassignment এবং FK integrity PASS। Android Build/Test এখনো Gradle wrapper download DNS failure-এর কারণে NOT RUN.
+- Detailed implementation and remaining verification gates: `PROJECT_PLAN_v1_73_TYPECQ_CARD_CATEGORY_SEPARATION.txt`, section 82.
+
+# পূর্ববর্তী সোর্স আপডেট — Type CQ কার্ড-ক্যাটাগরি, Concept Window ও Compact UI (v1.72 / app v0.2.49)
+
+তারিখ: ২৩ নভেম্বর ২০২৬  
+অ্যাপ সংস্করণ: `0.2.49-typecq-window` (versionCode 54)  
+বেস: `QuestionBank_TypeCQ_CIfix5.zip`; এই অংশটি v1.73-এর আগের ইতিহাস। এখানে লেখা category-storage/legacy-category auto-selection সিদ্ধান্তগুলো v1.73-এর user-confirmed separate nullable card-category implementation দ্বারা superseded হয়েছে। আগের Type CQ, Concept, Clipboard, Draft, Backup এবং Profile Category কাজের ইতিহাস হিসেবে রাখা হয়েছে।
+
+## বাস্তবায়িত পরিবর্তন
+
+### প্রশ্ন কার্ড ও ক্যাটাগরি
+- প্রতিটি Type CQ কার্ডের Ribbon-এ একটি মাত্র card-level category selector যোগ করা হয়েছে; legacy per-sub-question selector UI সরানো হয়েছে।
+- category selector-টি RadioButton-ভিত্তিক single selection; আলাদা `ক্যাটাগরি সরান` action দিয়ে clear করা যায়।
+- Full Editor-এ Reference field-এর ঠিক নিচে একটি card-level category dropdown রয়েছে; নতুন ও বিদ্যমান কার্ডের Editor-এ সব label-এর জন্য একই category state প্রয়োগ হয়।
+- Create/Edit save path বিদ্যমান relational schema-র সামঞ্জস্যে একই category-কে প্রাসঙ্গিক sub-question row-গুলোতে transaction-সহ লিখে। Category metadata-কে প্রশ্নের content ভেবে optional ক/খ blocks আর স্বয়ংক্রিয়ভাবে দেখানো হয় না।
+- পুরোনো unsaved Draft-এ label-ভিত্তিক ভিন্ন category থাকলে draft hydration-এ প্রথম non-empty category-কে card category হিসেবে নিয়ে চার label-এ normalize করা হয়।
+
+### Concept
+- Full Editor-এর প্রতিটি sub-question block-এর একদম নিচে Concept action রাখা হয়েছে।
+- Concept click-এ popup-size modal নয়, screen-filling window খোলে। Concept না থাকলে `+ Concept` action; থাকলে আগে preview ও `Edit` action দেখা যায়।
+- Create এবং Edit—দুই Full Editor path-এ TEXT/IMAGE Concept add, edit, order, save ও draft recovery wiring যুক্ত হয়েছে। নতুন optional প্রশ্নে Concept আগে draft-এ staged হয় এবং সেই প্রশ্নের text না থাকলে orphan Concept-সহ Save আটকায়।
+- `লেখা যোগ` ও `ছবি যোগ` action-এ text label বাদ দিয়ে শুধু icon button রাখা হয়েছে; accessible description বজায় আছে। Minimum/Full editor modes অক্ষত।
+- Existing Concept part/image persistence এবং Room tables অপরিবর্তিত; নতুন database schema বা migration যোগ করা হয়নি।
+
+### প্রশ্ন কার্ড প্রদর্শন
+- Card থেকে `উদ্দীপক` শিরোনাম, `রেফারেন্স দেখুন` action এবং `সংক্ষিপ্ত উত্তর` display বাদ। Stimulus, Reference এবং Short Answer-এর সংরক্ষিত তথ্য মুছে ফেলা হয়নি।
+- `সমাধান দেখো`/`সমাধান লুকাও` button-কে হালকা 7dp rounded-corner rectangle করা হয়েছে।
+- Card board chip-এ বাংলা display name-এর বদলে board code এবং সাল দেখানো হয়; board/year groups ও একই board-এর years newest-first সাজানো হয়।
+
+### Type CQ Window ও compact layout
+- নতুন search icon এবং Search-এর বাম পাশে Filter icon/button যোগ করা হয়েছে। Search mode থেকেও Filter panel খোলা যায়।
+- Board, Year, Category, Rating/Question Type filter এবং Sorting একই Filter panel-এ একত্র করা হয়েছে; পুরোনো আলাদা Sorting row সরানো হয়েছে। `সব মুছুন` filter ও sorting reset করে।
+- Type CQ top header 48dp, bottom navigation 58dp; bottom tab icon/label-ও ছোট করা হয়েছে।
+- Breadcrumb-এর vertical padding ও Breadcrumb/selected-visible-total count row-এর মাঝের ফাঁকা কমানো হয়েছে।
+- Add Question button width 138dp, height 36dp এবং container alpha 0.52 করা হয়েছে।
+
+## সিদ্ধান্ত ও পুরোনো ডেটার সামঞ্জস্য
+- বিদ্যমান Room schema-তে Concept একটি পৃথক sub-question-এর সঙ্গে যুক্ত। তাই “একটি প্রশ্নে একটি Concept” নির্দেশনাকে ক/খ/গ/ঘ-এর প্রতিটি পৃথক প্রশ্নের জন্য সর্বোচ্চ একটি ordered Concept হিসেবে রাখা হয়েছে; পুরো উদ্দীপক-কার্ড জুড়ে একটিমাত্র Concept-এ schema বদলানো হয়নি।
+- পুরোনো সংরক্ষিত card-এ একাধিক label category থাকলে Ribbon ও Editor একটি নির্ধারিত প্রথম category দেখায়। অ্যাপ চালু হলেই পুরোনো DB data bulk-delete/auto-migrate করা হয় না; কার্ড থেকে category select/clear করলে অথবা Edit screen-এ Save করলে সংশ্লিষ্ট card-এর প্রশ্নগুলো একই single category-তে normalize হয়।
+- Card থেকে Reference/Short Answer/Stimulus heading লুকানো হয়েছে; সংশ্লিষ্ট stored content অক্ষত।
+- No Room schema, database version, or migration change was required; the existing Room database remains version 3.
+
+## যাচাইয়ের ফলাফল
+- পরিবর্তিত Kotlin source/test file-এ Kotlin PSI syntax parse: PASS, 0 syntax errors। এটি Android type-check/Gradle compile-এর বিকল্প নয়।
+- Unit test source-এ Board code-only label এবং newest-first year ordering-এর expectation আপডেট করা হয়েছে; test execution করা যায়নি।
+- Gradle Wrapper-এর Gradle 8.14.3 distribution download `services.gradle.org` DNS `UnknownHostException`-এ ব্যর্থ হয়েছে; তাই Kotlin/Compose type-check, KSP/Room generation, unit/instrumented test, APK assemble বা device UI test সম্পন্ন হয়নি।
+- ZIP integrity check, compile এবং runtime test-এর ফল আলাদা করে project handover-এ উল্লেখ করা হবে; এগুলো সফল হয়েছে বলে দাবি করা হচ্ছে না।
+
+### চূড়ান্ত সোর্স রিভিউতে অতিরিক্ত সংশোধন
+- Create ও Edit Full Editor-এ কোনো ক/খ/গ/ঘ প্রশ্ন ব্লক মুছে/খালি করে পরে আবার লিখলেও card-level Category একই থাকবে। আগে block clear করার সময় ঐ label-এর category copy-ও খালি হয়ে যাওয়ার সম্ভাবনা ছিল; এখন category state পুরো কার্ডের জন্য অক্ষত রাখা হয়।
+- এটি source-level correction; Gradle compile বা runtime test চালানো যায়নি।
+
+---
+
 # সর্বশেষ সম্পূর্ণ সংশোধন — Type CQ / Editor / Clipboard / Migration
 
 তারিখ: ২৩ নভেম্বর ২০২৬  

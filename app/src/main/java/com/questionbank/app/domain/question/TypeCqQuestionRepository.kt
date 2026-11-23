@@ -36,6 +36,9 @@ interface TypeCqQuestionRepository {
     /** Applies one card-level category set to every sub-question in the complete card atomically. */
     suspend fun updateGroupQuestionCategories(topicId: String, groupKey: String, categoryIds: List<String>): Boolean
 
+    /** Updates the separate single card-level category without touching legacy per-sub-question category links. */
+    suspend fun updateCardCategory(topicId: String, groupKey: String, categoryId: String?): Boolean
+
     /** Observe/load/save an individual question's separate Concept content. */
     fun observeConcept(questionId: String): Flow<SavedQuestionConcept?>
     suspend fun saveConcept(questionId: String, parts: List<ConceptContentPart>): Boolean

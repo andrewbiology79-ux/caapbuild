@@ -5,6 +5,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -22,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -600,7 +602,7 @@ fun AppNavHost() {
 
 @Composable
 private fun AppBottomBar(navController: NavHostController, currentDestination: NavDestination?) {
-    NavigationBar {
+    NavigationBar(modifier = Modifier.height(58.dp)) {
         TABS.forEach { tab ->
             val selected = currentDestination?.hierarchy?.any { it.route == tab.route } == true
             NavigationBarItem(
@@ -613,8 +615,8 @@ private fun AppBottomBar(navController: NavHostController, currentDestination: N
                         restoreState = true
                     }
                 },
-                icon = { Text(tab.glyph, fontSize = 18.sp) },
-                label = { Text(tab.label, fontSize = 11.sp, maxLines = 1) },
+                icon = { Text(tab.glyph, fontSize = 15.sp) },
+                label = { Text(tab.label, fontSize = 9.sp, maxLines = 1) },
                 alwaysShowLabel = true,
             )
         }

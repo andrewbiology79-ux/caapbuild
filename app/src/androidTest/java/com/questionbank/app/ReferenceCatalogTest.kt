@@ -68,9 +68,12 @@ class ReferenceCatalogTest {
     }
 
     @Test fun linkedCategoryCannotBeArchivedDirectly() = runBlocking {
-        typeRepo.addCategory("Used"); typeRepo.addCategory("Free")
+        typeRepo.addCategory("Used"); typeRepo.addCategory("Card Used"); typeRepo.addCategory("Free")
         addQuestion("q1"); link("q1", typeCategoryId("Used"), 5)
-        assertFalse(typeRepo.setCategoryArchived(typeCategoryId("Used"), true))
+        addQuestion("q2")
+        db.useWriterConnection { it.exec("UPDATE type_cq_questions SET card_category_id = ? WHERE question_id = 'q2'", typeCategoryId("Card Used")) }
+        assertFalse(typeRepo.setCategoryArchived(typeCategoryId("Used"), true)) // legacy link protects it
+        assertFalse(typeRepo.setCategoryArchived(typeCategoryId("Card Used"), true)) // new card reference alone protects it
         assertTrue(typeRepo.setCategoryArchived(typeCategoryId("Free"), true))
     }
 
@@ -83,6 +86,28 @@ class ReferenceCatalogTest {
         assertEquals(0L, linkCount(src))
         assertEquals(2L, linkCount(dst))
         assertTrue(typeRepo.observeCategories().first().first { it.categoryId == src }.isArchived == 1L)
+    }
+
+    @Test fun reassignMovesLegacyAndNewCardCategoryReferencesTogether() = runBlocking {
+        typeRepo.addCategory("Card Src"); typeRepo.addCategory("Card Dst")
+        val src = typeCategoryId("Card Src"); val dst = typeCategoryId("Card Dst")
+        addQuestion("standalone"); addQuestion("stimulus-question")
+        link("standalone", src, 11)
+        db.useWriterConnection { connection ->
+            connection.exec("UPDATE type_cq_questions SET card_category_id = ? WHERE question_id = 'standalone'", src)
+            connection.exec("INSERT INTO type_cq_stimuli(stimulus_id, topic_id, stimulus_text, reference_text, created_at, updated_at, card_category_id) VALUES('card-stimulus','t1','','',1,1,?)", src)
+            connection.exec("UPDATE type_cq_questions SET stimulus_id = 'card-stimulus' WHERE question_id = 'stimulus-question'")
+        }
+
+        assertTrue(categories.reassignAndArchiveTypeCategory(src, dst, 200))
+        db.useReaderConnection { connection ->
+            assertEquals(dst, connection.scalarText("SELECT card_category_id FROM type_cq_questions WHERE question_id = 'standalone'"))
+            assertEquals(dst, connection.scalarText("SELECT card_category_id FROM type_cq_stimuli WHERE stimulus_id = 'card-stimulus'"))
+            assertEquals(0L, connection.scalarLong("SELECT COUNT(*) FROM type_cq_questions WHERE card_category_id = ?", src))
+            assertEquals(0L, connection.scalarLong("SELECT COUNT(*) FROM type_cq_stimuli WHERE card_category_id = ?", src))
+            assertEquals(0L, connection.scalarLong("SELECT COUNT(*) FROM type_cq_question_category_links WHERE category_id = ?", src))
+            assertEquals(1L, connection.scalarLong("SELECT COUNT(*) FROM type_cq_question_category_links WHERE question_id = 'standalone' AND category_id = ?", dst))
+        }
     }
 
     @Test fun reassignRefusesSameArchivedOrUnknownTarget() = runBlocking {

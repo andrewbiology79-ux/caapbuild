@@ -73,6 +73,7 @@ data class QuestionRowDb(
     @ColumnInfo(name = "stimulus_rating") val stimulusRating: Int?,
     @ColumnInfo(name = "question_type_id") val questionTypeId: String = "",
     @ColumnInfo(name = "reference_text") val referenceText: String? = null,
+    @ColumnInfo(name = "card_category_id") val cardCategoryId: String? = null,
 )
 
 /** A stimulus of one topic with its text, for the plain-text part of the search. */
@@ -158,7 +159,8 @@ private const val QUESTION_SELECT_SQL =
     "SELECT q.question_id AS question_id, q.stimulus_id AS stimulus_id, s.stimulus_text AS stimulus_text, " +
         "q.subquestion_label AS subquestion_label, q.marks AS marks, q.question_text AS question_text, " +
         "q.short_answer AS short_answer, q.rating AS rating, s.rating AS stimulus_rating, " +
-        "q.question_type_id AS question_type_id, s.reference_text AS reference_text " +
+        "q.question_type_id AS question_type_id, s.reference_text AS reference_text, " +
+        "COALESCE(s.card_category_id, q.card_category_id) AS card_category_id " +
         "FROM type_cq_questions q LEFT JOIN type_cq_stimuli s ON s.stimulus_id = q.stimulus_id "
 
 /** Question rows of one topic with their stimulus, newest first. Shared by the live list and the search. */
@@ -277,6 +279,9 @@ abstract class TypeCqQuestionDao {
 
     @Query("SELECT COUNT(*) FROM type_cq_question_categories WHERE category_id = :categoryId AND is_archived = 0")
     abstract suspend fun activeCategory(categoryId: String): Int
+
+    @Query("SELECT COUNT(*) FROM type_cq_question_categories WHERE category_id = :categoryId")
+    abstract suspend fun categoryExists(categoryId: String): Int
 
     @Query("SELECT COUNT(*) FROM type_cq_question_category_links WHERE question_id = :questionId AND category_id = :categoryId")
     abstract suspend fun categoryAlreadyLinked(questionId: String, categoryId: String): Int
@@ -698,6 +703,18 @@ abstract class TypeCqQuestionDao {
     @Query("UPDATE type_cq_stimuli SET rating = :rating, updated_at = :now WHERE stimulus_id = :stimulusId")
     abstract suspend fun updateStimulusRating(stimulusId: String, rating: Int?, now: Long): Int
 
+    @Query("UPDATE type_cq_stimuli SET card_category_id = :categoryId, updated_at = :now WHERE stimulus_id = :stimulusId AND topic_id = :topicId")
+    abstract suspend fun updateStimulusCardCategory(stimulusId: String, topicId: String, categoryId: String?, now: Long): Int
+
+    @Query("UPDATE type_cq_questions SET card_category_id = :categoryId, updated_at = :now WHERE question_id = :questionId AND topic_id = :topicId AND stimulus_id IS NULL")
+    abstract suspend fun updateSingleQuestionCardCategory(questionId: String, topicId: String, categoryId: String?, now: Long): Int
+
+    @Query("SELECT card_category_id FROM type_cq_stimuli WHERE stimulus_id = :stimulusId AND topic_id = :topicId")
+    abstract suspend fun readStimulusCardCategory(stimulusId: String, topicId: String): String?
+
+    @Query("SELECT card_category_id FROM type_cq_questions WHERE question_id = :questionId AND topic_id = :topicId AND stimulus_id IS NULL")
+    abstract suspend fun readQuestionCardCategory(questionId: String, topicId: String): String?
+
     @Query("UPDATE type_cq_stimuli SET updated_at = :now WHERE stimulus_id = :stimulusId")
     abstract suspend fun touchStimulus(stimulusId: String, now: Long): Int
 
@@ -791,10 +808,12 @@ abstract class TypeCqQuestionDao {
         draftKey: String,
         editorDraftKey: String? = null,
         stimulusImageRows: List<NewStimulusImageRow> = emptyList(),
+        cardCategoryId: String? = null,
     ): Boolean {
         if (topicId.isBlank() || countTopic(topicId) == 0) return false
         if (items.map { it.label }.distinct().size != items.size) return false
         if (items.any { activeQuestionTypeExists(it.typeId) == 0 }) return false
+        if (cardCategoryId != null && categoryExists(cardCategoryId) == 0) return false
         if (items.any { item -> item.categoryIds.any(String::isBlank) || item.categoryIds.distinct().size != item.categoryIds.size || item.categoryIds.any { activeCategory(it) == 0 } }) return false
         if (stimulusId == null && stimulusImageRows.isNotEmpty()) return false
         if (stimulusImageRows.any { it.imageId.isBlank() || it.placement !in setOf("TOP", "BOTTOM") || imageExistsForQuestion(it.imageId) == 0 }) return false
@@ -809,7 +828,10 @@ abstract class TypeCqQuestionDao {
                     (part.partType == "IMAGE" && (part.imageId.isNullOrBlank() || part.textContent != null || (part.imageId?.let { imageExistsForQuestion(it) } ?: 0) == 0))
             } }) return false
         if (stimulusId != null) {
-            insertStimulus(TypeCqStimuliEntity(stimulusId, topicId, stimulusText, stimulusRating?.toLong(), referenceText, now, now))
+            insertStimulus(TypeCqStimuliEntity(
+                stimulusId, topicId, stimulusText, stimulusRating?.toLong(), referenceText, now, now,
+                cardCategoryId = cardCategoryId,
+            ))
             writeStimulusTags(stimulusId, stimulusTags)
             stimulusImageRows.sortedWith(compareBy<NewStimulusImageRow> { it.position }.thenBy { it.imageId }).forEachIndexed { index, row ->
                 insertStimulusImageLink(TypeCqStimulusImagesEntity(stimulusId, row.imageId, index.toLong(), row.placement))
@@ -834,6 +856,7 @@ abstract class TypeCqQuestionDao {
                     sortOrder = order,
                     createdAt = now,
                     updatedAt = now,
+                    cardCategoryId = if (stimulusId == null) cardCategoryId else null,
                 )
             )
             writeQuestionTags(item.id, item.tags)
@@ -876,6 +899,11 @@ abstract class TypeCqQuestionDao {
             readStimulusText(stimulusId) == stimulusText && readStimulusReference(stimulusId) == referenceText &&
                 readStimulusRating(stimulusId) == stimulusRating
             )
+        val cardCategoryMatch = if (stimulusId != null) {
+            readStimulusCardCategory(stimulusId, topicId) == cardCategoryId
+        } else {
+            items.all { readQuestionCardCategory(it.id, topicId) == cardCategoryId }
+        }
         val boardsMatch = boardTagsMatch(
             if (stimulusId != null) stimulusId to stimulusTags else null,
             items.associate { it.id to it.tags },
@@ -884,7 +912,7 @@ abstract class TypeCqQuestionDao {
         val categoriesMatch = items.all { item -> categoriesByQuestion[item.id].orEmpty().toSet() == item.categoryIds.toSet() }
         val stimulusImagesMatch = stimulusId == null || stimulusImagesFor(stimulusId).map { Triple(it.imageId, it.placement, it.position) } ==
             stimulusImageRows.sortedWith(compareBy<NewStimulusImageRow> { it.position }.thenBy { it.imageId }).mapIndexed { index, it -> Triple(it.imageId, it.placement, index.toLong()) }
-        check(questionsMatch && solutionsMatch && conceptsMatch && stimulusMatch && boardsMatch && categoriesMatch && stimulusImagesMatch) {
+        check(questionsMatch && solutionsMatch && conceptsMatch && stimulusMatch && cardCategoryMatch && boardsMatch && categoriesMatch && stimulusImagesMatch) {
             "Type_CQ insert read-back mismatch; transaction rolled back"
         }
         deleteMeta(draftKey)
@@ -924,9 +952,15 @@ abstract class TypeCqQuestionDao {
         editorDraftKey: String? = null,
         solutionPartUpdates: List<QuestionSolutionPartsDb> = emptyList(),
         stimulusImageReplacement: List<NewStimulusImageRow>? = null,
+        changeCardCategory: Boolean = false,
+        newCardCategoryId: String? = null,
+        singleQuestionId: String? = null,
     ): Boolean {
         if (topicId.isBlank() || countTopic(topicId) == 0) return false
         if (stimulusId != null && countStimulus(stimulusId, topicId) == 0) return false
+        if (changeCardCategory && newCardCategoryId != null && categoryExists(newCardCategoryId) == 0) return false
+        if (changeCardCategory && stimulusId == null && (singleQuestionId.isNullOrBlank() ||
+                countQuestionsInGroup(listOf(singleQuestionId), topicId, null) != 1)) return false
         if (stimulusId == null && deletes.isNotEmpty()) return false
         if (deletes.distinct().size != deletes.size || deletes.any(String::isBlank)) return false
         val editedIds = (updates.map { it.questionId } + metadataUpdates.map { it.questionId } + solutionUpdates.map { it.questionId } +
@@ -980,6 +1014,14 @@ abstract class TypeCqQuestionDao {
         if (changeStimulusRating) {
             val sid = checkNotNull(stimulusId) { "stimulus rating given for a group without a stimulus" }
             check(updateStimulusRating(sid, newStimulusRating, now) == 1) { "stimulus rating was not updated" }
+        }
+        if (changeCardCategory) {
+            if (stimulusId != null) {
+                check(updateStimulusCardCategory(stimulusId, topicId, newCardCategoryId, now) == 1) { "stimulus card category was not updated" }
+            } else {
+                val questionId = checkNotNull(singleQuestionId) { "single question ID is required for card category update" }
+                check(updateSingleQuestionCardCategory(questionId, topicId, newCardCategoryId, now) == 1) { "single question card category was not updated" }
+            }
         }
         for (u in updates) {
             check(updateQuestionText(u.questionId, u.text, u.answer, now) == 1) { "question row was not updated" }
@@ -1112,6 +1154,11 @@ abstract class TypeCqQuestionDao {
                 (newReferenceText == null || readStimulusReference(stimulusId) == newReferenceText) &&
                 (!changeStimulusRating || readStimulusRating(stimulusId) == newStimulusRating)
             )
+        val cardCategoryMatch = !changeCardCategory || if (stimulusId != null) {
+            readStimulusCardCategory(stimulusId, topicId) == newCardCategoryId
+        } else {
+            singleQuestionId != null && readQuestionCardCategory(singleQuestionId, topicId) == newCardCategoryId
+        }
         val categoryRows = if (checkedIds.isEmpty()) emptyList() else categoryLinksIn(checkedIds)
         val storedCategories = categoryRows.groupBy({ it.questionId }, { it.categoryId })
         val categoriesMatch = categoryUpdates.all { storedCategories[it.questionId].orEmpty().toSet() == it.categoryIds.toSet() } &&
@@ -1126,7 +1173,7 @@ abstract class TypeCqQuestionDao {
                 .sortedWith(compareBy<NewStimulusImageRow> { it.position }.thenBy { it.imageId })
                 .mapIndexed { index, it -> Triple(it.imageId, it.placement, index.toLong()) }
         } == true
-        check(textMatches && metadataMatches && ratingsMatch && addedRowsMatch && solutionsMatch && conceptsMatch && stimulusMatch && boardsMatch && categoriesMatch && stimulusImagesMatch) {
+        check(textMatches && metadataMatches && ratingsMatch && addedRowsMatch && solutionsMatch && conceptsMatch && stimulusMatch && cardCategoryMatch && boardsMatch && categoriesMatch && stimulusImagesMatch) {
             "Type_CQ update read-back mismatch; transaction rolled back"
         }
         // Draft deletion occurs only after every read-back check passed, in the same transaction.

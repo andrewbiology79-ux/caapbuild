@@ -24,8 +24,17 @@ class BoardFilterSearchTest {
     private fun sub(id: String, label: CqLabel, boards: List<BoardTag> = emptyList()) =
         SavedSubQuestion(id, label, label.marks, "text $id", "", null, boards)
 
-    private fun group(stimulusId: String?, stimulusBoards: List<BoardTag>, vararg subs: SavedSubQuestion) =
-        SavedGroup(stimulusId, if (stimulusId == null) "" else "উদ্দীপক", subs.toList(), null, stimulusBoards)
+    private fun group(
+        stimulusId: String?, stimulusBoards: List<BoardTag>, vararg subs: SavedSubQuestion,
+        cardCategoryId: String? = null,
+    ) = SavedGroup(
+        stimulusId = stimulusId,
+        stimulusText = if (stimulusId == null) "" else "উদ্দীপক",
+        subQuestions = subs.toList(),
+        stimulusRating = null,
+        stimulusBoards = stimulusBoards,
+        cardCategoryId = cardCategoryId,
+    )
 
     private fun ids(groups: List<SavedGroup>) = groups.map { g -> g.subQuestions.map { it.id } }
 
@@ -95,6 +104,26 @@ class BoardFilterSearchTest {
         val three = group(null, emptyList(), sub("z", CqLabel.KA, listOf(raj2020)))
         val kept = QuestionSearchRules.filterByBoards(listOf(one, two, three), null, emptySet(), BoardFilter("DHA", 2020))
         assertEquals(listOf(listOf("x"), listOf("y")), ids(kept))
+    }
+
+
+    @Test
+    fun categoryFilterUsesOnlyTheNewCardLevelCategoryAndKeepsTheWholeCard() {
+        val g = group(
+            "s-category", emptyList(),
+            sub("a", CqLabel.KA, listOf(dha2019)),
+            sub("b", CqLabel.KHA, listOf(raj2020)),
+            cardCategoryId = "card-cat",
+        )
+        val kept = QuestionSearchRules.filterByBoards(listOf(g), null, emptySet(), BoardFilter(categoryId = "card-cat"))
+        assertEquals(listOf(listOf("a", "b")), ids(kept))
+        assertTrue(QuestionSearchRules.filterByBoards(listOf(g), null, emptySet(), BoardFilter(categoryId = "legacy-cat")).isEmpty())
+    }
+
+    @Test
+    fun oldCardWithOnlyLegacySubQuestionCategoriesDoesNotAutoMatchNewCardCategoryFilter() {
+        val oldCard = group("s-old", emptyList(), sub("a", CqLabel.KA, listOf(dha2019)))
+        assertTrue(QuestionSearchRules.filterByBoards(listOf(oldCard), null, emptySet(), BoardFilter(categoryId = "legacy-cat")).isEmpty())
     }
 
     @Test

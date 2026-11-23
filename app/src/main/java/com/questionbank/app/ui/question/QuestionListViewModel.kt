@@ -189,8 +189,16 @@ class QuestionListViewModel(
     }
 
     fun updateGroupQuestionCategories(groupKey: String, categoryIds: List<String>) {
+        // Retained for legacy admin/migration callers only; the card ribbon uses updateCardCategory().
         viewModelScope.launch {
             val ok = repository.updateGroupQuestionCategories(topicId, groupKey, categoryIds.distinct())
+            deleteMessage = if (ok) "প্রশ্ন কার্ডের পুরোনো ক্যাটাগরি সংরক্ষণ হয়েছে।" else "প্রশ্ন কার্ডের পুরোনো ক্যাটাগরি সংরক্ষণ করা যায়নি।"
+        }
+    }
+
+    fun updateCardCategory(groupKey: String, categoryId: String?) {
+        viewModelScope.launch {
+            val ok = repository.updateCardCategory(topicId, groupKey, categoryId)
             deleteMessage = if (ok) "প্রশ্ন কার্ডের ক্যাটাগরি সংরক্ষণ হয়েছে।" else "প্রশ্ন কার্ডের ক্যাটাগরি সংরক্ষণ করা যায়নি।"
         }
     }
@@ -281,6 +289,7 @@ class QuestionListViewModel(
                     stimulusImages = group.stimulusImages.map { QuestionStimulusImage(it.imageId, it.placement, it.position) },
                     solutionPartsByLabel = orderedSolutions,
                     conceptsByLabel = conceptPartsByLabel,
+                    cardCategoryId = group.cardCategoryId,
                 )
                 when (val result = repository.saveGroup(input)) {
                     is SaveResult.Saved -> {
@@ -411,6 +420,7 @@ class QuestionListViewModel(
                 stimulusImages = group.stimulusImages.map { QuestionStimulusImage(it.imageId, it.placement, it.position) },
                 solutionPartsByLabel = orderedSolutions,
                 conceptsByLabel = conceptPartsByLabel,
+                cardCategoryId = group.cardCategoryId,
             )
             when (val result = repository.saveGroup(input)) {
                 is SaveResult.Saved -> {

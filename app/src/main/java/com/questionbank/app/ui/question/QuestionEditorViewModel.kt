@@ -17,6 +17,7 @@ import com.questionbank.app.domain.question.DraftText
 import com.questionbank.app.domain.question.QuestionGroupInput
 import com.questionbank.app.domain.question.QuestionStimulusImage
 import com.questionbank.app.domain.question.QuestionSolutionPart
+import com.questionbank.app.domain.question.ConceptContentPart
 import com.questionbank.app.domain.question.RatingsInput
 import com.questionbank.app.domain.question.SaveResult
 import com.questionbank.app.domain.question.SubQuestionInput
@@ -111,14 +112,30 @@ class QuestionEditorViewModel(
             val canonical = runCatching { editorDraftRepository?.load("type_cq", topicId)?.let(EditorSessionDraftCodec::decode) }
                 .getOrNull()?.takeIf { it.scope == CanonicalEditorScope.TYPE_CQ && it.ownerId == topicId }
             canonicalDraftTemplate = canonical
-            val stored = canonical?.let(TypeCqDraftAdapter::toLegacy) ?: repository.loadDraft(topicId)
-            if (stored != null && (!stored.isBlank || canonical != null)) {
-                draft = stored
-                history.reset(stored)
+            val legacyRecoveryDraft = repository.loadDraft(topicId)
+            val canonicalRecoveryDraft = canonical?.let(TypeCqDraftAdapter::toLegacy)
+            val stored = when {
+                canonicalRecoveryDraft == null -> legacyRecoveryDraft
+                legacyRecoveryDraft == null -> canonicalRecoveryDraft
+                canonicalRecoveryDraft.cardCategoryTouched || canonicalRecoveryDraft.cardCategoryId != null -> canonicalRecoveryDraft
+                legacyRecoveryDraft.cardCategoryTouched || legacyRecoveryDraft.cardCategoryId != null -> canonicalRecoveryDraft.copy(
+                    cardCategoryId = legacyRecoveryDraft.cardCategoryId,
+                    cardCategoryTouched = legacyRecoveryDraft.cardCategoryTouched,
+                )
+                else -> canonicalRecoveryDraft
+            }
+            // A draft created by the interim CIfix6 UI mirrored its new card choice into each legacy label row.
+            // Preserve the independent card choice, but never re-save those mirrored rows as legacy per-question links.
+            val normalizedStored = stored?.let { savedDraft ->
+                if (savedDraft.cardCategoryId != null || savedDraft.cardCategoryTouched) savedDraft.copy(categoryIdsByLabel = null) else savedDraft
+            }
+            if (normalizedStored != null && (!normalizedStored.isBlank || canonical != null)) {
+                draft = normalizedStored
+                history.reset(normalizedStored)
                 restoredFromDraft = true
                 draftStatus = DraftStatus.SAVED
                 // Migrate a legacy DraftText payload to the shared schema without removing the old recovery copy.
-                if (canonical == null) pending.trySend(stored)
+                if (canonical == null) pending.trySend(normalizedStored)
             }
             if (canonical != null) editorMode = if (canonical.mode == CanonicalEditorMode.FULL) EditorMode.FULL else EditorMode.MINIMUM
             loaded = true
@@ -141,7 +158,7 @@ class QuestionEditorViewModel(
                 )
                 canonicalDraftTemplate = canonical
                 try {
-                    if (text.isBlank && canonical.questionBlocks.all { it.categoryIds.isEmpty() && it.solutionParts.isEmpty() } && canonical.stimulus.images.isEmpty()) editorDraftRepository?.discard("type_cq", topicId)
+                    if (text.isBlank && canonical.cardCategoryId == null && canonical.questionBlocks.all { it.categoryIds.isEmpty() && it.solutionParts.isEmpty() } && canonical.stimulus.images.isEmpty()) editorDraftRepository?.discard("type_cq", topicId)
                     else editorDraftRepository?.save("type_cq", topicId, EditorSessionDraftCodec.encode(canonical))
                 } catch (_: Exception) { /* legacy draft remains recoverable */ }
                 if (text == draft) draftStatus = if (text.isBlank) DraftStatus.NONE else DraftStatus.SAVED
@@ -183,6 +200,21 @@ class QuestionEditorViewModel(
         if (next == current) return
         rows[index] = next
         change(draft.copy(categoryIdsByLabel = rows), "category-$index")
+    }
+
+    /** One independent category belongs to the complete question card; legacy per-question rows remain untouched. */
+    fun changeGroupCategory(categoryId: String?) {
+        if (saving) return
+        val selected = categoryId?.takeIf { it.isNotBlank() }
+        if (draft.cardCategoryId == selected) return
+        change(draft.copy(cardCategoryId = selected), "group-category")
+    }
+
+    fun setConceptParts(index: Int, parts: List<ConceptContentPart>) {
+        if (saving || index !in 0..3) return
+        val rows = (draft.conceptPartsByLabel ?: List(4) { emptyList() }).toMutableList()
+        rows[index] = parts.mapIndexed { position, part -> part.copy(position = position.toLong()) }
+        change(draft.copy(conceptPartsByLabel = rows), "concept-$index")
     }
     suspend fun addCategory(name: String): Boolean =
         if (saving || name.isBlank()) false else runCatching { addCategoryAction(name.trim()) }.getOrDefault(false)
@@ -309,6 +341,7 @@ class QuestionEditorViewModel(
                 solutionTexts = swappedList(draft.solutionTexts, a, b),
                 solutionPartsByLabel = draft.solutionPartsByLabel?.let { swappedList(it, a, b) },
                 categoryIdsByLabel = draft.categoryIdsByLabel?.let { swappedList(it, a, b) },
+                conceptPartsByLabel = draft.conceptPartsByLabel?.let { swappedList(it, a, b) },
             ),
             "swap-$a-$b",
         )
@@ -327,7 +360,8 @@ class QuestionEditorViewModel(
                 marks = draft.marks.toMutableList().also { it[index] = label.marks },
                 solutionTexts = draft.solutionTexts.toMutableList().also { it[index] = emptyList() },
                 solutionPartsByLabel = draft.solutionPartsByLabel?.toMutableList()?.also { it[index] = emptyList() },
-                categoryIdsByLabel = draft.categoryIdsByLabel?.toMutableList()?.also { it[index] = emptyList() },
+                // categoryIdsByLabel is intentionally untouched: it belongs to the whole card, not this block.
+                conceptPartsByLabel = draft.conceptPartsByLabel?.toMutableList()?.also { it[index] = emptyList() },
             ),
             "clear-block-$index",
         )
@@ -409,8 +443,16 @@ class QuestionEditorViewModel(
 
     fun save(onSaved: () -> Unit) {
         if (saving || !loaded) return
-        saving = true
         val snapshot = draft
+        val orphanedConceptLabel = CqLabel.entries.firstOrNull { label ->
+            snapshot.conceptPartsByLabel?.getOrNull(label.sortOrder - 1).orEmpty().isNotEmpty() &&
+                snapshot.texts.getOrNull(label.sortOrder - 1).orEmpty().isBlank()
+        }
+        if (orphanedConceptLabel != null) {
+            result = SaveResult.MissingQuestionText(orphanedConceptLabel)
+            return
+        }
+        saving = true
         ActivityLog.action("CREATE", "SAVE (✓) pressed", "topic=$topicId")
         ActivityLog.event(
             "SAVE-DATA",
@@ -452,6 +494,12 @@ class QuestionEditorViewModel(
                                 QuestionSolutionPart(it.partId, it.partType, it.position, it.textContent, it.imageId)
                             } }.toMap()
                         }.orEmpty(),
+                        conceptsByLabel = snapshot.conceptPartsByLabel?.let { rows ->
+                            CqLabel.entries.mapIndexedNotNull { index, label ->
+                                rows.getOrNull(index)?.takeIf { it.isNotEmpty() }?.let { label to it }
+                            }.toMap()
+                        }.orEmpty(),
+                        cardCategoryId = snapshot.cardCategoryId,
                     )
                 )
             }

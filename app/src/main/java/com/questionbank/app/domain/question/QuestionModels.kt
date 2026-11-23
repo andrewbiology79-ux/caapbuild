@@ -76,7 +76,7 @@ data class QuestionGroupInput(
     val boards: BoardsInput? = null,
     /** Reference text belongs to the stimulus record and is independent from its main text. */
     val referenceText: String = "",
-    /** Category IDs for each created question block. Omitted labels receive no category links. */
+    /** Legacy per-sub-question category links. Kept separate from the new card-level category. */
     val categoriesByLabel: Map<CqLabel, List<String>> = emptyMap(),
     /** Optional canonical Phase 6 draft key, removed in the same Room transaction as the content save. */
     val editorDraftKey: String? = null,
@@ -86,6 +86,8 @@ data class QuestionGroupInput(
     val solutionPartsByLabel: Map<CqLabel, List<QuestionSolutionPart>> = emptyMap(),
     /** Concept content to copy with a duplicated/pasted card, keyed per sub-question. */
     val conceptsByLabel: Map<CqLabel, List<ConceptContentPart>> = emptyMap(),
+    /** New independent single category for this whole card; does not replace legacy per-question category links. */
+    val cardCategoryId: String? = null,
 )
 
 /** Raw editor text, used for the automatic draft. Index 0..3 = ক, খ, গ, ঘ. */
@@ -107,11 +109,17 @@ data class DraftText(
     val stimulusImages: List<QuestionStimulusImage>? = null,
     /** Null means legacy text-only draft; an empty row deliberately clears that label's mixed solution parts. */
     val solutionPartsByLabel: List<List<QuestionSolutionPart>>? = null,
-    /** Null means an older draft did not store per-question categories; present rows preserve each label's selected IDs. */
+    /** Legacy per-sub-question category links in an older/recovery draft. These are distinct from [cardCategoryId]. */
     val categoryIdsByLabel: List<List<String>>? = null,
+    /** New independent card-level category. Null means no category is selected in the new system. */
+    val cardCategoryId: String? = null,
+    /** Null means an older draft did not store Concept content; rows map to ক..ঘ. */
+    val conceptPartsByLabel: List<List<ConceptContentPart>>? = null,
+    /** True only when an edit draft explicitly changed or cleared the new card-level category. */
+    val cardCategoryTouched: Boolean = false,
 ) {
     val isBlank: Boolean
-        get() = stimulus.isBlank() && referenceText.isBlank() && texts.all { it.isBlank() } && answers.all { it.isBlank() } && solutionTexts.all { row -> row.all { it.isBlank() } } && stimulusImages.isNullOrEmpty() && (solutionPartsByLabel.isNullOrEmpty() || solutionPartsByLabel.all { it.isEmpty() })
+        get() = stimulus.isBlank() && referenceText.isBlank() && texts.all { it.isBlank() } && answers.all { it.isBlank() } && solutionTexts.all { row -> row.all { it.isBlank() } } && stimulusImages.isNullOrEmpty() && (solutionPartsByLabel.isNullOrEmpty() || solutionPartsByLabel.all { it.isEmpty() }) && (conceptPartsByLabel.isNullOrEmpty() || conceptPartsByLabel.all { it.isEmpty() }) && cardCategoryId == null
 }
 
 /** One saved sub-question as the list shows it. */
@@ -184,8 +192,10 @@ data class SavedGroup(
     val unfilteredFallbackRating: Int? = null,
     /** Distinct Paper references across the complete saved group, retained for partial-search cards. */
     val paperUsages: List<PaperUsage> = emptyList(),
-    /** Union of Question Category IDs across the complete card, including hidden sub-questions in filtered results. */
+    /** Union of legacy per-question category IDs across the complete card, including hidden sub-questions in filtered results. */
     val questionCategoryIds: List<String> = emptyList(),
+    /** New independent card-level category; null until selected in the new category system. */
+    val cardCategoryId: String? = null,
 )
 
 sealed interface SaveResult {
@@ -238,6 +248,12 @@ data class GroupEditInput(
     val stimulusImages: List<QuestionStimulusImage>? = null,
     /** Null preserves the current mixed solution content; a label entry replaces that complete ordered sequence. */
     val solutionPartsByLabel: Map<CqLabel, List<QuestionSolutionPart>>? = null,
+    /** Concept content for newly added labels; existing saved Concepts are independently persisted by their editor. */
+    val conceptsByLabel: Map<CqLabel, List<ConceptContentPart>> = emptyMap(),
+    /** New independent card-level category; null means leave the existing card category unchanged unless changeCardCategory is true. */
+    val cardCategoryId: String? = null,
+    /** Distinguishes no change from deliberately clearing the new card-level category. */
+    val changeCardCategory: Boolean = false,
 )
 
 data class QuestionMetaUpdate(val questionId: String, val label: CqLabel, val questionTypeId: String, val marks: Double)

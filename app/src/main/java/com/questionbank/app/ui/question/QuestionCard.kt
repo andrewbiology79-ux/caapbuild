@@ -33,6 +33,7 @@ import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -56,6 +57,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.questionbank.app.data.local.entity.TypeCqQuestionCategoriesEntity
@@ -64,6 +66,7 @@ import com.questionbank.app.domain.question.BoardTag
 import com.questionbank.app.domain.question.QuestionCardRules
 import com.questionbank.app.domain.question.SavedGroup
 import com.questionbank.app.domain.question.SavedSubQuestion
+import com.questionbank.app.domain.question.QuestionGroupKey
 import com.questionbank.app.domain.question.groupBoardYears
 import com.questionbank.app.ui.format.toBengali
 import com.questionbank.app.ui.theme.LocalDarkTheme
@@ -96,7 +99,7 @@ fun QuestionCard(
     onPasteAfter: (() -> Unit)? = null,
     canPaste: Boolean = false,
     onView: (() -> Unit)? = null,
-    onQuestionCategoryChange: ((String, List<String>) -> Unit)? = null,
+    onQuestionCategoryChange: ((String, String?) -> Unit)? = null,
     onQuestionConcept: ((SavedSubQuestion) -> Unit)? = null,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
@@ -139,8 +142,17 @@ fun QuestionCard(
                 )
             }
             Spacer(Modifier.weight(1f))
+            if (onQuestionCategoryChange != null) {
+                QuestionCategoryPicker(
+                    categories = categories,
+                    stateKey = QuestionGroupKey.of(group).orEmpty(),
+                    selectedIds = group.cardCategoryId?.let(::listOf).orEmpty(),
+                    onSelectionChange = { onQuestionCategoryChange(QuestionGroupKey.of(group).orEmpty(), it.singleOrNull()) },
+                    modifier = Modifier.width(104.dp),
+                )
+            }
             RatingBadge(QuestionCardRules.rating(group))
-            if (onEdit != null || onDelete != null || onCopy != null || onCut != null || onPasteBefore != null || onPasteAfter != null || onView != null) {
+            if (onEdit != null || onDelete != null || onCopy != null || onCut != null || onPasteBefore != null || onPasteAfter != null) {
                 Box {
                     Box(
                         modifier = Modifier.size(40.dp).clickable { menuOpen = true }
@@ -149,7 +161,6 @@ fun QuestionCard(
                     ) { Text("⋮", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp) }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         if (onEdit != null) DropdownMenuItem(text = { Text("প্রশ্ন সম্পাদনা") }, onClick = { menuOpen = false; onEdit() })
-                        if (onView != null) DropdownMenuItem(text = { Text("রেফারেন্স দেখুন") }, onClick = { menuOpen = false; onView() })
                         if (onCopy != null) DropdownMenuItem(text = { Text("Copy") }, onClick = { menuOpen = false; onCopy() })
                         if (onCut != null) DropdownMenuItem(text = { Text("Cut") }, onClick = { menuOpen = false; onCut() })
                         if (onPasteAfter != null) DropdownMenuItem(text = { Text("Paste after", color = if (canPaste) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant) }, enabled = canPaste, onClick = { menuOpen = false; onPasteAfter() })
@@ -189,7 +200,6 @@ fun QuestionCard(
                 else Text("উদ্দীপকের ছবি অনুপলব্ধ", style = MaterialTheme.typography.labelSmall)
             }
             if (group.stimulusText.isNotBlank()) {
-                Text("উদ্দীপক", style = MaterialTheme.typography.labelLarge, color = LegacyBlue, fontWeight = FontWeight.Bold)
                 RichLatexText(group.stimulusText, Modifier.fillMaxWidth())
             }
             lowerImages.forEach { image ->
@@ -197,25 +207,12 @@ fun QuestionCard(
                 else Text("উদ্দীপকের ছবি অনুপলব্ধ", style = MaterialTheme.typography.labelSmall)
             }
             // Keep BOTTOM stimulus images immediately after the stimulus, matching the legacy card sequence.
-            if (group.referenceText.isNotBlank()) {
-                var showReference by remember(group.referenceText) { mutableStateOf(false) }
-                TextButton(onClick = { showReference = !showReference }, modifier = Modifier.padding(0.dp)) {
-                    Text(if (showReference) "রেফারেন্স লুকান" else "রেফারেন্স দেখুন")
-                }
-                if (showReference) Text(
-                    group.referenceText,
-                    modifier = Modifier.fillMaxWidth().background(Color(0xFFF8FAFC), RoundedCornerShape(9.dp)).padding(10.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
             group.subQuestions.forEachIndexed { index, question ->
                 if (index > 0) androidx.compose.material3.HorizontalDivider(color = Color(0xFFE2E8F0))
                 QuestionCardSubQuestion(
                     question = question,
                     boards = boards,
-                    categories = categories,
                     imagePipeline = imagePipeline,
-                    onCategoryChange = onQuestionCategoryChange,
                     onConcept = onQuestionConcept,
                 )
             }
@@ -227,9 +224,7 @@ fun QuestionCard(
 private fun QuestionCardSubQuestion(
     question: SavedSubQuestion,
     boards: List<BoardItem>,
-    categories: List<TypeCqQuestionCategoriesEntity>,
     imagePipeline: ImagePipeline?,
-    onCategoryChange: ((String, List<String>) -> Unit)?,
     onConcept: ((SavedSubQuestion) -> Unit)?,
 ) {
     var showSolution by remember(question.id) { mutableStateOf(false) }
@@ -243,10 +238,6 @@ private fun QuestionCardSubQuestion(
             )
             RichLatexText(question.text, Modifier.weight(1f))
         }
-        if (question.shortAnswer.isNotBlank()) {
-            Text("সংক্ষিপ্ত উত্তর:", style = MaterialTheme.typography.labelMedium, color = LegacyMuted)
-            RichLatexText(question.shortAnswer, Modifier.fillMaxWidth())
-        }
         val hasSolution = question.orderedSolutionParts.isNotEmpty() || question.solutionParts.any(String::isNotBlank)
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -255,7 +246,7 @@ private fun QuestionCardSubQuestion(
         ) {
             Surface(
                 modifier = Modifier.height(30.dp).clickable(enabled = hasSolution) { showSolution = !showSolution },
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(7.dp),
                 color = if (hasSolution) Color(0xFFEFF6FF) else Color(0xFFF1F5F9),
                 border = BorderStroke(1.dp, if (hasSolution) Color(0xFFBFDBFE) else Color(0xFFE2E8F0)),
             ) {
@@ -289,20 +280,13 @@ private fun QuestionCardSubQuestion(
                 } else question.solutionParts.forEach { RichLatexText(it, Modifier.fillMaxWidth()) }
             }
         }
-        if (onCategoryChange != null || onConcept != null) {
+        if (onConcept != null) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(7.dp),
             ) {
-                if (onCategoryChange != null) QuestionCategoryPicker(
-                    categories = categories,
-                    stateKey = question.id,
-                    selectedIds = question.categoryIds,
-                    onSelectionChange = { onCategoryChange(question.id, it) },
-                    modifier = Modifier.weight(1f),
-                )
-                if (onConcept != null) TextButton(
+                TextButton(
                     onClick = { onConcept(question) },
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 9.dp, vertical = 1.dp),
                 ) { Text(if (question.conceptParts.isEmpty()) "+ Concept" else "Concept", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
@@ -316,43 +300,48 @@ private fun QuestionCategoryPicker(
     categories: List<TypeCqQuestionCategoriesEntity>,
     stateKey: String,
     selectedIds: List<String>,
-    onSelectionChange: (List<String>) -> Unit,
+    onSelectionChange: (String?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    // Keep rapid multi-select taps in sync while asynchronous Room writes are still in flight.
-    var workingSelection by remember(stateKey) { mutableStateOf(selectedIds) }
+    // Keep the single selected card category in sync while asynchronous Room writes are in flight.
+    // This picker reads only the new independent card-level value. Legacy per-sub-question links are not displayed here.
+    val cardSelection = selectedIds.firstOrNull()?.let(::listOf).orEmpty()
+    var workingSelection by remember(stateKey) { mutableStateOf(cardSelection) }
     androidx.compose.runtime.LaunchedEffect(stateKey, selectedIds) {
-        workingSelection = selectedIds
+        workingSelection = selectedIds.firstOrNull()?.let(::listOf).orEmpty()
     }
     val selectedNames = categories.filter { it.categoryId in workingSelection }.map { it.name }
     Box(modifier) {
         Text(
-            text = if (selectedNames.isEmpty()) "প্রশ্নের ক্যাটাগরি নির্বাচন ▾" else selectedNames.joinToString(" · ") + " ▾",
+            text = if (selectedNames.isEmpty()) "ক্যাটাগরি ▾" else selectedNames.first() + " ▾",
             modifier = Modifier.fillMaxWidth().background(Color(0xFFEEF2FF), RoundedCornerShape(8.dp))
                 .border(1.dp, Color(0xFFC7D2FE), RoundedCornerShape(8.dp)).clickable { expanded = true }
                 .padding(horizontal = 9.dp, vertical = 7.dp),
             color = Color(0xFF2A3BB0), fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             if (categories.isEmpty()) {
                 DropdownMenuItem(text = { Text("কোনো ক্যাটাগরি নেই") }, onClick = { expanded = false }, enabled = false)
             }
-            categories.filter { it.isArchived == 0L }.forEach { category ->
+            categories.filter { it.isArchived == 0L || it.categoryId in workingSelection }.forEach { category ->
                 val checked = category.categoryId in workingSelection
                 DropdownMenuItem(
-                    text = { Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(checked, onCheckedChange = null); Text(category.name) } },
+                    text = { Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = checked, onClick = null); Text(category.name) } },
                     onClick = {
-                        val next = if (checked) workingSelection - category.categoryId else workingSelection + category.categoryId
+                        // A radio choice remains selected when tapped again; clearing is a separate action.
+                        val next = listOf(category.categoryId)
                         workingSelection = next
-                        onSelectionChange(next)
+                        onSelectionChange(next.singleOrNull())
+                        expanded = false
                     },
                 )
             }
             if (workingSelection.isNotEmpty()) DropdownMenuItem(
-                text = { Text("সব ক্যাটাগরি সরান", color = MaterialTheme.colorScheme.error) },
-                onClick = { workingSelection = emptyList(); onSelectionChange(emptyList()); expanded = false },
+                text = { Text("ক্যাটাগরি সরান", color = MaterialTheme.colorScheme.error) },
+                onClick = { workingSelection = emptyList(); onSelectionChange(null); expanded = false },
             )
         }
     }
@@ -415,11 +404,11 @@ private fun BoardTagsFlow(
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             groupBoardYears(tags).forEach { group ->
-                val name = boards.firstOrNull { it.code == group.boardCode }?.displayName ?: group.boardCode
-                val years = group.years.joinToString(",") { it.toString().takeLast(2) }
+                val name = group.boardCode
+                val years = group.years.joinToString(", ") { it.toBengali() }
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                     Text(
-                        "$name'$years",
+                        "$name · $years",
                         modifier = Modifier.padding(end = 4.dp).background(Color.White, RoundedCornerShape(6.dp))
                             .border(1.dp, LegacyBorder, RoundedCornerShape(6.dp)).padding(horizontal = 7.dp, vertical = 3.dp),
                         color = Color(0xFF1B1F2A), fontSize = 9.sp, fontWeight = FontWeight.SemiBold,

@@ -94,6 +94,14 @@ class BackupRestoreTest {
         return saved
     }
 
+    /** Make a current v4 test database structurally match its pre-v4 v3 schema. */
+    private fun removeCardCategoryV4Columns(connection: androidx.sqlite.SQLiteConnection) {
+        connection.execSQL("DROP INDEX IF EXISTS index_type_cq_questions_card_category_id")
+        connection.execSQL("DROP INDEX IF EXISTS index_type_cq_stimuli_card_category_id")
+        connection.execSQL("ALTER TABLE type_cq_questions DROP COLUMN card_category_id")
+        connection.execSQL("ALTER TABLE type_cq_stimuli DROP COLUMN card_category_id")
+    }
+
     private fun androidx.sqlite.SQLiteConnection.firstLong(sql: String): Long {
         val st = prepare(sql)
         try {
@@ -106,7 +114,7 @@ class BackupRestoreTest {
     private fun count(db: QuestionBankDatabase, sql: String): Long = runBlocking { db.useReaderConnection { it.scalarLong(sql) } }
 
     @Test
-    fun v1DatabaseRunsBothProductionRoomMigrationsWithoutLosingQuestionData() = runBlocking {
+    fun v1DatabaseRunsAllProductionRoomMigrationsWithoutLosingQuestionData() = runBlocking {
         addQuestions(source, groups = 2)
         val originalCounts = DatabaseSnapshot.liveCounts(source)
         val file = context.getDatabasePath(sourceName)
@@ -115,6 +123,8 @@ class BackupRestoreTest {
         val legacyHash = "786b471dfa14c9ae4739bb81479bab25"
         val raw = BundledSQLiteDriver().open(file.absolutePath)
         try {
+            // Version 1 predates both Concept tables and the v4 card-category columns.
+            removeCardCategoryV4Columns(raw)
             raw.execSQL("DROP TABLE IF EXISTS type_cq_concept_parts")
             raw.execSQL("DROP TABLE IF EXISTS type_cq_concepts")
             raw.execSQL("UPDATE room_master_table SET identity_hash = '$legacyHash' WHERE id = 42")
@@ -128,7 +138,7 @@ class BackupRestoreTest {
         val migratedCounts = DatabaseSnapshot.liveCounts(source)
         val currentHash = DatabaseSnapshot.liveIdentityHash(source)
         assertEquals(originalCounts, migratedCounts)
-        assertEquals(3L, source.useReaderConnection { it.scalarLong("PRAGMA user_version") })
+        assertEquals(4L, source.useReaderConnection { it.scalarLong("PRAGMA user_version") })
         assertTrue(source.useReaderConnection { it.scalarLong("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('type_cq_concepts','type_cq_concept_parts')") } == 2L)
         val inspected = BackupInspector.inspect(file, expectedHash = currentHash)
         assertTrue("v1 migration failed: ${inspected.problem}", inspected.ok)
@@ -151,13 +161,15 @@ class BackupRestoreTest {
         try {
             raw.execSQL("UPDATE type_cq_stimuli SET created_at = CASE stimulus_id WHEN '$oldestStimulus' THEN 100 ELSE 200 END")
             raw.execSQL("UPDATE type_cq_questions SET sort_order = CASE WHEN question_id IN (SELECT question_id FROM type_cq_questions ORDER BY question_id LIMIT 2) THEN 100 ELSE 10 END")
+            // Version 2 has Concept tables but predates the v4 card-category columns.
+            removeCardCategoryV4Columns(raw)
             raw.execSQL("PRAGMA user_version = 2")
         } finally {
             raw.close()
         }
         source = QuestionBankDatabase.create(context, sourceName)
         opened += source
-        assertEquals(3L, source.useReaderConnection { it.scalarLong("PRAGMA user_version") })
+        assertEquals(4L, source.useReaderConnection { it.scalarLong("PRAGMA user_version") })
         val order = source.useReaderConnection { connection ->
             connection.textList("SELECT stimulus_id FROM type_cq_questions WHERE stimulus_id IS NOT NULL GROUP BY stimulus_id ORDER BY MAX(sort_order) DESC")
         }
@@ -180,6 +192,110 @@ class BackupRestoreTest {
         assertEquals(listOf("ক", "গ"), oldestLabels)
         assertEquals(hash, DatabaseSnapshot.liveIdentityHash(source))
         assertTrue(BackupInspector.inspect(file, expectedHash = hash).ok)
+    }
+
+    @Test
+    fun v3MigrationAddsOneCardCategoryWithoutChangingLegacyQuestionCategories() = runBlocking {
+        addQuestions(source, groups = 1)
+        val topicId = source.useReaderConnection { it.scalarText("SELECT topic_id FROM type_cq_topics LIMIT 1") }
+        val saved = TypeCqQuestionRepositoryImpl(source.typeCqQuestionDao()).saveGroup(
+            QuestionGroupInput(
+                topicId = topicId,
+                stimulusText = "একটি উদ্দীপক",
+                subQuestions = listOf(
+                    SubQuestionInput(CqLabel.KA, "ক প্রশ্ন", "উত্তর"),
+                    SubQuestionInput(CqLabel.GA, "গ প্রশ্ন", "উত্তর"),
+                ),
+            )
+        )
+        assertTrue("group creation failed: $saved", saved is SaveResult.Saved)
+        saved as SaveResult.Saved
+        val stimulusId = requireNotNull(saved.stimulusId)
+        val questionIds = saved.questionIds
+        assertEquals(2, questionIds.size)
+
+        // Two different legacy categories on one card prove that no old assignment is inferred or collapsed.
+        val raw = BundledSQLiteDriver().open(context.getDatabasePath(sourceName).absolutePath)
+        val categoryValues = listOf("legacy-card-a", "legacy-card-b", "new-card-category")
+        try {
+            categoryValues.forEachIndexed { index, id ->
+                raw.execSQL(
+                    "INSERT INTO type_cq_question_categories(category_id,name,description,color,icon,sort_order,is_archived,created_at,updated_at) " +
+                        "VALUES('$id','Test $index','','','',$index,0,1,1)"
+                )
+            }
+            raw.execSQL("INSERT INTO type_cq_question_category_links(question_id,category_id,assigned_at) VALUES('${questionIds[0]}','legacy-card-a',101)")
+            raw.execSQL("INSERT INTO type_cq_question_category_links(question_id,category_id,assigned_at) VALUES('${questionIds[1]}','legacy-card-b',202)")
+        } finally {
+            raw.close()
+        }
+        val legacyBefore = source.useReaderConnection { connection ->
+            connection.textList(
+                "SELECT question_id || '|' || category_id || '|' || assigned_at FROM type_cq_question_category_links ORDER BY question_id,category_id"
+            )
+        }
+
+        val file = context.getDatabasePath(sourceName)
+        source.close()
+        val legacyRaw = BundledSQLiteDriver().open(file.absolutePath)
+        try {
+            removeCardCategoryV4Columns(legacyRaw)
+            legacyRaw.execSQL("PRAGMA user_version = 3")
+        } finally {
+            legacyRaw.close()
+        }
+
+        source = QuestionBankDatabase.create(context, sourceName)
+        opened += source
+        assertEquals(4L, source.useReaderConnection { it.scalarLong("PRAGMA user_version") })
+        assertEquals(2L, count(source, "SELECT COUNT(*) FROM type_cq_question_category_links"))
+        assertEquals(0L, count(source, "SELECT COUNT(*) FROM type_cq_stimuli WHERE card_category_id IS NOT NULL"))
+        assertEquals(0L, count(source, "SELECT COUNT(*) FROM type_cq_questions WHERE card_category_id IS NOT NULL"))
+        val legacyAfterMigration = source.useReaderConnection { connection ->
+            connection.textList(
+                "SELECT question_id || '|' || category_id || '|' || assigned_at FROM type_cq_question_category_links ORDER BY question_id,category_id"
+            )
+        }
+        assertEquals(legacyBefore, legacyAfterMigration)
+
+        val repository = TypeCqQuestionRepositoryImpl(source.typeCqQuestionDao())
+        val groupKey = "s-$stimulusId"
+        val beforeSelection = requireNotNull(repository.loadGroup(topicId, groupKey))
+        assertEquals(null, beforeSelection.cardCategoryId)
+        assertEquals(setOf("legacy-card-a", "legacy-card-b"), beforeSelection.subQuestions.flatMap { it.categoryIds }.toSet())
+
+        assertTrue(repository.updateCardCategory(topicId, groupKey, "new-card-category"))
+        val afterSelection = requireNotNull(repository.loadGroup(topicId, groupKey))
+        assertEquals("new-card-category", afterSelection.cardCategoryId)
+        assertEquals(legacyBefore, source.useReaderConnection { connection ->
+            connection.textList(
+                "SELECT question_id || '|' || category_id || '|' || assigned_at FROM type_cq_question_category_links ORDER BY question_id,category_id"
+            )
+        })
+
+        assertTrue(repository.updateCardCategory(topicId, groupKey, null))
+        val afterClear = requireNotNull(repository.loadGroup(topicId, groupKey))
+        assertEquals(null, afterClear.cardCategoryId)
+        assertEquals(legacyBefore, source.useReaderConnection { connection ->
+            connection.textList(
+                "SELECT question_id || '|' || category_id || '|' || assigned_at FROM type_cq_question_category_links ORDER BY question_id,category_id"
+            )
+        })
+
+        // A no-stimulus question is its own card and stores the independent value on the question row.
+        val standaloneSaved = repository.saveGroup(
+            QuestionGroupInput(
+                topicId = topicId,
+                stimulusText = "",
+                subQuestions = listOf(SubQuestionInput(CqLabel.KHA, "স্বতন্ত্র প্রশ্ন", "উত্তর")),
+                cardCategoryId = "new-card-category",
+            )
+        )
+        assertTrue("standalone save failed: $standaloneSaved", standaloneSaved is SaveResult.Saved)
+        standaloneSaved as SaveResult.Saved
+        val standaloneKey = "q-${standaloneSaved.questionIds.single()}"
+        val standaloneGroup = requireNotNull(repository.loadGroup(topicId, standaloneKey))
+        assertEquals("new-card-category", standaloneGroup.cardCategoryId)
     }
 
     @Test

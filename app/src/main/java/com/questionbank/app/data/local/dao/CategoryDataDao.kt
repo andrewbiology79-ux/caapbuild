@@ -24,7 +24,11 @@ abstract class CategoryDataDao {
     abstract suspend fun setTypeCategoryArchived(id: String, archived: Long, now: Long): Int
     @Query("UPDATE chapter_cq_question_categories SET is_archived = :archived, updated_at = :now WHERE category_id = :id")
     abstract suspend fun setChapterCategoryArchived(id: String, archived: Long, now: Long): Int
-    @Query("SELECT COUNT(*) FROM type_cq_question_category_links WHERE category_id = :id")
+    @Query("""SELECT
+        (SELECT COUNT(*) FROM type_cq_question_category_links WHERE category_id = :id) +
+        (SELECT COUNT(*) FROM type_cq_questions WHERE card_category_id = :id) +
+        (SELECT COUNT(*) FROM type_cq_stimuli WHERE card_category_id = :id)
+        """)
     abstract suspend fun typeCategoryLinkCount(id: String): Int
     @Query("SELECT COUNT(*) FROM chapter_cq_question_category_links WHERE category_id = :id")
     abstract suspend fun chapterCategoryLinkCount(id: String): Int
@@ -56,6 +60,12 @@ abstract class CategoryDataDao {
     @Query("DELETE FROM type_cq_question_category_links WHERE category_id = :sourceId")
     abstract suspend fun deleteTypeLinks(sourceId: String)
 
+    @Query("UPDATE type_cq_questions SET card_category_id = :targetId, updated_at = :now WHERE card_category_id = :sourceId")
+    abstract suspend fun reassignQuestionCardCategories(sourceId: String, targetId: String, now: Long): Int
+
+    @Query("UPDATE type_cq_stimuli SET card_category_id = :targetId, updated_at = :now WHERE card_category_id = :sourceId")
+    abstract suspend fun reassignStimulusCardCategories(sourceId: String, targetId: String, now: Long): Int
+
     @Query("INSERT OR IGNORE INTO chapter_cq_question_category_links(question_id, category_id, assigned_at) SELECT question_id, :targetId, assigned_at FROM chapter_cq_question_category_links WHERE category_id = :sourceId")
     abstract suspend fun copyChapterLinks(sourceId: String, targetId: String)
 
@@ -66,6 +76,10 @@ abstract class CategoryDataDao {
     open suspend fun reassignAndArchiveType(sourceId: String, targetId: String, now: Long): Boolean {
         if (sourceId == targetId || activeTypeCategory(sourceId) == 0 || activeTypeCategory(targetId) == 0) return false
         copyTypeLinks(sourceId, targetId)
+        // Explicit category reassignment must move both legacy per-question links and the new card-level references.
+        // Ordinary card-category selection never writes to the legacy link table.
+        reassignQuestionCardCategories(sourceId, targetId, now)
+        reassignStimulusCardCategories(sourceId, targetId, now)
         deleteTypeLinks(sourceId)
         archiveTypeCategory(sourceId, now)
         return true

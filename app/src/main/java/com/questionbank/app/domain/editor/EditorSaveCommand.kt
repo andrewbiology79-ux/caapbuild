@@ -82,6 +82,7 @@ sealed interface EditorSaveCommand {
                 deletedQuestionIds = Collections.unmodifiableSet(LinkedHashSet(source.deletedQuestionIds)),
                 stimulusImages = source.stimulusImages?.let(::immutableList),
                 solutionPartsByLabel = source.solutionPartsByLabel?.let { map -> immutableMap(map.mapValues { (_, parts) -> immutableList(parts) }) },
+                conceptsByLabel = immutableMap(source.conceptsByLabel.mapValues { (_, parts) -> immutableList(parts) }),
             )
             return TypeCqEdit(snapshot)
         }

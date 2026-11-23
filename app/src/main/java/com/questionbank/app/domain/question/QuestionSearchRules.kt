@@ -72,11 +72,10 @@ object QuestionSearchRules {
         }
 
     /**
-     * v0.2.30c-3: the search with a board / year filter. A sub-question is kept when BOTH hold:
-     *  - the text part: [textMatchedQuestionIds] is null (no text was typed: every question fits), or the question matched, or its
-     *    stimulus matched ([textMatchedStimulusIds]);
-     *  - the tag part: a tag of the question fits [filter], or (for a group with a stimulus) a tag of the stimulus fits it.
-     * A card shows only the kept sub-questions; a group without any disappears. The order of [groups] is kept.
+     * v0.2.30c-3 / v1.73: the search with board/year and category filters. A sub-question is kept when its text, board/year,
+     * card-level category, rating and type all fit. Category filtering reads only [SavedGroup.cardCategoryId]; the legacy
+     * per-sub-question category links remain stored but are not part of the new Type CQ card-category filter.
+     * A card shows only the kept text-matching sub-questions; a group without any disappears. The order of [groups] is kept.
      */
     fun filterByBoards(
         groups: List<SavedGroup>,
@@ -92,7 +91,7 @@ object QuestionSearchRules {
             val kept = group.subQuestions.filter { q ->
                 val textOk = textMatchedQuestionIds == null || q.id in textMatchedQuestionIds || stimulusTextOk
                 val boardOk = !hasBoardFilter || stimulusTagOk || filter.matches(q.boards)
-                val categoryOk = filter.categoryId == null || filter.categoryId in q.categoryIds
+                val categoryOk = filter.categoryId == null || filter.categoryId == group.cardCategoryId
                 val ratingOk = filter.rating == null || q.rating == filter.rating
                 val typeOk = filter.questionTypeId == null || q.questionTypeId == filter.questionTypeId
                 textOk && boardOk && categoryOk && ratingOk && typeOk

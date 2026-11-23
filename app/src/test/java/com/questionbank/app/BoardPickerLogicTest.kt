@@ -65,8 +65,8 @@ class BoardPickerLogicTest {
     }
 
     @Test
-    fun tagTextShowsNameAndBengaliYearOrTheCodeWhenUnknown() {
-        assertEquals("ঢাকা · ২০১৯", tagText(dha, catalog))
+    fun tagTextShowsOnlyBoardCodeAndBengaliYear() {
+        assertEquals("DHA · ২০১৯", tagText(dha, catalog))
         assertEquals("CTG · ২০২১", tagText(BoardTag("CTG", 2021), catalog))
     }
 

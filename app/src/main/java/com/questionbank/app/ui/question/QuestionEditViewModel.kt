@@ -16,6 +16,7 @@ import com.questionbank.app.domain.question.CqLabel
 import com.questionbank.app.domain.question.DraftText
 import com.questionbank.app.domain.question.QuestionStimulusImage
 import com.questionbank.app.domain.question.QuestionSolutionPart
+import com.questionbank.app.domain.question.ConceptContentPart
 import com.questionbank.app.domain.question.GroupEditInput
 import com.questionbank.app.domain.question.QuestionEditRules
 import com.questionbank.app.domain.question.RatingsInput
@@ -75,6 +76,8 @@ private data class EditSnapshot(
     val addedOptionalQuestionLabels: Set<CqLabel> = emptySet(),
     val stimulusImages: List<QuestionStimulusImage> = emptyList(),
     val solutionPartsByLabel: List<List<QuestionSolutionPart>> = List(4) { emptyList() },
+    val conceptPartsByLabel: List<List<ConceptContentPart>> = List(4) { emptyList() },
+    val cardCategoryId: String? = null,
 )
 
 /**
@@ -140,7 +143,14 @@ class QuestionEditViewModel(
         private set
     var boards by mutableStateOf<List<List<BoardTag>>>(List(4) { emptyList() })
         private set
+    /** Legacy per-question category links loaded from each stored question; never used by the new card picker. */
     var categoryIdsByLabel by mutableStateOf(List(4) { emptyList<String>() })
+        private set
+    /** New independent category for the whole card. Null means no card category is selected. */
+    var cardCategoryId by mutableStateOf<String?>(null)
+        private set
+    /** Concept rows staged for optional questions that do not have a database question ID yet. */
+    var pendingConceptPartsByLabel by mutableStateOf(List(4) { emptyList<ConceptContentPart>() })
         private set
     var deletedQuestionIds by mutableStateOf<Set<String>>(emptySet())
         private set
@@ -186,11 +196,11 @@ class QuestionEditViewModel(
                 val categoryRows = MutableList(4) { emptyList<String>() }
                 for (sub in group.subQuestions) {
                     val label = sub.label ?: continue
+                    categoryRows[label.sortOrder - 1] = sub.categoryIds
                     t[label.sortOrder - 1] = sub.text
                     a[label.sortOrder - 1] = sub.shortAnswer
                     r[label.sortOrder - 1] = sub.rating
                     b[label.sortOrder - 1] = sub.boards
-                    categoryRows[label.sortOrder - 1] = sub.categoryIds
                 }
                 original = group
                 stimulus = group.stimulusText
@@ -202,6 +212,7 @@ class QuestionEditViewModel(
                 stimulusBoards = group.stimulusBoards
                 boards = b
                 categoryIdsByLabel = categoryRows
+                cardCategoryId = group.cardCategoryId
                 val typeRows = CqLabel.entries.map { label -> group.subQuestions.firstOrNull { it.label == label }?.questionTypeId ?: label.typeId }
                 val markRows = CqLabel.entries.map { label -> group.subQuestions.firstOrNull { it.label == label }?.marks ?: label.marks }
                 val solutionRows = CqLabel.entries.map { label -> group.subQuestions.firstOrNull { it.label == label }?.solutionParts.orEmpty() }
@@ -230,7 +241,18 @@ class QuestionEditViewModel(
         val canonical = runCatching { editorDraftRepository?.load("type_cq", canonicalDraftOwnerId)?.let(EditorSessionDraftCodec::decode) }
             .getOrNull()?.takeIf { it.scope == CanonicalEditorScope.TYPE_CQ && it.ownerId == canonicalDraftOwnerId }
         canonicalDraftTemplate = canonical
-        val stored = canonical?.let(TypeCqDraftAdapter::toLegacy) ?: repository.loadEditDraft(groupKey) ?: return
+        val legacyRecoveryDraft = repository.loadEditDraft(groupKey)
+        val canonicalRecoveryDraft = canonical?.let(TypeCqDraftAdapter::toLegacy)
+        val stored = when {
+            canonicalRecoveryDraft == null -> legacyRecoveryDraft
+            legacyRecoveryDraft == null -> canonicalRecoveryDraft
+            canonicalRecoveryDraft.cardCategoryTouched || canonicalRecoveryDraft.cardCategoryId != null -> canonicalRecoveryDraft
+            legacyRecoveryDraft.cardCategoryTouched || legacyRecoveryDraft.cardCategoryId != null -> canonicalRecoveryDraft.copy(
+                cardCategoryId = legacyRecoveryDraft.cardCategoryId,
+                cardCategoryTouched = legacyRecoveryDraft.cardCategoryTouched,
+            )
+            else -> canonicalRecoveryDraft
+        } ?: return
         if (canonical != null) editorMode = if (canonical.mode == CanonicalEditorMode.FULL) EditorMode.FULL else EditorMode.MINIMUM
         if (group.stimulusId != null) {
             stimulus = stored.stimulus
@@ -246,7 +268,6 @@ class QuestionEditViewModel(
         val qTypes = questionTypeIds.toMutableList()
         val markValues = marks.toMutableList()
         val solutionValues = solutionTexts.toMutableList()
-        val categoryValues = categoryIdsByLabel.toMutableList()
         for (label in CqLabel.entries) {
             val i = label.sortOrder - 1
             t[i] = stored.texts[i]
@@ -256,8 +277,6 @@ class QuestionEditViewModel(
             qTypes[i] = stored.questionTypeIds[i]
             markValues[i] = stored.marks[i]
             solutionValues[i] = stored.solutionTexts[i]
-            val draftBlock = canonical?.questionBlocks?.firstOrNull { it.label == label.letter }
-            if (draftBlock != null) categoryValues[i] = draftBlock.categoryIds
         }
         texts = t
         answers = a
@@ -267,7 +286,16 @@ class QuestionEditViewModel(
         marks = markValues
         solutionTexts = solutionValues
         if (stored.solutionPartsByLabel != null) solutionPartsByLabel = stored.solutionPartsByLabel
-        categoryIdsByLabel = categoryValues
+        if (stored.conceptPartsByLabel != null) {
+            pendingConceptPartsByLabel = CqLabel.entries.map { label ->
+                val existing = original?.subQuestions?.any { it.label == label && it.id !in deletedQuestionIds } == true
+                if (existing) emptyList() else stored.conceptPartsByLabel.getOrNull(label.sortOrder - 1).orEmpty()
+            }
+        }
+        // Old CIfix6 drafts mirrored a card choice into each label's legacy category list.
+        // Do not restore those rows over the saved per-question links. Restore only the independent new field.
+        if (stored.cardCategoryTouched || stored.cardCategoryId != null) cardCategoryId = stored.cardCategoryId
+        else cardCategoryId = group.cardCategoryId
         deletedQuestionIds = canonical?.deletedQuestionIds?.toSet().orEmpty()
         if (changed || canonical != null) {
             restoredFromDraft = true
@@ -318,6 +346,8 @@ class QuestionEditViewModel(
                 if (label == null) block else block.copy(categoryIds = draft.categoryIdsByLabel[label.sortOrder - 1].toList())
             },
             deletedQuestionIds = draft.deletedQuestionIds.toList().sorted(),
+            cardCategoryId = draft.text.cardCategoryId,
+            cardCategoryTouched = draft.text.cardCategoryTouched,
         )
     }
 
@@ -338,6 +368,13 @@ class QuestionEditViewModel(
             questionTypeIds = questionTypeIds, marks = marks, solutionTexts = solutionTexts,
             stimulusImages = stimulusImages,
             solutionPartsByLabel = solutionPartsByLabel,
+            conceptPartsByLabel = CqLabel.entries.map { label ->
+                val existing = original?.subQuestions?.firstOrNull { it.label == label && it.id !in deletedQuestionIds }
+                if (existing != null) existing.conceptParts else pendingConceptPartsByLabel[label.sortOrder - 1]
+            },
+            categoryIdsByLabel = categoryIdsByLabel,
+            cardCategoryId = cardCategoryId,
+            cardCategoryTouched = cardCategoryId != original?.cardCategoryId,
         )
 
     private fun queueDraft() {
@@ -365,7 +402,7 @@ class QuestionEditViewModel(
                     solutionTexts.getOrNull(index).orEmpty().any { it.isNotBlank() } ||
                     solutionPartsByLabel.getOrNull(index).orEmpty().any { it.partType == "IMAGE" } ||
                     boards.getOrNull(index).orEmpty().isNotEmpty() || ratings.getOrNull(index) != null ||
-                    categoryIdsByLabel.getOrNull(index).orEmpty().isNotEmpty() ||
+                    pendingConceptPartsByLabel.getOrNull(index).orEmpty().isNotEmpty() ||
                     questionTypeIds.getOrNull(index) != label.typeId || marks.getOrNull(index) != label.marks
                 val explicitlyAdded = label in addedOptionalQuestionLabels
                 val visibleInMode = when {
@@ -444,11 +481,15 @@ class QuestionEditViewModel(
             editorDraftKey = if (editorDraftRepository != null) "draft:type_cq:editor:$canonicalDraftOwnerId" else null,
             stimulusImages = if (hasStimulus) stimulusImages else null,
             solutionPartsByLabel = editableLabels.associateWith { label -> solutionPartsByLabel[label.sortOrder - 1] },
+            conceptsByLabel = editableLabels.filter { label -> original?.subQuestions?.none { it.label == label } == true }
+                .associateWith { label -> pendingConceptPartsByLabel[label.sortOrder - 1] },
+            cardCategoryId = cardCategoryId,
+            changeCardCategory = cardCategoryId != original?.cardCategoryId,
         )
 
     private fun snapshot() = EditSnapshot(
         stimulus, referenceText, texts, answers, ratings, stimulusRating, boards, stimulusBoards,
-        questionTypeIds, marks, solutionTexts, categoryIdsByLabel, deletedQuestionIds, addedOptionalQuestionLabels, stimulusImages, solutionPartsByLabel,
+        questionTypeIds, marks, solutionTexts, categoryIdsByLabel, deletedQuestionIds, addedOptionalQuestionLabels, stimulusImages, solutionPartsByLabel, pendingConceptPartsByLabel, cardCategoryId,
     )
 
     private fun record(group: String) {
@@ -463,6 +504,8 @@ class QuestionEditViewModel(
         categoryIdsByLabel = value.categoryIdsByLabel; deletedQuestionIds = value.deletedQuestionIds
         addedOptionalQuestionLabels = value.addedOptionalQuestionLabels
         stimulusImages = value.stimulusImages; solutionPartsByLabel = value.solutionPartsByLabel
+        pendingConceptPartsByLabel = value.conceptPartsByLabel
+        cardCategoryId = value.cardCategoryId
         result = null
         queueDraft()
     }
@@ -481,7 +524,7 @@ class QuestionEditViewModel(
     val changed: Boolean
         get() {
             val group = original ?: return false
-            val relationalChange = stimulusImages != group.stimulusImages || editableLabels.any { label ->
+            val relationalChange = stimulusImages != group.stimulusImages || pendingConceptPartsByLabel.any { it.isNotEmpty() } || editableLabels.any { label ->
                 solutionPartsByLabel[label.sortOrder - 1].sortedBy { it.position } !=
                     group.subQuestions.firstOrNull { it.label == label }?.orderedSolutionParts.orEmpty().sortedBy { it.position }
             }
@@ -559,6 +602,55 @@ class QuestionEditViewModel(
         queueDraft()
     }
 
+    /** Changes only the new card-level category. Legacy per-question links remain unchanged. */
+    fun changeGroupCategory(categoryId: String?) {
+        if (saving || finished) return
+        val selected = categoryId?.takeIf { it.isNotBlank() }
+        if (cardCategoryId == selected) return
+        cardCategoryId = selected
+        ActivityLog.action("EDIT", "card category changed", "categoryId=${categoryId.orEmpty()}")
+        record("card-category")
+        result = null
+        queueDraft()
+    }
+
+    fun conceptQuestionId(label: CqLabel): String? =
+        original?.subQuestions?.firstOrNull { it.label == label && it.id !in deletedQuestionIds }?.id
+
+    fun canEditConcept(label: CqLabel): Boolean =
+        conceptQuestionId(label) != null || texts.getOrNull(label.sortOrder - 1).orEmpty().isNotBlank()
+
+    fun conceptParts(label: CqLabel): List<ConceptContentPart> {
+        val savedQuestion = original?.subQuestions?.firstOrNull { it.label == label && it.id !in deletedQuestionIds }
+        return if (savedQuestion != null) savedQuestion.conceptParts
+        else pendingConceptPartsByLabel.getOrNull(label.sortOrder - 1).orEmpty()
+    }
+
+    suspend fun persistConcept(label: CqLabel, parts: List<ConceptContentPart>): Boolean {
+        if (saving || finished || label !in editableLabels) return false
+        val normalized = parts.mapIndexed { index, part -> part.copy(position = index.toLong()) }
+        val questionId = conceptQuestionId(label)
+        if (questionId == null && texts.getOrNull(label.sortOrder - 1).orEmpty().isBlank() && normalized.isNotEmpty()) return false
+        if (questionId != null) {
+            val saved = repository.saveConcept(questionId, normalized)
+            if (!saved) return false
+            original = original?.let { current ->
+                current.copy(subQuestions = current.subQuestions.map { question ->
+                    if (question.id == questionId) question.copy(conceptParts = normalized) else question
+                })
+            }
+            return true
+        }
+        val index = label.sortOrder - 1
+        if (pendingConceptPartsByLabel.getOrNull(index) != normalized) {
+            pendingConceptPartsByLabel = pendingConceptPartsByLabel.toMutableList().also { it[index] = normalized }
+            record("concept-${label.sortOrder}")
+            result = null
+            queueDraft()
+        }
+        return true
+    }
+
     suspend fun addCategory(name: String): Boolean =
         if (saving || finished || name.isBlank()) false else runCatching { addCategoryAction(name.trim()) }.getOrDefault(false)
 
@@ -579,8 +671,9 @@ class QuestionEditViewModel(
             questionTypeIds = questionTypeIds.toMutableList().also { it[i] = label.typeId }
             marks = marks.toMutableList().also { it[i] = label.marks }
             solutionTexts = solutionTexts.toMutableList().also { it[i] = emptyList() }
-            categoryIdsByLabel = categoryIdsByLabel.toMutableList().also { it[i] = emptyList() }
+            // Card category is shared by every current/future sub-question; retain the slot when an optional block is removed.
             solutionPartsByLabel = solutionPartsByLabel.toMutableList().also { it[i] = emptyList() }
+            pendingConceptPartsByLabel = pendingConceptPartsByLabel.toMutableList().also { it[i] = emptyList() }
         } else return
         record("delete-${label.sortOrder}")
         result = null
@@ -672,6 +765,14 @@ class QuestionEditViewModel(
 
     fun save(onSaved: () -> Unit) {
         if (saving || finished || load != EditLoad.READY) return
+        val orphanedConcept = editableLabels.firstOrNull { label ->
+            conceptQuestionId(label) == null && pendingConceptPartsByLabel[label.sortOrder - 1].isNotEmpty() &&
+                texts[label.sortOrder - 1].isBlank()
+        }
+        if (orphanedConcept != null) {
+            result = UpdateResult.MissingQuestionText(orphanedConcept)
+            return
+        }
         saving = true
         result = null
         val input = buildInput()

@@ -11,7 +11,9 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -38,6 +40,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -52,6 +55,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.questionbank.app.domain.question.BoardItem
+import com.questionbank.app.domain.question.BoardFilter
 import com.questionbank.app.domain.question.QuestionGroupKey
 import com.questionbank.app.domain.question.QuestionCardRules
 import com.questionbank.app.domain.question.SavedGroup
@@ -102,6 +106,7 @@ fun QuestionListScreen(
     var selectedKeys by remember { mutableStateOf(emptySet<String>()) }
     var sortMode by remember { mutableStateOf("DEFAULT") }
     var sortMenuOpen by remember { mutableStateOf(false) }
+    var filterPanelOpen by rememberSaveable { mutableStateOf(false) }
     var ribbonMenuOpen by remember { mutableStateOf(false) }
     var pendingBulkDelete by remember { mutableStateOf<List<String>?>(null) }
     var conceptQuestionId by remember { mutableStateOf<String?>(null) }
@@ -114,7 +119,7 @@ fun QuestionListScreen(
     val query = viewModel.query
     val filter = viewModel.filter
     // Enter search mode as soon as criteria change. During debounce/search, expose no stale rows to Select All.
-    val showSearch = searchOpen && (query.isNotBlank() || !filter.isEmpty)
+    val showSearch = query.isNotBlank() || !filter.isEmpty
     val visibleGroups = when {
         !showSearch -> groups.orEmpty()
         viewModel.searchPending -> emptyList()
@@ -123,7 +128,9 @@ fun QuestionListScreen(
     val sortedVisible = remember(visibleGroups, sortMode) { sortQuestionGroups(visibleGroups, sortMode) }
     val selectedInVisibleOrder = sortedVisible.mapNotNull { QuestionGroupKey.of(it) }.filter { it in selectedKeys }
 
-    BackHandler(enabled = searchOpen) { viewModel.closeSearch() }
+    BackHandler(enabled = searchOpen || filterPanelOpen) {
+        if (filterPanelOpen) filterPanelOpen = false else viewModel.closeSearch()
+    }
     LaunchedEffect(groups) {
         if (groups != null) {
             val available = groups.orEmpty().mapNotNull { QuestionGroupKey.of(it) }.toSet()
@@ -200,6 +207,8 @@ fun QuestionListScreen(
                 Column {
                     SearchHeader(
                         query = query, onQueryChange = viewModel::onQueryChange, onClose = viewModel::closeSearch,
+                        onToggleFilters = { filterPanelOpen = !filterPanelOpen },
+                        filtersActive = !filter.isEmpty,
                         menuAnchor = {
                             RibbonMenuAnchor(
                                 expanded = ribbonMenuOpen, onOpen = { ribbonMenuOpen = true }, onDismiss = { ribbonMenuOpen = false },
@@ -214,34 +223,50 @@ fun QuestionListScreen(
                             )
                         },
                     )
-                    BoardFilterBar(filter = filter, boards = boardCatalog, onChange = viewModel::changeFilter)
-                    QuestionFilterBar(filter = filter, categories = categoryCatalog, types = questionTypeCatalog, onChange = viewModel::changeFilter)
+                    if (filterPanelOpen) QuestionFilterPanel(
+                        filter = filter, boards = boardCatalog, categories = categoryCatalog, types = questionTypeCatalog,
+                        onFilterChange = viewModel::changeFilter,
+                        sortMode = sortMode, onSortChange = { sortMode = it },
+                        sortMenuOpen = sortMenuOpen, onSortMenuOpen = { sortMenuOpen = it },
+                    )
                 }
             } else {
-                AppHeader(
-                    title = "Type CQ",
-                    onBack = onBack,
-                    actions = {
-                        IconButton(onClick = viewModel::openSearch, modifier = Modifier.semantics { contentDescription = "খুঁজুন" }) {
-                            Text("🔍", fontSize = 18.sp)
-                        }
-                        RibbonMenuAnchor(
-                            expanded = ribbonMenuOpen,
-                            onOpen = { ribbonMenuOpen = true },
-                            onDismiss = { ribbonMenuOpen = false },
-                            selectedCount = selectedKeys.size,
-                            clipboardCount = clipboardCount,
-                            clipboardMode = clipboardMode,
-                            onSelectAll = { selectedKeys = sortedVisible.mapNotNull { QuestionGroupKey.of(it) }.toSet(); ribbonMenuOpen = false },
-                            onDeselect = { selectedKeys = emptySet(); ribbonMenuOpen = false },
-                            onCopy = { viewModel.stageClipboard(selectedInVisibleOrder, TypeCqGroupClipboard.Mode.COPY); ribbonMenuOpen = false },
-                            onCut = { viewModel.stageClipboard(selectedInVisibleOrder, TypeCqGroupClipboard.Mode.CUT); ribbonMenuOpen = false },
-                            onPaste = { viewModel.pasteClipboard(); ribbonMenuOpen = false },
-                            onDelete = { pendingBulkDelete = selectedKeys.toList(); ribbonMenuOpen = false },
-                            onAllConcepts = { ribbonMenuOpen = false; scope.launch { conceptSummaries = viewModel.loadConceptSummaries(); showConceptSummary = true } },
-                        )
-                    },
-                )
+                Column {
+                    AppHeader(
+                        title = "Type CQ",
+                        onBack = onBack,
+                        height = 48.dp,
+                        actions = {
+                            IconButton(onClick = { filterPanelOpen = !filterPanelOpen }, modifier = Modifier.semantics { contentDescription = "ফিল্টার" }) {
+                                EdIconGlyph(EdIcon.FILTER, Color.White, Modifier.size(20.dp))
+                            }
+                            IconButton(onClick = viewModel::openSearch, modifier = Modifier.semantics { contentDescription = "খুঁজুন" }) {
+                                EdIconGlyph(EdIcon.SEARCH, Color.White, Modifier.size(20.dp))
+                            }
+                            RibbonMenuAnchor(
+                                expanded = ribbonMenuOpen,
+                                onOpen = { ribbonMenuOpen = true },
+                                onDismiss = { ribbonMenuOpen = false },
+                                selectedCount = selectedKeys.size,
+                                clipboardCount = clipboardCount,
+                                clipboardMode = clipboardMode,
+                                onSelectAll = { selectedKeys = sortedVisible.mapNotNull { QuestionGroupKey.of(it) }.toSet(); ribbonMenuOpen = false },
+                                onDeselect = { selectedKeys = emptySet(); ribbonMenuOpen = false },
+                                onCopy = { viewModel.stageClipboard(selectedInVisibleOrder, TypeCqGroupClipboard.Mode.COPY); ribbonMenuOpen = false },
+                                onCut = { viewModel.stageClipboard(selectedInVisibleOrder, TypeCqGroupClipboard.Mode.CUT); ribbonMenuOpen = false },
+                                onPaste = { viewModel.pasteClipboard(); ribbonMenuOpen = false },
+                                onDelete = { pendingBulkDelete = selectedKeys.toList(); ribbonMenuOpen = false },
+                                onAllConcepts = { ribbonMenuOpen = false; scope.launch { conceptSummaries = viewModel.loadConceptSummaries(); showConceptSummary = true } },
+                            )
+                        },
+                    )
+                    if (filterPanelOpen) QuestionFilterPanel(
+                        filter = filter, boards = boardCatalog, categories = categoryCatalog, types = questionTypeCatalog,
+                        onFilterChange = viewModel::changeFilter,
+                        sortMode = sortMode, onSortChange = { sortMode = it },
+                        sortMenuOpen = sortMenuOpen, onSortMenuOpen = { sortMenuOpen = it },
+                    )
+                }
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -249,10 +274,10 @@ fun QuestionListScreen(
             if (!searchOpen) {
                 ExtendedFloatingActionButton(
                     onClick = onAdd,
-                    modifier = Modifier.height(42.dp),
+                    modifier = Modifier.width(138.dp).height(36.dp),
                     icon = { Text("+", fontSize = 18.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) },
                     text = { Text("Add Question", fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold) },
-                    containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.75f),
+                    containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.52f),
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                 )
             }
@@ -267,7 +292,7 @@ fun QuestionListScreen(
                     onChapter = onBreadcrumbChapter,
                 )
                 Row(
-                    Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 2.dp),
+                    Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 0.dp, bottom = 0.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text("নির্বাচিত ${selectedKeys.size.toBengali()}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
@@ -277,19 +302,6 @@ fun QuestionListScreen(
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                }
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 1.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    TextButton(onClick = { sortMenuOpen = true }, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 1.dp)) {
-                        Text("সাজান: ${when (sortMode) { "RATING" -> "রেটিং"; "MARKS" -> "নম্বর"; "TYPE" -> "প্রশ্নের ধরন"; else -> "ডিফল্ট" }}", fontSize = 11.sp)
-                    }
-                    DropdownMenu(expanded = sortMenuOpen, onDismissRequest = { sortMenuOpen = false }) {
-                        listOf("DEFAULT" to "ডিফল্ট ক্রম", "RATING" to "রেটিং বেশি আগে", "MARKS" to "মোট নম্বর বেশি আগে", "TYPE" to "প্রশ্নের ধরন").forEach { (key, label) ->
-                            DropdownMenuItem(text = { Text(label) }, onClick = { sortMode = key; sortMenuOpen = false })
-                        }
-                    }
                 }
                 val toggleSelection: (String) -> Unit = { key ->
                     selectedKeys = if (key in selectedKeys) selectedKeys - key else selectedKeys + key
@@ -306,7 +318,7 @@ fun QuestionListScreen(
                         onView = onView,
                         selectedKeys = selectedKeys, onToggle = toggleSelection, sortedResults = sortedVisible,
                         imagePipeline = imagePipeline,
-                        onCategoryChange = viewModel::updateQuestionCategories,
+                        onCategoryChange = viewModel::updateCardCategory,
                         onConcept = { question -> conceptQuestionId = question.id; conceptQuestionText = question.text },
                     )
                 } else {
@@ -320,7 +332,7 @@ fun QuestionListScreen(
                         canPaste = clipboardCount > 0,
                         onView = onView,
                         selectedKeys = selectedKeys, onToggle = toggleSelection, imagePipeline = imagePipeline,
-                        onCategoryChange = viewModel::updateQuestionCategories,
+                        onCategoryChange = viewModel::updateCardCategory,
                         onConcept = { question -> conceptQuestionId = question.id; conceptQuestionText = question.text },
                     )
                 }
@@ -423,7 +435,7 @@ private fun BreadcrumbLine(
         }
     }
     Row(
-        modifier = Modifier.fillMaxWidth().horizontalScroll(scrollState).padding(horizontal = 8.dp, vertical = 3.dp),
+        modifier = Modifier.fillMaxWidth().horizontalScroll(scrollState).padding(horizontal = 8.dp, vertical = 1.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
@@ -462,7 +474,7 @@ private fun ListBody(
     selectedKeys: Set<String>,
     onToggle: (String) -> Unit,
     imagePipeline: ImagePipeline,
-    onCategoryChange: (String, List<String>) -> Unit,
+    onCategoryChange: (String, String?) -> Unit,
     onConcept: (SavedSubQuestion) -> Unit,
 ) {
     when {
@@ -492,7 +504,7 @@ private fun SearchBody(
     onToggle: (String) -> Unit,
     sortedResults: List<SavedGroup>,
     imagePipeline: ImagePipeline,
-    onCategoryChange: (String, List<String>) -> Unit,
+    onCategoryChange: (String, String?) -> Unit,
     onConcept: (SavedSubQuestion) -> Unit,
 ) {
     when {
@@ -523,7 +535,7 @@ private fun CardList(
     selectedKeys: Set<String>,
     onToggle: (String) -> Unit,
     imagePipeline: ImagePipeline,
-    onCategoryChange: (String, List<String>) -> Unit,
+    onCategoryChange: (String, String?) -> Unit,
     onConcept: (SavedSubQuestion) -> Unit,
 ) {
     val pageSize = 40
@@ -572,24 +584,34 @@ private fun sortQuestionGroups(groups: List<SavedGroup>, mode: String): List<Sav
 }
 
 @Composable
-private fun SearchHeader(query: String, onQueryChange: (String) -> Unit, onClose: () -> Unit, menuAnchor: @Composable () -> Unit) {
+private fun SearchHeader(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onClose: () -> Unit,
+    onToggleFilters: () -> Unit,
+    filtersActive: Boolean,
+    menuAnchor: @Composable () -> Unit,
+) {
     val container = if (LocalDarkTheme.current) HeaderDark else HeaderLight
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
     Surface(color = container, contentColor = Color.White, modifier = Modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars).height(56.dp).padding(horizontal = 4.dp),
+            modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars).height(48.dp).padding(horizontal = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onClose, modifier = Modifier.semantics { contentDescription = "খোঁজা বন্ধ করুন" }) {
-                Text("←", fontSize = 22.sp, color = Color.White)
+                Text("←", fontSize = 20.sp, color = Color.White)
+            }
+            IconButton(onClick = onToggleFilters, modifier = Modifier.semantics { contentDescription = "ফিল্টার" }) {
+                EdIconGlyph(EdIcon.FILTER, if (filtersActive) Color(0xFFFFE082) else Color.White, Modifier.size(19.dp))
             }
             TextField(
                 value = query,
                 onValueChange = onQueryChange,
                 modifier = Modifier.weight(1f).focusRequester(focus),
                 singleLine = true,
-                placeholder = { Text("প্রশ্ন বা উদ্দীপক খুঁজুন…", fontSize = 14.sp) },
+                placeholder = { Text("প্রশ্ন বা উদ্দীপক খুঁজুন…", fontSize = 13.sp) },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = Color.Transparent,
@@ -604,9 +626,49 @@ private fun SearchHeader(query: String, onQueryChange: (String) -> Unit, onClose
                 ),
             )
             if (query.isNotEmpty()) IconButton(onClick = { onQueryChange("") }, modifier = Modifier.semantics { contentDescription = "লেখা মুছুন" }) {
-                Text("✕", fontSize = 18.sp, color = Color.White)
+                Text("✕", fontSize = 17.sp, color = Color.White)
             }
             menuAnchor()
+        }
+    }
+}
+
+@Composable
+private fun QuestionFilterPanel(
+    filter: BoardFilter,
+    boards: List<BoardItem>,
+    categories: List<TypeCqQuestionCategoriesEntity>,
+    types: List<com.questionbank.app.data.local.entity.TypeCqQuestionTypesEntity>,
+    onFilterChange: (BoardFilter) -> Unit,
+    sortMode: String,
+    onSortChange: (String) -> Unit,
+    sortMenuOpen: Boolean,
+    onSortMenuOpen: (Boolean) -> Unit,
+) {
+    Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 3.dp, shadowElevation = 2.dp) {
+        Column(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("ফিল্টার ও সাজানো", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+                if (!filter.isEmpty || sortMode != "DEFAULT") {
+                    TextButton(onClick = { onFilterChange(BoardFilter()); onSortChange("DEFAULT") }, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)) {
+                        Text("সব মুছুন", fontSize = 11.sp)
+                    }
+                }
+            }
+            BoardFilterBar(filter = filter, boards = boards, onChange = onFilterChange)
+            QuestionFilterBar(filter = filter, categories = categories, types = types, onChange = onFilterChange)
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { onSortMenuOpen(true) }, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 1.dp)) {
+                    EdIconGlyph(EdIcon.SORT, MaterialTheme.colorScheme.primary, Modifier.size(16.dp))
+                    Text("সাজান: ${when (sortMode) { "RATING" -> "রেটিং"; "MARKS" -> "নম্বর"; "TYPE" -> "প্রশ্নের ধরন"; else -> "ডিফল্ট" }}", fontSize = 11.sp)
+                }
+                DropdownMenu(expanded = sortMenuOpen, onDismissRequest = { onSortMenuOpen(false) }) {
+                    listOf("DEFAULT" to "ডিফল্ট ক্রম", "RATING" to "রেটিং বেশি আগে", "MARKS" to "মোট নম্বর বেশি আগে", "TYPE" to "প্রশ্নের ধরন").forEach { (key, label) ->
+                        DropdownMenuItem(text = { Text(label) }, onClick = { onSortChange(key); onSortMenuOpen(false) })
+                    }
+                }
+            }
         }
     }
 }

@@ -172,6 +172,7 @@ class TypeCqQuestionRepositoryImpl(
                 snapshot.topicId, stimulusId, ok.stimulusText, ok.referenceText, stimulusRating, stimulusTags,
                 rows, clock(), draftKey(snapshot.topicId), snapshot.editorDraftKey,
                 snapshot.stimulusImages.map { NewStimulusImageRow(it.imageId, it.placement, it.position) },
+                snapshot.cardCategoryId,
             )
             if (!written) return explainCreateRefusal(snapshot.topicId, rows, snapshot.stimulusImages)
             // The DAO performs all read-back checks before removing the draft, inside the same Room transaction.
@@ -310,6 +311,29 @@ class TypeCqQuestionRepositoryImpl(
         false
     }
 
+    override suspend fun updateCardCategory(topicId: String, groupKey: String, categoryId: String?): Boolean = try {
+        if (topicId.isBlank() || categoryId?.isBlank() == true) return false
+        val group = loadOriginal(topicId, groupKey) ?: return false
+        if (categoryId != null && dao.categoryExists(categoryId) == 0) return false
+        val now = clock()
+        beforeWrite()
+        val written = if (group.stimulusId != null) {
+            dao.updateStimulusCardCategory(group.stimulusId, topicId, categoryId, now) == 1
+        } else {
+            val questionId = group.subQuestions.singleOrNull()?.id ?: return false
+            dao.updateSingleQuestionCardCategory(questionId, topicId, categoryId, now) == 1
+        }
+        if (!written) return false
+        val readBack = if (group.stimulusId != null) dao.readStimulusCardCategory(group.stimulusId, topicId)
+            else dao.readQuestionCardCategory(group.subQuestions.single().id, topicId)
+        readBack == categoryId
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        com.questionbank.app.ActivityLog.error("CARD-CATEGORY", "Card category update failed", e)
+        false
+    }
+
     override fun observeConcept(questionId: String): Flow<SavedQuestionConcept?> = combine(
         dao.observeConcept(questionId),
         dao.observeConceptParts(questionId),
@@ -427,6 +451,7 @@ class TypeCqQuestionRepositoryImpl(
             conceptsByLabel = original.subQuestions.mapNotNull { q -> q.label?.let { label ->
                 label to q.conceptParts.map { part -> part.copy(partId = newId()) }
             } }.toMap(),
+            cardCategoryId = original.cardCategoryId,
         )
         return saveGroup(input)
     }
@@ -523,6 +548,9 @@ class TypeCqQuestionRepositoryImpl(
                     snapshot.solutionPartsByLabel?.get(it.label).orEmpty().map { part ->
                         NewSolutionPartRow(part.partId, part.partType, part.position, part.textContent, part.imageId)
                     },
+                    snapshot.conceptsByLabel[it.label].orEmpty().map { part ->
+                        NewConceptPartRow(newId(), part.partType, part.position, part.textContent, part.imageId)
+                    },
                 )
             }
             val categoryUpdates = ok.categoryUpdates.map { QuestionCategoriesDb(it.questionId, it.categoryIds) }
@@ -553,6 +581,9 @@ class TypeCqQuestionRepositoryImpl(
                     }) }
                 },
                 stimulusImageReplacement = snapshot.stimulusImages?.map { NewStimulusImageRow(it.imageId, it.placement, it.position) },
+                changeCardCategory = snapshot.changeCardCategory,
+                newCardCategoryId = snapshot.cardCategoryId,
+                singleQuestionId = original.subQuestions.singleOrNull()?.id,
             )
             if (!written) return explainUpdateRefusal(
                 topicId = snapshot.topicId,
@@ -708,6 +739,7 @@ class TypeCqQuestionRepositoryImpl(
                 referenceText = first.referenceText.orEmpty(),
                 unfilteredFallbackRating = list.mapNotNull { it.rating }.takeIf { it.isNotEmpty() }
                     ?.let { kotlin.math.round(it.average()).toInt() },
+                cardCategoryId = first.cardCategoryId,
             )
         }
     }
@@ -734,6 +766,12 @@ class TypeCqQuestionRepositoryImpl(
             .put("stimulusBoards", tagsToJson(d.stimulusBoards))
             .put("boards", JSONArray(d.boards.map { tagsToJson(it) }))
             .put("categoryIdsByLabel", d.categoryIdsByLabel?.let { rows -> JSONArray(rows.map { JSONArray(it) }) } ?: JSONObject.NULL)
+            .put("cardCategoryId", d.cardCategoryId ?: JSONObject.NULL)
+            .put("cardCategoryTouched", d.cardCategoryTouched)
+            .put("conceptPartsByLabel", d.conceptPartsByLabel?.let { rows -> JSONArray(rows.map { row -> JSONArray(row.map { part ->
+                JSONObject().put("partId", part.partId).put("partType", part.partType).put("position", part.position)
+                    .put("textContent", part.textContent ?: JSONObject.NULL).put("imageId", part.imageId ?: JSONObject.NULL)
+            }) }) } ?: JSONObject.NULL)
             .toString()
 
         /** One tag list as `[{"b":"DHA","y":2019}, ...]` (v0.2.30c-2). */
@@ -772,6 +810,20 @@ class TypeCqQuestionRepositoryImpl(
                 marks = o.optJSONArray("marks").let { a -> List(4) { i -> a?.optDouble(i, CqLabel.entries[i].marks) ?: CqLabel.entries[i].marks } },
                 solutionTexts = o.optJSONArray("solutionTexts").let { a -> List(4) { i -> a?.optJSONArray(i).let { row -> List(row?.length() ?: 0) { j -> row?.optString(j, "").orEmpty() } } } },
                 categoryIdsByLabel = o.optJSONArray("categoryIdsByLabel")?.let { rows -> List(4) { i -> rows.optJSONArray(i).let { row -> List(row?.length() ?: 0) { j -> row?.optString(j, "").orEmpty() }.filter { it.isNotBlank() } } } },
+                cardCategoryId = o.optString("cardCategoryId").takeIf { it.isNotBlank() && it != "null" },
+                cardCategoryTouched = o.optBoolean("cardCategoryTouched", false),
+                conceptPartsByLabel = o.optJSONArray("conceptPartsByLabel")?.let { rows -> List(4) { i ->
+                    rows.optJSONArray(i)?.let { row -> List(row.length()) { j ->
+                        val part = row.getJSONObject(j)
+                        ConceptContentPart(
+                            partId = part.optString("partId"),
+                            partType = part.optString("partType", "TEXT"),
+                            position = part.optLong("position", j.toLong()),
+                            textContent = part.optString("textContent").takeIf { !part.isNull("textContent") },
+                            imageId = part.optString("imageId").takeIf { !part.isNull("imageId") },
+                        )
+                    } }.orEmpty()
+                } },
             )
         } catch (e: Exception) {
             null

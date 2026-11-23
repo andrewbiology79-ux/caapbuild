@@ -1,9 +1,8 @@
-# সর্বশেষ প্রজেক্ট আপডেট — Type CQ / Editor / Migration (২৩ নভেম্বর ২০২৬)
+# সর্বশেষ প্রজেক্ট আপডেট — Type CQ Card Category / Concept / Compact UI (২৩ নভেম্বর ২০২৬)
 
-এই সোর্স প্যাকেজে Type CQ card menu-র Cut/Copy/Paste Before/After, per-sub-question Question Category ও Concept, compact translucent Add Question button, RTL Board chips, full-width stimulus images, visible/total counts এবং legacy card order migration একত্র করা হয়েছে। Minimum/Full Editor, formula horizontal scroll, hidden scrollbar, unchanged formula font size ও `<br>` line break বজায় আছে। Version: **0.2.48-typecq-window (code 53)**। বিস্তারিত `CHANGELOG_TYPE_CQ_BN.md` এবং `BUILD_STATUS.txt`।
+এই সোর্স প্যাকেজে Type CQ কার্ড-স্তরের একক Category selector, Minimum ও Full—দুই Editor-এ Reference-এর নিচে Category, Full-screen Concept preview/editor, TEXT/IMAGE Concept draft/save recovery, Filter-এর মধ্যে Board/Year/Category/Rating/Question Type ও Sorting, নতুন Search/Filter icon, compact header/tab, card display cleanup এবং code + full year newest-first Board chips অন্তর্ভুক্ত। Paper Category আলাদা রাখা হয়েছে; Reference/Short Answer-এর সংরক্ষিত ডেটা মুছে ফেলা হয়নি। নতুন card-category field পুরোনো per-question category link থেকে আলাদা এবং শুরুতে NULL থাকে; পুরোনো category data অক্ষত থাকে। Room Database version 4 (3→4 additive migration)। Version: **0.2.50-typecq-card-category (code 55)**। Build এখনো Gradle 8.14.3 download DNS সমস্যায় compile হয়নি; syntax parse ও SQLite migration simulation সম্পন্ন। বিস্তারিত `CHANGELOG_TYPE_CQ_BN.md`, `BUILD_STATUS.txt` এবং `PROJECT_PLAN_v1_73_TYPECQ_CARD_CATEGORY_SEPARATION.txt`।
 
-**Build limitation:** Gradle wrapper 8.14.3 distribution download করতে `services.gradle.org` DNS `UnknownHostException` হয়েছে; Android compile/test/APK/device UI এখনো verified নয়।
-
+**Build limitation:** Kotlin PSI syntax parse (সব ১৬৮টি app Kotlin ফাইল, ০ syntax error) এবং SQLite Room 3→4 migration simulation PASS। Gradle wrapper 8.14.3 download করতে `services.gradle.org` DNS `UnknownHostException` হওয়ায় Android compile/test/APK/device UI এখনো verified নয়।
 ---
 
 # সর্বশেষ আপডেট — Profile Category Management (22 Nov 2026)

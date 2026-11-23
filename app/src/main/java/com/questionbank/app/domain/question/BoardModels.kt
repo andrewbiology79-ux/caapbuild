@@ -8,11 +8,11 @@ data class BoardTag(val boardCode: String, val year: Int)
 /** One visual board chip may summarize several years for the same board. */
 data class BoardYearGroup(val boardCode: String, val years: List<Int>)
 
-/** Groups saved board-year tags without changing their underlying storage; years are displayed in ascending order. */
+/** Groups saved board-year tags without changing their underlying storage; newest years are displayed first. */
 fun groupBoardYears(tags: List<BoardTag>): List<BoardYearGroup> =
-    tags.distinct().groupBy { it.boardCode }.map { (code, rows) ->
-        BoardYearGroup(code, rows.map { it.year }.distinct().sorted())
-    }
+    tags.distinct().groupBy { it.boardCode }
+        .map { (code, rows) -> BoardYearGroup(code, rows.map { it.year }.distinct().sortedDescending()) }
+        .sortedWith(compareByDescending<BoardYearGroup> { it.years.maxOrNull() ?: Int.MIN_VALUE }.thenBy { it.boardCode })
 
 /**
  * Boards and years chosen in the editor. Same meaning as [RatingsInput]: for a NEW group the map holds the labels the person
