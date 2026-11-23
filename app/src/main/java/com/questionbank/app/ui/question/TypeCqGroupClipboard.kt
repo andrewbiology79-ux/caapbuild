@@ -6,7 +6,7 @@ import androidx.compose.runtime.setValue
 import com.questionbank.app.domain.question.SavedGroup
 
 /** Process-wide Type CQ group clipboard. A clip always stores whole cards, never partial search-result rows. */
-internal object TypeCqGroupClipboard {
+object TypeCqGroupClipboard {
     enum class Mode { COPY, CUT }
 
     data class Payload(
