@@ -159,29 +159,23 @@ class BackupRestoreTest {
         opened += source
         assertEquals(3L, source.useReaderConnection { it.scalarLong("PRAGMA user_version") })
         val order = source.useReaderConnection { connection ->
-            val st = connection.prepare("SELECT stimulus_id FROM type_cq_questions WHERE stimulus_id IS NOT NULL GROUP BY stimulus_id ORDER BY MAX(sort_order) DESC")
-            try { buildList { while (st.step()) add(st.getText(0)) } } finally { st.close() }
+            connection.textList("SELECT stimulus_id FROM type_cq_questions WHERE stimulus_id IS NOT NULL GROUP BY stimulus_id ORDER BY MAX(sort_order) DESC")
         }
         assertEquals(2, order.size)
         assertEquals(oldestStimulus, order.first())
         val cardOrder = source.useReaderConnection { connection ->
-            val st = connection.prepare("""
+            connection.textList("""
                 SELECT COALESCE(stimulus_id, 'single:' || question_id) AS group_key
                 FROM type_cq_questions
                 GROUP BY COALESCE(stimulus_id, 'single:' || question_id)
                 ORDER BY MAX(sort_order) DESC
             """.trimIndent())
-            try { buildList { while (st.step()) add(st.getText(0)) } } finally { st.close() }
         }
         assertEquals(3, cardOrder.size)
         assertEquals("s-$oldestStimulus", "s-${cardOrder.first()}")
         assertEquals("single:$singleQuestionId", cardOrder.last())
         val oldestLabels = source.useReaderConnection { connection ->
-            val st = connection.prepare("SELECT subquestion_label FROM type_cq_questions WHERE stimulus_id = ? ORDER BY sort_order DESC")
-            try {
-                st.bindText(1, oldestStimulus)
-                buildList { while (st.step()) add(st.getText(0)) }
-            } finally { st.close() }
+            connection.textList("SELECT subquestion_label FROM type_cq_questions WHERE stimulus_id = ? ORDER BY sort_order DESC", oldestStimulus)
         }
         assertEquals(listOf("ক", "গ"), oldestLabels)
         assertEquals(hash, DatabaseSnapshot.liveIdentityHash(source))
