@@ -32,7 +32,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -112,7 +111,7 @@ import kotlinx.coroutines.launch
  * button, and a segmented Minimum / Full Editor switch. No icon library is used; the few icons are drawn on a Canvas.
  * ------------------------------------------------------------------------------------------------------------------- */
 
-enum class EdIcon { EYE, IMAGE_ADD, PLUS, PLUS_BOX, TRASH, CHECK, CLOSE, CHEVRON, LAYERS, REFRESH, SORT, EDIT, DOWNLOAD, MAXIMIZE, SEARCH, FILTER }
+enum class EdIcon { EYE, IMAGE_ADD, PLUS, PLUS_BOX, TRASH, CHECK, CLOSE, CHEVRON, LAYERS, REFRESH, SORT, EDIT, DOWNLOAD, MAXIMIZE }
 
 @Composable
 fun EdIconGlyph(icon: EdIcon, tint: Color, modifier: Modifier = Modifier.size(22.dp)) {
@@ -272,22 +271,6 @@ fun EdIconGlyph(icon: EdIcon, tint: Color, modifier: Modifier = Modifier.size(22
                 drawLine(tint, Offset(w * 0.70f, h * 0.84f), Offset(w * 0.70f, h * 0.18f), strokeWidth = stroke.width, cap = StrokeCap.Round)
                 drawLine(tint, Offset(w * 0.54f, h * 0.34f), Offset(w * 0.70f, h * 0.18f), strokeWidth = stroke.width, cap = StrokeCap.Round)
                 drawLine(tint, Offset(w * 0.86f, h * 0.34f), Offset(w * 0.70f, h * 0.18f), strokeWidth = stroke.width, cap = StrokeCap.Round)
-            }
-            EdIcon.SEARCH -> {
-                drawCircle(tint, radius = w * 0.28f, center = Offset(w * 0.42f, h * 0.42f), style = stroke)
-                drawLine(tint, Offset(w * 0.62f, h * 0.62f), Offset(w * 0.9f, h * 0.9f), strokeWidth = stroke.width * 1.2f, cap = StrokeCap.Round)
-            }
-            EdIcon.FILTER -> {
-                val funnel = Path().apply {
-                    moveTo(w * 0.12f, h * 0.18f)
-                    lineTo(w * 0.88f, h * 0.18f)
-                    lineTo(w * 0.59f, h * 0.52f)
-                    lineTo(w * 0.59f, h * 0.84f)
-                    lineTo(w * 0.41f, h * 0.72f)
-                    lineTo(w * 0.41f, h * 0.52f)
-                    close()
-                }
-                drawPath(funnel, tint, style = stroke)
             }
         }
     }
@@ -758,8 +741,8 @@ fun EdTextArea(
                     modifier = Modifier.fillMaxWidth().height(boxHeight.dp),
                     decorationBox = { inner ->
                         // A modest side inset keeps text away from the border without wasting usable writing width.
-                        // Reserve the bottom 26dp for the resize grip so one line remains fully readable above it.
-                        Box(Modifier.fillMaxWidth().height(boxHeight.dp).padding(start = 8.dp, top = 6.dp, end = 8.dp, bottom = 26.dp)) {
+                        // Bottom inset is 8dp (was 26dp); the resize grip is 26dp tall and now overlaps the last lines slightly.
+                        Box(Modifier.fillMaxWidth().height(boxHeight.dp).padding(start = 8.dp, top = 6.dp, end = 8.dp, bottom = 8.dp)) {
                             if (field.text.isEmpty() && placeholder != null) Text(placeholder, color = cs.onSurfaceVariant, fontSize = bodyTextSize)
                             inner()
                         }
@@ -1403,9 +1386,8 @@ fun EdCategoryDropdown(
     onToggle: (String, Boolean) -> Unit,
     onAddCategory: suspend (String) -> Boolean,
     modifier: Modifier = Modifier,
-    label: String = "ক্যাটাগরি",
+    label: String = "দাগের ক্যাটাগরি",
     onManageCategories: (() -> Unit)? = null,
-    singleSelection: Boolean = false,
 ) {
     val cs = MaterialTheme.colorScheme
     val scope = rememberCoroutineScope()
@@ -1427,7 +1409,7 @@ fun EdCategoryDropdown(
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                 Text(label, color = cs.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                 Text(
-                    selectedNames.ifBlank { "ক্যাটাগরি নির্বাচন করুন" },
+                    selectedNames.ifBlank { "দাগের ক্যাটাগরি নির্বাচন করুন" },
                     color = if (selectedNames.isBlank()) cs.onSurfaceVariant else cs.onSurface,
                     fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 )
@@ -1443,38 +1425,16 @@ fun EdCategoryDropdown(
                 DropdownMenuItem(
                     text = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (singleSelection) {
-                                RadioButton(
-                                    selected = category.id in selectedIds,
-                                    enabled = enabled && (!category.archived || category.id in selectedIds),
-                                    onClick = null,
-                                )
-                            } else {
-                                Checkbox(
-                                    checked = category.id in selectedIds,
-                                    enabled = enabled && (!category.archived || category.id in selectedIds),
-                                    onCheckedChange = null,
-                                )
-                            }
+                            Checkbox(
+                                checked = category.id in selectedIds,
+                                enabled = enabled && (!category.archived || category.id in selectedIds),
+                                onCheckedChange = null,
+                            )
                             Text(if (category.archived) "${category.name} (আর্কাইভড)" else category.name)
                         }
                     },
-                    onClick = {
-                        if (enabled && (!category.archived || category.id in selectedIds)) {
-                            if (singleSelection) {
-                                onToggle(category.id, true)
-                            } else onToggle(category.id, category.id !in selectedIds)
-                            expanded = false
-                        }
-                    },
+                    onClick = { if (enabled && (!category.archived || category.id in selectedIds)) onToggle(category.id, category.id !in selectedIds) },
                     enabled = enabled && (!category.archived || category.id in selectedIds),
-                )
-            }
-            if (singleSelection && selectedIds.isNotEmpty()) {
-                DropdownMenuItem(
-                    text = { Text("ক্যাটাগরি সরান", color = MaterialTheme.colorScheme.error) },
-                    onClick = { onToggle(selectedIds.first(), false); expanded = false },
-                    enabled = enabled,
                 )
             }
             HorizontalDivider()

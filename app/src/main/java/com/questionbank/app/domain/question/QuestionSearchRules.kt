@@ -72,10 +72,11 @@ object QuestionSearchRules {
         }
 
     /**
-     * v0.2.30c-3 / v1.73: the search with board/year and category filters. A sub-question is kept when its text, board/year,
-     * card-level category, rating and type all fit. Category filtering reads only [SavedGroup.cardCategoryId]; the legacy
-     * per-sub-question category links remain stored but are not part of the new Type CQ card-category filter.
-     * A card shows only the kept text-matching sub-questions; a group without any disappears. The order of [groups] is kept.
+     * v0.2.30c-3: the search with a board / year filter. A sub-question is kept when BOTH hold:
+     *  - the text part: [textMatchedQuestionIds] is null (no text was typed: every question fits), or the question matched, or its
+     *    stimulus matched ([textMatchedStimulusIds]);
+     *  - the tag part: a tag of the question fits [filter], or (for a group with a stimulus) a tag of the stimulus fits it.
+     * A card shows only the kept sub-questions; a group without any disappears. The order of [groups] is kept.
      */
     fun filterByBoards(
         groups: List<SavedGroup>,
@@ -91,10 +92,15 @@ object QuestionSearchRules {
             val kept = group.subQuestions.filter { q ->
                 val textOk = textMatchedQuestionIds == null || q.id in textMatchedQuestionIds || stimulusTextOk
                 val boardOk = !hasBoardFilter || stimulusTagOk || filter.matches(q.boards)
-                val categoryOk = filter.categoryId == null || filter.categoryId == group.cardCategoryId
+                val categoryOk = filter.categoryId == null || filter.categoryId in q.categoryIds
+                // A stimulus category is a card-level predicate; for a stimulus-less card the ribbon
+                // controls that only question, so its own category links are used.
+                val stimulusCategoryOk = filter.stimulusCategoryId == null ||
+                    if (stimulusId == null) filter.stimulusCategoryId in q.categoryIds
+                    else filter.stimulusCategoryId in group.stimulusCategoryIds
                 val ratingOk = filter.rating == null || q.rating == filter.rating
                 val typeOk = filter.questionTypeId == null || q.questionTypeId == filter.questionTypeId
-                textOk && boardOk && categoryOk && ratingOk && typeOk
+                textOk && boardOk && categoryOk && stimulusCategoryOk && ratingOk && typeOk
             }
             if (kept.isEmpty()) null else group.copy(subQuestions = kept)
         }

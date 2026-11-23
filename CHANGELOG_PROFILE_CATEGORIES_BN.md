@@ -25,6 +25,3 @@
 - মূল `database/QuestionBank_SQLite_Schema_v1_1.sql` এবং পুরোনো Caa source দুটিতেই canonical spelling `অশ্রেণিবদ্ধ` (হ্রস্ব ই)। আগের update-এ ভুল দীর্ঘ ঈ-র variant লেখা হয়েছিল, যা import-এর পর দ্বিতীয় সদৃশ row তৈরি করতে পারত।
 - এখন canonical name মূল বানানেই রাখা হয়েছে; legacy long-ঈ variant এবং whitespace variant-ও repair-এ শনাক্ত করে একই স্থায়ী category-তে merge করা হয়। নতুন category তৈরি বা rename করেও এই reserved নামগুলোর কোনো variant ব্যবহার করা যাবে না।
 - স্থায়ী ক্যাটাগরির row menu-তেও edit/delete দেখা যায়, কিন্তু দুটিই disabled।
-
-### Final regression recheck (২৩ নভেম্বর ২০২৬)
-- Canonical uncategorized repair-এর Kotlin SQL statements সরাসরি SQLite-এ চালিয়ে পরীক্ষা করা হয়েছে: permanent row না থাকলেও এবং আগে থেকেই থাকলেও—হ্রস্ব ই/দীর্ঘ ঈ spelling ও surrounding whitespace-সহ legacy rows একটিমাত্র `system_uncategorized`-এ মিশেছে; সংশ্লিষ্ট papers-ও সেই row-তে গেছে, Foreign Key check পরিষ্কার।

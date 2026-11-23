@@ -63,7 +63,6 @@ sealed interface EditorSaveCommand {
                 categoriesByLabel = immutableMap(source.categoriesByLabel.mapValues { (_, ids) -> immutableList(ids) }),
                 stimulusImages = immutableList(source.stimulusImages),
                 solutionPartsByLabel = immutableMap(source.solutionPartsByLabel.mapValues { (_, parts) -> immutableList(parts) }),
-                conceptsByLabel = immutableMap(source.conceptsByLabel.mapValues { (_, parts) -> immutableList(parts) }),
             )
             return TypeCqCreate(snapshot)
         }
@@ -82,7 +81,6 @@ sealed interface EditorSaveCommand {
                 deletedQuestionIds = Collections.unmodifiableSet(LinkedHashSet(source.deletedQuestionIds)),
                 stimulusImages = source.stimulusImages?.let(::immutableList),
                 solutionPartsByLabel = source.solutionPartsByLabel?.let { map -> immutableMap(map.mapValues { (_, parts) -> immutableList(parts) }) },
-                conceptsByLabel = immutableMap(source.conceptsByLabel.mapValues { (_, parts) -> immutableList(parts) }),
             )
             return TypeCqEdit(snapshot)
         }

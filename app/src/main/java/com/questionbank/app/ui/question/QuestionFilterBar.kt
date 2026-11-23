@@ -39,26 +39,38 @@ fun QuestionFilterBar(
     onChange: (BoardFilter) -> Unit,
 ) {
     var categoryDialog by rememberSaveable { mutableStateOf(false) }
+    var stimulusCategoryDialog by rememberSaveable { mutableStateOf(false) }
     var ratingDialog by rememberSaveable { mutableStateOf(false) }
     var typeDialog by rememberSaveable { mutableStateOf(false) }
     val categoryName = categories.firstOrNull { it.categoryId == filter.categoryId }?.name ?: "সব"
+    val stimulusCategoryName = categories.firstOrNull { it.categoryId == filter.stimulusCategoryId }?.name ?: "সব"
     val typeName = types.firstOrNull { it.questionTypeId == filter.questionTypeId }?.label ?: "সব"
     Row(
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 3.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        FilterChip(selected = filter.categoryId != null, onClick = { categoryDialog = true }, label = { Text("ক্যাটাগরি: $categoryName") })
+        FilterChip(selected = filter.categoryId != null, onClick = { categoryDialog = true }, label = { Text("দাগের ক্যাটাগরি: $categoryName") })
+        FilterChip(selected = filter.stimulusCategoryId != null, onClick = { stimulusCategoryDialog = true }, label = { Text("উদ্দীপকের ক্যাটাগরি: $stimulusCategoryName") })
         FilterChip(selected = filter.rating != null, onClick = { ratingDialog = true }, label = { Text("রেটিং: ${filter.rating?.toBengali() ?: "সব"}") })
         FilterChip(selected = filter.questionTypeId != null, onClick = { typeDialog = true }, label = { Text("ধরন: $typeName") })
     }
     if (categoryDialog) AlertDialog(
-        onDismissRequest = { categoryDialog = false }, title = { Text("ক্যাটাগরি দিয়ে ছাঁকুন") },
+        onDismissRequest = { categoryDialog = false }, title = { Text("দাগের ক্যাটাগরি দিয়ে ছাঁকুন") },
         text = { Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
             FilterOption("সব ক্যাটাগরি", filter.categoryId == null) { categoryDialog = false; onChange(filter.copy(categoryId = null)) }
             categories.filter { it.isArchived == 0L || it.categoryId == filter.categoryId }.forEach { row ->
                 FilterOption(row.name, filter.categoryId == row.categoryId) { categoryDialog = false; onChange(filter.copy(categoryId = row.categoryId)) }
             }
         } }, confirmButton = {}, dismissButton = { TextButton(onClick = { categoryDialog = false }) { Text("বন্ধ") } },
+    )
+    if (stimulusCategoryDialog) AlertDialog(
+        onDismissRequest = { stimulusCategoryDialog = false }, title = { Text("উদ্দীপকের ক্যাটাগরি দিয়ে ছাঁকুন") },
+        text = { Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
+            FilterOption("সব ক্যাটাগরি", filter.stimulusCategoryId == null) { stimulusCategoryDialog = false; onChange(filter.copy(stimulusCategoryId = null)) }
+            categories.filter { it.isArchived == 0L || it.categoryId == filter.stimulusCategoryId }.forEach { row ->
+                FilterOption(row.name, filter.stimulusCategoryId == row.categoryId) { stimulusCategoryDialog = false; onChange(filter.copy(stimulusCategoryId = row.categoryId)) }
+            }
+        } }, confirmButton = {}, dismissButton = { TextButton(onClick = { stimulusCategoryDialog = false }) { Text("বন্ধ") } },
     )
     if (ratingDialog) AlertDialog(
         onDismissRequest = { ratingDialog = false }, title = { Text("রেটিং দিয়ে ছাঁকুন") },

@@ -13,8 +13,8 @@ android {
         applicationId = "com.questionbank.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 55
-        versionName = "0.2.50-typecq-card-category"
+        versionCode = 53
+        versionName = "0.2.48-typecq-atomic-style"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

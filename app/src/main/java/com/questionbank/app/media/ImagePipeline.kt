@@ -279,7 +279,7 @@ class ImagePipeline(
     }
     }
 
-/** Refuses to delete an image while a stimulus or solution still refers to it. */
+/** Refuses to delete an image while any stimulus, solution, or concept part still refers to it. */
     suspend fun deleteImage(id: String, scope: ImageScope): Boolean {
         recoveryGate.await()
         return MediaSnapshotCoordinator.withMutation { withContext(Dispatchers.IO) {

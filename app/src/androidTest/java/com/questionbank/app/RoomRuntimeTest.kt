@@ -85,7 +85,7 @@ class RoomRuntimeTest {
                     "AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '%_fts_%' AND name <> 'room_master_table'"
             )
         }
-        assertEquals(37L, ordinary)
+        assertEquals(35L, ordinary)
     }
 
     @Test

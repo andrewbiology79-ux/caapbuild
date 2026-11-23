@@ -3,12 +3,14 @@ package com.questionbank.app.ui.navigation
 import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -62,6 +64,8 @@ import com.questionbank.app.ui.question.QuestionListScreen
 import com.questionbank.app.ui.question.QuestionListViewModel
 import com.questionbank.app.ui.question.QuestionDetailScreen
 import com.questionbank.app.ui.question.GlobalSearchScreen
+import com.questionbank.app.ui.question.ConceptScreen
+import com.questionbank.app.ui.question.ConceptListScreen
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
@@ -93,6 +97,8 @@ object Routes {
     const val QUESTION_EDITOR = "type_cq/topics/{topicId}/questions/new"
     const val QUESTION_EDIT = "type_cq/topics/{topicId}/questions/edit/{groupKey}"
     const val QUESTION_DETAIL = "type_cq/topics/{topicId}/questions/detail/{groupKey}"
+    const val QUESTION_CONCEPT = "type_cq/topics/{topicId}/concept/{groupKey}/{cardNumber}"
+    const val TYPE_CONCEPTS = "type_cq/topics/{topicId}/concepts"
     const val REFERENCE_HOME = "type_cq/references"
     const val QUESTION_TYPES = "type_cq/references/question_types"
     const val BOARDS = "type_cq/references/boards"
@@ -107,6 +113,8 @@ object Routes {
     fun questionEditor(topicId: String) = "type_cq/topics/$topicId/questions/new"
     fun questionEdit(topicId: String, groupKey: String) = "type_cq/topics/$topicId/questions/edit/$groupKey"
     fun questionDetail(topicId: String, groupKey: String) = "type_cq/topics/$topicId/questions/detail/$groupKey"
+    fun questionConcept(topicId: String, groupKey: String, cardNumber: Int) = "type_cq/topics/$topicId/concept/$groupKey/$cardNumber"
+    fun typeConcepts(topicId: String) = "type_cq/topics/$topicId/concepts"
     fun chapterCqChapters(subjectId: String) = "chapter_cq/subjects/$subjectId/chapters"
     fun chapterCqQuestions(subjectId: String, chapterId: String) = "chapter_cq/subjects/$subjectId/chapters/$chapterId/questions"
 }
@@ -357,35 +365,41 @@ fun AppNavHost() {
                             QuestionGroupKey.of(group)?.let { navController.navigate(Routes.questionEdit(topicId, it)) }
                         },
                         onDelete = vm::deleteGroup,
+                        onCopy = vm::duplicateGroup,
                         onBulkDelete = vm::deleteGroups,
-                        onView = { group -> QuestionGroupKey.of(group)?.let { navController.navigate(Routes.questionDetail(topicId, it)) } },
+                        onView = {},
                         imagePipeline = container.imagePipeline,
                         onBack = { navController.popBackStack() },
-                        onBreadcrumbHome = {
-                            if (!navController.popBackStack(Routes.SUBJECTS, false)) navController.navigate(Routes.SUBJECTS)
-                        },
-                        onBreadcrumbSubject = {
-                            vm.breadcrumb.value?.subjectId?.let { subjectId ->
-                                val destination = Routes.chapters(subjectId)
-                                if (!navController.popBackStack(destination, false)) {
-                                    navController.navigate(destination) {
-                                        launchSingleTop = true
-                                        popUpTo(Routes.SUBJECTS) { inclusive = false }
-                                    }
-                                }
-                            }
-                        },
-                        onBreadcrumbChapter = {
-                            vm.breadcrumb.value?.chapterId?.let { chapterId ->
-                                val destination = Routes.topics(chapterId)
-                                if (!navController.popBackStack(destination, false)) {
-                                    navController.navigate(destination) {
-                                        launchSingleTop = true
-                                        popUpTo(Routes.SUBJECTS) { inclusive = false }
-                                    }
-                                }
-                            }
-                        },
+                        onConcept = { group, number -> QuestionGroupKey.of(group)?.let { navController.navigate(Routes.questionConcept(topicId, it, number)) } },
+                        onAllConcepts = { navController.navigate(Routes.typeConcepts(topicId)) },
+                        onNavigateSubject = { subjectId -> navController.popBackStack(Routes.chapters(subjectId), false) },
+                        onNavigateChapter = { chapterId -> navController.popBackStack(Routes.topics(chapterId), false) },
+                    )
+                }
+
+                composable(
+                    route = Routes.QUESTION_CONCEPT,
+                    arguments = listOf(
+                        navArgument("topicId") { type = NavType.StringType },
+                        navArgument("groupKey") { type = NavType.StringType },
+                        navArgument("cardNumber") { type = NavType.IntType },
+                    ),
+                ) { entry ->
+                    val topicId = entry.arguments?.getString("topicId").orEmpty()
+                    val groupKey = entry.arguments?.getString("groupKey").orEmpty()
+                    val cardNumber = entry.arguments?.getInt("cardNumber") ?: 0
+                    ConceptScreen(topicId, groupKey, cardNumber, container.database.typeCqConceptDao(), container.imagePipeline) { navController.popBackStack() }
+                }
+
+                composable(
+                    route = Routes.TYPE_CONCEPTS,
+                    arguments = listOf(navArgument("topicId") { type = NavType.StringType }),
+                ) { entry ->
+                    val topicId = entry.arguments?.getString("topicId").orEmpty()
+                    ConceptListScreen(
+                        topicId, container.database.typeCqConceptDao(), container.imagePipeline,
+                        onOpen = { key, number -> navController.navigate(Routes.questionConcept(topicId, key, number)) },
+                        onBack = { navController.popBackStack() },
                     )
                 }
 
@@ -602,7 +616,12 @@ fun AppNavHost() {
 
 @Composable
 private fun AppBottomBar(navController: NavHostController, currentDestination: NavDestination?) {
-    NavigationBar(modifier = Modifier.height(58.dp)) {
+    val compact = currentDestination?.hierarchy?.any { it.route == Routes.TAB_TYPE_CQ } == true
+    NavigationBar(
+        modifier = if (compact) Modifier.navigationBarsPadding().height(54.dp) else Modifier,
+        // Type CQ content uses edge-to-edge; apply the bottom system inset directly to its compact bar.
+        windowInsets = if (compact) WindowInsets(0, 0, 0, 0) else NavigationBarDefaults.windowInsets,
+    ) {
         TABS.forEach { tab ->
             val selected = currentDestination?.hierarchy?.any { it.route == tab.route } == true
             NavigationBarItem(
@@ -615,8 +634,8 @@ private fun AppBottomBar(navController: NavHostController, currentDestination: N
                         restoreState = true
                     }
                 },
-                icon = { Text(tab.glyph, fontSize = 15.sp) },
-                label = { Text(tab.label, fontSize = 9.sp, maxLines = 1) },
+                icon = { Text(tab.glyph, fontSize = if (compact) 14.sp else 18.sp) },
+                label = { Text(tab.label, fontSize = if (compact) 9.sp else 11.sp, maxLines = 1) },
                 alwaysShowLabel = true,
             )
         }

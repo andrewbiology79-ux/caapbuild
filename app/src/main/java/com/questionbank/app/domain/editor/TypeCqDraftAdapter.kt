@@ -5,7 +5,6 @@ import com.questionbank.app.domain.question.CqLabel
 import com.questionbank.app.domain.question.DraftText
 import com.questionbank.app.domain.question.QuestionStimulusImage
 import com.questionbank.app.domain.question.QuestionSolutionPart
-import com.questionbank.app.domain.question.ConceptContentPart
 
 /** Backward-compatible bridge from the original Type_CQ DraftText shape to the canonical shared schema. */
 object TypeCqDraftAdapter {
@@ -37,15 +36,6 @@ object TypeCqDraftAdapter {
             } else {
                 preserveImageParts(prior?.solutionParts.orEmpty(), textParts, "type_cq:$ownerId:${label.letter}")
             }
-            val conceptParts = draft.conceptPartsByLabel?.getOrNull(index)?.map { part ->
-                EditorSolutionPart(
-                    partId = part.partId,
-                    kind = if (part.partType == "IMAGE") EditorPartKind.IMAGE else EditorPartKind.TEXT,
-                    position = part.position,
-                    text = part.textContent,
-                    imageId = part.imageId,
-                )
-            } ?: prior?.conceptParts.orEmpty()
             EditorQuestionBlockDraft(
                 blockId = prior?.blockId ?: "type_cq:$ownerId:${label.letter}",
                 questionId = (if (questionIdsByLabel != null) questionIdsByLabel[label.letter] else existingQuestionIds.getOrNull(index)) ?: prior?.questionId,
@@ -58,7 +48,6 @@ object TypeCqDraftAdapter {
                 boardYears = draft.boards.getOrNull(index).orEmpty().map { EditorBoardYear(it.boardCode, it.year) },
                 categoryIds = draft.categoryIdsByLabel?.getOrNull(index) ?: prior?.categoryIds.orEmpty(),
                 solutionParts = parts,
-                conceptParts = conceptParts,
             )
         }
         val previousStimulus = previous?.stimulus ?: EditorStimulusDraft()
@@ -81,8 +70,6 @@ object TypeCqDraftAdapter {
             questionBlocks = blocks,
             deletedQuestionIds = previous?.deletedQuestionIds.orEmpty(),
             mode = mode,
-            cardCategoryId = draft.cardCategoryId,
-            cardCategoryTouched = draft.cardCategoryTouched,
             preservedJson = previous?.preservedJson,
         )
     }
@@ -108,11 +95,6 @@ object TypeCqDraftAdapter {
                 }
             },
             categoryIdsByLabel = CqLabel.entries.map { label -> rows[label.letter]?.categoryIds.orEmpty() },
-            cardCategoryId = draft.cardCategoryId,
-            cardCategoryTouched = draft.cardCategoryTouched,
-            conceptPartsByLabel = CqLabel.entries.map { label -> rows[label.letter]?.conceptParts.orEmpty().sortedBy { it.position }.map { part ->
-                ConceptContentPart(part.partId, part.kind.name, part.position, part.text, part.imageId)
-            } },
         )
     }
 

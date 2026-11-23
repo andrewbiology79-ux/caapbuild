@@ -76,15 +76,6 @@ suspend fun PooledConnection.rowCount(sql: String, vararg args: Any?): Int =
         n
     }
 
-/** All rows' first column as text, in query order. */
-suspend fun PooledConnection.textList(sql: String, vararg args: Any?): List<String> =
-    usePrepared(sql) { st ->
-        bindAll(st, args)
-        val out = mutableListOf<String>()
-        while (st.step()) out += st.getText(0)
-        out
-    }
-
 /** Number of FTS rows matching an FTS5 query string (already quoted by the caller where needed). */
 suspend fun PooledConnection.ftsCount(query: String): Long =
     scalarLong("SELECT COUNT(*) FROM type_cq_question_fts WHERE type_cq_question_fts MATCH ?", query)

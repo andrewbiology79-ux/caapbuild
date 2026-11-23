@@ -83,6 +83,24 @@ private val HighContrastDarkColors = darkColorScheme(
 /** Cards and dialogs use 16 dp corners (design 39.4). */
 private val AppShapes = Shapes(medium = RoundedCornerShape(16.dp))
 
+/** Legacy Type CQ card palette, grounded in the previous app's QuestionCard styles. */
+object TypeCqCardTokens {
+    val RibbonLight = Color(0xFF3B4FD8)
+    val RibbonDark = Color(0xFF2A3BB0)
+    val BorderLight = Color(0xFF3B4FD8)
+    val BorderDark = Color(0xFF5369B4)
+    val Muted = Color(0xFF64748B)
+    val PaperChipBackground = Color(0xFFECFDF5)
+    val PaperChipForeground = Color(0xFF065F46)
+    val PaperChipBorder = Color(0xFFA7F3D0)
+    val BoardChipBorder = Color(0xFFD5D9E2)
+    val ContentDivider = Color(0xFFF2F4F8)
+    val SolutionPanelLight = Color(0xFFF8FAFC)
+    val SolutionPanelBorderLight = Color(0xFFE2E8F0)
+    val SolutionPanelDark = Color(0xFF202A44)
+    val SolutionPanelBorderDark = Color(0xFF3F4D75)
+}
+
 /** Header bar colours: brand blue in Light, slate in Dark. */
 val HeaderLight = Color(0xFF3B4FD8)
 val HeaderDark = Color(0xFF1E293B)

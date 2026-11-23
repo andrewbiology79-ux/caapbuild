@@ -47,7 +47,6 @@ data class EditorQuestionBlockDraft(
     val boardYears: List<EditorBoardYear> = emptyList(),
     val categoryIds: List<String> = emptyList(),
     val solutionParts: List<EditorSolutionPart> = emptyList(),
-    val conceptParts: List<EditorSolutionPart> = emptyList(),
 )
 
 data class EditorSessionDraft(
@@ -62,10 +61,6 @@ data class EditorSessionDraft(
     val questionBlocks: List<EditorQuestionBlockDraft> = emptyList(),
     val deletedQuestionIds: List<String> = emptyList(),
     val mode: EditorMode = EditorMode.MINIMUM,
-    /** Independent category of the complete Type CQ card. */
-    val cardCategoryId: String? = null,
-    /** Edit drafts use this bit to distinguish an explicit clear from an older draft without the field. */
-    val cardCategoryTouched: Boolean = false,
     /** The original JSON is retained as a merge base so fields written by newer/older clients are not erased. */
     val preservedJson: String? = null,
 ) {
@@ -91,8 +86,6 @@ object EditorSessionDraftCodec {
             .put("questionBlocks", JSONArray().apply { draft.questionBlocks.forEach { put(blockJson(it)) } })
             .put("deletedQuestionIds", JSONArray(draft.deletedQuestionIds))
             .put("mode", draft.mode.name)
-            .put("cardCategoryId", jsonOrNull(draft.cardCategoryId))
-            .put("cardCategoryTouched", draft.cardCategoryTouched)
         return mergeObject(base, next).toString()
     }
 
@@ -116,8 +109,6 @@ object EditorSessionDraftCodec {
             questionBlocks = blocks,
             deletedQuestionIds = stringList(root.optJSONArray("deletedQuestionIds")),
             mode = runCatching { EditorMode.valueOf(root.optString("mode", "MINIMUM")) }.getOrDefault(EditorMode.MINIMUM),
-            cardCategoryId = root.optString("cardCategoryId").takeIf { it.isNotBlank() && it != "null" },
-            cardCategoryTouched = root.optBoolean("cardCategoryTouched", false),
             preservedJson = raw,
         )
     }.getOrNull()
@@ -152,11 +143,6 @@ object EditorSessionDraftCodec {
                 put(JSONObject().put("partId", part.partId).put("kind", part.kind.name).put("position", part.position).put("text", jsonOrNull(part.text)).put("imageId", jsonOrNull(part.imageId)))
             }
         })
-        .put("conceptParts", JSONArray().apply {
-            value.conceptParts.forEach { part ->
-                put(JSONObject().put("partId", part.partId).put("kind", part.kind.name).put("position", part.position).put("text", jsonOrNull(part.text)).put("imageId", jsonOrNull(part.imageId)))
-            }
-        })
 
     private fun readStimulus(value: JSONObject) = EditorStimulusDraft(
         stimulusId = value.optString("stimulusId").takeIf { it.isNotBlank() && it != "null" },
@@ -181,16 +167,6 @@ object EditorSessionDraftCodec {
         boardYears = readBoardYears(value.optJSONArray("boardYears")),
         categoryIds = stringList(value.optJSONArray("categoryIds")),
         solutionParts = value.optJSONArray("solutionParts")?.let { array -> List(array.length()) { i ->
-            val part = array.getJSONObject(i)
-            EditorSolutionPart(
-                partId = part.optString("partId"),
-                kind = runCatching { EditorPartKind.valueOf(part.optString("kind", "TEXT")) }.getOrDefault(EditorPartKind.TEXT),
-                position = part.optLong("position", i.toLong()),
-                text = part.optString("text").takeIf { !part.isNull("text") },
-                imageId = part.optString("imageId").takeIf { !part.isNull("imageId") },
-            )
-        } }.orEmpty(),
-        conceptParts = value.optJSONArray("conceptParts")?.let { array -> List(array.length()) { i ->
             val part = array.getJSONObject(i)
             EditorSolutionPart(
                 partId = part.optString("partId"),

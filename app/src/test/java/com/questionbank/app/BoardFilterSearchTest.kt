@@ -24,17 +24,8 @@ class BoardFilterSearchTest {
     private fun sub(id: String, label: CqLabel, boards: List<BoardTag> = emptyList()) =
         SavedSubQuestion(id, label, label.marks, "text $id", "", null, boards)
 
-    private fun group(
-        stimulusId: String?, stimulusBoards: List<BoardTag>, vararg subs: SavedSubQuestion,
-        cardCategoryId: String? = null,
-    ) = SavedGroup(
-        stimulusId = stimulusId,
-        stimulusText = if (stimulusId == null) "" else "উদ্দীপক",
-        subQuestions = subs.toList(),
-        stimulusRating = null,
-        stimulusBoards = stimulusBoards,
-        cardCategoryId = cardCategoryId,
-    )
+    private fun group(stimulusId: String?, stimulusBoards: List<BoardTag>, vararg subs: SavedSubQuestion) =
+        SavedGroup(stimulusId, if (stimulusId == null) "" else "উদ্দীপক", subs.toList(), null, stimulusBoards)
 
     private fun ids(groups: List<SavedGroup>) = groups.map { g -> g.subQuestions.map { it.id } }
 
@@ -106,26 +97,6 @@ class BoardFilterSearchTest {
         assertEquals(listOf(listOf("x"), listOf("y")), ids(kept))
     }
 
-
-    @Test
-    fun categoryFilterUsesOnlyTheNewCardLevelCategoryAndKeepsTheWholeCard() {
-        val g = group(
-            "s-category", emptyList(),
-            sub("a", CqLabel.KA, listOf(dha2019)),
-            sub("b", CqLabel.KHA, listOf(raj2020)),
-            cardCategoryId = "card-cat",
-        )
-        val kept = QuestionSearchRules.filterByBoards(listOf(g), null, emptySet(), BoardFilter(categoryId = "card-cat"))
-        assertEquals(listOf(listOf("a", "b")), ids(kept))
-        assertTrue(QuestionSearchRules.filterByBoards(listOf(g), null, emptySet(), BoardFilter(categoryId = "legacy-cat")).isEmpty())
-    }
-
-    @Test
-    fun oldCardWithOnlyLegacySubQuestionCategoriesDoesNotAutoMatchNewCardCategoryFilter() {
-        val oldCard = group("s-old", emptyList(), sub("a", CqLabel.KA, listOf(dha2019)))
-        assertTrue(QuestionSearchRules.filterByBoards(listOf(oldCard), null, emptySet(), BoardFilter(categoryId = "legacy-cat")).isEmpty())
-    }
-
     @Test
     fun filterChipTextsShowNameOrCodeAndBengaliYear() {
         val boards = listOf(BoardItem("DHA", "ঢাকা", isCustom = false, isArchived = false))
@@ -135,4 +106,47 @@ class BoardFilterSearchTest {
         assertEquals("সাল: সব", yearFilterLabel(BoardFilter()))
         assertEquals("সাল: ২০১৯", yearFilterLabel(BoardFilter(year = 2019)))
     }
+    @Test
+    fun stimulusAndQuestionCategoriesAreIndependentFilters() {
+        val group = SavedGroup(
+            stimulusId = "s-cat",
+            stimulusText = "উদ্দীপক",
+            subQuestions = listOf(
+                sub("cat-a", CqLabel.KA),
+                sub("cat-b", CqLabel.KHA),
+            ),
+            stimulusCategoryIds = listOf("stim-cat"),
+        )
+        val stimulusFiltered = QuestionSearchRules.filterByBoards(
+            listOf(group), null, emptySet(), BoardFilter(stimulusCategoryId = "stim-cat"),
+        )
+        assertEquals(listOf(listOf("cat-a", "cat-b")), ids(stimulusFiltered))
+
+        val questionCategoryGroup = group.copy(
+            stimulusCategoryIds = listOf("stim-cat"),
+            subQuestions = listOf(
+                sub("cat-a", CqLabel.KA).copy(categoryIds = listOf("question-cat")),
+                sub("cat-b", CqLabel.KHA).copy(categoryIds = listOf("other-cat")),
+            ),
+        )
+        val questionFiltered = QuestionSearchRules.filterByBoards(
+            listOf(questionCategoryGroup), null, emptySet(), BoardFilter(categoryId = "question-cat"),
+        )
+        assertEquals(listOf(listOf("cat-a")), ids(questionFiltered))
+        val separateStimulusFiltered = QuestionSearchRules.filterByBoards(
+            listOf(questionCategoryGroup), null, emptySet(), BoardFilter(stimulusCategoryId = "other-cat"),
+        )
+        assertTrue(separateStimulusFiltered.isEmpty())
+    }
+
+    @Test
+    fun stimuluslessCardUsesItsQuestionCategoryAsTheRibbonCategoryFilter() {
+        val one = group(null, emptyList(), sub("single", CqLabel.KA).copy(categoryIds = listOf("one-cat")))
+        assertEquals(
+            listOf(listOf("single")),
+            ids(QuestionSearchRules.filterByBoards(listOf(one), null, emptySet(), BoardFilter(stimulusCategoryId = "one-cat"))),
+        )
+        assertTrue(QuestionSearchRules.filterByBoards(listOf(one), null, emptySet(), BoardFilter(stimulusCategoryId = "other-cat")).isEmpty())
+    }
+
 }

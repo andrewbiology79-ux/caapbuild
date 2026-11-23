@@ -8,11 +8,11 @@ data class BoardTag(val boardCode: String, val year: Int)
 /** One visual board chip may summarize several years for the same board. */
 data class BoardYearGroup(val boardCode: String, val years: List<Int>)
 
-/** Groups saved board-year tags without changing their underlying storage; newest years are displayed first. */
+/** Groups saved board-year tags without changing their underlying storage; years are displayed in ascending order. */
 fun groupBoardYears(tags: List<BoardTag>): List<BoardYearGroup> =
-    tags.distinct().groupBy { it.boardCode }
-        .map { (code, rows) -> BoardYearGroup(code, rows.map { it.year }.distinct().sortedDescending()) }
-        .sortedWith(compareByDescending<BoardYearGroup> { it.years.maxOrNull() ?: Int.MIN_VALUE }.thenBy { it.boardCode })
+    tags.distinct().groupBy { it.boardCode }.map { (code, rows) ->
+        BoardYearGroup(code, rows.map { it.year }.distinct().sorted())
+    }
 
 /**
  * Boards and years chosen in the editor. Same meaning as [RatingsInput]: for a NEW group the map holds the labels the person
@@ -31,11 +31,14 @@ data class BoardsInput(
 data class BoardFilter(
     val boardCode: String? = null,
     val year: Int? = null,
+    /** Category assigned to each sub-question (the existing editor category). */
     val categoryId: String? = null,
+    /** Independent category assigned to the stimulus/card ribbon. */
+    val stimulusCategoryId: String? = null,
     val rating: Int? = null,
     val questionTypeId: String? = null,
 ) {
-    val isEmpty: Boolean get() = boardCode == null && year == null && categoryId == null && rating == null && questionTypeId == null
+    val isEmpty: Boolean get() = boardCode == null && year == null && categoryId == null && stimulusCategoryId == null && rating == null && questionTypeId == null
 
     /** True when one of [tags] fits the filter. Callers test [isEmpty] first: an empty filter fits any non-empty list. */
     fun matches(tags: List<BoardTag>): Boolean =

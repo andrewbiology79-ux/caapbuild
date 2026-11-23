@@ -76,7 +76,9 @@ data class QuestionGroupInput(
     val boards: BoardsInput? = null,
     /** Reference text belongs to the stimulus record and is independent from its main text. */
     val referenceText: String = "",
-    /** Legacy per-sub-question category links. Kept separate from the new card-level category. */
+    /** Category IDs assigned to the stimulus card ribbon (kept separate from per-question category links). */
+    val stimulusCategoryIds: List<String> = emptyList(),
+    /** Category IDs for each created question block. Omitted labels receive no category links. */
     val categoriesByLabel: Map<CqLabel, List<String>> = emptyMap(),
     /** Optional canonical Phase 6 draft key, removed in the same Room transaction as the content save. */
     val editorDraftKey: String? = null,
@@ -84,10 +86,6 @@ data class QuestionGroupInput(
     val stimulusImages: List<QuestionStimulusImage> = emptyList(),
     /** Complete mixed TEXT/IMAGE solution order for labels in this group; absent labels use [SubQuestionInput.solutionParts]. */
     val solutionPartsByLabel: Map<CqLabel, List<QuestionSolutionPart>> = emptyMap(),
-    /** Concept content to copy with a duplicated/pasted card, keyed per sub-question. */
-    val conceptsByLabel: Map<CqLabel, List<ConceptContentPart>> = emptyMap(),
-    /** New independent single category for this whole card; does not replace legacy per-question category links. */
-    val cardCategoryId: String? = null,
 )
 
 /** Raw editor text, used for the automatic draft. Index 0..3 = ক, খ, গ, ঘ. */
@@ -109,17 +107,11 @@ data class DraftText(
     val stimulusImages: List<QuestionStimulusImage>? = null,
     /** Null means legacy text-only draft; an empty row deliberately clears that label's mixed solution parts. */
     val solutionPartsByLabel: List<List<QuestionSolutionPart>>? = null,
-    /** Legacy per-sub-question category links in an older/recovery draft. These are distinct from [cardCategoryId]. */
+    /** Null means an older draft did not store per-question categories; present rows preserve each label's selected IDs. */
     val categoryIdsByLabel: List<List<String>>? = null,
-    /** New independent card-level category. Null means no category is selected in the new system. */
-    val cardCategoryId: String? = null,
-    /** Null means an older draft did not store Concept content; rows map to ক..ঘ. */
-    val conceptPartsByLabel: List<List<ConceptContentPart>>? = null,
-    /** True only when an edit draft explicitly changed or cleared the new card-level category. */
-    val cardCategoryTouched: Boolean = false,
 ) {
     val isBlank: Boolean
-        get() = stimulus.isBlank() && referenceText.isBlank() && texts.all { it.isBlank() } && answers.all { it.isBlank() } && solutionTexts.all { row -> row.all { it.isBlank() } } && stimulusImages.isNullOrEmpty() && (solutionPartsByLabel.isNullOrEmpty() || solutionPartsByLabel.all { it.isEmpty() }) && (conceptPartsByLabel.isNullOrEmpty() || conceptPartsByLabel.all { it.isEmpty() }) && cardCategoryId == null
+        get() = stimulus.isBlank() && referenceText.isBlank() && texts.all { it.isBlank() } && answers.all { it.isBlank() } && solutionTexts.all { row -> row.all { it.isBlank() } } && stimulusImages.isNullOrEmpty() && (solutionPartsByLabel.isNullOrEmpty() || solutionPartsByLabel.all { it.isEmpty() })
 }
 
 /** One saved sub-question as the list shows it. */
@@ -139,42 +131,26 @@ data class SavedSubQuestion(
     val categoryIds: List<String> = emptyList(),
     /** Full ordered TEXT/IMAGE solution representation; text-only preview remains in [solutionParts]. */
     val orderedSolutionParts: List<QuestionSolutionPart> = emptyList(),
-    /** Separate ordered Concept content owned by this individual sub-question. */
-    val conceptParts: List<ConceptContentPart> = emptyList(),
 )
 
-/** One saved Paper that references a question; shown as a usage chip on Collection cards. */
-data class PaperUsage(val paperId: String, val shortName: String, val title: String, val categoryName: String = "")
-
-
-/** Ordered TEXT / IMAGE concept content, independent from a question's Solution. */
-data class ConceptContentPart(
-    val partId: String,
-    val partType: String,
-    val position: Long,
-    val textContent: String? = null,
-    val imageId: String? = null,
+/** One paper-category usage of a question card. One chip is shown per distinct category, newest assignment first. */
+data class PaperUsage(
+    val paperId: String,
+    val shortName: String,
+    val title: String,
+    val categoryId: String = "",
+    val categoryName: String = "",
+    val assignedAt: Long = 0L,
 )
 
-data class SavedQuestionConcept(val questionId: String, val parts: List<ConceptContentPart>)
-
-data class QuestionConceptSummary(
-    val questionId: String,
-    val label: String,
-    val questionText: String,
-    val previewText: String,
-)
-
-data class QuestionBreadcrumb(
+/** Subject → chapter → topic path shown above the Type CQ question-card list. */
+data class TopicBreadcrumb(
     val subjectId: String,
     val subjectName: String,
-    val subjectOrder: Long,
     val chapterId: String,
     val chapterName: String,
-    val chapterOrder: Long,
     val topicId: String,
     val topicName: String,
-    val topicOrder: Long,
 )
 
 /** One stimulus with its sub-questions, or one single question without a stimulus. */
@@ -190,12 +166,12 @@ data class SavedGroup(
     val stimulusImages: List<QuestionStimulusImage> = emptyList(),
     /** Rating derived from the complete stored group before search can reduce visible sub-questions. */
     val unfilteredFallbackRating: Int? = null,
-    /** Distinct Paper references across the complete saved group, retained for partial-search cards. */
+    /** Distinct paper-category references across the complete saved group, retained for partial-search cards. */
     val paperUsages: List<PaperUsage> = emptyList(),
-    /** Union of legacy per-question category IDs across the complete card, including hidden sub-questions in filtered results. */
-    val questionCategoryIds: List<String> = emptyList(),
-    /** New independent card-level category; null until selected in the new category system. */
-    val cardCategoryId: String? = null,
+    /** Categories assigned to the stimulus (card-level categories; never mixed with sub-question categories). */
+    val stimulusCategoryIds: List<String> = emptyList(),
+    /** Whether this card already has a saved concept. */
+    val hasConcept: Boolean = false,
 )
 
 sealed interface SaveResult {
@@ -248,12 +224,6 @@ data class GroupEditInput(
     val stimulusImages: List<QuestionStimulusImage>? = null,
     /** Null preserves the current mixed solution content; a label entry replaces that complete ordered sequence. */
     val solutionPartsByLabel: Map<CqLabel, List<QuestionSolutionPart>>? = null,
-    /** Concept content for newly added labels; existing saved Concepts are independently persisted by their editor. */
-    val conceptsByLabel: Map<CqLabel, List<ConceptContentPart>> = emptyMap(),
-    /** New independent card-level category; null means leave the existing card category unchanged unless changeCardCategory is true. */
-    val cardCategoryId: String? = null,
-    /** Distinguishes no change from deliberately clearing the new card-level category. */
-    val changeCardCategory: Boolean = false,
 )
 
 data class QuestionMetaUpdate(val questionId: String, val label: CqLabel, val questionTypeId: String, val marks: Double)

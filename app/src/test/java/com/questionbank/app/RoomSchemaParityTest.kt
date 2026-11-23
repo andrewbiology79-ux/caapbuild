@@ -26,8 +26,8 @@ class RoomSchemaParityTest {
     @Test
     fun roomSchemaJsonBaselineIsExpected() {
         val database = loadSchema()
-        assertEquals(1, database.get("version").asInt)
-        assertEquals(35, database.array("entities").size)
+        assertEquals(2, database.get("version").asInt)
+        assertEquals(38, database.array("entities").size)
     }
 
     @Test
@@ -108,7 +108,7 @@ class RoomSchemaParityTest {
             }
         }
 
-        assertTrue("Room schema (1.json) differs from canonical SQL:\n" + problems.joinToString("\n"), problems.isEmpty())
+        assertTrue("Room schema (2.json) differs from canonical SQL:\n" + problems.joinToString("\n"), problems.isEmpty())
     }
 
     private data class ColumnInfo(val name: String, val type: String?, val notNull: Boolean, val pk: Int)
@@ -133,7 +133,7 @@ class RoomSchemaParityTest {
     }
 
     private fun loadSchema(): JsonObject {
-        val relative = "schemas/com.questionbank.app.data.local.QuestionBankDatabase/1.json"
+        val relative = "schemas/com.questionbank.app.data.local.QuestionBankDatabase/2.json"
         val file = listOf(File(relative), File("app/$relative")).firstOrNull { it.isFile }
             ?: error("Room schema export not found: $relative (working dir ${File(".").absoluteFile})")
         return JsonParser.parseString(file.readText()).asJsonObject.getAsJsonObject("database")

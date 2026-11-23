@@ -12,52 +12,48 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.verticalScroll
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Surface
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.questionbank.app.data.local.entity.TypeCqQuestionCategoriesEntity
@@ -66,22 +62,19 @@ import com.questionbank.app.domain.question.BoardTag
 import com.questionbank.app.domain.question.QuestionCardRules
 import com.questionbank.app.domain.question.SavedGroup
 import com.questionbank.app.domain.question.SavedSubQuestion
-import com.questionbank.app.domain.question.QuestionGroupKey
-import com.questionbank.app.domain.question.groupBoardYears
-import com.questionbank.app.ui.format.toBengali
-import com.questionbank.app.ui.theme.LocalDarkTheme
 import com.questionbank.app.media.ImagePipeline
 import com.questionbank.app.media.ImageScope
-import kotlinx.coroutines.CancellationException
+import com.questionbank.app.ui.format.toBengali
+import com.questionbank.app.ui.format.toBengaliDigits
+import com.questionbank.app.ui.theme.LocalDarkTheme
+import com.questionbank.app.ui.theme.TypeCqCardTokens
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-private val LegacyBlue = Color(0xFF3B4FD8)
-private val LegacyBorder = Color(0xFFD5D9E2)
-private val LegacyMuted = Color(0xFF64748B)
+private val LegacyRibbon = TypeCqCardTokens.RibbonLight
+private val LegacyRibbonDark = TypeCqCardTokens.RibbonDark
+private val LegacyMuted = TypeCqCardTokens.Muted
 
-/** One complete stimulus and its sub-questions is rendered as exactly one card. */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun QuestionCard(
     number: Int,
@@ -94,126 +87,185 @@ fun QuestionCard(
     onEdit: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
     onCopy: (() -> Unit)? = null,
+    onView: (() -> Unit)? = null,
+    onCategoriesChanged: ((List<String>) -> Unit)? = null,
+    onConcept: (() -> Unit)? = null,
     onCut: (() -> Unit)? = null,
     onPasteBefore: (() -> Unit)? = null,
     onPasteAfter: (() -> Unit)? = null,
-    canPaste: Boolean = false,
-    onView: (() -> Unit)? = null,
-    onQuestionCategoryChange: ((String, String?) -> Unit)? = null,
-    onQuestionConcept: ((SavedSubQuestion) -> Unit)? = null,
+    canPaste: Boolean = true,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var categoryDialog by remember { mutableStateOf(false) }
+    var referenceDialog by remember { mutableStateOf(false) }
+    val dark = LocalDarkTheme.current
+    val ribbon = if (dark) LegacyRibbonDark else LegacyRibbon
+
     if (confirmDelete) AlertDialog(
         onDismissRequest = { confirmDelete = false },
         title = { Text("প্রশ্ন কার্ড মুছবেন?") },
-        text = { Text("এই কার্ডের অন্তর্ভুক্ত সব প্রশ্ন, Concept ও সংযুক্ত রেকর্ড মুছে যাবে। আগে তৈরি প্রশ্নপত্রের Snapshot থাকবে, তবে মূল Source Link বিচ্ছিন্ন হবে।") },
+        text = { Text("এই কার্ডের অন্তর্ভুক্ত সব প্রশ্ন মুছে যাবে। সংরক্ষিত প্রশ্নপত্রে ব্যবহৃত প্রশ্ন থাকলে মুছতে বাধা দিতে পারে।") },
         confirmButton = { TextButton(onClick = { confirmDelete = false; onDelete?.invoke() }) { Text("মুছুন") } },
         dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("বাতিল") } },
+    )
+    if (categoryDialog) CategoryPickerDialog(
+        categories = categories,
+        selectedIds = group.stimulusCategoryIds,
+        title = if (group.stimulusId == null) "দাগের ক্যাটাগরি" else "উদ্দীপকের ক্যাটাগরি",
+        onDismiss = { categoryDialog = false },
+        onSave = { onCategoriesChanged?.invoke(it) },
+    )
+    if (referenceDialog) AlertDialog(
+        onDismissRequest = { referenceDialog = false },
+        title = { Text("রেফারেন্স") },
+        text = {
+            if (group.referenceText.isBlank()) Text("কোনো রেফারেন্স লেখা নেই")
+            else RichLatexText(group.referenceText, Modifier.fillMaxWidth())
+        },
+        confirmButton = { TextButton(onClick = { referenceDialog = false }) { Text("বন্ধ") } },
     )
 
     Card(
         modifier = Modifier.fillMaxWidth(),
+        // Match the previous app's QuestionCard: white surface, 1.5px brand-blue outline, rounded-2xl corners.
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.5.dp, if (LocalDarkTheme.current) Color(0xFF6678FF) else LegacyBlue),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        border = BorderStroke(1.5.dp, if (dark) TypeCqCardTokens.BorderDark else TypeCqCardTokens.BorderLight),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().background(LegacyBlue).padding(start = 12.dp, end = 5.dp, top = 3.dp, bottom = 3.dp),
+            modifier = Modifier.fillMaxWidth().background(ribbon).padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                "প্রশ্ন ${number.toBengali()}",
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
-            )
+            Text(number.toBengali(), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp,
+                modifier = Modifier.widthIn(min = 18.dp).padding(start = 2.dp))
             if (onToggleSelected != null) {
-                Checkbox(
-                    checked = selected,
-                    onCheckedChange = onToggleSelected,
-                    modifier = Modifier.semantics { contentDescription = "প্রশ্ন কার্ড নির্বাচন" },
-                    colors = CheckboxDefaults.colors(
-                        checkedColor = Color.White,
-                        uncheckedColor = Color.White,
-                        checkmarkColor = LegacyBlue,
-                    ),
+                Checkbox(checked = selected, onCheckedChange = onToggleSelected,
+                    modifier = Modifier.size(32.dp), colors = androidx.compose.material3.CheckboxDefaults.colors(
+                        checkedColor = Color.White, uncheckedColor = Color.White, checkmarkColor = ribbon))
+            }
+            Row(
+                modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState())
+                    .clickable(enabled = onCategoriesChanged != null) { categoryDialog = true }
+                    .padding(horizontal = 3.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                val names = remember(group.stimulusCategoryIds, categories) {
+                    group.stimulusCategoryIds.mapNotNull { id -> categories.firstOrNull { it.categoryId == id }?.name }
+                }
+                Text(
+                    names.joinToString(", ").ifBlank { if (group.stimulusId == null) "দাগের ক্যাটাগরি +" else "উদ্দীপক ক্যাটাগরি +" },
+                    color = if (names.isEmpty()) Color(0xFFDCE3FF) else Color.White,
+                    fontSize = 11.sp, maxLines = 1, softWrap = false,
                 )
             }
-            Spacer(Modifier.weight(1f))
-            if (onQuestionCategoryChange != null) {
-                QuestionCategoryPicker(
-                    categories = categories,
-                    stateKey = QuestionGroupKey.of(group).orEmpty(),
-                    selectedIds = group.cardCategoryId?.let(::listOf).orEmpty(),
-                    onSelectionChange = { onQuestionCategoryChange(QuestionGroupKey.of(group).orEmpty(), it) },
-                    modifier = Modifier.width(104.dp),
-                )
-            }
-            RatingBadge(QuestionCardRules.rating(group))
-            if (onEdit != null || onDelete != null || onCopy != null || onCut != null || onPasteBefore != null || onPasteAfter != null) {
+            RatingBadge(QuestionCardRules.rating(group), compact = true)
+            if (onEdit != null || onDelete != null || onCopy != null || onView != null || onCut != null || onPasteBefore != null || onPasteAfter != null) {
                 Box {
-                    Box(
-                        modifier = Modifier.size(40.dp).clickable { menuOpen = true }
-                            .semantics { contentDescription = "আরও বিকল্প" },
-                        contentAlignment = Alignment.Center,
-                    ) { Text("⋮", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp) }
+                    Box(Modifier.size(30.dp).clickable { menuOpen = true }.semantics { contentDescription = "আরও বিকল্প" }, contentAlignment = Alignment.Center) {
+                        Text("⋮", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 19.sp)
+                    }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         if (onEdit != null) DropdownMenuItem(text = { Text("প্রশ্ন সম্পাদনা") }, onClick = { menuOpen = false; onEdit() })
-                        if (onCopy != null) DropdownMenuItem(text = { Text("Copy") }, onClick = { menuOpen = false; onCopy() })
+                        if (onView != null) DropdownMenuItem(text = { Text("রেফারেন্স দেখুন") }, enabled = group.stimulusId != null,
+                            onClick = { menuOpen = false; referenceDialog = true })
+                        if (onCopy != null) DropdownMenuItem(text = { Text("সম্পূর্ণ গ্রুপ কপি") }, onClick = { menuOpen = false; onCopy() })
                         if (onCut != null) DropdownMenuItem(text = { Text("Cut") }, onClick = { menuOpen = false; onCut() })
-                        if (onPasteAfter != null) DropdownMenuItem(text = { Text("Paste after", color = if (canPaste) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant) }, enabled = canPaste, onClick = { menuOpen = false; onPasteAfter() })
-                        if (onPasteBefore != null) DropdownMenuItem(text = { Text("Paste before", color = if (canPaste) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant) }, enabled = canPaste, onClick = { menuOpen = false; onPasteBefore() })
-                        if (onDelete != null) DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, onClick = { menuOpen = false; confirmDelete = true })
+                        if (onPasteBefore != null) DropdownMenuItem(text = { Text("Paste Before") }, enabled = canPaste, onClick = { menuOpen = false; onPasteBefore() })
+                        if (onPasteAfter != null) DropdownMenuItem(text = { Text("Paste After") }, enabled = canPaste, onClick = { menuOpen = false; onPasteAfter() })
+                        if (onDelete != null) DropdownMenuItem(text = { Text("সম্পূর্ণ গ্রুপ মুছুন", color = MaterialTheme.colorScheme.error) }, onClick = { menuOpen = false; confirmDelete = true })
                     }
                 }
             }
         }
 
-        val paperCategories = remember(group.paperUsages) {
-            group.paperUsages.map { it.categoryName.trim() }.filter { it.isNotBlank() }.distinct()
-        }
-        // Match the legacy Caa layout: only stimulus-level boards appear in this strip;
-        // each sub-question's own boards stay beside its individual solution button below.
-        val cardBoards = group.stimulusBoards
-        if (paperCategories.isNotEmpty() || cardBoards.isNotEmpty()) {
-            Column(
-                modifier = Modifier.fillMaxWidth().background(Color(0xFFF8FAFC)).padding(horizontal = 12.dp, vertical = 7.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                // Paper-category chips occupy their own full-width horizontal strip; newest usage is supplied first.
-                if (paperCategories.isNotEmpty()) PaperCategoryStrip(paperCategories)
-                // Board chips use the full card width and flow right-to-left by wrapping from the right edge.
-                if (cardBoards.isNotEmpty()) BoardTagsFlow(cardBoards, boards, Modifier.fillMaxWidth())
+        if (group.paperUsages.isNotEmpty()) PaperCategoryChips(group.paperUsages.map { it.categoryName }.distinct())
+
+        val topBoardTags = if (group.stimulusId != null) group.stimulusBoards else group.subQuestions.singleOrNull()?.boards.orEmpty()
+        if (topBoardTags.isNotEmpty()) {
+            Column(Modifier.fillMaxWidth().background(if (dark) MaterialTheme.colorScheme.surfaceVariant else Color(0xFFF8FAFC))) {
+                Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp)) {
+                    TypeCqBoardChips(topBoardTags, boards)
+                }
+                androidx.compose.material3.HorizontalDivider(
+                    color = if (dark) Color(0xFF334155) else Color(0xFFE2E8F0), thickness = 1.dp,
+                )
             }
         }
 
         val upperImages = group.stimulusImages.filter { it.placement.equals("TOP", true) }.sortedBy { it.position }
         val lowerImages = group.stimulusImages.filterNot { it.placement.equals("TOP", true) }.sortedBy { it.position }
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(9.dp),
-        ) {
-            upperImages.forEach { image ->
-                if (imagePipeline != null) MediaFullImage(imagePipeline, image.imageId, ImageScope.TYPE_CQ)
-                else Text("উদ্দীপকের ছবি অনুপলব্ধ", style = MaterialTheme.typography.labelSmall)
-            }
-            if (group.stimulusText.isNotBlank()) {
-                RichLatexText(group.stimulusText, Modifier.fillMaxWidth())
-            }
-            lowerImages.forEach { image ->
-                if (imagePipeline != null) MediaFullImage(imagePipeline, image.imageId, ImageScope.TYPE_CQ)
-                else Text("উদ্দীপকের ছবি অনুপলব্ধ", style = MaterialTheme.typography.labelSmall)
-            }
-            // Keep BOTTOM stimulus images immediately after the stimulus, matching the legacy card sequence.
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            upperImages.forEach { image -> if (imagePipeline != null) FullWidthTypeCqImage(imagePipeline, image.imageId) }
+            if (group.stimulusText.isNotBlank()) RichLatexText(group.stimulusText, Modifier.fillMaxWidth())
+            lowerImages.forEach { image -> if (imagePipeline != null) FullWidthTypeCqImage(imagePipeline, image.imageId) }
             group.subQuestions.forEachIndexed { index, question ->
-                if (index > 0) androidx.compose.material3.HorizontalDivider(color = Color(0xFFE2E8F0))
-                QuestionCardSubQuestion(
-                    question = question,
-                    boards = boards,
-                    imagePipeline = imagePipeline,
-                    onConcept = onQuestionConcept,
+                if (index > 0) androidx.compose.material3.HorizontalDivider(color = if (dark) Color(0xFF334155) else TypeCqCardTokens.ContentDivider)
+                QuestionCardSubQuestion(question, boards, imagePipeline)
+            }
+            if (onConcept != null) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    OutlinedButton(onClick = onConcept, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                        shape = RoundedCornerShape(7.dp), border = BorderStroke(1.dp, if (group.hasConcept) ribbon else MaterialTheme.colorScheme.outlineVariant)) {
+                        Text("কনসেপ্ট", color = if (group.hasConcept) ribbon else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                        if (group.hasConcept) Text(" •", color = ribbon, fontSize = 11.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PaperCategoryChips(names: List<String>) {
+    val scroll = rememberScrollState()
+    val dark = LocalDarkTheme.current
+    val chipBackground = if (dark) Color(0xFF123B32) else TypeCqCardTokens.PaperChipBackground
+    val chipForeground = if (dark) Color(0xFFA7F3D0) else TypeCqCardTokens.PaperChipForeground
+    val trackColor = if (dark) Color(0xFF344054) else Color(0xFFD5D9E2)
+    val thumbColor = if (dark) Color(0xFF8A9AB8) else Color(0xFF64748B)
+    Column(Modifier.fillMaxWidth().background(if (dark) MaterialTheme.colorScheme.surfaceVariant else Color(0xFFF8FAFC))) {
+        Row(Modifier.fillMaxWidth().horizontalScroll(scroll).padding(horizontal = 14.dp, vertical = 5.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            names.forEach { name ->
+                Text(name, modifier = Modifier.background(chipBackground, RoundedCornerShape(5.dp))
+                    .border(1.dp, if (dark) Color(0xFF236B58) else TypeCqCardTokens.PaperChipBorder, RoundedCornerShape(5.dp))
+                    .padding(horizontal = 8.dp, vertical = 2.dp), color = chipForeground, fontSize = 10.sp, maxLines = 1)
+            }
+        }
+        androidx.compose.material3.HorizontalDivider(color = if (dark) Color(0xFF334155) else Color(0xFFE2E8F0), thickness = 1.dp)
+        if (scroll.maxValue > 0) Canvas(Modifier.fillMaxWidth().padding(horizontal = 9.dp).height(2.dp)) {
+            val track = size.width
+            drawRoundRect(color = trackColor, size = size, cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f))
+            val thumbWidth = (track * size.width / (size.width + scroll.maxValue)).coerceAtLeast(10f)
+            val offset = (track - thumbWidth) * scroll.value / scroll.maxValue.toFloat()
+            drawRoundRect(color = thumbColor, topLeft = androidx.compose.ui.geometry.Offset(offset, 0f),
+                size = androidx.compose.ui.geometry.Size(thumbWidth, size.height), cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f))
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TypeCqBoardChips(tags: List<BoardTag>, boards: List<BoardItem>) {
+    val map = remember(boards) { boards.associateBy { it.code } }
+    val ordered = remember(tags, boards) { orderedTypeCqBoardTags(tags, boards) }
+    CompositionLocalProviderCompatRtl {
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(3.dp, Alignment.End),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            ordered.forEach { tag ->
+                val code = map[tag.boardCode]?.code ?: tag.boardCode
+                Text(
+                    "$code ${ (tag.year % 100).toString().toBengaliDigits() }",
+                    modifier = Modifier.background(if (LocalDarkTheme.current) Color(0xFF263449) else Color.White, RoundedCornerShape(5.dp))
+                        .border(1.dp, if (LocalDarkTheme.current) Color(0xFF5369B4) else TypeCqCardTokens.BoardChipBorder, RoundedCornerShape(5.dp))
+                        .padding(horizontal = 5.dp, vertical = 2.dp),
+                    color = if (LocalDarkTheme.current) Color(0xFFE2E8F0) else Color(0xFF1B1F2A),
+                    fontSize = 10.sp, maxLines = 1, style = MaterialTheme.typography.labelSmall.copy(textDirection = TextDirection.Ltr),
                 )
             }
         }
@@ -221,255 +273,135 @@ fun QuestionCard(
 }
 
 @Composable
-private fun QuestionCardSubQuestion(
-    question: SavedSubQuestion,
-    boards: List<BoardItem>,
-    imagePipeline: ImagePipeline?,
-    onConcept: ((SavedSubQuestion) -> Unit)?,
-) {
+private fun CompositionLocalProviderCompatRtl(content: @Composable () -> Unit) {
+    androidx.compose.runtime.CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) { content() }
+}
+
+@Composable
+private fun QuestionCardSubQuestion(question: SavedSubQuestion, boards: List<BoardItem>, imagePipeline: ImagePipeline?) {
     var showSolution by remember(question.id) { mutableStateOf(false) }
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            Text(
-                "${question.label?.letter?.let { "$it." } ?: "প্রশ্ন"}",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF1B1F2A),
-            )
-            RichLatexText(question.text, Modifier.weight(1f))
-        }
-        val hasSolution = question.orderedSolutionParts.isNotEmpty() || question.solutionParts.any(String::isNotBlank)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Surface(
-                modifier = Modifier.height(30.dp).clickable(enabled = hasSolution) { showSolution = !showSolution },
-                shape = RoundedCornerShape(7.dp),
-                color = if (hasSolution) Color(0xFFEFF6FF) else Color(0xFFF1F5F9),
-                border = BorderStroke(1.dp, if (hasSolution) Color(0xFFBFDBFE) else Color(0xFFE2E8F0)),
-            ) {
-                Box(Modifier.padding(horizontal = 9.dp), contentAlignment = Alignment.Center) {
-                    Text(
-                        if (showSolution) "সমাধান লুকাও" else "সমাধান দেখো",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (hasSolution) Color(0xFF1D4ED8) else LegacyMuted,
-                    )
-                }
-            }
-            if (question.boards.isNotEmpty()) BoardTagsFlow(question.boards, boards, Modifier.weight(1f), rightToLeft = false)
+    val hasSolution = question.orderedSolutionParts.isNotEmpty() || question.solutionParts.any(String::isNotBlank)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            "${question.label?.letter?.let { "$it." } ?: "প্রশ্ন"} · ${marksText(question.marks)} নম্বর",
+            style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        RichLatexText(question.text, Modifier.fillMaxWidth())
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Button(
+                onClick = { if (hasSolution) showSolution = !showSolution },
+                enabled = hasSolution,
+                modifier = Modifier.height(28.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (showSolution) (if (LocalDarkTheme.current) TypeCqCardTokens.RibbonDark else TypeCqCardTokens.RibbonLight) else (if (hasSolution) MaterialTheme.colorScheme.surface else Color(0xFFE5E7EB)),
+                    contentColor = if (showSolution) Color.White else if (hasSolution) Color(0xFF2A3BB0) else Color(0xFF9CA3AF),
+                    disabledContainerColor = Color(0xFFE5E7EB), disabledContentColor = Color(0xFF9CA3AF),
+                ),
+                border = BorderStroke(1.dp, if (hasSolution) Color(0xFFD5D9E2) else Color(0xFFD1D5DB)),
+            ) { Text(if (showSolution) "সমাধান লুকাও" else "সমাধান দেখো", fontSize = 12.sp, maxLines = 1) }
+            Box(Modifier.weight(1f)) { if (question.boards.isNotEmpty()) TypeCqBoardChips(question.boards, boards) }
         }
         if (showSolution && hasSolution) {
-            Column(
-                Modifier.fillMaxWidth().background(Color(0xFFF8FAFC), RoundedCornerShape(9.dp))
-                    .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(9.dp)).padding(10.dp),
-                verticalArrangement = Arrangement.spacedBy(7.dp),
-            ) {
-                Text("সমাধান:", style = MaterialTheme.typography.labelLarge, color = LegacyBlue, fontWeight = FontWeight.Bold)
+            Column(Modifier.fillMaxWidth().background(if (LocalDarkTheme.current) TypeCqCardTokens.SolutionPanelDark else TypeCqCardTokens.SolutionPanelLight, RoundedCornerShape(12.dp))
+                .border(1.dp, if (LocalDarkTheme.current) TypeCqCardTokens.SolutionPanelBorderDark else TypeCqCardTokens.SolutionPanelBorderLight, RoundedCornerShape(12.dp)).padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 val ordered = question.orderedSolutionParts.sortedBy { it.position }
-                if (ordered.isNotEmpty()) {
-                    ordered.forEach { part ->
-                        if (part.partType == "IMAGE") {
-                            val id = part.imageId
-                            if (id != null && imagePipeline != null) MediaFullImage(imagePipeline, id, ImageScope.TYPE_CQ)
-                            else Text("সমাধানের ছবি অনুপলব্ধ", style = MaterialTheme.typography.labelSmall)
-                        } else if (!part.textContent.isNullOrBlank()) RichLatexText(part.textContent, Modifier.fillMaxWidth())
-                    }
+                if (ordered.isNotEmpty()) ordered.forEach { part ->
+                    if (part.partType == "IMAGE") {
+                        val id = part.imageId
+                        if (id != null && imagePipeline != null) FullWidthTypeCqImage(imagePipeline, id)
+                        else Text("সমাধানের ছবি অনুপলব্ধ", style = MaterialTheme.typography.labelSmall)
+                    } else if (!part.textContent.isNullOrBlank()) RichLatexText(part.textContent, Modifier.fillMaxWidth())
                 } else question.solutionParts.forEach { RichLatexText(it, Modifier.fillMaxWidth()) }
             }
         }
-        if (onConcept != null) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(7.dp),
-            ) {
-                TextButton(
-                    onClick = { onConcept(question) },
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 9.dp, vertical = 1.dp),
-                ) { Text(if (question.conceptParts.isEmpty()) "+ Concept" else "Concept", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-            }
-        }
     }
 }
 
 @Composable
-private fun QuestionCategoryPicker(
-    categories: List<TypeCqQuestionCategoriesEntity>,
-    stateKey: String,
-    selectedIds: List<String>,
-    onSelectionChange: (String?) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    // Keep the single selected card category in sync while asynchronous Room writes are in flight.
-    // This picker reads only the new independent card-level value. Legacy per-sub-question links are not displayed here.
-    val cardSelection = selectedIds.firstOrNull()?.let(::listOf).orEmpty()
-    var workingSelection by remember(stateKey) { mutableStateOf(cardSelection) }
-    androidx.compose.runtime.LaunchedEffect(stateKey, selectedIds) {
-        workingSelection = selectedIds.firstOrNull()?.let(::listOf).orEmpty()
-    }
-    val selectedNames = categories.filter { it.categoryId in workingSelection }.map { it.name }
-    Box(modifier) {
-        Text(
-            text = if (selectedNames.isEmpty()) "ক্যাটাগরি ▾" else selectedNames.first() + " ▾",
-            modifier = Modifier.fillMaxWidth().background(Color(0xFFEEF2FF), RoundedCornerShape(8.dp))
-                .border(1.dp, Color(0xFFC7D2FE), RoundedCornerShape(8.dp)).clickable { expanded = true }
-                .padding(horizontal = 9.dp, vertical = 7.dp),
-            color = Color(0xFF2A3BB0), fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            if (categories.isEmpty()) {
-                DropdownMenuItem(text = { Text("কোনো ক্যাটাগরি নেই") }, onClick = { expanded = false }, enabled = false)
-            }
-            categories.filter { it.isArchived == 0L || it.categoryId in workingSelection }.forEach { category ->
-                val checked = category.categoryId in workingSelection
-                DropdownMenuItem(
-                    text = { Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = checked, onClick = null); Text(category.name) } },
-                    onClick = {
-                        // A radio choice remains selected when tapped again; clearing is a separate action.
-                        val next = listOf(category.categoryId)
-                        workingSelection = next
-                        onSelectionChange(next.singleOrNull())
-                        expanded = false
-                    },
-                )
-            }
-            if (workingSelection.isNotEmpty()) DropdownMenuItem(
-                text = { Text("ক্যাটাগরি সরান", color = MaterialTheme.colorScheme.error) },
-                onClick = { workingSelection = emptyList(); onSelectionChange(null); expanded = false },
-            )
-        }
-    }
-}
-
-/** A horizontally scrollable paper-category strip with a small visible scrollbar when it overflows. */
-@Composable
-private fun PaperCategoryStrip(categories: List<String>) {
-    val scroll = rememberScrollState()
-    var viewportWidth by remember { mutableStateOf(0) }
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().onSizeChanged { viewportWidth = it.width }.horizontalScroll(scroll),
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            categories.forEach { category ->
-                Text(
-                    category,
-                    modifier = Modifier.background(Color(0xFFECFDF5), RoundedCornerShape(7.dp))
-                        .border(1.dp, Color(0xFFBBF7D0), RoundedCornerShape(7.dp))
-                        .padding(horizontal = 7.dp, vertical = 3.dp),
-                    color = Color(0xFF166534), fontSize = 10.sp, fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                )
-            }
-        }
-        if (scroll.maxValue > 0 && viewportWidth > 0) {
-            Canvas(Modifier.fillMaxWidth().height(3.dp)) {
-                val viewport = viewportWidth.toFloat()
-                val total = viewport + scroll.maxValue.toFloat()
-                val thumbWidth = (size.width * (viewport / total)).coerceAtLeast(22.dp.toPx()).coerceAtMost(size.width)
-                val travel = (size.width - thumbWidth).coerceAtLeast(0f)
-                val left = if (scroll.maxValue == 0) 0f else travel * (scroll.value.toFloat() / scroll.maxValue.toFloat())
-                drawRoundRect(Color(0xFFE2E8F0), cornerRadius = CornerRadius(size.height / 2f))
-                drawRoundRect(
-                    Color(0xFF64748B),
-                    topLeft = Offset(left, 0f),
-                    size = Size(thumbWidth, size.height),
-                    cornerRadius = CornerRadius(size.height / 2f),
-                )
-            }
-        }
-    }
-}
-
-/** Board chips align to the right and wrap to the next line without a horizontal scrollbar. */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun BoardTagsFlow(
-    tags: List<BoardTag>,
-    boards: List<BoardItem>,
-    modifier: Modifier = Modifier,
-    rightToLeft: Boolean = true,
-) {
-    val content: @Composable () -> Unit = {
-        FlowRow(
-            modifier = modifier,
-            horizontalArrangement = Arrangement.Start,
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            groupBoardYears(tags).forEach { group ->
-                val name = group.boardCode
-                val years = group.years.joinToString(", ") { it.toBengali() }
-                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                    Text(
-                        "$name · $years",
-                        modifier = Modifier.padding(end = 4.dp).background(Color.White, RoundedCornerShape(6.dp))
-                            .border(1.dp, LegacyBorder, RoundedCornerShape(6.dp)).padding(horizontal = 7.dp, vertical = 3.dp),
-                        color = Color(0xFF1B1F2A), fontSize = 9.sp, fontWeight = FontWeight.SemiBold,
-                    )
-                }
-            }
-        }
-    }
-    if (rightToLeft) CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) { content() }
-    else content()
-}
-
-private sealed interface FullImageState {
-    data object Loading : FullImageState
-    data object Missing : FullImageState
-    data class Ready(val bitmap: Bitmap) : FullImageState
-}
-
-/** Full-width, uncropped card image. The stored asset is decoded at its available resolution. */
-@Composable
-internal fun MediaFullImage(pipeline: ImagePipeline, imageId: String, imageScope: ImageScope) {
-    val state by produceState<FullImageState>(FullImageState.Loading, imageId, imageScope) {
+private fun FullWidthTypeCqImage(pipeline: ImagePipeline, imageId: String) {
+    val configuration = LocalConfiguration.current
+    val targetWidthPx = (configuration.screenWidthDp * 2.5f).toInt().coerceAtMost(2048).coerceAtLeast(320)
+    val bitmap by produceState<Bitmap?>(null, imageId, targetWidthPx) {
         value = withContext(Dispatchers.IO) {
             try {
-                val file = pipeline.fileForImage(imageId, imageScope) ?: return@withContext FullImageState.Missing
-                val bitmap = BitmapFactory.decodeFile(file.absolutePath)
-                if (bitmap == null) FullImageState.Missing else FullImageState.Ready(bitmap)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                FullImageState.Missing
-            } catch (_: OutOfMemoryError) {
-                FullImageState.Missing
-            }
+                val file = pipeline.fileForImage(imageId, ImageScope.TYPE_CQ) ?: return@withContext null
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeFile(file.absolutePath, bounds)
+                if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@withContext null
+                var sample = 1
+                while (bounds.outWidth / (sample * 2) >= targetWidthPx) sample *= 2
+                BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply {
+                    inSampleSize = sample
+                    inPreferredConfig = Bitmap.Config.RGB_565
+                })
+            } catch (_: Exception) { null } catch (_: OutOfMemoryError) { null }
         }
     }
-    when (val current = state) {
-        FullImageState.Loading -> Box(Modifier.fillMaxWidth().height(80.dp).background(Color(0xFFF8FAFC)))
-        FullImageState.Missing -> Text("ছবি অনুপলব্ধ", style = MaterialTheme.typography.labelSmall, color = LegacyMuted)
-        is FullImageState.Ready -> Image(
-            bitmap = current.bitmap.asImageBitmap(),
-            contentDescription = "সংযুক্ত ছবি",
-            modifier = Modifier.fillMaxWidth().aspectRatio(current.bitmap.width.toFloat() / current.bitmap.height.toFloat())
-                .border(1.dp, LegacyBorder, RoundedCornerShape(8.dp)),
-            contentScale = ContentScale.Fit,
+    if (bitmap == null) {
+        Box(Modifier.fillMaxWidth().height(116.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp))
+            .border(1.dp, if (LocalDarkTheme.current) Color(0xFF475569) else Color(0xFFD5D9E2), RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+            Text("ছবি অনুপলব্ধ", color = LegacyMuted, fontSize = 12.sp)
+        }
+    } else {
+        val imageShape = RoundedCornerShape(12.dp)
+        Image(
+            bitmap!!.asImageBitmap(), contentDescription = "উদ্দীপকের ছবি",
+            modifier = Modifier.fillMaxWidth().clip(imageShape)
+                .background(if (LocalDarkTheme.current) MaterialTheme.colorScheme.surfaceVariant else Color.White)
+                .border(1.dp, if (LocalDarkTheme.current) Color(0xFF475569) else Color(0xFFD5D9E2), imageShape),
+            contentScale = ContentScale.FillWidth,
         )
     }
 }
 
-/** Yellow rating badge matching the legacy Caa card ribbon. */
 @Composable
-internal fun RatingBadge(rating: Int) {
+private fun CategoryPickerDialog(
+    categories: List<TypeCqQuestionCategoriesEntity>,
+    selectedIds: List<String>,
+    title: String,
+    onDismiss: () -> Unit,
+    onSave: (List<String>) -> Unit,
+) {
+    var selected by remember(selectedIds) { mutableStateOf(selectedIds.toSet()) }
+    val active = remember(categories, selectedIds) { categories.filter { it.isArchived == 0L || it.categoryId in selectedIds } }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(Modifier.height(320.dp).verticalScroll(rememberScrollState())) {
+                active.forEach { category ->
+                    Row(Modifier.fillMaxWidth().clickable {
+                        selected = if (category.categoryId in selected) selected - category.categoryId else selected + category.categoryId
+                        onSave(active.map { it.categoryId }.filter { it in selected })
+                    }, verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = category.categoryId in selected, onCheckedChange = { checked ->
+                            selected = if (checked) selected + category.categoryId else selected - category.categoryId
+                            onSave(active.map { it.categoryId }.filter { it in selected })
+                        })
+                        Text(category.name, fontSize = 14.sp)
+                    }
+                }
+                if (active.isEmpty()) Text("কোনো সক্রিয় ক্যাটাগরি নেই।")
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("বন্ধ") } },
+    )
+}
+
+@Composable
+internal fun RatingBadge(rating: Int, compact: Boolean = false) {
     val dark = LocalDarkTheme.current
     val background = if (dark) Color(0xFF422006) else Color(0xFFFEF9C3)
     val textColor = if (dark) Color(0xFFFDE68A) else Color(0xFF713F12)
     val border = if (dark) Color(0xFF713F12) else Color(0xFFFDE047)
-    val shape = RoundedCornerShape(7.dp)
-    Text(
-        ratingText(rating),
-        modifier = Modifier.background(background, shape).border(1.dp, border, shape)
-            .padding(horizontal = 8.dp, vertical = 3.dp),
-        color = textColor, fontWeight = FontWeight.Bold, fontSize = 10.sp,
-    )
+    val shape = RoundedCornerShape(6.dp)
+    Text(ratingText(rating), modifier = Modifier.background(background, shape).border(1.dp, border, shape)
+        .padding(horizontal = if (compact) 5.dp else 8.dp, vertical = 1.dp),
+        color = textColor, fontWeight = FontWeight.SemiBold, fontSize = if (compact) 10.sp else 12.sp)
 }

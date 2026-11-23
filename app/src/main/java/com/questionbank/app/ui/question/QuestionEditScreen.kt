@@ -64,7 +64,6 @@ fun QuestionEditScreen(
     var stimulusPreviewOpen by rememberSaveable { mutableStateOf(false) }
     var sortConfirmed by rememberSaveable { mutableStateOf(false) }
     var pendingDeleteLabel by remember { mutableStateOf<com.questionbank.app.domain.question.CqLabel?>(null) }
-    var conceptEditorLabel by remember { mutableStateOf<com.questionbank.app.domain.question.CqLabel?>(null) }
     val invalidMarkFields = remember { mutableStateListOf<Int>() }
     val imageImportTracker = remember { ImageImportTracker() }
     val catalog by viewModel.boardCatalog.collectAsState()
@@ -78,19 +77,6 @@ fun QuestionEditScreen(
         }
     }
     BackHandler(enabled = needsAsk) { askDiscard = true }
-
-    conceptEditorLabel?.let { label ->
-        val questionId = viewModel.conceptQuestionId(label)
-        TypeCqConceptComposerWindow(
-            questionText = viewModel.texts.getOrNull(label.sortOrder - 1).orEmpty(),
-            initialParts = viewModel.conceptParts(label),
-            imagePipeline = imagePipeline,
-            onDismiss = { conceptEditorLabel = null },
-            onSave = { parts -> viewModel.persistConcept(label, parts) },
-            title = if (questionId == null) "Concept যোগ করুন" else "Concept",
-            deferAcceptedImagesToParentDraft = questionId == null,
-        )
-    }
 
     pendingDeleteLabel?.let { label ->
         AlertDialog(
@@ -263,27 +249,7 @@ fun QuestionEditScreen(
                         onValueChange = viewModel::changeReferenceText,
                         enabled = !viewModel.saving,
                     )
-                    EdCategoryDropdown(
-                        categories = categories.map { EdCategoryOption(it.categoryId, it.name, it.isArchived != 0L) },
-                        selectedIds = viewModel.cardCategoryId?.let(::listOf).orEmpty(),
-                        enabled = !viewModel.saving,
-                        onToggle = { categoryId, selected -> viewModel.changeGroupCategory(categoryId.takeIf { selected }) },
-                        onAddCategory = viewModel::addCategory,
-                        onManageCategories = onManageCategories,
-                        singleSelection = true,
-                    )
                     }
-                }
-                if (!viewModel.hasStimulus) {
-                    EdCategoryDropdown(
-                        categories = categories.map { EdCategoryOption(it.categoryId, it.name, it.isArchived != 0L) },
-                        selectedIds = viewModel.cardCategoryId?.let(::listOf).orEmpty(),  
-                        enabled = !viewModel.saving,
-                        onToggle = { categoryId, selected -> viewModel.changeGroupCategory(categoryId.takeIf { selected }) },
-                        onAddCategory = viewModel::addCategory,
-                        onManageCategories = onManageCategories,
-                        singleSelection = true,
-                    )
                 }
                 if (viewModel.hasStimulus && viewModel.editorMode == EditorMode.FULL) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -496,15 +462,14 @@ fun QuestionEditScreen(
                         }
                     }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    if (viewModel.editorMode == EditorMode.FULL) {
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Concept", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-                            TextButton(
-                                onClick = { conceptEditorLabel = label },
-                                enabled = !viewModel.saving && viewModel.canEditConcept(label),
-                            ) { Text(if (viewModel.conceptParts(label).isEmpty()) "+ Concept" else "Concept · Edit") }
-                        }
-                    }
+                    EdCategoryDropdown(
+                        categories = categories.map { EdCategoryOption(it.categoryId, it.name, it.isArchived != 0L) },
+                        selectedIds = viewModel.categoryIdsByLabel[i],
+                        enabled = !viewModel.saving,
+                        onToggle = { categoryId, selected -> viewModel.changeCategory(label, categoryId, selected) },
+                        onAddCategory = viewModel::addCategory,
+                        onManageCategories = onManageCategories,
+                    )
                     }
                 }
 

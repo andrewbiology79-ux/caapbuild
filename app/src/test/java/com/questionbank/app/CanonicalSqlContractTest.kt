@@ -11,7 +11,7 @@ class CanonicalSqlContractTest {
     @Test
     fun canonicalInventoryMatchesReviewedBaseline() {
         val sql = javaClass.classLoader!!.getResource("QuestionBank_SQLite_Schema_v1_1.sql")!!.readText()
-        assertEquals(35, Regex("CREATE TABLE IF NOT EXISTS", RegexOption.IGNORE_CASE).findAll(sql).count())
+        assertEquals(38, Regex("CREATE TABLE IF NOT EXISTS", RegexOption.IGNORE_CASE).findAll(sql).count())
         assertEquals(2, Regex("CREATE VIRTUAL TABLE", RegexOption.IGNORE_CASE).findAll(sql).count())
         assertEquals(17, Regex("CREATE TRIGGER", RegexOption.IGNORE_CASE).findAll(sql).count())
         assertEquals(48, Regex("\\bCHECK\\s*\\(", RegexOption.IGNORE_CASE).findAll(sql).count())
@@ -64,7 +64,7 @@ class CanonicalSqlContractTest {
             connection.createStatement().use { st ->
                 st.executeQuery("SELECT COUNT(*) FROM sqlite_master WHERE type='trigger'").use { rs ->
                     assertTrue(rs.next())
-                    assertEquals(17 + 46, rs.getInt(1))
+                    assertEquals(21 + 46, rs.getInt(1))
                 }
                 st.executeQuery("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('type_cq_question_fts','chapter_cq_question_fts')").use { rs ->
                     assertTrue(rs.next())
@@ -164,7 +164,7 @@ class CanonicalSqlContractTest {
                 }
                 st.executeQuery("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").use { rs ->
                     assertTrue(rs.next())
-                    assertEquals(47, rs.getInt(1))
+                    assertEquals(50, rs.getInt(1))
                 }
             }
             // Exercise a valid Type_CQ insert and verify its FTS trigger.

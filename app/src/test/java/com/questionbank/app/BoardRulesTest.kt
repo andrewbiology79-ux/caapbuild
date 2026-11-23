@@ -69,7 +69,7 @@ class BoardRulesTest {
     }
 
     @Test
-    fun boardYearsAreGroupedAndSortedNewestFirstForCardDisplay() {
+    fun boardYearsAreGroupedByBoardAndSortedForCommaSeparatedDisplay() {
         val groups = groupBoardYears(
             listOf(
                 BoardTag("DHA", 2025),
@@ -80,7 +80,7 @@ class BoardRulesTest {
         )
         assertEquals(2, groups.size)
         assertEquals("DHA", groups[0].boardCode)
-        assertEquals(listOf(2025, 2023), groups[0].years)
+        assertEquals(listOf(2023, 2025), groups[0].years)
         assertEquals("RAJ", groups[1].boardCode)
         assertEquals(listOf(2024), groups[1].years)
     }

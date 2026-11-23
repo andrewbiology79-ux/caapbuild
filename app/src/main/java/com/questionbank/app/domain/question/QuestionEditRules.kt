@@ -149,8 +149,7 @@ object QuestionEditRules {
         } == true
         if (newStimulus == null && newReference == null && updates.isEmpty() && adds.isEmpty() && stimulusRating == null && ratingUpdates.isEmpty() &&
             stimulusBoards == null && boardUpdates.isEmpty() && metadataUpdates.isEmpty() && solutionUpdates.isEmpty() &&
-            deleteIds.isEmpty() && categoryUpdates.isEmpty() && !stimulusImagesChanged && !mixedSolutionsChanged &&
-            !(input.changeCardCategory && input.cardCategoryId != original.cardCategoryId)
+            deleteIds.isEmpty() && categoryUpdates.isEmpty() && !stimulusImagesChanged && !mixedSolutionsChanged
         ) return Checked.NoChange
         return Checked.Ok(newStimulus, updates, adds, stimulusRating, ratingUpdates, addRatings, stimulusBoards, boardUpdates, addBoards, newReference, metadataUpdates, solutionUpdates, deleteIds, categoryUpdates, addCategories)
     }

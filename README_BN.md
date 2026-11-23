@@ -1,8 +1,9 @@
-# সর্বশেষ প্রজেক্ট আপডেট — Type CQ Card Category / Concept / Compact UI (২৩ নভেম্বর ২০২৬)
+# সর্বশেষ আপডেট — Type CQ Window (23 Nov 2026)
 
-এই সোর্স প্যাকেজে Type CQ কার্ড-স্তরের একক Category selector, Minimum ও Full—দুই Editor-এ Reference-এর নিচে Category, Full-screen Concept preview/editor, TEXT/IMAGE Concept draft/save recovery, Filter-এর মধ্যে Board/Year/Category/Rating/Question Type ও Sorting, নতুন Search/Filter icon, compact header/tab, card display cleanup এবং code + full year newest-first Board chips অন্তর্ভুক্ত। Paper Category আলাদা রাখা হয়েছে; Reference/Short Answer-এর সংরক্ষিত ডেটা মুছে ফেলা হয়নি। নতুন card-category field পুরোনো per-question category link থেকে আলাদা এবং শুরুতে NULL থাকে; পুরোনো category data অক্ষত থাকে। Room Database version 4 (3→4 additive migration)। Version: **0.2.50-typecq-card-category (code 55)**। Build এখনো Gradle 8.14.3 download DNS সমস্যায় compile হয়নি; syntax parse ও SQLite migration simulation সম্পন্ন। বিস্তারিত `CHANGELOG_TYPE_CQ_BN.md`, `BUILD_STATUS.txt` এবং `PROJECT_PLAN_v1_73_TYPECQ_CARD_CATEGORY_SEPARATION.txt`।
+এই সোর্স প্যাকেজে Type CQ উইন্ডোর Change List অনুযায়ী নতুন card layout, breadcrumb ও card count, `+QA`, category separation, board/year chips, full-width images, reference dialog, solution controls, Concept preview/editor, all-concepts screen, clipboard Cut/Copy/Paste, Paste Before/After এবং independent filter/search যুক্ত হয়েছে। Room database v1→v2 migration-এ stimulus-category link ও concept table যোগ হয়েছে। ব্যবহারকারীর নির্দেশ অনুযায়ী compact header/navigation শুধু Type CQ-তে; কোনো solution না থাকলে button disabled grey; folder-add item disabled; app-to-folder sync নেই। Version: **0.2.46-typecq-window (code 51)**। বিস্তারিত `CHANGELOG_TYPECQ_WINDOW_BN.md` ও `TYPECQ_WINDOW_IMPLEMENTATION_REPORT_BN.md`।
 
-**Build limitation:** Kotlin PSI syntax parse (সব ১৬৮টি app Kotlin ফাইল, ০ syntax error) এবং SQLite Room 3→4 migration simulation PASS। Gradle wrapper 8.14.3 download করতে `services.gradle.org` DNS `UnknownHostException` হওয়ায় Android compile/test/APK/device UI এখনো verified নয়।
+**যাচাই-সীমাবদ্ধতা:** canonical SQL ও Room schema structure, SQLite integrity এবং foreign-key check সফল। Gradle 8.14.3 ডাউনলোডে `services.gradle.org` DNS/network ব্যর্থ হওয়ায় Android compile/KSP, Gradle tests, APK build ও device UI tests সম্পন্ন হয়নি। এটি source-updated, build-unverified package।
+
 ---
 
 # সর্বশেষ আপডেট — Profile Category Management (22 Nov 2026)
@@ -70,10 +71,3 @@ PROFILE CATEGORY RECHECK (22 Nov 2026)
 - Restore repair merges both the canonical spelling and the previously introduced long-ঈ spelling, including whitespace variants.
 - The fixed folder displays the same row menu, with rename/delete disabled.
 - Android Gradle tests remain unrun because Gradle 8.14.3 cannot be downloaded in this environment (DNS unavailable).
-
-## Type CQ Window আপডেট (v0.2.47)
-- Type CQ-তে Home → Subject → Chapter → Type breadcrumb, selected/visible/total card count এবং ছোট, semi-transparent Add Question action।
-- প্রশ্ন কার্ডে old Caa-ধাঁচের নীল ribbon, serial/checkbox/rating/kebab; Paper Category chip, Board/year tags, uncropped full-width stimulus images এবং expandable solutions।
-- পুরো card-এর জন্য Question Category dropdown; Concept প্রতিটি sub-question-এর জন্য আলাদা করে text/image আকারে সংরক্ষিত হয়। Concept editor-এ Minimum/Full mode, mixed text/image parts, Math toolbar ও KaTeX preview রয়েছে।
-- Type menu-তে filtered Select All, Deselect, Copy, Cut, Paste, Delete ও সব Concept দেখুন। নতুন প্রশ্ন পুরোনো card order বজায় রেখে নিচে যোগ হয়।
-- সম্পূর্ণ পরিবর্তন ও পরীক্ষা-ফল `CHANGELOG_TYPE_CQ_BN.md`-এ লেখা আছে। Android Gradle build এই পরিবেশে চালানো যায়নি, কারণ Gradle 8.14.3 distribution server DNS সংযোগ ব্যর্থ হয়েছে; তাই APK/device UI verified নয়।

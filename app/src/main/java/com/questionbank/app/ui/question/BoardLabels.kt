@@ -11,7 +11,8 @@ import com.questionbank.app.ui.format.toBengali
 
 /** "ঢাকা · ২০১৯". A board that is not in [boards] (should not happen, the catalog never loses a board) shows its code. */
 fun tagText(tag: BoardTag, boards: List<BoardItem>): String {
-    return "${tag.boardCode} · ${tag.year.toBengali()}"
+    val name = boards.firstOrNull { it.code == tag.boardCode }?.displayName ?: tag.boardCode
+    return "$name · ${tag.year.toBengali()}"
 }
 
 /**
