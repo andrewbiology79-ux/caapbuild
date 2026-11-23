@@ -147,7 +147,7 @@ fun QuestionCard(
                     categories = categories,
                     stateKey = QuestionGroupKey.of(group).orEmpty(),
                     selectedIds = group.cardCategoryId?.let(::listOf).orEmpty(),
-                    onSelectionChange = { onQuestionCategoryChange(QuestionGroupKey.of(group).orEmpty(), it.singleOrNull()) },
+                    onSelectionChange = { onQuestionCategoryChange(QuestionGroupKey.of(group).orEmpty(), it) },
                     modifier = Modifier.width(104.dp),
                 )
             }
