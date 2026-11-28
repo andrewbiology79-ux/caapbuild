@@ -1,3 +1,4 @@
+- ReviewFix7: board chips "DHA'26" (English), sub-question letter column + text beside it, marks label removed from card. Version 0.2.50-card-legacy-look / code 55. Not compiled / not tested.
 - ReviewFix6: android-instrumented.yml now also runs automatically on push/pull_request (emulator, benchmark 20000 rows). Not run here.
 - ReviewFix6: Type CQ card UI fixes (rating "N★", solution-row chip alignment, paper-category/board row layout) + Profile source names updated. Version 0.2.49-card-ui-fix / code 54. Not compiled / not tested.
 QUESTIONBANK — PROFILE SOURCE-FILE INFO (28 Nov 2026)

@@ -102,3 +102,9 @@
 - Status: SOURCE EDIT — NOT COMPILED / NOT TESTED / NOT DEVICE-VERIFIED।
 - Profile > অ্যাপ তথ্য: ZIP নাম QuestionBank_Step3_StimulusCategories_ReviewFix6_Source.zip, প্ল্যান টেক্সট নাম QuestionBank_TypeCQ_Full_Plan_Updated_2026-11-28_ReviewFix6_BN.txt। Version 0.2.49-card-ui-fix / versionCode 54।
 - GitHub Actions: android-instrumented.yml এখন push/pull_request-এও স্বয়ংক্রিয় চলে (হাতে চালানোও থাকল)। ডিফল্ট benchmark ২০০০০ সারি, API 34; একই branch-এ নতুন push এলে পুরোনো চলমান run বাতিল (concurrency)।
+
+## ReviewFix7 — পুরোনো অ্যাপের মতো বোর্ড নাম ও দাগের বিন্যাস (২৮ নভেম্বর ২০২৬)
+- বোর্ড চিপ: ইংরেজিতে কোড + apostrophe + সালের ২ অঙ্ক (যেমন DHA'26, BB'23); আগে "DHA ২৬" ছিল। Type CQ কার্ড (উপরের সারি ও সমাধান-সারি) এবং একই TagChipRow ব্যবহারকারী Chapter CQ কার্ডে প্রযোজ্য।
+- দাগ: "গ. · ৩ নম্বর" শিরোনাম বাদ; "গ." বামের সরু কলামে, প্রশ্নের লেখা ঠিক তার পাশ থেকে শুরু (পুরোনো অ্যাপের মতো)। কার্ডে নম্বর দেখানো হয় না (ডাটা অক্ষত)।
+- Profile অ্যাপ তথ্য: ZIP/প্ল্যান নাম ReviewFix7; Version 0.2.50-card-legacy-look / code 55।
+- Status: SOURCE EDIT — NOT COMPILED / NOT TESTED / NOT DEVICE-VERIFIED।

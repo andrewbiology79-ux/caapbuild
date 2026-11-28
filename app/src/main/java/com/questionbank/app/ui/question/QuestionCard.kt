@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -579,17 +580,26 @@ private fun QuestionCardSubQuestion(
     var showSolution by remember(question.id) { mutableStateOf(false) }
     val hasSolution = question.orderedSolutionParts.isNotEmpty() || question.solutionParts.any(String::isNotBlank)
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        Text(
-            "${question.label?.letter?.let { "$it." } ?: "প্রশ্ন"} · ${marksText(question.marks)} নম্বর",
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Bold,
-            color = if (dark) QuestionCardPalette.DarkBoardText else QuestionCardPalette.LightBoardText,
-        )
-        RichLatexText(
-            question.text,
-            Modifier.fillMaxWidth(),
-            color = if (dark) QuestionCardPalette.DarkBoardText else QuestionCardPalette.LightBoardText,
-        )
+        // Legacy layout: the letter ("গ.") sits in a narrow left column and the question text starts right beside it;
+        // wrapped lines stay in the text column. The marks ("৩ নম্বর") are not shown on the card.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Text(
+                question.label?.letter?.let { "$it." } ?: "প্রশ্ন",
+                modifier = Modifier.widthIn(min = 22.dp),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = if (dark) QuestionCardPalette.DarkBoardText else QuestionCardPalette.LightBoardText,
+            )
+            RichLatexText(
+                question.text,
+                Modifier.weight(1f),
+                color = if (dark) QuestionCardPalette.DarkBoardText else QuestionCardPalette.LightBoardText,
+            )
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),

@@ -41,5 +41,5 @@ fun sortedCardBoardTags(tags: List<BoardTag>, boards: List<BoardItem>): List<Boa
 }
 
 
-/** Compact chip label required by the Type CQ card ribbon, e.g. "DHA ২৬". */
-fun cardBoardTagText(tag: BoardTag): String = "${tag.boardCode} ${(tag.year % 100).toBengali()}"
+/** Compact chip label like the legacy app: board code, apostrophe, two-digit year in English digits, e.g. "DHA'26". */
+fun cardBoardTagText(tag: BoardTag): String = "${tag.boardCode}'${(tag.year % 100).toString().padStart(2, '0')}"

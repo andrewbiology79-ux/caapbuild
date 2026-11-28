@@ -102,7 +102,8 @@ class BoardPickerLogicTest {
             listOf(BoardTag("DHA", 2026), BoardTag("RAJ", 2026), BoardTag("CTG", 2025), BoardTag("DHA", 2024)),
             ordered,
         )
-        assertEquals("DHA ২৬", cardBoardTagText(BoardTag("DHA", 2026)))
+        assertEquals("DHA'26", cardBoardTagText(BoardTag("DHA", 2026)))
+        assertEquals("BB'05", cardBoardTagText(BoardTag("BB", 2005)))
     }
 
     @Test
