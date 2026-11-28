@@ -1,0 +1,287 @@
+QuestionBank — Step 3 / B2
+তৃতীয় দফার Deep Static Code Review রিপোর্ট
+============================================================
+পর্যালোচনার তারিখ: ২৮ নভেম্বর ২০২৬
+পর্যালোচিত ফাইল: QuestionBank_Step3_StimulusCategories_MigrationFix_Source.zip
+Source version: 0.2.46-stimulus-categories (versionCode 51)
+Room database version: 2
+
+১. এই দফায় কীভাবে পুনরায় পরীক্ষা করা হয়েছে
+------------------------------------------------------------
+- ZIP-এর CRC/integrity আবার পরীক্ষা করা হয়েছে; archive entry-গুলো readable।
+- ZIP clean temporary directory-তে extract করে source files সরাসরি পর্যালোচনা করা হয়েছে।
+- Category Entity, DAO, Repository, ViewModel, QuestionCard Compose state,
+  category catalog observer, Room migration, canonical SQL, backup/restore ও tests
+  আবার trace করা হয়েছে।
+- v1.1 SQL + 1→2 migration Python SQLite-এ replay করা হয়েছে।
+- Reassign-এর query sequence-ও SQLite-এ চালিয়ে parent updated_at অপরিবর্তিত থাকে
+  কি না এবং stale UI থেকে empty category list save করলে target link মুছে যায় কি না
+  যাচাই করা হয়েছে।
+- Gradle/Gradle wrapper চালানো হয়নি; কোনো Gradle বা Android SDK download করা হয়নি।
+
+সীমা:
+এটি সোর্স-ভিত্তিক review। Kotlin/Room compile, JUnit, Android instrumentation,
+Compose UI বা ফোনে runtime test করা হয়নি।
+
+২. নতুন করে নিশ্চিত হওয়া মূল ফল
+------------------------------------------------------------
+আগের review-এর প্রধান defect এখনো source ZIP-এ আছে। এটি শুধু সম্ভাব্য UI refresh issue
+নয়; নির্দিষ্ট user interaction-এ সদ্য reassign করা category link মুছে যেতে পারে।
+
+[Finding 1] Reassign-এর পর observed card data refresh হয় না — HIGH / P1
+
+ফাইল ও অবস্থান:
+- app/src/main/java/com/questionbank/app/data/local/dao/CategoryDataDao.kt: 71–79
+- app/src/main/java/com/questionbank/app/data/repository/TypeCqQuestionRepositoryImpl.kt: 75–84
+- app/src/main/java/com/questionbank/app/ui/question/QuestionListViewModel.kt: 61–63, 71–72
+- app/src/main/java/com/questionbank/app/ui/question/QuestionCard.kt: 86–99, 182–196
+- app/src/main/java/com/questionbank/app/data/local/dao/TypeCqQuestionDao.kt: 205–206, 290, 305
+
+কারণ:
+1) reassignAndArchiveType() প্রশ্ন ও উদ্দীপকের source category link target category-তে কপি
+   করে, source link মুছে এবং source category archive করে।
+2) এই transaction-এ সংশ্লিষ্ট type_cq_questions.updated_at বা
+   type_cq_stimuli.updated_at পরিবর্তন করা হয় না।
+3) observeGroups() মূলত dao.observeByTopic() এবং paper usage Flow combine করে।
+   observeByTopic() category-link table-কে SELECT করে না; তাই শুধু category-link table
+   পরিবর্তনে Room ওই Flow-কে invalidate করার কথা নয়।
+4) QuestionCard-এর selectedCategoryIds remember state-এ থাকে। group-এর নতুন
+   stimulusCategoryIds/categoryIds না এলে categoryCatalog update হলেও selected ID
+   পুরোনো থাকতে পারে।
+
+বাস্তব data-loss sequence:
+- কার্ডে A category নির্বাচিত আছে।
+- Profile > Type CQ Category থেকে A-কে B-তে Reassign করা হয়।
+- Database-এ A link মুছে B link তৈরি হয় এবং A archive হয়।
+- সক্রিয়/পুনরুদ্ধার করা কার্ডের Compose state-এ A পুরোনো selected ID হিসেবে রয়ে যায়।
+- ব্যবহারকারী পুরোনো A chip uncheck করেন। UI categoryIds = [] পাঠায়।
+- replaceCardCategories() empty list-কে বৈধ ধরে বর্তমান link delete করে।
+- ফলে Database-এর সদ্য reassign করা B link-টিও মুছে যায়।
+
+SQLite replay-এ দেখা ফল:
+- Reassign-এর পরে question.updated_at ও stimulus.updated_at আগের মানেই ছিল।
+- Target category link ঠিকমতো তৈরি হয়েছিল।
+- stale chip সরানোর মতো empty list কার্যকর করলে stimulus-এর target link-ও মুছে গেছে।
+- PRAGMA foreign_key_check-এ violation পাওয়া যায়নি; অর্থাৎ এটি FK corruption নয়,
+  UI/observer consistency থেকে সৃষ্ট বৈধ SQL data deletion।
+
+সংশোধন:
+বিকল্প A — ছোট ও সরাসরি:
+- CategoryDataDao.reassignAndArchiveType() transaction-এর মধ্যে source question links
+  মুছে ফেলার আগে ওই category-তে যুক্ত type_cq_questions row-এর updated_at touch করুন।
+- একইভাবে source stimulus links মুছে ফেলার আগে সংশ্লিষ্ট type_cq_stimuli row-এর
+  updated_at touch করুন।
+- copy/delete/archive একই Room transaction-এ রাখুন।
+- এতে observeByTopic() invalidate হয়ে tagsOfTopic() আবার চালাবে এবং target ID নতুন
+  SavedGroup-এ আসবে।
+
+বিকল্প B — অধিক নির্ভরযোগ্য reactive design:
+- topic-ভিত্তিক category-link Flow সরাসরি observeGroups() combine-এ যুক্ত করুন।
+- এতে parent row touch-এর ওপর card metadata refresh নির্ভর করবে না।
+
+অবশ্যই যোগ করতে হবে এমন regression test:
+- observeGroups(topicId) দীর্ঘসময় collect করুন।
+- stimulus category A set করে collector চালু রাখুন।
+- A→B reassign করুন।
+- পরের emission-এ group.stimulusCategoryIds == [B] assert করুন।
+- single-question card-এর question category-র জন্যও একই পরীক্ষা করুন।
+- stale A selection থেকে user uncheck করলে B link যেন অক্ষত থাকে—এটি Compose/UI test-এ যাচাই করুন।
+
+৩. নতুন করে শনাক্ত হওয়া test coverage gap
+------------------------------------------------------------
+
+[Finding 2] Reassign test DB rows পরীক্ষা করে, live Flow/Compose state পরীক্ষা করে না — MEDIUM
+
+ফাইল:
+- app/src/androidTest/java/com/questionbank/app/TypeCqQuestionRepositoryTest.kt: 184–206
+
+বর্তমান reassigningTypeCategoryMovesBothQuestionAndStimulusLinksBeforeArchive() test:
+- source link delete হয়েছে কি না দেখে;
+- target question/stimulus link তৈরি হয়েছে কি না দেখে;
+- category archived হয়েছে কি না দেখে।
+
+কিন্তু এটি observeGroups() collector চালু রেখে reassign-এর পর নতুন Flow emission আসে কি না
+দেখে না। QuestionCard-এর remember state/optimistic selection-ও পরীক্ষা করে না।
+ফলে Finding 1-এর মূল ব্যর্থতা বর্তমান test দ্বারা ধরা পড়ে না।
+
+এটি Finding 1 থেকে আলাদা একটি runtime defect নয়; defect-টি আটকানোর regression test অনুপস্থিত।
+
+[Finding 3] Backup/restore test নতুন stimulus-category rows round-trip করে না — MEDIUM / TEST GAP
+
+ফাইল:
+- app/src/androidTest/java/com/questionbank/app/BackupRestoreTest.kt: 77–95, 108–156,
+  205–235
+
+বর্তমান test-এ database snapshot, FTS rows ও restore swap পরীক্ষা করা হয়েছে। কিন্তু test data-তে
+নতুন type_cq_stimulus_category_links row তৈরি করা হয় না এবং snapshot/restore-এর পর ওই row
+অক্ষত আছে কি না assert করা হয় না।
+
+DatabaseSnapshot পুরো SQLite database copy করে বলে নতুন টেবিলটি স্বয়ংক্রিয়ভাবে অন্তর্ভুক্ত
+হওয়ার কথা; source review-এ backup implementation থেকে আলাদা করে link বাদ পড়ার প্রমাণ পাইনি।
+তবে নতুন table-টির backup/restore round-trip regression test অনুপস্থিত।
+
+প্রস্তাবিত test:
+- একটি stimulus-এ একাধিক category link দিন;
+- DatabaseSnapshot.create() চালান;
+- snapshot copy Room দিয়ে open করুন;
+- নতুন relation table-এ exact stimulus_id/category_id/assigned_at row যাচাই করুন;
+- RestoreSwap-এর পর একই assert পুনরাবৃত্তি করুন।
+
+৪. Canonical SQL এবং schema-test বিষয়ে আরও নির্দিষ্ট পর্যবেক্ষণ
+------------------------------------------------------------
+
+[Finding 4] Canonical v1.2 SQL-এর index name এখনো Room migration থেকে আলাদা — LOW
+
+ফাইল ও অবস্থান:
+- app/src/main/java/com/questionbank/app/data/local/entity/TypeCqStimulusCategoryLinksEntity.kt: 27
+- app/src/main/java/com/questionbank/app/data/local/QuestionBankDatabase.kt: 120–123
+- database/migrations/1_to_2_stimulus_category_links.sql: 11–12
+- database/QuestionBank_SQLite_Schema_v1_2.sql: 40–41
+
+Room Entity-এর unnamed index এবং Kotlin/standalone migration-এর নাম:
+index_type_cq_stimulus_category_links_category_id_stimulus_id
+
+Canonical v1.2 SQL-এ এখনো:
+idx_type_cq_stimulus_category_links_category
+
+এটি বর্তমান Room migration crash-এর প্রমাণ নয়—সংশোধিত Kotlin migration-এ সঠিক নাম আছে।
+কিন্তু canonical schema script চালালে অন্য নামের index তৈরি হয়। একই schema-র দুই source-এ
+এই naming drift সরানো বা স্পষ্টভাবে documented করা উচিত।
+
+[Finding 5] বর্তমান parity test index name mismatch ধরতে পারে না — LOW / TEST DESIGN
+
+ফাইল:
+- app/src/test/java/com/questionbank/app/RoomSchemaParityTest.kt: 93–107, 121–122
+- app/src/test/java/com/questionbank/app/MigrationIndexNameTest.kt: 16–27
+
+RoomSchemaParityTest SQL ও Room index-এর column list এবং uniqueness তুলনা করে; index name
+তুলনা করে না। MigrationIndexNameTest Kotlin migration ও standalone migration SQL-এ expected
+name আছে কি না পরীক্ষা করে, কিন্তু canonical v1.2 SQL পরীক্ষা করে না।
+তাই Finding 4-এর drift test পাস করেও থেকে যেতে পারে।
+
+সংশোধন:
+- canonical SQL-এ Room-এর একই index name ব্যবহার করুন; এবং
+- schema-contract test-এ নতুন relation index-এর name-ও assert করুন; অথবা naming convention
+  আলাদা হলে তা test ও documentation-এ স্পষ্টভাবে নির্ধারণ করুন।
+
+৫. আগের review থেকে এখনো খোলা Release/Compatibility blocker
+------------------------------------------------------------
+
+[Finding 6] Room schema version 2 export JSON ZIP-এ নেই — MEDIUM / RELEASE GATE
+
+ফাইল:
+- app/schemas/com.questionbank.app.data.local.QuestionBankDatabase/1.json আছে;
+- app/schemas/com.questionbank.app.data.local.QuestionBankDatabase/2.json নেই;
+- app/src/test/java/com/questionbank/app/RoomSchemaParityTest.kt: 135–139, 27–35
+
+KSP configuration schemaLocation সেট করে, তাই build-এ 2.json generate হতে পারে। কিন্তু এই ZIP-এ
+2.json নেই; ফলে প্রদত্ত artifact থেকে v2 Room schema independently inspect/compare করা যায় না।
+এটি নিজে compile failure প্রমাণ করে না, তবে schema export commit না করা পর্যন্ত source package
+অসম্পূর্ণ।
+
+[Finding 7] প্রকৃত Room 1→2 migration instrumentation test নেই — MEDIUM / RELEASE GATE
+
+এই ZIP-এ MigrationIndexNameTest string/source পরীক্ষা করে। CanonicalSqlContractTest standalone
+SQL migration চালায়, কিন্তু Room MigrationTestHelper দিয়ে v1 Room DB খুলে বাস্তব
+MIGRATION_1_2 চালিয়ে Room schema validation সম্পন্ন হয় কি না তা পরীক্ষা করে না।
+
+প্রস্তাবিত test-এ নিশ্চিত করতে হবে:
+- version 1 Room database fixture তৈরি;
+- representative category/question/stimulus data রাখা;
+- বাস্তব MIGRATION_1_2 প্রয়োগ;
+- version 2 Room database open ও validation সফল;
+- পুরোনো question-category rows অক্ষত;
+- নতুন table-এর FK/index সঠিক;
+- foreign_key_check শূন্য।
+
+[Finding 8] v1 backup v2 app-এ Restore করা যাবে না — MEDIUM / DATA-RECOVERY LIMITATION
+
+ফাইল:
+- app/src/main/java/com/questionbank/app/data/backup/BackupInspector.kt: 35–40
+- app/src/main/java/com/questionbank/app/data/backup/BackupService.kt: 228–238
+- CHANGELOG_STIMULUS_CATEGORIES_BN.md: 33–36
+
+Restore-এর আগে backup-এর Room identity_hash বর্তমান live database-এর hash-এর সঙ্গে হুবহু
+মেলানো হয়। তাই পুরোনো v1 schema backup v2 app-এ reject হবে। আগে থেকে ইনস্টল v1 database
+স্বাভাবিক Room 1→2 migration পেতে পারে; কিন্তু পুরোনো export করা backup restore করা যাবে না।
+
+এটি নতুন relation migration crash নয়; তবে data recovery-তে বাস্তব সীমাবদ্ধতা। Version-aware
+backup migration যোগ করুন অথবা upgrade-এর আগে/পরে ব্যবহারকারীকে স্পষ্টভাবে জানান যে v2 backup
+নতুন করে তৈরি করতে হবে।
+
+৬. যেসব বিষয়ে নতুন defect নিশ্চিত হয়নি
+------------------------------------------------------------
+নিচের অংশগুলো আবার source review ও SQLite checks-এ সামঞ্জস্যপূর্ণ পাওয়া গেছে:
+- নতুন Entity composite primary key (stimulus_id, category_id) ব্যবহার করে।
+- stimulus delete cascade এবং category delete restrict FK আছে।
+- category lookup-এর জন্য child index আছে; stimulus_id দিয়ে lookup-এর জন্য composite
+  primary key-এর প্রথম column ব্যবহারযোগ্য।
+- Kotlin ও standalone 1→2 migration একই Room-প্রত্যাশিত index name ব্যবহার করে।
+- পুরোনো type_cq_question_category_links table drop বা replace হয় না।
+- typeCategoryLinkCount() question এবং stimulus—দুই ধরনের link গোনে।
+- reassign operation দুই ধরনের link-ই target-এ কপি করে, তারপর source link delete করে।
+- setStimulusCategories() নতুন archived category assign প্রত্যাখ্যান করে; পূর্বে যুক্ত archived
+  category সরানোর অনুমতি দেয়।
+- single-question card-এর ribbon control question-এর পুরোনো category relation ব্যবহার করে;
+  নতুন stimulus link row তৈরি করে না।
+- topic-এর stimulus-category links batch query-তে লোড হয়; প্রতি card-এ N+1 query দেখা যায়নি।
+- duplicateGroup() stimulusCategoryIds copy করে; stimulus delete FK cascade নতুন relation
+  row সরায়।
+- rapid card-category taps একই ViewModel-এর Mutex দিয়ে serialize করা হয়েছে।
+
+এই অংশগুলো source review-এ ঠিক মনে হয়েছে; Android runtime verification নয়।
+
+৭. SQLite-ভিত্তিক পুনরায় চালানো checks
+------------------------------------------------------------
+Python SQLite replay-এ:
+- v1.1 canonical SQL থেকে শুরু করে corrected 1→2 migration চালানো হয়েছে;
+- নতুন table ও Room-প্রত্যাশিত index তৈরি হয়েছে;
+- আগের question-category row অক্ষত ছিল;
+- FK check-এ কোনো violation পাওয়া যায়নি;
+- reassign SQL-এর পর question/stimulus updated_at অপরিবর্তিত ছিল;
+- target category link তৈরি হয়েছিল;
+- stale UI-র মতো empty category selection apply করলে target stimulus link মুছে গেছে।
+
+এগুলো SQLite DDL/query আচরণের পরীক্ষা; Room invalidation/Compose runtime test নয়।
+
+৮. সংশোধনের অগ্রাধিকার
+------------------------------------------------------------
+P1 — অবিলম্বে:
+1) Reassign transaction-এ প্রতিটি affected question ও stimulus row touch করুন, অথবা
+   link-table Flow observeGroups()-এ যুক্ত করুন।
+2) Reassign-এর পর live Flow emission ও stale-chip removal regression test যোগ করুন।
+
+P2 — release-এর আগে:
+3) Room schema 2.json KSP দিয়ে generate করে ZIP/repository-তে দিন।
+4) MigrationTestHelper দিয়ে প্রকৃত v1→v2 Room migration test যোগ করুন ও চালান।
+5) Backup/restore-এ stimulus-category relation round-trip test যোগ করুন।
+6) v1 backup restore compatibility policy নির্ধারণ করুন।
+
+P3 — consistency:
+7) Canonical v1.2 SQL-এর index name Room migration-এর সঙ্গে এক করুন।
+8) Schema parity test-এ index name এবং ON UPDATE action-ও তুলনা করুন, অথবা স্পষ্টভাবে
+   নথিভুক্ত করুন যে এগুলো ইচ্ছাকৃতভাবে compare করা হয় না।
+
+৯. চূড়ান্ত রায়
+------------------------------------------------------------
+- ZIP integrity: PASS
+- SQLite DDL/migration replay: PASS (Room runtime নয়)
+- Category relation/duplicate/delete source logic: PARTIAL PASS
+- Reassign live observer consistency: FAIL — P1 data-loss risk
+- Reassign observer regression coverage: MISSING
+- Backup relation round-trip coverage: MISSING
+- Canonical SQL index naming: DRIFT
+- Room schema v2 JSON in ZIP: MISSING
+- Actual Room migration test: MISSING
+- Kotlin/Room compile: NOT VERIFIED
+- Unit/instrumentation tests: NOT RUN
+- Device UI test: NOT RUN
+- Release ready: NO
+
+সারকথা:
+দ্বিতীয় review-এর প্রধান সমস্যা এখনো আছে। এই দফায় তার নির্দিষ্ট data-loss sequence SQLite-এ
+পুনরায় যাচাই করা হয়েছে। নতুন করে আরও কোনো দ্বিতীয় স্বাধীন high-severity runtime defect নিশ্চিত
+হয়নি; তবে reassign, backup/restore ও schema consistency-র গুরুত্বপূর্ণ regression test gap
+পাওয়া গেছে। P1 fix ও প্রকৃত Room migration verification ছাড়া এই ZIP-কে release-ready বলা উচিত নয়।
+
+বিশেষ নির্দেশ মানা হয়েছে: Gradle download/build চালানো হয়নি।

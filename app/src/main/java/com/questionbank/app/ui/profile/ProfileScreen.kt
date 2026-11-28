@@ -1,5 +1,6 @@
 package com.questionbank.app.ui.profile
 
+import com.questionbank.app.AppSourceInfo
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -181,6 +182,8 @@ fun ProfileScreen(
             SectionCard("অ্যাপ তথ্য") {
                 Text("Question Bank (প্রশ্নব্যাংক)")
                 Text("সংস্করণ: $versionName")
+                Text("সোর্স ZIP ফাইল: ${AppSourceInfo.SOURCE_ZIP}")
+                Text("প্ল্যান টেক্সট ফাইল: ${AppSourceInfo.PLAN_TEXT}")
             }
         }
     }

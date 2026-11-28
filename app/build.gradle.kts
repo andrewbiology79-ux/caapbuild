@@ -13,8 +13,8 @@ android {
         applicationId = "com.questionbank.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 52
-        versionName = "0.2.47-stimulus-categories-review-fix"
+        versionCode = 53
+        versionName = "0.2.48-profile-source-info"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
