@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -90,7 +91,7 @@ class TypeCqHierarchyRepositoryTest {
         val s = addedId(repo.addSubject("পদার্থ"))
         val c1 = addedId(repo.addChapter(s, "গতি"))
         val c2 = addedId(repo.addChapter(s, "বল"))
-        addedId(repo.addTopic(c1, "ত্বরণ"))
+        val t1 = addedId(repo.addTopic(c1, "ত্বরণ"))
         addedId(repo.addTopic(c1, "বেগ"))
         addedId(repo.addTopic(c2, "ত্বরণ"))
         assertEquals(AddResult.Duplicate, repo.addTopic(c1, "বেগ"))
@@ -98,6 +99,11 @@ class TypeCqHierarchyRepositoryTest {
         assertEquals(listOf("ত্বরণ"), repo.observeTopics(c2).first().map { it.name })
         assertEquals("গতি", repo.observeChapter(c1).first()?.name)
         assertEquals("পদার্থ", repo.observeSubject(s).first()?.name)
+        val path = repo.observeTopicPath(t1).first()!!
+        assertEquals("পদার্থ", path.subject.name)
+        assertEquals("গতি", path.chapter.name)
+        assertEquals("ত্বরণ", path.topic.name)
+        assertNull(repo.observeTopicPath("no-such-topic").first())
     }
 
     @Test

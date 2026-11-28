@@ -64,7 +64,7 @@ class QuestionEditDraftTest {
 
     private suspend fun groups(): List<SavedGroup> = repo.observeGroups(topicId).first()
 
-    private suspend fun keyOfNewest(): String = QuestionGroupKey.of(groups()[0])!!
+    private suspend fun keyOfNewest(): String = QuestionGroupKey.of(groups().last())!!
 
     private fun edit(key: String, stimulus: String, vararg subs: Triple<CqLabel, String, String>) =
         GroupEditInput(topicId, key, stimulus, subs.map { SubQuestionInput(it.first, it.second, it.third) })

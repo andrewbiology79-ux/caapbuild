@@ -18,6 +18,17 @@ abstract class TypeCqTopicDao {
     )
     abstract fun observeRows(chapterId: String): Flow<List<HierarchyRowDb>>
 
+    @Query(
+        "SELECT s.subject_id AS subject_id, s.name AS subject_name, " +
+            "c.chapter_id AS chapter_id, c.name AS chapter_name, " +
+            "t.topic_id AS topic_id, t.name AS topic_name " +
+            "FROM type_cq_topics t " +
+            "JOIN type_cq_chapters c ON c.chapter_id = t.chapter_id " +
+            "JOIN type_cq_subjects s ON s.subject_id = c.subject_id " +
+            "WHERE t.topic_id = :topicId"
+    )
+    abstract fun observePath(topicId: String): Flow<TopicPathDb?>
+
     @Query("SELECT COUNT(*) FROM type_cq_topics WHERE topic_id = :topicId")
     abstract suspend fun countById(topicId: String): Int
 

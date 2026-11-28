@@ -2,6 +2,7 @@ package com.questionbank.app.data.repository
 
 import com.questionbank.app.data.local.dao.DeleteOutcome
 import com.questionbank.app.data.local.dao.HierarchyRowDb
+import com.questionbank.app.data.local.dao.TopicPathDb
 import com.questionbank.app.data.local.dao.TypeCqChapterDao
 import com.questionbank.app.data.local.dao.TypeCqSubjectDao
 import com.questionbank.app.data.local.dao.TypeCqTopicDao
@@ -12,6 +13,7 @@ import com.questionbank.app.domain.hierarchy.HierarchyItem
 import com.questionbank.app.domain.hierarchy.HierarchyName
 import com.questionbank.app.domain.hierarchy.HierarchyRow
 import com.questionbank.app.domain.hierarchy.TypeCqHierarchyRepository
+import com.questionbank.app.domain.hierarchy.TopicPath
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -60,6 +62,15 @@ class TypeCqHierarchyRepositoryImpl(
                 )
             }
         }
+
+    override fun observeTopicPath(topicId: String): Flow<TopicPath?> =
+        topics.observePath(topicId).map { row -> row?.toTopicPath() }
+
+    private fun TopicPathDb.toTopicPath() = TopicPath(
+        subject = HierarchyItem(subjectId, subjectName),
+        chapter = HierarchyItem(chapterId, chapterName),
+        topic = HierarchyItem(topicId, topicName),
+    )
 
     private fun List<HierarchyRowDb>.toRows(): List<HierarchyRow> =
         map { HierarchyRow(it.id, it.name, it.childCount, it.questionCount) }

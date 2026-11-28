@@ -7,8 +7,10 @@ import com.questionbank.app.domain.question.CqLabel
 import com.questionbank.app.domain.question.DraftText
 import com.questionbank.app.domain.question.SavedGroup
 import com.questionbank.app.domain.question.SavedSubQuestion
+import com.questionbank.app.ui.question.cardBoardTagText
 import com.questionbank.app.ui.question.cardHasNoTags
 import com.questionbank.app.ui.question.cardTopTags
+import com.questionbank.app.ui.question.sortedCardBoardTags
 import com.questionbank.app.ui.question.tagText
 import com.questionbank.app.ui.question.yearInputError
 import org.junit.Assert.assertEquals
@@ -76,6 +78,31 @@ class BoardPickerLogicTest {
         assertEquals(listOf(dha), cardTopTags(withStimulus))
         val single = SavedGroup(null, "", listOf(sub("q2", listOf(raj))), null, emptyList())
         assertEquals(listOf(raj), cardTopTags(single))
+    }
+
+
+    @Test
+    fun cardBoardTagsSortNewestYearFirstThenCatalogOrderAndRemoveDuplicates() {
+        val tags = listOf(
+            BoardTag("DHA", 2024),
+            BoardTag("RAJ", 2026),
+            BoardTag("DHA", 2026),
+            BoardTag("DHA", 2024),
+            BoardTag("CTG", 2025),
+        )
+        val ordered = sortedCardBoardTags(
+            tags,
+            listOf(
+                BoardItem("DHA", "ঢাকা", isCustom = false, isArchived = false),
+                BoardItem("RAJ", "রাজশাহী", isCustom = false, isArchived = false),
+                BoardItem("CTG", "চট্টগ্রাম", isCustom = false, isArchived = false),
+            ),
+        )
+        assertEquals(
+            listOf(BoardTag("DHA", 2026), BoardTag("RAJ", 2026), BoardTag("CTG", 2025), BoardTag("DHA", 2024)),
+            ordered,
+        )
+        assertEquals("DHA ২৬", cardBoardTagText(BoardTag("DHA", 2026)))
     }
 
     @Test

@@ -13,8 +13,8 @@ android {
         applicationId = "com.questionbank.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 53
-        versionName = "0.2.48-typecq-atomic-style"
+        versionCode = 52
+        versionName = "0.2.47-stimulus-categories-review-fix"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -43,6 +43,8 @@ android {
 
     sourceSets {
         getByName("test") { resources.srcDir("../database") }
+        // Review fix (Finding 7): MigrationTestHelper reads the exported Room schemas (1.json, 2.json) from the test APK assets.
+        getByName("androidTest") { assets.srcDir("$projectDir/schemas") }
     }
 
     compileOptions {
@@ -94,4 +96,5 @@ dependencies {
     androidTestImplementation("androidx.test:core:1.6.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.room:room-testing:$roomVersion")
 }

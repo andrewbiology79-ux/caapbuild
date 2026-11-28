@@ -519,6 +519,7 @@ private fun QuestionBlockCard(
             enabled = !busy,
             onToggle = { categoryId, selected -> viewModel.changeCategory(index, categoryId, selected) },
             onAddCategory = onAddCategory,
+            label = "দাগের ক্যাটাগরি",
         )
     }
 }

@@ -11,7 +11,6 @@ import kotlinx.coroutines.flow.Flow
  */
 interface TypeCqQuestionRepository {
     fun observeTopicName(topicId: String): Flow<String?>
-    fun observeTopicBreadcrumb(topicId: String): Flow<TopicBreadcrumb?>
     fun observeGroups(topicId: String): Flow<List<SavedGroup>>
 
     suspend fun saveGroup(input: QuestionGroupInput): SaveResult
@@ -30,23 +29,22 @@ interface TypeCqQuestionRepository {
     /** One card as saved now, for the edit screen (v0.2.28). Null when it no longer exists. [groupKey] comes from [QuestionGroupKey]. */
     suspend fun loadGroup(topicId: String, groupKey: String): SavedGroup?
 
+    /** Replaces card categories immediately; for a stimulus-less card it updates the sole question's existing category links. */
+    suspend fun setStimulusCategories(
+        topicId: String,
+        stimulusId: String?,
+        singleQuestionId: String?,
+        categoryIds: List<String>,
+    ): Boolean
+
     /** Deletes one card atomically; referenced source questions may be restricted by saved paper items. */
     suspend fun deleteGroup(topicId: String, groupKey: String): Boolean
 
     /** Deletes selected complete cards in one database transaction; any restricted paper reference rolls back the whole batch. */
     suspend fun deleteGroups(topicId: String, groupKeys: List<String>): Boolean
 
-    /** Creates a full copy of a card, including tags, categories, ordered solutions, media links and its concept. */
+    /** Creates a full copy of a card, including tags, categories, ordered solutions and media links. */
     suspend fun duplicateGroup(topicId: String, groupKey: String): SaveResult
-
-    /** Paste a copy from any Type-CQ topic; an optional anchor places it immediately before/after that card. */
-    suspend fun copyGroupToTopic(sourceTopicId: String, groupKey: String, targetTopicId: String, anchorGroupKey: String? = null, beforeAnchor: Boolean = false): SaveResult
-
-    /** Cut/paste keeps question, stimulus, paper-reference and concept IDs intact. */
-    suspend fun moveGroupToTopic(sourceTopicId: String, groupKey: String, targetTopicId: String, anchorGroupKey: String? = null, beforeAnchor: Boolean = false): Boolean
-
-    /** Update the card-level category set (stimulus category, or the lone question's category). */
-    suspend fun setCardCategories(topicId: String, groupKey: String, categoryIds: List<String>): Boolean
 
     /**
      * Saves changes to an EXISTING group (v0.2.28) in ONE transaction: stimulus text, texts and short answers of stored

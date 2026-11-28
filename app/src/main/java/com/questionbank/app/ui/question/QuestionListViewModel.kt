@@ -14,9 +14,10 @@ import com.questionbank.app.domain.question.SavedGroup
 import com.questionbank.app.domain.question.SearchOutcome
 import com.questionbank.app.domain.question.SaveResult
 import com.questionbank.app.domain.question.TypeCqQuestionRepository
+import com.questionbank.app.domain.hierarchy.TopicPath
+import com.questionbank.app.domain.hierarchy.TypeCqHierarchyRepository
 import com.questionbank.app.data.local.entity.TypeCqQuestionCategoriesEntity
 import com.questionbank.app.data.local.entity.TypeCqQuestionTypesEntity
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.Flow
@@ -29,6 +30,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** What the search shows. [Idle] = the search text is empty, so the normal list is shown. */
 sealed interface SearchUiState {
@@ -50,6 +53,7 @@ sealed interface SearchUiState {
 class QuestionListViewModel(
     private val topicId: String,
     private val repository: TypeCqQuestionRepository,
+    hierarchyRepository: TypeCqHierarchyRepository,
     categoriesFlow: Flow<List<TypeCqQuestionCategoriesEntity>> = flowOf(emptyList()),
     questionTypesFlow: Flow<List<TypeCqQuestionTypesEntity>> = flowOf(emptyList()),
 ) : ViewModel() {
@@ -58,9 +62,7 @@ class QuestionListViewModel(
         .map<List<SavedGroup>, List<SavedGroup>?> { it }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    val topicName: StateFlow<String?> = repository.observeTopicName(topicId)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
-    val topicBreadcrumb = repository.observeTopicBreadcrumb(topicId)
+    val topicPath: StateFlow<TopicPath?> = hierarchyRepository.observeTopicPath(topicId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** v0.2.30c-2: the board names for the chips on the cards. */
@@ -80,9 +82,9 @@ class QuestionListViewModel(
         private set
     var deleteMessage by mutableStateOf("")
         private set
-    /** Shared app-wide state keeps every topic screen consistent while a paste is running. */
-    val pasteInProgress: StateFlow<Boolean> = TypeCqClipboardState.pasteInProgress
-    val clipboard: StateFlow<List<TypeCqClipboardEntry>> = TypeCqClipboardState.entries
+
+    /** Keeps rapid optimistic card-category toggles in the same order they were tapped. */
+    private val stimulusCategorySaveMutex = Mutex()
 
     @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
     val searchState: StateFlow<SearchUiState> = combine(
@@ -112,9 +114,8 @@ class QuestionListViewModel(
     fun closeSearch() {
         searchOpen = false
         query = ""
+        filter = BoardFilter()
     }
-
-    fun clearAllFilters() { filter = BoardFilter() }
 
     fun changeFilter(value: BoardFilter) {
         filter = value
@@ -144,11 +145,32 @@ class QuestionListViewModel(
         }
     }
 
-    fun setCardCategories(group: SavedGroup, categoryIds: List<String>) {
-        val key = com.questionbank.app.domain.question.QuestionGroupKey.of(group) ?: return
+    fun setStimulusCategories(
+        group: SavedGroup,
+        categoryIds: List<String>,
+        onResult: (Boolean) -> Unit,
+    ) {
+        val singleQuestionId = if (group.stimulusId == null) {
+            group.subQuestions.singleOrNull()?.id
+        } else {
+            null
+        }
+        if (group.stimulusId == null && singleQuestionId == null) {
+            deleteMessage = "এই কার্ডের ক্যাটাগরি পরিবর্তন করা যায়নি।"
+            onResult(false)
+            return
+        }
         viewModelScope.launch {
-            deleteMessage = if (repository.setCardCategories(topicId, key, categoryIds)) "ক্যাটাগরি সংরক্ষণ হয়েছে।"
-            else "ক্যাটাগরি সংরক্ষণ করা যায়নি। আর্কাইভ করা বা মুছে ফেলা ক্যাটাগরি নতুন করে বাছা যাবে না।"
+            val saved = stimulusCategorySaveMutex.withLock {
+                repository.setStimulusCategories(
+                    topicId = topicId,
+                    stimulusId = group.stimulusId,
+                    singleQuestionId = singleQuestionId,
+                    categoryIds = categoryIds,
+                )
+            }
+            if (!saved) deleteMessage = "ক্যাটাগরি সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন।"
+            onResult(saved)
         }
     }
 
@@ -161,82 +183,6 @@ class QuestionListViewModel(
             deleteMessage = when (val result = repository.duplicateGroup(topicId, key)) {
                 is SaveResult.Saved -> "প্রশ্ন কার্ডের সম্পূর্ণ কপি তৈরি হয়েছে।"
                 else -> "কপি তৈরি করা যায়নি: ${when (result) { is SaveResult.Failed -> result.reason; else -> "তথ্য সংরক্ষণে সমস্যা" }}"
-            }
-        }
-    }
-
-    fun copyCards(groupsToCopy: List<SavedGroup>, cut: Boolean = false) {
-        if (TypeCqClipboardState.isPasteActive()) {
-            deleteMessage = "পেস্ট সম্পন্ন হলে আবার কপি বা কাট করুন।"
-            return
-        }
-        val entries = groupsToCopy.mapNotNull { group ->
-            com.questionbank.app.domain.question.QuestionGroupKey.of(group)?.let { TypeCqClipboardEntry(topicId, it, cut) }
-        }
-        if (entries.isNotEmpty()) {
-            TypeCqClipboardState.set(entries)
-            deleteMessage = if (cut) "${entries.size} টি কার্ড কাট করা হয়েছে; পেস্ট না করা পর্যন্ত মূল কার্ড থাকবে।" else "${entries.size} টি কার্ড কপি করা হয়েছে।"
-        }
-    }
-
-    fun pasteCards(anchorGroupKey: String? = null, beforeAnchor: Boolean = false) {
-        if (!TypeCqClipboardState.beginPaste()) return
-        // Copy stays repeatable. A partial attempt remembers completed copies and skips them on retry only.
-        val entries = TypeCqClipboardState.entriesForPaste()
-        if (entries.isEmpty()) {
-            TypeCqClipboardState.finishEmptyRetry()
-            TypeCqClipboardState.endPaste()
-            return
-        }
-        viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
-            var anchor = anchorGroupKey
-            var insertBefore = beforeAnchor
-            var success = 0
-            var failed = 0
-            var completedNormally = false
-            val completedCopyIds = linkedSetOf<String>()
-            val completedCutIds = linkedSetOf<String>()
-            try {
-                entries.forEach { entry ->
-                    val ok = try {
-                        if (entry.cut) {
-                            repository.moveGroupToTopic(entry.sourceTopicId, entry.groupKey, topicId, anchor, insertBefore)
-                        } else {
-                            val result = repository.copyGroupToTopic(entry.sourceTopicId, entry.groupKey, topicId, anchor, insertBefore)
-                            if (result is SaveResult.Saved) {
-                                anchor = result.stimulusId?.let { "s-$it" } ?: result.questionIds.singleOrNull()?.let { "q-$it" }
-                                true
-                            } else false
-                        }
-                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                        throw cancelled
-                    } catch (_: Exception) {
-                        false
-                    }
-                    if (ok) {
-                        success++
-                        if (entry.cut) {
-                            completedCutIds += entry.clipboardId
-                            anchor = entry.groupKey
-                        } else completedCopyIds += entry.clipboardId
-                        // First insert before the requested anchor; subsequent entries go after the prior inserted card,
-                        // preserving the clipboard order rather than reversing it.
-                        insertBefore = false
-                    } else failed++
-                }
-                TypeCqClipboardState.recordPasteResult(completedCopyIds, completedCutIds, hasFailures = failed > 0)
-                completedNormally = true
-                deleteMessage = when {
-                    failed == 0 -> "$success টি কার্ড পেস্ট হয়েছে।"
-                    success == 0 -> "কার্ড পেস্ট করা যায়নি।"
-                    else -> "$success টি পেস্ট হয়েছে, $failed টি করা যায়নি। বাকি কার্ডগুলো আবার পেস্ট করে চেষ্টা করুন।"
-                }
-            } finally {
-                // Cancellation after some committed cards must not make a retry duplicate those cards.
-                if (!completedNormally) {
-                    TypeCqClipboardState.recordPasteResult(completedCopyIds, completedCutIds, hasFailures = true)
-                }
-                TypeCqClipboardState.endPaste()
             }
         }
     }

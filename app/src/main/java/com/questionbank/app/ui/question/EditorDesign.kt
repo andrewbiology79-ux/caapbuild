@@ -1386,7 +1386,7 @@ fun EdCategoryDropdown(
     onToggle: (String, Boolean) -> Unit,
     onAddCategory: suspend (String) -> Boolean,
     modifier: Modifier = Modifier,
-    label: String = "দাগের ক্যাটাগরি",
+    label: String = "ক্যাটাগরি",
     onManageCategories: (() -> Unit)? = null,
 ) {
     val cs = MaterialTheme.colorScheme
@@ -1409,7 +1409,7 @@ fun EdCategoryDropdown(
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                 Text(label, color = cs.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                 Text(
-                    selectedNames.ifBlank { "দাগের ক্যাটাগরি নির্বাচন করুন" },
+                    selectedNames.ifBlank { "ক্যাটাগরি নির্বাচন করুন" },
                     color = if (selectedNames.isBlank()) cs.onSurfaceVariant else cs.onSurface,
                     fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 )

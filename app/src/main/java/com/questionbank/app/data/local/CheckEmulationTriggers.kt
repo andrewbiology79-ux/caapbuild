@@ -2,7 +2,7 @@ package com.questionbank.app.data.local
 
 /**
  * Room's @Entity cannot declare SQL CHECK constraints, so the 48 CHECK clauses of the canonical
- * schema (database/QuestionBank_SQLite_Schema_v1_1.sql) would be missing from the real database.
+ * schema (database/QuestionBank_SQLite_Schema_v1_2.sql) would be missing from the real database.
  * These BEFORE INSERT / BEFORE UPDATE triggers (2 per table, 23 tables) re-create them.
  * Semantics match CHECK: a row is rejected only when an expression evaluates to false (0);
  * NULL results pass. Generated from the canonical SQL - regenerate if a CHECK changes.

@@ -158,6 +158,26 @@ fun ProfileScreen(
                 }
             }
 
+            SectionCard("এডিটর লগ (Editor log)") {
+                Text(
+                    "শুধু প্রশ্ন তৈরি ও এডিটের এডিটরের কাজ: কী বদলেছেন, সেভে কী পাঠানো হয়েছে, ডাটাবেসের প্রতিটি যাচাই PASS/FAIL এবং শেষ ফল। লেখা পুরো নয়, দৈর্ঘ্য, ফাঁকা অংশ ও হ্যাশসহ সামান্য অংশ লেখা হয়।",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text("ফাইল: ${com.questionbank.app.EditorLog.location()}", style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = {
+                        val text = com.questionbank.app.EditorLog.read(150_000)
+                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("editor_log", text))
+                        android.widget.Toast.makeText(context, if (text.isEmpty()) "এডিটর লগ খালি" else "এডিটর লগ কপি হয়েছে", android.widget.Toast.LENGTH_SHORT).show()
+                    }) { Text("লগ কপি করুন") }
+                    OutlinedButton(onClick = {
+                        com.questionbank.app.EditorLog.clear()
+                        android.widget.Toast.makeText(context, "এডিটর লগ মুছে ফেলা হয়েছে", android.widget.Toast.LENGTH_SHORT).show()
+                    }) { Text("লগ মুছুন") }
+                }
+            }
+
             SectionCard("অ্যাপ তথ্য") {
                 Text("Question Bank (প্রশ্নব্যাংক)")
                 Text("সংস্করণ: $versionName")

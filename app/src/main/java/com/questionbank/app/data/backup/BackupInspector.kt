@@ -35,7 +35,12 @@ object BackupInspector {
             val hash = connection.firstText("SELECT identity_hash FROM room_master_table WHERE id = 42")
                 ?: return InspectResult.bad("এটি Question Bank-এর ডাটাবেস নয়।")
             if (expectedHash != null && hash != expectedHash) {
-                return InspectResult.bad("ব্যাকআপটি অ্যাপের অন্য সংস্করণের ডাটাবেস কাঠামোর; এই অ্যাপে রিস্টোর করা যাবে না।")
+                // Review fix (Finding 8): say WHICH schema the file has and what to do (an old v1 backup cannot be restored into the v2 app).
+                val backupSchema = connection.firstLong("PRAGMA user_version")
+                return InspectResult.bad(
+                    "ব্যাকআপটি ডাটাবেস কাঠামো সংস্করণ $backupSchema-এর; এই অ্যাপের কাঠামোর সঙ্গে মেলে না, তাই রিস্টোর করা যাবে না। " +
+                        "অ্যাপ আপডেট করার পর নতুন ব্যাকআপ তৈরি করে রাখুন।",
+                )
             }
             val databaseVersion = connection.firstLong("PRAGMA user_version").toInt()
             if (databaseVersion <= 0) return InspectResult.bad("ডাটাবেসের সংস্করণ নম্বর পাওয়া যায়নি।")

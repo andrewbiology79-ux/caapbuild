@@ -10,8 +10,8 @@ import java.sql.DriverManager
 class CanonicalSqlContractTest {
     @Test
     fun canonicalInventoryMatchesReviewedBaseline() {
-        val sql = javaClass.classLoader!!.getResource("QuestionBank_SQLite_Schema_v1_1.sql")!!.readText()
-        assertEquals(38, Regex("CREATE TABLE IF NOT EXISTS", RegexOption.IGNORE_CASE).findAll(sql).count())
+        val sql = javaClass.classLoader!!.getResource("QuestionBank_SQLite_Schema_v1_2.sql")!!.readText()
+        assertEquals(36, Regex("CREATE TABLE IF NOT EXISTS", RegexOption.IGNORE_CASE).findAll(sql).count())
         assertEquals(2, Regex("CREATE VIRTUAL TABLE", RegexOption.IGNORE_CASE).findAll(sql).count())
         assertEquals(17, Regex("CREATE TRIGGER", RegexOption.IGNORE_CASE).findAll(sql).count())
         assertEquals(48, Regex("\\bCHECK\\s*\\(", RegexOption.IGNORE_CASE).findAll(sql).count())
@@ -45,8 +45,45 @@ class CanonicalSqlContractTest {
     }
 
     @Test
+    fun v1ToV2MigrationAddsStimulusCategoryLinksWithoutChangingQuestionCategoryLinks() {
+        val versionOne = javaClass.classLoader!!.getResource("QuestionBank_SQLite_Schema_v1_1.sql")!!.readText()
+        val migration = javaClass.classLoader!!.getResource("migrations/1_to_2_stimulus_category_links.sql")!!.readText()
+
+        DriverManager.getConnection("jdbc:sqlite::memory:").use { connection ->
+            connection.createStatement().use { it.execute("PRAGMA foreign_keys = ON") }
+            splitSql(versionOne).forEach { statement -> connection.createStatement().use { it.execute(statement) } }
+            connection.createStatement().use { it.execute("INSERT INTO type_cq_question_categories(category_id, name, created_at, updated_at) VALUES('cat', 'ক্যাটাগরি', 1, 1)") }
+            connection.createStatement().use { it.execute("INSERT INTO type_cq_subjects(subject_id, name, sort_order, created_at, updated_at) VALUES('s', 'বিষয়', 0, 1, 1)") }
+            connection.createStatement().use { it.execute("INSERT INTO type_cq_chapters(chapter_id, subject_id, name, sort_order, created_at, updated_at) VALUES('ch', 's', 'অধ্যায়', 0, 1, 1)") }
+            connection.createStatement().use { it.execute("INSERT INTO type_cq_topics(topic_id, chapter_id, name, sort_order, created_at, updated_at) VALUES('t', 'ch', 'টপিক', 0, 1, 1)") }
+            connection.createStatement().use { it.execute("INSERT INTO type_cq_stimuli(stimulus_id, topic_id, stimulus_text, rating, reference_text, created_at, updated_at) VALUES('st', 't', 'উদ্দীপক', NULL, '', 1, 1)") }
+            connection.createStatement().use { it.execute("INSERT INTO type_cq_question_types(question_type_id, code, label, sort_order, is_active) VALUES('qt', 'QT', 'ধরন', 0, 1)") }
+            connection.createStatement().use { it.execute("INSERT INTO type_cq_questions(question_id, fts_id, stimulus_id, topic_id, question_type_id, subquestion_label, marks, question_text, short_answer, rating, sort_order, created_at, updated_at) VALUES('q', 1, NULL, 't', 'qt', 'ক', 1, 'প্রশ্ন', '', NULL, 1, 1, 1)") }
+            connection.createStatement().use { it.execute("INSERT INTO type_cq_question_category_links(question_id, category_id, assigned_at) VALUES('q', 'cat', 1)") }
+
+            splitSql(migration).forEach { statement -> connection.createStatement().use { it.execute(statement) } }
+
+            connection.createStatement().use { st ->
+                st.executeQuery("SELECT COUNT(*) FROM type_cq_question_category_links WHERE question_id='q' AND category_id='cat'").use { rs ->
+                    assertTrue(rs.next())
+                    assertEquals(1, rs.getInt(1))
+                }
+                st.executeQuery("PRAGMA foreign_key_list('type_cq_stimulus_category_links')").use { rs ->
+                    val parents = mutableSetOf<String>()
+                    while (rs.next()) parents += rs.getString("table")
+                    assertEquals(setOf("type_cq_stimuli", "type_cq_question_categories"), parents)
+                }
+                st.executeQuery("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='type_cq_stimulus_category_links'").use { rs ->
+                    assertTrue(rs.next())
+                    assertEquals(1, rs.getInt(1))
+                }
+            }
+        }
+    }
+
+    @Test
     fun runtimeInstallerCreatesAllCanonicalNonEntityObjects() {
-        val sql = javaClass.classLoader!!.getResource("QuestionBank_SQLite_Schema_v1_1.sql")!!.readText()
+        val sql = javaClass.classLoader!!.getResource("QuestionBank_SQLite_Schema_v1_2.sql")!!.readText()
         DriverManager.getConnection("jdbc:sqlite::memory:").use { connection ->
             connection.createStatement().use { it.execute("PRAGMA foreign_keys = ON") }
             splitSql(sql)
@@ -64,7 +101,7 @@ class CanonicalSqlContractTest {
             connection.createStatement().use { st ->
                 st.executeQuery("SELECT COUNT(*) FROM sqlite_master WHERE type='trigger'").use { rs ->
                     assertTrue(rs.next())
-                    assertEquals(21 + 46, rs.getInt(1))
+                    assertEquals(17 + 46, rs.getInt(1))
                 }
                 st.executeQuery("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('type_cq_question_fts','chapter_cq_question_fts')").use { rs ->
                     assertTrue(rs.next())
@@ -148,7 +185,7 @@ class CanonicalSqlContractTest {
 
     @Test
     fun canonicalSqlExecutesAndPassesIntegrityAndFtsChecks() {
-        val sql = javaClass.classLoader!!.getResource("QuestionBank_SQLite_Schema_v1_1.sql")!!.readText()
+        val sql = javaClass.classLoader!!.getResource("QuestionBank_SQLite_Schema_v1_2.sql")!!.readText()
         DriverManager.getConnection("jdbc:sqlite::memory:").use { connection ->
             connection.createStatement().use { it.execute("PRAGMA foreign_keys = ON") }
             splitSql(sql).forEach { statement ->
@@ -164,7 +201,7 @@ class CanonicalSqlContractTest {
                 }
                 st.executeQuery("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").use { rs ->
                     assertTrue(rs.next())
-                    assertEquals(50, rs.getInt(1))
+                    assertEquals(48, rs.getInt(1))
                 }
             }
             // Exercise a valid Type_CQ insert and verify its FTS trigger.
@@ -186,7 +223,7 @@ class CanonicalSqlContractTest {
     fun checkEmulationTriggersReplaceDroppedCheckConstraints() {
         // Room creates tables WITHOUT CHECK clauses, so strip them from the canonical SQL and
         // verify the emulation triggers still reject invalid rows and accept valid ones.
-        val sql = javaClass.classLoader!!.getResource("QuestionBank_SQLite_Schema_v1_1.sql")!!.readText()
+        val sql = javaClass.classLoader!!.getResource("QuestionBank_SQLite_Schema_v1_2.sql")!!.readText()
         DriverManager.getConnection("jdbc:sqlite::memory:").use { connection ->
             splitSql(stripChecks(sql))
                 .filterNot { it.startsWith("CREATE VIRTUAL TABLE", ignoreCase = true) ||
@@ -216,7 +253,7 @@ class CanonicalSqlContractTest {
 
     @Test
     fun banglaFtsKeepsVowelSignsInsideWords() {
-        val sql = javaClass.classLoader!!.getResource("QuestionBank_SQLite_Schema_v1_1.sql")!!.readText()
+        val sql = javaClass.classLoader!!.getResource("QuestionBank_SQLite_Schema_v1_2.sql")!!.readText()
         DriverManager.getConnection("jdbc:sqlite::memory:").use { connection ->
             connection.createStatement().use { st ->
                 val ftsDdl = Regex("CREATE VIRTUAL TABLE IF NOT EXISTS type_cq_question_fts[^;]*").find(sql)!!.value

@@ -43,6 +43,20 @@ class QuestionRulesTest {
     }
 
     @Test
+    fun stimulusCategoryIdsMustBeNonBlankAndUnique() {
+        val valid = input("উদ্দীপক", Triple(CqLabel.KA, "প্রশ্ন", "")).copy(
+            stimulusCategoryIds = listOf("biology", "physics"),
+        )
+        assertTrue(QuestionRules.check(valid) is QuestionRules.Checked.Ok)
+
+        val blankId = valid.copy(stimulusCategoryIds = listOf("biology", " "))
+        assertEquals(QuestionRules.Checked.BadCategories, QuestionRules.check(blankId))
+
+        val duplicateId = valid.copy(stimulusCategoryIds = listOf("biology", "biology"))
+        assertEquals(QuestionRules.Checked.BadCategories, QuestionRules.check(duplicateId))
+    }
+
+    @Test
     fun blankStimulusBecomesEmptyString() {
         val checked = QuestionRules.check(input("   ", Triple(CqLabel.KA, "প্রশ্ন", ""))) as QuestionRules.Checked.Ok
         assertEquals("", checked.stimulusText)

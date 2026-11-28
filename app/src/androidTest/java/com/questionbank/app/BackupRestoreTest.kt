@@ -12,6 +12,7 @@ import com.questionbank.app.data.backup.BackupInspector
 import com.questionbank.app.data.backup.DatabaseSnapshot
 import com.questionbank.app.data.backup.RestoreSwap
 import com.questionbank.app.data.local.QuestionBankDatabase
+import com.questionbank.app.data.local.entity.TypeCqQuestionCategoriesEntity
 import com.questionbank.app.data.repository.TypeCqHierarchyRepositoryImpl
 import com.questionbank.app.data.repository.TypeCqQuestionRepositoryImpl
 import com.questionbank.app.domain.hierarchy.AddResult
@@ -160,6 +161,68 @@ class BackupRestoreTest {
         val repo = TypeCqQuestionRepositoryImpl(db.typeCqQuestionDao())
         val r = repo.saveGroup(QuestionGroupInput(topic, "", listOf(SubQuestionInput(CqLabel.KHA, "নতুন", ""), SubQuestionInput(CqLabel.GHA, "আরেক", ""))))
         assertTrue(r is SaveResult.Saved)
+    }
+
+    private fun androidx.sqlite.SQLiteConnection.firstText(sql: String): String? {
+        val st = prepare(sql)
+        try {
+            return if (st.step() && !st.isNull(0)) st.getText(0) else null
+        } finally {
+            st.close()
+        }
+    }
+
+    private val stimulusLinkRowsSql =
+        "SELECT group_concat(stimulus_id || '|' || category_id || '|' || assigned_at, ';') FROM " +
+            "(SELECT * FROM type_cq_stimulus_category_links ORDER BY stimulus_id, category_id)"
+
+    /** Review fix (Finding 3): the NEW type_cq_stimulus_category_links rows must survive snapshot AND restore, row for row. */
+    @Test
+    fun stimulusCategoryLinksSurviveSnapshotAndRestore() = runBlocking {
+        addQuestions(source, groups = 2)
+        listOf("bk-a" to "ক", "bk-b" to "খ", "bk-c" to "গ").forEach { (id, name) ->
+            source.categoryDataDao().insertTypeCategory(
+                TypeCqQuestionCategoriesEntity(
+                    categoryId = id, name = name, description = "", color = "", icon = "",
+                    sortOrder = 0L, isArchived = 0L, createdAt = 1L, updatedAt = 1L,
+                ),
+            )
+        }
+        val topic = source.useReaderConnection { it.scalarText("SELECT topic_id FROM type_cq_topics LIMIT 1") }
+        val stimuli = source.useReaderConnection {
+            listOf(
+                it.scalarText("SELECT stimulus_id FROM type_cq_stimuli ORDER BY stimulus_id LIMIT 1"),
+                it.scalarText("SELECT stimulus_id FROM type_cq_stimuli ORDER BY stimulus_id DESC LIMIT 1"),
+            )
+        }
+        val repo = TypeCqQuestionRepositoryImpl(source.typeCqQuestionDao())
+        assertTrue(repo.setStimulusCategories(topic, stimuli[0], null, listOf("bk-a", "bk-b")))
+        assertTrue(repo.setStimulusCategories(topic, stimuli[1], null, listOf("bk-c")))
+
+        val expected = source.useReaderConnection { it.scalarText(stimulusLinkRowsSql) }
+        assertEquals(3, expected.split(";").size)
+
+        // 1) the snapshot FILE, read with a plain driver (no Room involved)
+        val snapshot = temp("stimulus_links_snapshot.db")
+        DatabaseSnapshot.create(source, snapshot)
+        val plain = BundledSQLiteDriver().open(snapshot.absolutePath)
+        try {
+            assertEquals(expected, plain.firstText(stimulusLinkRowsSql))
+        } finally {
+            plain.close()
+            BackupInspector.deleteSidecars(snapshot)
+        }
+
+        // 2) after the restore swap, opened by Room with the production configuration
+        var live = openKeeping(liveName)
+        addQuestions(live, groups = 1)
+        live.close()
+        val liveFile = context.getDatabasePath(liveName)
+        snapshot.copyTo(RestoreSwap.pendingFile(liveFile), overwrite = true)
+        assertEquals(RestoreSwap.Outcome.Applied, RestoreSwap.applyIfPending(liveFile) { BackupInspector.inspect(it) })
+
+        live = openKeeping(liveName)
+        assertEquals(expected, live.useReaderConnection { it.scalarText(stimulusLinkRowsSql) })
     }
 
     @Test

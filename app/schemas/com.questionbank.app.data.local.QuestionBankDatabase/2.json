@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 2,
-    "identityHash": "786b471dfa14c9ae4739bb81479bab25",
+    "identityHash": "a022d9ec5bb73e45967b143be0711c4e",
     "entities": [
       {
         "tableName": "app_metadata",
@@ -2670,6 +2670,73 @@
         ]
       },
       {
+        "tableName": "type_cq_stimulus_category_links",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`stimulus_id` TEXT NOT NULL, `category_id` TEXT NOT NULL, `assigned_at` INTEGER NOT NULL, PRIMARY KEY(`stimulus_id`, `category_id`), FOREIGN KEY(`stimulus_id`) REFERENCES `type_cq_stimuli`(`stimulus_id`) ON UPDATE CASCADE ON DELETE CASCADE , FOREIGN KEY(`category_id`) REFERENCES `type_cq_question_categories`(`category_id`) ON UPDATE CASCADE ON DELETE RESTRICT )",
+        "fields": [
+          {
+            "fieldPath": "stimulusId",
+            "columnName": "stimulus_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "categoryId",
+            "columnName": "category_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "assignedAt",
+            "columnName": "assigned_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "stimulus_id",
+            "category_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_type_cq_stimulus_category_links_category_id_stimulus_id",
+            "unique": false,
+            "columnNames": [
+              "category_id",
+              "stimulus_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_type_cq_stimulus_category_links_category_id_stimulus_id` ON `${TABLE_NAME}` (`category_id`, `stimulus_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "type_cq_stimuli",
+            "onDelete": "CASCADE",
+            "onUpdate": "CASCADE",
+            "columns": [
+              "stimulus_id"
+            ],
+            "referencedColumns": [
+              "stimulus_id"
+            ]
+          },
+          {
+            "table": "type_cq_question_categories",
+            "onDelete": "RESTRICT",
+            "onUpdate": "CASCADE",
+            "columns": [
+              "category_id"
+            ],
+            "referencedColumns": [
+              "category_id"
+            ]
+          }
+        ]
+      },
+      {
         "tableName": "type_cq_stimulus_images",
         "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`stimulus_id` TEXT NOT NULL, `image_id` TEXT NOT NULL, `position` INTEGER NOT NULL, `placement` TEXT NOT NULL, PRIMARY KEY(`stimulus_id`, `image_id`), FOREIGN KEY(`image_id`) REFERENCES `type_cq_images`(`image_id`) ON UPDATE CASCADE ON DELETE RESTRICT , FOREIGN KEY(`stimulus_id`) REFERENCES `type_cq_stimuli`(`stimulus_id`) ON UPDATE CASCADE ON DELETE CASCADE )",
         "fields": [
@@ -2889,285 +2956,11 @@
             ]
           }
         ]
-      },
-      {
-        "tableName": "type_cq_stimulus_category_links",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`stimulus_id` TEXT NOT NULL, `category_id` TEXT NOT NULL, `assigned_at` INTEGER NOT NULL, PRIMARY KEY(`stimulus_id`, `category_id`), FOREIGN KEY(`stimulus_id`) REFERENCES `type_cq_stimuli`(`stimulus_id`) ON UPDATE CASCADE ON DELETE CASCADE , FOREIGN KEY(`category_id`) REFERENCES `type_cq_question_categories`(`category_id`) ON UPDATE CASCADE ON DELETE RESTRICT )",
-        "fields": [
-          {
-            "fieldPath": "stimulusId",
-            "columnName": "stimulus_id",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "categoryId",
-            "columnName": "category_id",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "assignedAt",
-            "columnName": "assigned_at",
-            "affinity": "INTEGER",
-            "notNull": true
-          }
-        ],
-        "primaryKey": {
-          "autoGenerate": false,
-          "columnNames": [
-            "stimulus_id",
-            "category_id"
-          ]
-        },
-        "indices": [
-          {
-            "name": "index_type_cq_stimulus_category_links_category_id_stimulus_id",
-            "unique": false,
-            "columnNames": [
-              "category_id",
-              "stimulus_id"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_type_cq_stimulus_category_links_category_id_stimulus_id` ON `${TABLE_NAME}` (`category_id`, `stimulus_id`)"
-          }
-        ],
-        "foreignKeys": [
-          {
-            "table": "type_cq_stimuli",
-            "onDelete": "CASCADE",
-            "onUpdate": "CASCADE",
-            "columns": [
-              "stimulus_id"
-            ],
-            "referencedColumns": [
-              "stimulus_id"
-            ]
-          },
-          {
-            "table": "type_cq_question_categories",
-            "onDelete": "RESTRICT",
-            "onUpdate": "CASCADE",
-            "columns": [
-              "category_id"
-            ],
-            "referencedColumns": [
-              "category_id"
-            ]
-          }
-        ]
-      },
-      {
-        "tableName": "type_cq_concepts",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`concept_id` TEXT NOT NULL, `topic_id` TEXT NOT NULL, `stimulus_id` TEXT, `question_id` TEXT, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`concept_id`), FOREIGN KEY(`topic_id`) REFERENCES `type_cq_topics`(`topic_id`) ON UPDATE CASCADE ON DELETE CASCADE , FOREIGN KEY(`stimulus_id`) REFERENCES `type_cq_stimuli`(`stimulus_id`) ON UPDATE CASCADE ON DELETE CASCADE , FOREIGN KEY(`question_id`) REFERENCES `type_cq_questions`(`question_id`) ON UPDATE CASCADE ON DELETE CASCADE )",
-        "fields": [
-          {
-            "fieldPath": "conceptId",
-            "columnName": "concept_id",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "topicId",
-            "columnName": "topic_id",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "stimulusId",
-            "columnName": "stimulus_id",
-            "affinity": "TEXT"
-          },
-          {
-            "fieldPath": "questionId",
-            "columnName": "question_id",
-            "affinity": "TEXT"
-          },
-          {
-            "fieldPath": "createdAt",
-            "columnName": "created_at",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "updatedAt",
-            "columnName": "updated_at",
-            "affinity": "INTEGER",
-            "notNull": true
-          }
-        ],
-        "primaryKey": {
-          "autoGenerate": false,
-          "columnNames": [
-            "concept_id"
-          ]
-        },
-        "indices": [
-          {
-            "name": "index_type_cq_concepts_topic_id",
-            "unique": false,
-            "columnNames": [
-              "topic_id"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_type_cq_concepts_topic_id` ON `${TABLE_NAME}` (`topic_id`)"
-          },
-          {
-            "name": "index_type_cq_concepts_stimulus_id",
-            "unique": true,
-            "columnNames": [
-              "stimulus_id"
-            ],
-            "orders": [],
-            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_type_cq_concepts_stimulus_id` ON `${TABLE_NAME}` (`stimulus_id`)"
-          },
-          {
-            "name": "index_type_cq_concepts_question_id",
-            "unique": true,
-            "columnNames": [
-              "question_id"
-            ],
-            "orders": [],
-            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_type_cq_concepts_question_id` ON `${TABLE_NAME}` (`question_id`)"
-          }
-        ],
-        "foreignKeys": [
-          {
-            "table": "type_cq_topics",
-            "onDelete": "CASCADE",
-            "onUpdate": "CASCADE",
-            "columns": [
-              "topic_id"
-            ],
-            "referencedColumns": [
-              "topic_id"
-            ]
-          },
-          {
-            "table": "type_cq_stimuli",
-            "onDelete": "CASCADE",
-            "onUpdate": "CASCADE",
-            "columns": [
-              "stimulus_id"
-            ],
-            "referencedColumns": [
-              "stimulus_id"
-            ]
-          },
-          {
-            "table": "type_cq_questions",
-            "onDelete": "CASCADE",
-            "onUpdate": "CASCADE",
-            "columns": [
-              "question_id"
-            ],
-            "referencedColumns": [
-              "question_id"
-            ]
-          }
-        ]
-      },
-      {
-        "tableName": "type_cq_concept_parts",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`part_id` TEXT NOT NULL, `concept_id` TEXT NOT NULL, `position` INTEGER NOT NULL, `part_type` TEXT NOT NULL, `text_content` TEXT, `image_id` TEXT, `created_at` INTEGER NOT NULL, PRIMARY KEY(`part_id`), FOREIGN KEY(`concept_id`) REFERENCES `type_cq_concepts`(`concept_id`) ON UPDATE CASCADE ON DELETE CASCADE , FOREIGN KEY(`image_id`) REFERENCES `type_cq_images`(`image_id`) ON UPDATE CASCADE ON DELETE RESTRICT )",
-        "fields": [
-          {
-            "fieldPath": "partId",
-            "columnName": "part_id",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "conceptId",
-            "columnName": "concept_id",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "position",
-            "columnName": "position",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "partType",
-            "columnName": "part_type",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "textContent",
-            "columnName": "text_content",
-            "affinity": "TEXT"
-          },
-          {
-            "fieldPath": "imageId",
-            "columnName": "image_id",
-            "affinity": "TEXT"
-          },
-          {
-            "fieldPath": "createdAt",
-            "columnName": "created_at",
-            "affinity": "INTEGER",
-            "notNull": true
-          }
-        ],
-        "primaryKey": {
-          "autoGenerate": false,
-          "columnNames": [
-            "part_id"
-          ]
-        },
-        "indices": [
-          {
-            "name": "index_type_cq_concept_parts_concept_id_position",
-            "unique": true,
-            "columnNames": [
-              "concept_id",
-              "position"
-            ],
-            "orders": [],
-            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_type_cq_concept_parts_concept_id_position` ON `${TABLE_NAME}` (`concept_id`, `position`)"
-          },
-          {
-            "name": "index_type_cq_concept_parts_image_id",
-            "unique": false,
-            "columnNames": [
-              "image_id"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_type_cq_concept_parts_image_id` ON `${TABLE_NAME}` (`image_id`)"
-          }
-        ],
-        "foreignKeys": [
-          {
-            "table": "type_cq_concepts",
-            "onDelete": "CASCADE",
-            "onUpdate": "CASCADE",
-            "columns": [
-              "concept_id"
-            ],
-            "referencedColumns": [
-              "concept_id"
-            ]
-          },
-          {
-            "table": "type_cq_images",
-            "onDelete": "RESTRICT",
-            "onUpdate": "CASCADE",
-            "columns": [
-              "image_id"
-            ],
-            "referencedColumns": [
-              "image_id"
-            ]
-          }
-        ]
       }
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '786b471dfa14c9ae4739bb81479bab25')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'a022d9ec5bb73e45967b143be0711c4e')"
     ]
   }
 }

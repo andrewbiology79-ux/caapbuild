@@ -5,13 +5,11 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
-import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.execSQL
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.questionbank.app.data.local.dao.TypeCqChapterDao
 import com.questionbank.app.data.local.dao.TypeCqQuestionDao
-import com.questionbank.app.data.local.dao.TypeCqConceptDao
 import com.questionbank.app.data.local.dao.TypeCqSubjectDao
 import com.questionbank.app.data.local.dao.TypeCqTopicDao
 import com.questionbank.app.data.local.entity.AppMetadataEntity
@@ -39,8 +37,6 @@ import com.questionbank.app.data.local.entity.SchemaMigrationsEntity
 import com.questionbank.app.data.local.entity.TypeCqChaptersEntity
 import com.questionbank.app.data.local.entity.TypeCqImagesEntity
 import com.questionbank.app.data.local.entity.TypeCqQuestionBoardsEntity
-import com.questionbank.app.data.local.entity.TypeCqConceptEntity
-import com.questionbank.app.data.local.entity.TypeCqConceptPartsEntity
 import com.questionbank.app.data.local.entity.TypeCqQuestionCategoriesEntity
 import com.questionbank.app.data.local.entity.TypeCqQuestionCategoryLinksEntity
 import com.questionbank.app.data.local.entity.TypeCqQuestionTypesEntity
@@ -78,8 +74,6 @@ import com.questionbank.app.data.local.entity.TypeCqTopicsEntity
         PapersEntity::class,
         SchemaMigrationsEntity::class,
         TypeCqChaptersEntity::class,
-        TypeCqConceptEntity::class,
-        TypeCqConceptPartsEntity::class,
         TypeCqImagesEntity::class,
         TypeCqQuestionBoardsEntity::class,
         TypeCqQuestionCategoriesEntity::class,
@@ -103,7 +97,6 @@ abstract class QuestionBankDatabase : RoomDatabase() {
     abstract fun typeCqChapterDao(): TypeCqChapterDao
     abstract fun typeCqTopicDao(): TypeCqTopicDao
     abstract fun typeCqQuestionDao(): TypeCqQuestionDao
-    abstract fun typeCqConceptDao(): TypeCqConceptDao
     abstract fun typeCqReferenceDao(): com.questionbank.app.data.local.dao.TypeCqReferenceDao
     abstract fun chapterCqDataDao(): com.questionbank.app.data.local.dao.ChapterCqDataDao
     abstract fun sharedDataDao(): com.questionbank.app.data.local.dao.SharedDataDao
@@ -111,8 +104,28 @@ abstract class QuestionBankDatabase : RoomDatabase() {
     abstract fun mediaDataDao(): com.questionbank.app.data.local.dao.MediaDataDao
 
     companion object {
+        /** Adds the separate stimulus-to-category relation without changing the existing question-category links. */
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL(
+                    """CREATE TABLE IF NOT EXISTS type_cq_stimulus_category_links (
+                        stimulus_id TEXT NOT NULL,
+                        category_id TEXT NOT NULL,
+                        assigned_at INTEGER NOT NULL,
+                        PRIMARY KEY(stimulus_id, category_id),
+                        FOREIGN KEY(stimulus_id) REFERENCES type_cq_stimuli(stimulus_id) ON UPDATE CASCADE ON DELETE CASCADE,
+                        FOREIGN KEY(category_id) REFERENCES type_cq_question_categories(category_id) ON UPDATE CASCADE ON DELETE RESTRICT
+                    )""".trimIndent()
+                )
+                connection.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_type_cq_stimulus_category_links_category_id_stimulus_id " +
+                        "ON type_cq_stimulus_category_links(category_id, stimulus_id)"
+                )
+            }
+        }
+
         /**
-         * Room owns the 38 ordinary application tables. FTS virtual tables and
+         * Room owns the 36 ordinary application tables. FTS virtual tables and
          * canonical triggers are installed separately because FTS shadow tables
          * are SQLite-managed objects and must not be Room @Entity declarations.
          */
@@ -125,37 +138,6 @@ abstract class QuestionBankDatabase : RoomDatabase() {
             CanonicalDatabaseObjects.statements.forEach { statement -> connection.execSQL(statement) }
             SeedData.statements.forEach { statement -> connection.execSQL(statement) }
             SeedData.boardStatements.forEach { statement -> connection.execSQL(statement) }
-        }
-
-        /** Adds card-level concepts without deleting the user's existing QuestionBank.db. */
-        val MIGRATION_1_2 = object : Migration(1, 2) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("""CREATE TABLE IF NOT EXISTS type_cq_stimulus_category_links (
-                    stimulus_id TEXT NOT NULL, category_id TEXT NOT NULL, assigned_at INTEGER NOT NULL,
-                    PRIMARY KEY(stimulus_id, category_id),
-                    FOREIGN KEY(stimulus_id) REFERENCES type_cq_stimuli(stimulus_id) ON UPDATE CASCADE ON DELETE CASCADE,
-                    FOREIGN KEY(category_id) REFERENCES type_cq_question_categories(category_id) ON UPDATE CASCADE ON DELETE RESTRICT
-                )""")
-                db.execSQL("CREATE INDEX IF NOT EXISTS index_type_cq_stimulus_category_links_category_id_stimulus_id ON type_cq_stimulus_category_links(category_id, stimulus_id)")
-                db.execSQL("""CREATE TABLE IF NOT EXISTS type_cq_concepts (
-                    concept_id TEXT NOT NULL, topic_id TEXT NOT NULL, stimulus_id TEXT, question_id TEXT,
-                    created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY(concept_id),
-                    FOREIGN KEY(topic_id) REFERENCES type_cq_topics(topic_id) ON UPDATE CASCADE ON DELETE CASCADE,
-                    FOREIGN KEY(stimulus_id) REFERENCES type_cq_stimuli(stimulus_id) ON UPDATE CASCADE ON DELETE CASCADE,
-                    FOREIGN KEY(question_id) REFERENCES type_cq_questions(question_id) ON UPDATE CASCADE ON DELETE CASCADE
-                )""")
-                db.execSQL("CREATE INDEX IF NOT EXISTS index_type_cq_concepts_topic_id ON type_cq_concepts(topic_id)")
-                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_type_cq_concepts_stimulus_id ON type_cq_concepts(stimulus_id)")
-                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_type_cq_concepts_question_id ON type_cq_concepts(question_id)")
-                db.execSQL("""CREATE TABLE IF NOT EXISTS type_cq_concept_parts (
-                    part_id TEXT NOT NULL, concept_id TEXT NOT NULL, position INTEGER NOT NULL, part_type TEXT NOT NULL,
-                    text_content TEXT, image_id TEXT, created_at INTEGER NOT NULL, PRIMARY KEY(part_id),
-                    FOREIGN KEY(concept_id) REFERENCES type_cq_concepts(concept_id) ON UPDATE CASCADE ON DELETE CASCADE,
-                    FOREIGN KEY(image_id) REFERENCES type_cq_images(image_id) ON UPDATE CASCADE ON DELETE RESTRICT
-                )""")
-                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_type_cq_concept_parts_concept_id_position ON type_cq_concept_parts(concept_id, position)")
-                db.execSQL("CREATE INDEX IF NOT EXISTS index_type_cq_concept_parts_image_id ON type_cq_concept_parts(image_id)")
-            }
         }
 
         fun create(context: Context): QuestionBankDatabase =

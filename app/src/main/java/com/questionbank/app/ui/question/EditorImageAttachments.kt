@@ -6,8 +6,11 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -31,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import com.questionbank.app.domain.question.QuestionStimulusImage
@@ -155,6 +159,86 @@ internal fun MediaThumbnail(
         is ThumbnailState.Ready -> Image(current.bitmap.asImageBitmap(), contentDescription = "সংযুক্ত ছবি", modifier = modifier, contentScale = contentScale)
         ThumbnailState.Loading -> Box(modifier)
         ThumbnailState.Missing -> Text("ছবি অনুপলব্ধ", style = MaterialTheme.typography.labelSmall, modifier = Modifier.height(48.dp))
+    }
+}
+
+/** Full-width, uncropped stimulus image decoded near the rendered width instead of the 100dp thumbnail size. */
+@Composable
+internal fun MediaFullWidthImage(
+    pipeline: ImagePipeline,
+    imageId: String,
+    imageScope: ImageScope,
+) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val targetWidthPx = with(LocalDensity.current) { maxWidth.roundToPx().coerceAtLeast(1) }
+        val state by produceState<ThumbnailState>(
+            initialValue = ThumbnailState.Loading,
+            imageId,
+            imageScope,
+            targetWidthPx,
+        ) {
+            value = withContext(Dispatchers.IO) {
+                try {
+                    val file = pipeline.fileForImage(imageId, imageScope)
+                        ?: return@withContext ThumbnailState.Missing
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeFile(file.absolutePath, bounds)
+                    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+                        return@withContext ThumbnailState.Missing
+                    }
+                    var sampleSize = 1
+                    while (bounds.outWidth / (sampleSize * 2) >= targetWidthPx) {
+                        sampleSize *= 2
+                    }
+                    val cacheKey = "${file.absolutePath}|${file.lastModified()}|${file.length()}|$sampleSize"
+                    val cached = ThumbnailCache.get(cacheKey)
+                    if (cached != null) return@withContext ThumbnailState.Ready(cached)
+                    val bitmap = ThumbnailCache.throttled {
+                        BitmapFactory.decodeFile(
+                            file.absolutePath,
+                            BitmapFactory.Options().apply {
+                                inSampleSize = sampleSize
+                                inPreferredConfig = Bitmap.Config.ARGB_8888
+                            },
+                        )
+                    }
+                    if (bitmap != null) {
+                        ThumbnailCache.put(cacheKey, bitmap)
+                        ThumbnailState.Ready(bitmap)
+                    } else {
+                        ThumbnailState.Missing
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    ThumbnailState.Missing
+                } catch (_: OutOfMemoryError) {
+                    ThumbnailState.Missing
+                }
+            }
+        }
+        when (val current = state) {
+            is ThumbnailState.Ready -> {
+                val ratio = current.bitmap.width.toFloat() / current.bitmap.height.toFloat()
+                Image(
+                    current.bitmap.asImageBitmap(),
+                    contentDescription = "উদ্দীপকের ছবি",
+                    modifier = Modifier.fillMaxWidth().aspectRatio(ratio),
+                    contentScale = ContentScale.FillWidth,
+                )
+            }
+            ThumbnailState.Loading -> Box(
+                Modifier.fillMaxWidth().height(96.dp)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            )
+            ThumbnailState.Missing -> Box(
+                Modifier.fillMaxWidth().height(96.dp)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("ছবি অনুপলব্ধ", style = MaterialTheme.typography.labelSmall)
+            }
+        }
     }
 }
 

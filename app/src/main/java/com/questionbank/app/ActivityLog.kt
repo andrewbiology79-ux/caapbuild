@@ -76,17 +76,26 @@ object ActivityLog {
     // ------------------------------------------------------------------ public API
 
     /** A general event line: `HH:mm:ss.SSS [screen] TAG  message`. */
-    fun event(tag: String, message: String) = write("[$currentScreen] ${tag.padEnd(9)} $message")
+    fun event(tag: String, message: String) {
+        // Editor-only copy (EditorLog): the save data, the write and its result/diagnostics belong to the editors' audit.
+        if (tag in EDITOR_TAGS) EditorLog.event(tag, message)
+        write("[$currentScreen] ${tag.padEnd(9)} $message")
+    }
+
+    private val EDITOR_TAGS = setOf("SAVE-DATA", "SAVE-RESULT", "DB-WRITE", "DB-FIX", "DB-DIAG")
 
     /** A named user action (ViewModel level), e.g. action("EDIT", "save pressed"). */
-    fun action(area: String, what: String, detail: String = "") =
+    fun action(area: String, what: String, detail: String = "") {
+        if (area == "EDIT" || area == "CREATE") EditorLog.action("$area: $what", detail)
         write("[$currentScreen] ACTION    $area: $what${if (detail.isNotEmpty()) " | $detail" else ""}")
+    }
 
     /**
      * A typed-text change: length + short preview only. Keystrokes in the same field less than 1.5 s apart are
      * merged: the line is written when the person pauses, switches field, taps something or saves.
      */
     fun typed(field: String, value: String) {
+        EditorLog.typed(field, value)
         val line = "[$currentScreen] TYPED     $field: ${value.length} chars | \"${preview(value)}\""
         val now = System.nanoTime() / 1_000_000L
         synchronized(typedLock) {
@@ -148,6 +157,7 @@ object ActivityLog {
 
     /** An error with the full stack trace. */
     fun error(where: String, message: String, t: Throwable? = null) {
+        if (where == "DB-FAIL") EditorLog.error(where, message, t)
         val trace = t?.let { StringWriter().also { w -> it.printStackTrace(PrintWriter(w)) }.toString() }
         write("[$currentScreen] ERROR     $where: $message${if (trace != null) "\n$trace" else ""}")
     }
@@ -162,6 +172,12 @@ object ActivityLog {
 
     fun screen(route: String?, args: String = "") {
         val next = route ?: "-"
+        // An editor session starts when the create/edit route opens and ends when it is left.
+        val wasEditor = currentScreen.endsWith("/questions/new") || currentScreen.contains("/questions/edit/")
+        val isCreate = next.endsWith("/questions/new")
+        val isEdit = next.contains("/questions/edit/")
+        if (wasEditor && !(isCreate || isEdit)) EditorLog.end("left to $next")
+        if (isCreate || isEdit) EditorLog.begin(if (isCreate) "CREATE" else "EDIT", args)
         write("[$currentScreen] NAVIGATE  -> $next${if (args.isNotEmpty()) " | $args" else ""}")
         currentScreen = next
     }

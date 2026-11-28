@@ -2,15 +2,22 @@ package com.questionbank.app.ui.navigation
 
 import android.app.Activity
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -22,10 +29,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -64,8 +82,6 @@ import com.questionbank.app.ui.question.QuestionListScreen
 import com.questionbank.app.ui.question.QuestionListViewModel
 import com.questionbank.app.ui.question.QuestionDetailScreen
 import com.questionbank.app.ui.question.GlobalSearchScreen
-import com.questionbank.app.ui.question.ConceptScreen
-import com.questionbank.app.ui.question.ConceptListScreen
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
@@ -97,8 +113,6 @@ object Routes {
     const val QUESTION_EDITOR = "type_cq/topics/{topicId}/questions/new"
     const val QUESTION_EDIT = "type_cq/topics/{topicId}/questions/edit/{groupKey}"
     const val QUESTION_DETAIL = "type_cq/topics/{topicId}/questions/detail/{groupKey}"
-    const val QUESTION_CONCEPT = "type_cq/topics/{topicId}/concept/{groupKey}/{cardNumber}"
-    const val TYPE_CONCEPTS = "type_cq/topics/{topicId}/concepts"
     const val REFERENCE_HOME = "type_cq/references"
     const val QUESTION_TYPES = "type_cq/references/question_types"
     const val BOARDS = "type_cq/references/boards"
@@ -113,8 +127,6 @@ object Routes {
     fun questionEditor(topicId: String) = "type_cq/topics/$topicId/questions/new"
     fun questionEdit(topicId: String, groupKey: String) = "type_cq/topics/$topicId/questions/edit/$groupKey"
     fun questionDetail(topicId: String, groupKey: String) = "type_cq/topics/$topicId/questions/detail/$groupKey"
-    fun questionConcept(topicId: String, groupKey: String, cardNumber: Int) = "type_cq/topics/$topicId/concept/$groupKey/$cardNumber"
-    fun typeConcepts(topicId: String) = "type_cq/topics/$topicId/concepts"
     fun chapterCqChapters(subjectId: String) = "chapter_cq/subjects/$subjectId/chapters"
     fun chapterCqQuestions(subjectId: String, chapterId: String) = "chapter_cq/subjects/$subjectId/chapters/$chapterId/questions"
 }
@@ -350,7 +362,15 @@ fun AppNavHost() {
                 ) { entry ->
                     val topicId = entry.arguments?.getString("topicId").orEmpty()
                     val vm: QuestionListViewModel = viewModel(
-                        factory = QuestionListViewModel.factory { QuestionListViewModel(topicId, questionRepo, container.typeCqData.observeCategories(), container.typeCqData.observeQuestionTypes()) }
+                        factory = QuestionListViewModel.factory {
+                            QuestionListViewModel(
+                                topicId = topicId,
+                                repository = questionRepo,
+                                hierarchyRepository = repo,
+                                categoriesFlow = container.typeCqData.observeCategories(),
+                                questionTypesFlow = container.typeCqData.observeQuestionTypes(),
+                            )
+                        }
                     )
                     val savedCount by entry.savedStateHandle.getStateFlow(Routes.SAVED_COUNT_KEY, 0).collectAsState()
                     val edited by entry.savedStateHandle.getStateFlow(Routes.EDITED_KEY, false).collectAsState()
@@ -366,40 +386,14 @@ fun AppNavHost() {
                         },
                         onDelete = vm::deleteGroup,
                         onCopy = vm::duplicateGroup,
-                        onBulkDelete = vm::deleteGroups,
-                        onView = {},
                         imagePipeline = container.imagePipeline,
                         onBack = { navController.popBackStack() },
-                        onConcept = { group, number -> QuestionGroupKey.of(group)?.let { navController.navigate(Routes.questionConcept(topicId, it, number)) } },
-                        onAllConcepts = { navController.navigate(Routes.typeConcepts(topicId)) },
-                        onNavigateSubject = { subjectId -> navController.popBackStack(Routes.chapters(subjectId), false) },
-                        onNavigateChapter = { chapterId -> navController.popBackStack(Routes.topics(chapterId), false) },
-                    )
-                }
-
-                composable(
-                    route = Routes.QUESTION_CONCEPT,
-                    arguments = listOf(
-                        navArgument("topicId") { type = NavType.StringType },
-                        navArgument("groupKey") { type = NavType.StringType },
-                        navArgument("cardNumber") { type = NavType.IntType },
-                    ),
-                ) { entry ->
-                    val topicId = entry.arguments?.getString("topicId").orEmpty()
-                    val groupKey = entry.arguments?.getString("groupKey").orEmpty()
-                    val cardNumber = entry.arguments?.getInt("cardNumber") ?: 0
-                    ConceptScreen(topicId, groupKey, cardNumber, container.database.typeCqConceptDao(), container.imagePipeline) { navController.popBackStack() }
-                }
-
-                composable(
-                    route = Routes.TYPE_CONCEPTS,
-                    arguments = listOf(navArgument("topicId") { type = NavType.StringType }),
-                ) { entry ->
-                    val topicId = entry.arguments?.getString("topicId").orEmpty()
-                    ConceptListScreen(
-                        topicId, container.database.typeCqConceptDao(), container.imagePipeline,
-                        onOpen = { key, number -> navController.navigate(Routes.questionConcept(topicId, key, number)) },
-                        onBack = { navController.popBackStack() },
+                        onCrumbClick = { index ->
+                            when (index) {
+                                0 -> navController.popBackStack(Routes.SUBJECTS, false)
+                                1 -> navController.popBackStack(Routes.CHAPTERS, false)
+                            }
+                        },
                     )
                 }
 
@@ -616,28 +610,55 @@ fun AppNavHost() {
 
 @Composable
 private fun AppBottomBar(navController: NavHostController, currentDestination: NavDestination?) {
-    val compact = currentDestination?.hierarchy?.any { it.route == Routes.TAB_TYPE_CQ } == true
-    NavigationBar(
-        modifier = if (compact) Modifier.navigationBarsPadding().height(54.dp) else Modifier,
-        // Type CQ content uses edge-to-edge; apply the bottom system inset directly to its compact bar.
-        windowInsets = if (compact) WindowInsets(0, 0, 0, 0) else NavigationBarDefaults.windowInsets,
-    ) {
-        TABS.forEach { tab ->
-            val selected = currentDestination?.hierarchy?.any { it.route == tab.route } == true
-            NavigationBarItem(
-                selected = selected,
-                onClick = {
-                    navController.navigate(tab.route) {
-                        // One back stack per tab: leaving a tab saves where the owner was, coming back restores it.
-                        popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                },
-                icon = { Text(tab.glyph, fontSize = if (compact) 14.sp else 18.sp) },
-                label = { Text(tab.label, fontSize = if (compact) 9.sp else 11.sp, maxLines = 1) },
-                alwaysShowLabel = true,
-            )
+    Surface(color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .height(56.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TABS.forEach { tab ->
+                val selected = currentDestination?.hierarchy?.any { it.route == tab.route } == true
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxHeight()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable {
+                            navController.navigate(tab.route) {
+                                // One back stack per tab: leaving a tab saves where the owner was, coming back restores it.
+                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                        .semantics {
+                            role = Role.Tab
+                            this.selected = selected
+                            contentDescription = tab.label
+                        }
+                        .padding(horizontal = 2.dp, vertical = 2.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text(
+                        tab.glyph,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+                            .padding(horizontal = 8.dp, vertical = 0.dp),
+                        color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 15.sp,
+                    )
+                    Text(
+                        tab.label,
+                        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 10.sp,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
         }
     }
 }

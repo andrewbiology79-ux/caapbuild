@@ -71,7 +71,7 @@ class QuestionEditTest {
 
     private suspend fun groups(topic: String = topicId): List<SavedGroup> = repo.observeGroups(topic).first()
 
-    private suspend fun keyOfNewest(): String = QuestionGroupKey.of(groups()[0])!!
+    private suspend fun keyOfNewest(): String = QuestionGroupKey.of(groups().last())!!
 
     private fun edit(key: String, stimulus: String, vararg subs: Triple<CqLabel, String, String>) =
         GroupEditInput(topicId, key, stimulus, subs.map { SubQuestionInput(it.first, it.second, it.third) })
@@ -159,7 +159,7 @@ class QuestionEditTest {
         save(topicId, "প্রথম উদ্দীপক", Triple(CqLabel.KA, "ক-এক", ""), Triple(CqLabel.KHA, "খ-এক", ""))
         save(topicId, "", Triple(CqLabel.KA, "একক প্রশ্ন", ""))
         save(topicId, "", Triple(CqLabel.KA, "আরেক একক", ""))
-        val oldest = groups().last()
+        val oldest = groups().first()
         val key = QuestionGroupKey.of(oldest)!!
         val orderBefore = groups().map { QuestionGroupKey.of(it) }
         now = 2_000L
@@ -171,8 +171,8 @@ class QuestionEditTest {
         assertEquals(UpdateResult.Updated, result)
         val after = groups()
         assertEquals(orderBefore, after.map { QuestionGroupKey.of(it) }) // the card did not jump to the top
-        assertEquals(listOf(CqLabel.KA, CqLabel.KHA, CqLabel.GA), after.last().subQuestions.map { it.label })
-        assertEquals(3.0, after.last().subQuestions[2].marks, 0.0) // marks and type come from the label
+        assertEquals(listOf(CqLabel.KA, CqLabel.KHA, CqLabel.GA), after.first().subQuestions.map { it.label })
+        assertEquals(3.0, after.first().subQuestions[2].marks, 0.0) // marks and type come from the label
         assertEquals(1, found("গ-নতুন").size)
         assertEquals(questionRows(), ftsRows()) // every question row has exactly one FTS row
         assertEquals(5L, questionRows())
@@ -234,7 +234,7 @@ class QuestionEditTest {
         save(topicId, "", Triple(CqLabel.KA, "প্রথম একক", ""))
         save(topicId, "", Triple(CqLabel.KA, "দ্বিতীয় একক", ""))
         save(otherTopicId, "অন্য উদ্দীপক", Triple(CqLabel.KA, "অন্য প্রশ্ন", ""))
-        val untouchedSameTopic = groups()[1]
+        val untouchedSameTopic = groups()[0]
         val untouchedOtherTopic = groups(otherTopicId)
         val key = keyOfNewest()
         now = 2_000L
@@ -242,7 +242,7 @@ class QuestionEditTest {
         val result = repo.updateGroup(edit(key, "", Triple(CqLabel.KA, "বদলানো একক", "")))
 
         assertEquals(UpdateResult.Updated, result)
-        assertEquals(untouchedSameTopic, groups()[1])
+        assertEquals(untouchedSameTopic, groups()[0])
         assertEquals(untouchedOtherTopic, groups(otherTopicId))
         assertEquals(1_000L, updatedAtOfQuestion(untouchedSameTopic.subQuestions[0].id))
         assertEquals(3L, ftsRows())

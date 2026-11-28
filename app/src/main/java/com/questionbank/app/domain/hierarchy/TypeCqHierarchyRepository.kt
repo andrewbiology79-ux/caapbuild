@@ -26,6 +26,8 @@ interface TypeCqHierarchyRepository {
     fun observeTopicRows(chapterId: String): Flow<List<HierarchyRow>>
     /** Null when the chapter does not exist (any more). */
     fun observeChapterPath(chapterId: String): Flow<ChapterPath?>
+    /** Null when the topic or one of its ancestors does not exist (any more). */
+    fun observeTopicPath(topicId: String): Flow<TopicPath?>
 
     suspend fun addSubject(rawName: String): AddResult
     suspend fun addChapter(subjectId: String, rawName: String): AddResult

@@ -95,8 +95,6 @@ class AppContainer(private val appContext: Context) {
             dao = database.typeCqQuestionDao(),
             beforeWrite = { database.forceFullSync() },
             ftsMatch = { topicId, match -> database.typeCqFtsMatch(topicId, match) },
-            conceptDao = database.typeCqConceptDao(),
-            database = database,
         )
     }
 

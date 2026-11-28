@@ -28,3 +28,18 @@ fun cardHasNoTags(group: SavedGroup): Boolean = group.stimulusBoards.isEmpty() &
 /** What a person typed in "অন্য সাল" while it cannot be used yet, or null when it is fine or still empty. */
 fun yearInputError(raw: String, parse: (String) -> Int?): String? =
     if (raw.isBlank() || parse(raw) != null) null else "সাল চার অঙ্কের হতে হবে (১৯০০ থেকে ২২০০)"
+
+
+/** Card chip order: newest year first, then the board catalog's display order. */
+fun sortedCardBoardTags(tags: List<BoardTag>, boards: List<BoardItem>): List<BoardTag> {
+    val catalogOrder = boards.mapIndexed { index, board -> board.code to index }.toMap()
+    return tags.distinct().sortedWith(
+        compareByDescending<BoardTag> { it.year }
+            .thenBy { catalogOrder[it.boardCode] ?: Int.MAX_VALUE }
+            .thenBy { it.boardCode },
+    )
+}
+
+
+/** Compact chip label required by the Type CQ card ribbon, e.g. "DHA ২৬". */
+fun cardBoardTagText(tag: BoardTag): String = "${tag.boardCode} ${(tag.year % 100).toBengali()}"

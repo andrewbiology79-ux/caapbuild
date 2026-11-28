@@ -83,24 +83,6 @@ private val HighContrastDarkColors = darkColorScheme(
 /** Cards and dialogs use 16 dp corners (design 39.4). */
 private val AppShapes = Shapes(medium = RoundedCornerShape(16.dp))
 
-/** Legacy Type CQ card palette, grounded in the previous app's QuestionCard styles. */
-object TypeCqCardTokens {
-    val RibbonLight = Color(0xFF3B4FD8)
-    val RibbonDark = Color(0xFF2A3BB0)
-    val BorderLight = Color(0xFF3B4FD8)
-    val BorderDark = Color(0xFF5369B4)
-    val Muted = Color(0xFF64748B)
-    val PaperChipBackground = Color(0xFFECFDF5)
-    val PaperChipForeground = Color(0xFF065F46)
-    val PaperChipBorder = Color(0xFFA7F3D0)
-    val BoardChipBorder = Color(0xFFD5D9E2)
-    val ContentDivider = Color(0xFFF2F4F8)
-    val SolutionPanelLight = Color(0xFFF8FAFC)
-    val SolutionPanelBorderLight = Color(0xFFE2E8F0)
-    val SolutionPanelDark = Color(0xFF202A44)
-    val SolutionPanelBorderDark = Color(0xFF3F4D75)
-}
-
 /** Header bar colours: brand blue in Light, slate in Dark. */
 val HeaderLight = Color(0xFF3B4FD8)
 val HeaderDark = Color(0xFF1E293B)
@@ -150,4 +132,57 @@ fun QuestionBankTheme(
             content = content,
         )
     }
+}
+
+/** Fixed light/dark tokens for Type CQ question cards, matching the legacy Collection card palette. */
+object QuestionCardPalette {
+    val Ribbon = Color(0xFF3B4FD8)
+    val LightCardBorder = Color(0xFF3B4FD8)
+    val DarkCardBorder = Color(0xFF334155)
+
+    val LightMetaRow = Color(0xFFF8FAFC)
+    val DarkMetaRow = Color(0xFF1E293B)
+    val LightPaperRow = Color(0xFFF8FAFC)
+    val DarkPaperRow = Color(0xFF162033)
+    val LightMuted = Color(0xFF64748B)
+    val DarkMuted = Color(0xFF94A3B8)
+
+    val LightPaperChip = Color(0xFFECFDF5)
+    val LightPaperChipText = Color(0xFF065F46)
+    val LightPaperChipBorder = Color(0xFFA7F3D0)
+    val DarkPaperChip = Color(0xFF052E16)
+    val DarkPaperChipText = Color(0xFF6EE7B7)
+    val DarkPaperChipBorder = Color(0xFF065F46)
+
+    val LightHeading = Color(0xFF2A3BB0)
+    val DarkHeading = Color(0xFFA5B4FC)
+    val LightQuestionDivider = Color(0xFFF2F4F8)
+    val DarkQuestionDivider = Color(0xFF334155)
+
+    val LightBoardBackground = Color.White
+    val LightBoardText = Color(0xFF1B1F2A)
+    val LightBoardBorder = Color(0xFFD5D9E2)
+    val DarkBoardBackground = Color(0xFF1E293B)
+    val DarkBoardText = Color(0xFFF1F5F9)
+    val DarkBoardBorder = Color(0xFF334155)
+
+    val LightSolutionButton = Color.White
+    val LightSolutionText = Color(0xFF2A3BB0)
+    val LightSolutionBorder = Color(0xFFD5D9E2)
+    val DarkSolutionButton = Color(0xFF1E1B4B)
+    val DarkSolutionText = Color(0xFFA5B4FC)
+    val DarkSolutionBorder = Color(0xFF3730A3)
+    val LightDisabledSolution = Color(0xFFF1F5F9)
+    val DarkDisabledSolution = Color(0xFF334155)
+    val LightSolutionPanel = Color(0xFFF8FAFC)
+    val LightSolutionPanelBorder = Color(0xFFE2E8F0)
+    val DarkSolutionPanel = Color(0xFF162033)
+    val DarkSolutionPanelBorder = Color(0xFF334155)
+
+    val LightRatingBackground = Color(0xFFFEF9C3)
+    val LightRatingText = Color(0xFF713F12)
+    val LightRatingBorder = Color(0xFFFDE047)
+    val DarkRatingBackground = Color(0xFF422006)
+    val DarkRatingText = Color(0xFFFDE68A)
+    val DarkRatingBorder = Color(0xFF713F12)
 }

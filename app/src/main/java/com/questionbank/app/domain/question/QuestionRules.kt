@@ -43,6 +43,7 @@ object QuestionRules {
         val wantedBoards = input.boards
         if (wantedBoards != null && !BoardRules.allValid(wantedBoards)) return Checked.BadBoard
         if (input.categoriesByLabel.any { (_, ids) -> ids.any(String::isBlank) || ids.distinct().size != ids.size }) return Checked.BadCategories
+        if (input.stimulusCategoryIds.any(String::isBlank) || input.stimulusCategoryIds.distinct().size != input.stimulusCategoryIds.size) return Checked.BadCategories
         val stimulus = clean(input.stimulusText)
         val reference = clean(input.referenceText)
         if (reference.length > MAX_TEXT_LENGTH) return Checked.TooLong("রেফারেন্স")

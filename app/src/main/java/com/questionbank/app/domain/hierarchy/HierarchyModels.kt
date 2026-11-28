@@ -6,7 +6,7 @@ data class HierarchyItem(val id: String, val name: String)
 /**
  * One list row with its counts (plan 39.3, UI-02).
  * [childCount]: chapters of a subject, topics of a chapter, always 0 for a topic.
- * [questionCount]: every question row (sub-question) below this item, the same unit as the question list's "মোট N টি প্রশ্ন".
+ * [questionCount]: every question row (sub-question) below this item; this is not the SavedGroup card count used by the Type CQ list.
  */
 data class HierarchyRow(val id: String, val name: String, val childCount: Int, val questionCount: Int) {
     val isEmpty: Boolean get() = childCount == 0 && questionCount == 0
@@ -14,6 +14,13 @@ data class HierarchyRow(val id: String, val name: String, val childCount: Int, v
 
 /** The two ancestors of a topic list, for the breadcrumb. */
 data class ChapterPath(val subject: HierarchyItem, val chapter: HierarchyItem)
+
+/** The subject, chapter and topic names shown in a Type CQ question-list breadcrumb. */
+data class TopicPath(
+    val subject: HierarchyItem,
+    val chapter: HierarchyItem,
+    val topic: HierarchyItem,
+)
 
 sealed interface AddResult {
     data class Added(val id: String) : AddResult

@@ -11,7 +11,7 @@ import java.sql.DriverManager
 import java.sql.ResultSet
 
 /**
- * Compares the Room schema export (1.json) with the canonical SQL schema.
+ * Compares the Room schema export (2.json) with the canonical SQL schema.
  *
  * Compared per table: columns (name, SQLite affinity, NOT NULL), primary key, foreign keys
  * (columns, referenced columns, parent table, ON DELETE) and indexes (columns, uniqueness).
@@ -27,13 +27,13 @@ class RoomSchemaParityTest {
     fun roomSchemaJsonBaselineIsExpected() {
         val database = loadSchema()
         assertEquals(2, database.get("version").asInt)
-        assertEquals(38, database.array("entities").size)
+        assertEquals(36, database.array("entities").size)
     }
 
     @Test
     fun roomSchemaJsonMatchesCanonicalSqlStructure() {
         val entities = loadSchema().array("entities").associateBy { it.get("tableName").asString }
-        val sql = javaClass.classLoader!!.getResource("QuestionBank_SQLite_Schema_v1_1.sql")!!.readText()
+        val sql = javaClass.classLoader!!.getResource("QuestionBank_SQLite_Schema_v1_2.sql")!!.readText()
         val problems = mutableListOf<String>()
 
         DriverManager.getConnection("jdbc:sqlite::memory:").use { connection ->

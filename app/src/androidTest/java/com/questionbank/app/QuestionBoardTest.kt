@@ -79,7 +79,7 @@ class QuestionBoardTest {
         assertTrue("expected Saved but was $result", result is SaveResult.Saved)
     }
 
-    private suspend fun newest(): SavedGroup = repo.observeGroups(topicId).first()[0]
+    private suspend fun newest(): SavedGroup = repo.observeGroups(topicId).first().last()
 
     private fun editInput(key: String, boards: BoardsInput?, vararg subs: Pair<CqLabel, String>) =
         GroupEditInput(topicId, key, "উদ্দীপক", subs.map { SubQuestionInput(it.first, it.second, "") }, null, boards)

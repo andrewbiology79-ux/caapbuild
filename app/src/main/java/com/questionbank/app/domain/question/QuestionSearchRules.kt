@@ -93,14 +93,9 @@ object QuestionSearchRules {
                 val textOk = textMatchedQuestionIds == null || q.id in textMatchedQuestionIds || stimulusTextOk
                 val boardOk = !hasBoardFilter || stimulusTagOk || filter.matches(q.boards)
                 val categoryOk = filter.categoryId == null || filter.categoryId in q.categoryIds
-                // A stimulus category is a card-level predicate; for a stimulus-less card the ribbon
-                // controls that only question, so its own category links are used.
-                val stimulusCategoryOk = filter.stimulusCategoryId == null ||
-                    if (stimulusId == null) filter.stimulusCategoryId in q.categoryIds
-                    else filter.stimulusCategoryId in group.stimulusCategoryIds
                 val ratingOk = filter.rating == null || q.rating == filter.rating
                 val typeOk = filter.questionTypeId == null || q.questionTypeId == filter.questionTypeId
-                textOk && boardOk && categoryOk && stimulusCategoryOk && ratingOk && typeOk
+                textOk && boardOk && categoryOk && ratingOk && typeOk
             }
             if (kept.isEmpty()) null else group.copy(subQuestions = kept)
         }

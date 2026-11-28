@@ -56,6 +56,18 @@ abstract class CategoryDataDao {
     @Query("DELETE FROM type_cq_question_category_links WHERE category_id = :sourceId")
     abstract suspend fun deleteTypeLinks(sourceId: String)
 
+    /**
+     * Review fix P1 (Finding 1): the card list observes type_cq_questions / type_cq_stimuli but the category link tables are
+     * read inside the Flow with a plain query. Touching the parent rows BEFORE their links are moved makes every observer
+     * of the topic reload the card's category ids, so a card never keeps showing (and later uncheck-saving) the old category.
+     * sort_order is untouched, so the list order does not change.
+     */
+    @Query("UPDATE type_cq_questions SET updated_at = :now WHERE question_id IN (SELECT question_id FROM type_cq_question_category_links WHERE category_id = :sourceId)")
+    abstract suspend fun touchTypeQuestionsOfCategory(sourceId: String, now: Long): Int
+
+    @Query("UPDATE type_cq_stimuli SET updated_at = :now WHERE stimulus_id IN (SELECT stimulus_id FROM type_cq_stimulus_category_links WHERE category_id = :sourceId)")
+    abstract suspend fun touchTypeStimuliOfCategory(sourceId: String, now: Long): Int
+
     @Query("INSERT OR IGNORE INTO type_cq_stimulus_category_links(stimulus_id, category_id, assigned_at) SELECT stimulus_id, :targetId, assigned_at FROM type_cq_stimulus_category_links WHERE category_id = :sourceId")
     abstract suspend fun copyTypeStimulusLinks(sourceId: String, targetId: String)
 
@@ -71,6 +83,9 @@ abstract class CategoryDataDao {
     @Transaction
     open suspend fun reassignAndArchiveType(sourceId: String, targetId: String, now: Long): Boolean {
         if (sourceId == targetId || activeTypeCategory(sourceId) == 0 || activeTypeCategory(targetId) == 0) return false
+        // Touch first (the links still exist), then copy/delete/archive: all in this one Room transaction.
+        touchTypeQuestionsOfCategory(sourceId, now)
+        touchTypeStimuliOfCategory(sourceId, now)
         copyTypeLinks(sourceId, targetId)
         copyTypeStimulusLinks(sourceId, targetId)
         deleteTypeLinks(sourceId)

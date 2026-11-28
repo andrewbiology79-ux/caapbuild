@@ -106,47 +106,4 @@ class BoardFilterSearchTest {
         assertEquals("সাল: সব", yearFilterLabel(BoardFilter()))
         assertEquals("সাল: ২০১৯", yearFilterLabel(BoardFilter(year = 2019)))
     }
-    @Test
-    fun stimulusAndQuestionCategoriesAreIndependentFilters() {
-        val group = SavedGroup(
-            stimulusId = "s-cat",
-            stimulusText = "উদ্দীপক",
-            subQuestions = listOf(
-                sub("cat-a", CqLabel.KA),
-                sub("cat-b", CqLabel.KHA),
-            ),
-            stimulusCategoryIds = listOf("stim-cat"),
-        )
-        val stimulusFiltered = QuestionSearchRules.filterByBoards(
-            listOf(group), null, emptySet(), BoardFilter(stimulusCategoryId = "stim-cat"),
-        )
-        assertEquals(listOf(listOf("cat-a", "cat-b")), ids(stimulusFiltered))
-
-        val questionCategoryGroup = group.copy(
-            stimulusCategoryIds = listOf("stim-cat"),
-            subQuestions = listOf(
-                sub("cat-a", CqLabel.KA).copy(categoryIds = listOf("question-cat")),
-                sub("cat-b", CqLabel.KHA).copy(categoryIds = listOf("other-cat")),
-            ),
-        )
-        val questionFiltered = QuestionSearchRules.filterByBoards(
-            listOf(questionCategoryGroup), null, emptySet(), BoardFilter(categoryId = "question-cat"),
-        )
-        assertEquals(listOf(listOf("cat-a")), ids(questionFiltered))
-        val separateStimulusFiltered = QuestionSearchRules.filterByBoards(
-            listOf(questionCategoryGroup), null, emptySet(), BoardFilter(stimulusCategoryId = "other-cat"),
-        )
-        assertTrue(separateStimulusFiltered.isEmpty())
-    }
-
-    @Test
-    fun stimuluslessCardUsesItsQuestionCategoryAsTheRibbonCategoryFilter() {
-        val one = group(null, emptyList(), sub("single", CqLabel.KA).copy(categoryIds = listOf("one-cat")))
-        assertEquals(
-            listOf(listOf("single")),
-            ids(QuestionSearchRules.filterByBoards(listOf(one), null, emptySet(), BoardFilter(stimulusCategoryId = "one-cat"))),
-        )
-        assertTrue(QuestionSearchRules.filterByBoards(listOf(one), null, emptySet(), BoardFilter(stimulusCategoryId = "other-cat")).isEmpty())
-    }
-
 }

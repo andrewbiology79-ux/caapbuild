@@ -3,7 +3,6 @@ package com.questionbank.app.ui.hierarchy
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,7 +16,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -53,6 +51,7 @@ import com.questionbank.app.domain.hierarchy.HierarchyItem
 import com.questionbank.app.domain.hierarchy.HierarchyName
 import com.questionbank.app.domain.hierarchy.HierarchyRow
 import com.questionbank.app.ui.components.AppHeader
+import com.questionbank.app.ui.components.Breadcrumb
 import com.questionbank.app.ui.format.bengaliSerial
 import com.questionbank.app.ui.format.toBengali
 
@@ -292,37 +291,6 @@ private fun NameDialog(
     )
 }
 
-/** Horizontally scrollable path; every crumb but the last is tappable. */
-@Composable
-private fun Breadcrumb(crumbs: List<String>, onCrumbClick: (Int) -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        crumbs.forEachIndexed { index, label ->
-            if (index > 0) {
-                Text(
-                    "›",
-                    modifier = Modifier.padding(horizontal = 6.dp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (index == crumbs.lastIndex) {
-                Text(label, fontWeight = FontWeight.Bold, maxLines = 1)
-            } else {
-                Text(
-                    label,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                    modifier = Modifier.clickable { onCrumbClick(index) }.padding(vertical = 4.dp),
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun HierarchyCard(

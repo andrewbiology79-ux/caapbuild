@@ -1,9 +1,9 @@
 package com.questionbank.app.data.local
 
 /**
- * Idempotent non-entity database objects copied from the canonical SQLite schema v1.1.
- * Room creates the 38 ordinary tables; this list installs both FTS5 virtual tables,
- * the 17 legacy canonical triggers plus four Type-CQ concept integrity triggers, 46 CHECK-emulation triggers (see CheckEmulationTriggers), and the canonical system paper-category seed.
+ * Idempotent non-entity database objects copied from the canonical SQLite schema v1.2.
+ * Room creates the 36 ordinary tables; this list installs both FTS5 virtual tables,
+ * all 17 canonical triggers, 46 CHECK-emulation triggers (see CheckEmulationTriggers), and the canonical system paper-category seed.
  */
 internal object CanonicalDatabaseObjects {
     private val baseStatements: List<String> = listOf(
@@ -58,32 +58,6 @@ BEGIN SELECT RAISE(ABORT, 'Cannot move section while attached items belong to an
         """CREATE TRIGGER IF NOT EXISTS trg_system_paper_category_no_delete
 BEFORE DELETE ON paper_categories WHEN OLD.is_system=1
 BEGIN SELECT RAISE(ABORT, 'System paper category cannot be deleted'); END""",
-        """CREATE TRIGGER IF NOT EXISTS trg_type_cq_concept_owner_insert
-BEFORE INSERT ON type_cq_concepts
-WHEN ((NEW.stimulus_id IS NULL) = (NEW.question_id IS NULL))
-  OR (NEW.stimulus_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM type_cq_stimuli s WHERE s.stimulus_id=NEW.stimulus_id AND s.topic_id=NEW.topic_id))
-  OR (NEW.question_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM type_cq_questions q WHERE q.question_id=NEW.question_id AND q.topic_id=NEW.topic_id AND q.stimulus_id IS NULL))
-BEGIN SELECT RAISE(ABORT, 'A Type_CQ concept must belong to exactly one matching card'); END""",
-        """CREATE TRIGGER IF NOT EXISTS trg_type_cq_concept_owner_update
-BEFORE UPDATE OF topic_id, stimulus_id, question_id ON type_cq_concepts
-WHEN ((NEW.stimulus_id IS NULL) = (NEW.question_id IS NULL))
-  OR (NEW.stimulus_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM type_cq_stimuli s WHERE s.stimulus_id=NEW.stimulus_id AND s.topic_id=NEW.topic_id))
-  OR (NEW.question_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM type_cq_questions q WHERE q.question_id=NEW.question_id AND q.topic_id=NEW.topic_id AND q.stimulus_id IS NULL))
-BEGIN SELECT RAISE(ABORT, 'A Type_CQ concept must belong to exactly one matching card'); END""",
-        """CREATE TRIGGER IF NOT EXISTS trg_type_cq_concept_part_insert
-BEFORE INSERT ON type_cq_concept_parts
-WHEN (NEW.part_type='TEXT' AND (NEW.text_content IS NULL OR trim(NEW.text_content)=''))
-  OR (NEW.part_type='TEXT' AND NEW.image_id IS NOT NULL)
-  OR (NEW.part_type='IMAGE' AND (NEW.image_id IS NULL OR NEW.text_content IS NOT NULL))
-  OR NEW.part_type NOT IN ('TEXT','IMAGE')
-BEGIN SELECT RAISE(ABORT, 'Invalid Type_CQ concept part'); END""",
-        """CREATE TRIGGER IF NOT EXISTS trg_type_cq_concept_part_update
-BEFORE UPDATE OF part_type, text_content, image_id ON type_cq_concept_parts
-WHEN (NEW.part_type='TEXT' AND (NEW.text_content IS NULL OR trim(NEW.text_content)=''))
-  OR (NEW.part_type='TEXT' AND NEW.image_id IS NOT NULL)
-  OR (NEW.part_type='IMAGE' AND (NEW.image_id IS NULL OR NEW.text_content IS NOT NULL))
-  OR NEW.part_type NOT IN ('TEXT','IMAGE')
-BEGIN SELECT RAISE(ABORT, 'Invalid Type_CQ concept part'); END""",
         """CREATE TRIGGER IF NOT EXISTS trg_type_question_fts_insert AFTER INSERT ON type_cq_questions BEGIN
  INSERT INTO type_cq_question_fts(rowid, question_text, short_answer) VALUES (NEW.fts_id, NEW.question_text, NEW.short_answer);
 END""",

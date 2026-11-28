@@ -7,6 +7,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,6 +40,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -53,6 +58,8 @@ import com.questionbank.app.domain.question.BoardRules
 import com.questionbank.app.domain.question.BoardTag
 import com.questionbank.app.domain.question.groupBoardYears
 import com.questionbank.app.ui.format.toBengali
+import com.questionbank.app.ui.theme.LocalDarkTheme
+import com.questionbank.app.ui.theme.QuestionCardPalette
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
@@ -61,25 +68,37 @@ private val LegacyBlueDark = Color(0xFF2A3BB0)
 private val LegacyBorder = Color(0xFFD5D9E2)
 private val LegacyMuted = Color(0xFF64748B)
 
-/** Read-only compact chips matching the legacy notation, e.g. DB'23,25. */
-@Suppress("UNUSED_PARAMETER")
+/** Compact board/year chips; the FlowRow starts at the right and wraps without horizontal scrolling. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TagChipRow(tags: List<BoardTag>, boards: List<BoardItem>, modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier.horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        for (group in groupBoardYears(tags)) {
-            val yearsText = group.years.joinToString(separator = ",") { it.toString().takeLast(2) }
-            Text(
-                "${group.boardCode}'$yearsText",
-                modifier = Modifier
-                    .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(8.dp))
-                    .padding(horizontal = 8.dp, vertical = 2.dp),
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                fontSize = 11.sp,
-            )
+    val dark = LocalDarkTheme.current
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+        FlowRow(
+            modifier = modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            sortedCardBoardTags(tags, boards).forEach { tag ->
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    Text(
+                        cardBoardTagText(tag),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(5.dp))
+                            .background(if (dark) QuestionCardPalette.DarkBoardBackground else QuestionCardPalette.LightBoardBackground)
+                            .border(
+                                1.dp,
+                                if (dark) QuestionCardPalette.DarkBoardBorder else QuestionCardPalette.LightBoardBorder,
+                                RoundedCornerShape(5.dp),
+                            )
+                            .padding(horizontal = 4.dp, vertical = 1.dp),
+                        color = if (dark) QuestionCardPalette.DarkBoardText else QuestionCardPalette.LightBoardText,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                    )
+                }
+            }
         }
     }
 }

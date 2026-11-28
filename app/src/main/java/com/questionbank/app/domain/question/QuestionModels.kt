@@ -76,8 +76,6 @@ data class QuestionGroupInput(
     val boards: BoardsInput? = null,
     /** Reference text belongs to the stimulus record and is independent from its main text. */
     val referenceText: String = "",
-    /** Category IDs assigned to the stimulus card ribbon (kept separate from per-question category links). */
-    val stimulusCategoryIds: List<String> = emptyList(),
     /** Category IDs for each created question block. Omitted labels receive no category links. */
     val categoriesByLabel: Map<CqLabel, List<String>> = emptyMap(),
     /** Optional canonical Phase 6 draft key, removed in the same Room transaction as the content save. */
@@ -86,6 +84,8 @@ data class QuestionGroupInput(
     val stimulusImages: List<QuestionStimulusImage> = emptyList(),
     /** Complete mixed TEXT/IMAGE solution order for labels in this group; absent labels use [SubQuestionInput.solutionParts]. */
     val solutionPartsByLabel: Map<CqLabel, List<QuestionSolutionPart>> = emptyMap(),
+    /** Type CQ categories assigned to the stimulus itself; kept separate from per-question categories. */
+    val stimulusCategoryIds: List<String> = emptyList(),
 )
 
 /** Raw editor text, used for the automatic draft. Index 0..3 = ক, খ, গ, ঘ. */
@@ -133,25 +133,30 @@ data class SavedSubQuestion(
     val orderedSolutionParts: List<QuestionSolutionPart> = emptyList(),
 )
 
-/** One paper-category usage of a question card. One chip is shown per distinct category, newest assignment first. */
+/** One saved Paper that references a question; also carries the parent category for Type CQ card chips. */
 data class PaperUsage(
     val paperId: String,
     val shortName: String,
     val title: String,
     val categoryId: String = "",
     val categoryName: String = "",
-    val assignedAt: Long = 0L,
+    val linkedAt: Long = 0L,
 )
 
-/** Subject → chapter → topic path shown above the Type CQ question-card list. */
-data class TopicBreadcrumb(
-    val subjectId: String,
-    val subjectName: String,
-    val chapterId: String,
-    val chapterName: String,
-    val topicId: String,
-    val topicName: String,
-)
+/** One chip per paper category, ordered by the most recent question-to-paper link in that category. */
+fun latestPaperCategoryUsages(usages: List<PaperUsage>): List<PaperUsage> {
+    val latestByCategory = LinkedHashMap<String, PaperUsage>()
+    usages.forEach { usage ->
+        if (usage.categoryId.isBlank() || usage.categoryName.isBlank()) return@forEach
+        val current = latestByCategory[usage.categoryId]
+        if (current == null || usage.linkedAt > current.linkedAt) {
+            latestByCategory[usage.categoryId] = usage
+        }
+    }
+    return latestByCategory.values.sortedWith(
+        compareByDescending<PaperUsage> { it.linkedAt }.thenBy { it.categoryId },
+    )
+}
 
 /** One stimulus with its sub-questions, or one single question without a stimulus. */
 data class SavedGroup(
@@ -166,12 +171,10 @@ data class SavedGroup(
     val stimulusImages: List<QuestionStimulusImage> = emptyList(),
     /** Rating derived from the complete stored group before search can reduce visible sub-questions. */
     val unfilteredFallbackRating: Int? = null,
-    /** Distinct paper-category references across the complete saved group, retained for partial-search cards. */
+    /** Paper/category metadata across the complete saved group, retained for partial-search cards. */
     val paperUsages: List<PaperUsage> = emptyList(),
-    /** Categories assigned to the stimulus (card-level categories; never mixed with sub-question categories). */
+    /** Category IDs linked to the stimulus; empty for a stimulus-less single-question card. */
     val stimulusCategoryIds: List<String> = emptyList(),
-    /** Whether this card already has a saved concept. */
-    val hasConcept: Boolean = false,
 )
 
 sealed interface SaveResult {

@@ -10,15 +10,21 @@ import androidx.room.Index
     primaryKeys = ["stimulus_id", "category_id"],
     foreignKeys = [
         ForeignKey(
-            entity = TypeCqStimuliEntity::class, parentColumns = ["stimulus_id"], childColumns = ["stimulus_id"],
-            onUpdate = ForeignKey.CASCADE, onDelete = ForeignKey.CASCADE
+            entity = TypeCqStimuliEntity::class,
+            parentColumns = ["stimulus_id"],
+            childColumns = ["stimulus_id"],
+            onUpdate = ForeignKey.CASCADE,
+            onDelete = ForeignKey.CASCADE,
         ),
         ForeignKey(
-            entity = TypeCqQuestionCategoriesEntity::class, parentColumns = ["category_id"], childColumns = ["category_id"],
-            onUpdate = ForeignKey.CASCADE, onDelete = ForeignKey.RESTRICT
-        )
+            entity = TypeCqQuestionCategoriesEntity::class,
+            parentColumns = ["category_id"],
+            childColumns = ["category_id"],
+            onUpdate = ForeignKey.CASCADE,
+            onDelete = ForeignKey.RESTRICT,
+        ),
     ],
-    indices = [Index(value = ["category_id", "stimulus_id"], unique = false)]
+    indices = [Index(value = ["category_id", "stimulus_id"], unique = false)],
 )
 data class TypeCqStimulusCategoryLinksEntity(
     @ColumnInfo(name = "stimulus_id") val stimulusId: String,

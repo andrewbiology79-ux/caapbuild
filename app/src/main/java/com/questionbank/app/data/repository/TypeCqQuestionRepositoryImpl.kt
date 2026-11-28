@@ -14,9 +14,7 @@ import com.questionbank.app.data.local.dao.NewSolutionPartRow
 import com.questionbank.app.data.local.dao.NewStimulusImageRow
 import com.questionbank.app.data.local.dao.QuestionSolutionPartsDb
 import com.questionbank.app.data.local.dao.TypeCqQuestionDao
-import com.questionbank.app.data.local.dao.TypeCqConceptDao
-import com.questionbank.app.data.local.QuestionBankDatabase
-import androidx.room.withTransaction
+import com.questionbank.app.data.local.dao.TypeCqPaperCategoryUsageDb
 import com.questionbank.app.data.local.entity.BoardCatalogEntity
 import com.questionbank.app.domain.question.AddBoardResult
 import com.questionbank.app.domain.question.BoardFilter
@@ -35,6 +33,7 @@ import com.questionbank.app.domain.question.BoardsInput
 import com.questionbank.app.domain.question.QuestionSolutionPart
 import com.questionbank.app.domain.question.QuestionStimulusImage
 import com.questionbank.app.domain.question.PaperUsage
+import com.questionbank.app.domain.question.latestPaperCategoryUsages
 import com.questionbank.app.domain.question.QuestionCategoryUpdate
 import com.questionbank.app.domain.question.QuestionRules
 import com.questionbank.app.domain.question.RatingRules
@@ -47,6 +46,8 @@ import com.questionbank.app.domain.question.TypeCqQuestionRepository
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import org.json.JSONArray
@@ -67,48 +68,39 @@ class TypeCqQuestionRepositoryImpl(
     private val newId: () -> String = { UUID.randomUUID().toString() },
     private val ftsMatch: suspend (topicId: String, match: String) -> List<String> =
         { _, _ -> throw IllegalStateException("ftsMatch is not wired") },
-    private val conceptDao: TypeCqConceptDao? = null,
-    /** Required for cross-DAO copy/move transactions; injected by AppContainer. */
-    private val database: QuestionBankDatabase? = null,
 ) : TypeCqQuestionRepository {
 
     override fun observeTopicName(topicId: String): Flow<String?> = dao.observeTopicName(topicId)
 
-    override fun observeTopicBreadcrumb(topicId: String): Flow<com.questionbank.app.domain.question.TopicBreadcrumb?> =
-        dao.observeTopicBreadcrumb(topicId).map { row -> row?.let {
-            com.questionbank.app.domain.question.TopicBreadcrumb(it.subjectId, it.subjectName, it.chapterId, it.chapterName, it.topicId, it.topicName)
-        } }
-
     override fun observeGroups(topicId: String): Flow<List<SavedGroup>> =
-        dao.observeByTopic(topicId).mapLatest { rows ->
-            if (rows.isEmpty()) emptyList() else enrichGroups(topicId, group(rows, tagsOfTopic(topicId)))
+        combine(
+            // Review fix P1: the category link tables are observed too, so a link-only change (category reassign) re-emits the cards.
+            combine(
+                dao.observeByTopic(topicId),
+                dao.observeCategoryLinksOfTopic(topicId),
+                dao.observeStimulusCategoryLinksOfTopic(topicId),
+            ) { rows, _, _ -> rows }.mapLatest { rows ->
+                if (rows.isEmpty()) emptyList()
+                else enrichGroups(group(rows, tagsOfTopic(topicId)), emptyMap())
+            },
+            dao.observePaperUsagesForTopic(topicId).distinctUntilChanged(),
+        ) { groups, paperRows ->
+            attachPaperCategoryUsages(groups, paperRows.groupBy { it.questionId })
         }
 
-    /** Attach ordered solution text/images and stimulus image placement for both normal and searched card results. */
-    private suspend fun enrichGroups(topicId: String, groups: List<SavedGroup>): List<SavedGroup> {
+    /** Attach ordered solution text/images and stimulus image placement for normal and searched card results. */
+    private suspend fun enrichGroups(
+        groups: List<SavedGroup>,
+        observedPaperRows: Map<String, List<TypeCqPaperCategoryUsageDb>>? = null,
+    ): List<SavedGroup> {
         if (groups.isEmpty()) return emptyList()
         val questionIds = groups.flatMap { it.subQuestions }.map { it.id }.distinct()
         val solutionRows = dao.solutionPartsIn(questionIds).groupBy { it.questionId }
-        val paperRows = dao.paperUsagesForQuestions(questionIds).groupBy { it.questionId }
-        val stimulusIds = groups.mapNotNull { it.stimulusId }.distinct()
-        val conceptOwners = conceptDao?.cardOwnersOfTopic(topicId).orEmpty()
-            .mapNotNull { row -> row.stimulusId?.let { "s-$it" } ?: row.questionId?.let { "q-$it" } }.toSet()
-        val imageRows = stimulusIds.associateWith { dao.stimulusImagesFor(it) }
-        val stimulusCategoryRows = if (stimulusIds.isEmpty()) emptyMap() else dao.stimulusCategoryLinksIn(stimulusIds)
-            .groupBy({ it.stimulusId }, { it.categoryId })
-        return groups.map { saved ->
+        val paperRows = observedPaperRows ?: dao.paperUsagesForQuestions(questionIds).groupBy { it.questionId }
+        val imageRows = groups.mapNotNull { it.stimulusId }.distinct().associateWith { dao.stimulusImagesFor(it) }
+        val enriched = groups.map { saved ->
             saved.copy(
                 stimulusImages = imageRows[saved.stimulusId].orEmpty().map { QuestionStimulusImage(it.imageId, it.placement, it.position) },
-                stimulusCategoryIds = if (saved.stimulusId != null) {
-                    stimulusCategoryRows[saved.stimulusId].orEmpty()
-                } else {
-                    saved.subQuestions.singleOrNull()?.categoryIds.orEmpty()
-                },
-                hasConcept = QuestionGroupKey.of(saved)?.let { it in conceptOwners } ?: false,
-                paperUsages = saved.subQuestions.flatMap { question ->
-                    paperRows[question.id].orEmpty().map { PaperUsage(it.paperId, it.shortName, it.title, it.categoryId, it.categoryName, it.assignedAt) }
-                }.groupBy { it.categoryId }.mapNotNull { (_, usages) -> usages.maxByOrNull { it.assignedAt } }
-                    .sortedWith(compareByDescending<PaperUsage> { it.assignedAt }.thenBy { it.categoryName }),
                 subQuestions = saved.subQuestions.map { question ->
                     val parts = solutionRows[question.id].orEmpty().map { part ->
                         QuestionSolutionPart(part.partId, part.partType, part.position, part.textContent, part.imageId)
@@ -120,21 +112,88 @@ class TypeCqQuestionRepositoryImpl(
                 },
             )
         }
+        return attachPaperCategoryUsages(enriched, paperRows)
     }
 
-    override suspend fun saveGroup(input: QuestionGroupInput): SaveResult = saveGroupInternal(input, runBeforeWrite = true, clearCreateDraft = true)
+    /** Update category chips independently; metadata-only changes must not reload solutions or stimulus images. */
+    private fun attachPaperCategoryUsages(
+        groups: List<SavedGroup>,
+        paperRows: Map<String, List<TypeCqPaperCategoryUsageDb>>,
+    ): List<SavedGroup> = groups.map { saved ->
+        saved.copy(
+            paperUsages = latestPaperCategoryUsages(
+                saved.subQuestions.flatMap { question ->
+                    paperRows[question.id].orEmpty().map { usage ->
+                        PaperUsage(
+                            paperId = usage.paperId,
+                            shortName = usage.shortName,
+                            title = usage.title,
+                            categoryId = usage.categoryId,
+                            categoryName = usage.categoryName,
+                            linkedAt = usage.linkedAt,
+                        )
+                    }
+                },
+            ),
+        )
+    }
 
-    /** Shared save path. Copy-paste calls this from an enclosing Room transaction, after durability setup ran outside it. */
-    private suspend fun saveGroupInternal(
-        input: QuestionGroupInput,
-        runBeforeWrite: Boolean,
-        clearCreateDraft: Boolean,
-    ): SaveResult {
+
+    // ---- Editor audit (EditorLog): what the editor handed over, what is stored now, and what the rules decided.
+
+    private fun logParts(title: String, parts: List<com.questionbank.app.domain.question.QuestionSolutionPart>) =
+        com.questionbank.app.EditorLog.parts(
+            title,
+            parts.sortedBy { it.position }.map {
+                com.questionbank.app.EditorLog.LogPart(it.partId, it.partType, it.position, it.textContent, it.imageId)
+            },
+        )
+
+    private fun auditEditInput(input: GroupEditInput, original: SavedGroup) {
+        val log = com.questionbank.app.EditorLog
+        log.event("INPUT", "EDIT topic=${input.topicId} group=${input.groupKey}")
+        log.event("INPUT", "stimulus ${log.describe(input.stimulusText)}")
+        log.event("INPUT", "reference ${log.describe(input.referenceText)}")
+        log.event("INPUT", "stimulusImages sent=${input.stimulusImages?.joinToString { "${it.imageId.take(12)}:${it.placement}#${it.position}" } ?: "unchanged"} stored=${original.stimulusImages.joinToString { "${it.imageId.take(12)}:${it.placement}#${it.position}" }}")
+        input.subQuestions.forEach { q ->
+            log.event("INPUT", "question ${q.label.letter} text{${log.describe(q.text)}} answer{${log.describe(q.shortAnswer)}} type=${q.questionTypeId} marks=${q.marks}")
+        }
+        input.solutionsByLabel.forEach { (label, texts) ->
+            log.event("INPUT", "solutionTexts ${label.letter}: " + texts.withIndex().joinToString(" ; ") { (i, t) -> "[$i]{${log.describe(t)}}" })
+        }
+        input.solutionPartsByLabel?.forEach { (label, parts) -> logParts("SENT ${label.letter}", parts) }
+        original.subQuestions.forEach { q -> logParts("STORED ${q.label?.letter ?: "?"} (question ${q.id.take(8)})", q.orderedSolutionParts) }
+    }
+
+    private fun auditCreateInput(input: QuestionGroupInput) {
+        val log = com.questionbank.app.EditorLog
+        log.event("INPUT", "CREATE topic=${input.topicId}")
+        log.event("INPUT", "stimulus ${log.describe(input.stimulusText)}")
+        log.event("INPUT", "reference ${log.describe(input.referenceText)}")
+        log.event("INPUT", "stimulusImages=${input.stimulusImages.joinToString { "${it.imageId.take(12)}:${it.placement}#${it.position}" }}")
+        input.subQuestions.forEach { q ->
+            log.event("INPUT", "question ${q.label.letter} text{${log.describe(q.text)}} answer{${log.describe(q.shortAnswer)}} solutionTexts=${q.solutionParts.size}")
+        }
+        input.solutionPartsByLabel.forEach { (label, parts) -> logParts("SENT ${label.letter}", parts) }
+    }
+
+    private fun describeEditRules(checked: QuestionEditRules.Checked): String =
+        if (checked is QuestionEditRules.Checked.Ok) {
+            "Ok | textUpdates=${checked.updates.size} adds=${checked.adds.size} deletes=${checked.deletes.size} " +
+                "ratingUpdates=${checked.ratingUpdates.size} boardUpdates=${checked.boardUpdates.size} metadataUpdates=${checked.metadataUpdates.size} " +
+                "categoryUpdates=${checked.categoryUpdates.size} solutionUpdates(text-only)=${checked.solutionUpdates.size} " +
+                "stimulusTextChanged=${checked.stimulusText != null} referenceChanged=${checked.referenceText != null}"
+        } else {
+            checked::class.simpleName ?: checked.toString()
+        }
+
+    override suspend fun saveGroup(input: QuestionGroupInput): SaveResult {
         val snapshot = try {
             com.questionbank.app.domain.editor.EditorSaveCommand.typeCqCreate(input).input
         } catch (e: Exception) {
             return SaveResult.Failed(e.message ?: "Invalid Type_CQ save scope")
         }
+        auditCreateInput(snapshot)
         val ok = when (val checked = QuestionRules.check(snapshot)) {
             QuestionRules.Checked.Empty -> return SaveResult.Empty
             is QuestionRules.Checked.MissingText -> return SaveResult.MissingQuestionText(checked.label)
@@ -148,7 +207,7 @@ class TypeCqQuestionRepositoryImpl(
         return try {
             val unknownBoard = unknownBoardCode(ok.stimulusBoards + ok.boards.values.flatten())
             if (unknownBoard != null) return SaveResult.Failed("অজানা বোর্ড: $unknownBoard")
-            if (runBeforeWrite) beforeWrite()
+            beforeWrite()
             val stimulusId = if (ok.stimulusText.isNotEmpty() || ok.referenceText.isNotEmpty() || snapshot.stimulusImages.isNotEmpty()) newId() else null
             val rows = ok.items.map {
                 NewQuestionRow(
@@ -169,7 +228,7 @@ class TypeCqQuestionRepositoryImpl(
             val stimulusTags = if (stimulusId != null) tagRows(ok.stimulusBoards) else emptyList()
             val written = dao.insertGroup(
                 snapshot.topicId, stimulusId, ok.stimulusText, ok.referenceText, stimulusRating, stimulusTags,
-                rows, clock(), if (clearCreateDraft) draftKey(snapshot.topicId) else "", snapshot.editorDraftKey,
+                rows, clock(), draftKey(snapshot.topicId), snapshot.editorDraftKey,
                 snapshot.stimulusImages.map { NewStimulusImageRow(it.imageId, it.placement, it.position) },
                 snapshot.stimulusCategoryIds,
             )
@@ -248,7 +307,7 @@ class TypeCqQuestionRepositoryImpl(
         // null when every word is a hashtag word (or there is no word): then nothing is asked from FTS5 (v0.2.29).
         val match = QuestionSearchRules.ftsQuery(tokens)
         return try {
-            val groups = enrichGroups(topicId, group(dao.selectByTopic(topicId), tagsOfTopic(topicId)))
+            val groups = enrichGroups(group(dao.selectByTopic(topicId), tagsOfTopic(topicId)))
             val found = if (tokens.isEmpty()) {
                 // No text, only the board / year filter (v0.2.30c-3).
                 QuestionSearchRules.filterByBoards(groups, null, emptySet(), f!!)
@@ -285,6 +344,21 @@ class TypeCqQuestionRepositoryImpl(
         null
     }
 
+    override suspend fun setStimulusCategories(
+        topicId: String,
+        stimulusId: String?,
+        singleQuestionId: String?,
+        categoryIds: List<String>,
+    ): Boolean = try {
+        if (topicId.isBlank()) return false
+        beforeWrite()
+        dao.replaceCardCategories(topicId, stimulusId, singleQuestionId, categoryIds, clock())
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        false
+    }
+
     override suspend fun deleteGroup(topicId: String, groupKey: String): Boolean = try {
         val current = loadOriginal(topicId, groupKey) ?: return false
         val ids = current.subQuestions.map { it.id }
@@ -310,134 +384,27 @@ class TypeCqQuestionRepositoryImpl(
         false
     }
 
-    override suspend fun duplicateGroup(topicId: String, groupKey: String): SaveResult =
-        copyGroupToTopic(topicId, groupKey, topicId)
-
-    override suspend fun copyGroupToTopic(
-        sourceTopicId: String,
-        groupKey: String,
-        targetTopicId: String,
-        anchorGroupKey: String?,
-        beforeAnchor: Boolean,
-    ): SaveResult {
-        val db = database ?: return SaveResult.Failed("কপি-পেস্টের Transaction DB সংযোগ পাওয়া যায়নি")
-        val conceptStore = conceptDao ?: return SaveResult.Failed("কনসেপ্ট কপি করার DAO সংযোগ পাওয়া যায়নি")
-        return try {
-            // This PRAGMA must run before opening the Room transaction.
-            beforeWrite()
-            db.withTransaction {
-                val original = loadOriginal(sourceTopicId, groupKey)
-                    ?: throw CopyOperationAborted(SaveResult.Failed("প্রশ্ন কার্ডটি আর পাওয়া যাচ্ছে না"))
-                val input = original.toCreateInput(targetTopicId, newId)
-                val result = saveGroupInternal(input, runBeforeWrite = false, clearCreateDraft = false)
-                if (result !is SaveResult.Saved) throw CopyOperationAborted(result)
-
-                val copiedKey = result.stimulusId?.let { "s-$it" }
-                    ?: result.questionIds.singleOrNull()?.let { "q-$it" }
-                    ?: throw CopyOperationAborted(SaveResult.Failed("কপি তৈরি হয়েছে, কিন্তু নতুন কার্ড শনাক্ত করা যায়নি"))
-
-                // Card rows, concept rows/parts, and final order now share this outer transaction.
-                val conceptCopied = conceptStore.copyConcept(
-                    sourceStimulusId = original.stimulusId,
-                    sourceQuestionId = if (original.stimulusId == null) original.subQuestions.singleOrNull()?.id else null,
-                    targetTopicId = targetTopicId,
-                    targetStimulusId = result.stimulusId,
-                    targetQuestionId = if (result.stimulusId == null) result.questionIds.singleOrNull() else null,
-                    now = clock(),
-                )
-                if (!conceptCopied) throw CopyOperationAborted(SaveResult.Failed("প্রশ্ন কার্ড কপি হয়েছে, কিন্তু কনসেপ্ট কপি করা যায়নি"))
-                if (!placeCard(targetTopicId, copiedKey, anchorGroupKey, beforeAnchor)) {
-                    throw CopyOperationAborted(SaveResult.Failed("কার্ডটি নির্দিষ্ট স্থানে সাজানো যায়নি; কপি বাতিল করা হয়েছে"))
-                }
-                result
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (aborted: CopyOperationAborted) {
-            aborted.result
-        } catch (e: Exception) {
-            com.questionbank.app.ActivityLog.error("DB-FAIL", "Type CQ copy transaction failed: ${e.javaClass.simpleName}: ${e.message}", e)
-            SaveResult.Failed(e.message ?: "কপি-পেস্ট সম্পন্ন করা যায়নি; কোনো আংশিক পরিবর্তন রাখা হয়নি")
+    override suspend fun duplicateGroup(topicId: String, groupKey: String): SaveResult {
+        val original = loadOriginal(topicId, groupKey) ?: return SaveResult.Failed("প্রশ্ন কার্ডটি আর পাওয়া যাচ্ছে না")
+        val subQuestions = original.subQuestions.mapNotNull { question ->
+            val label = question.label ?: return@mapNotNull null
+            com.questionbank.app.domain.question.SubQuestionInput(
+                label = label, text = question.text, shortAnswer = question.shortAnswer,
+                questionTypeId = question.questionTypeId, marks = question.marks, solutionParts = question.solutionParts,
+            )
         }
-    }
-
-    override suspend fun moveGroupToTopic(
-        sourceTopicId: String,
-        groupKey: String,
-        targetTopicId: String,
-        anchorGroupKey: String?,
-        beforeAnchor: Boolean,
-    ): Boolean {
-        val db = database ?: return false
-        return try {
-            // The full-sync pragma cannot execute inside a transaction.
-            beforeWrite()
-            db.withTransaction {
-                val original = loadOriginal(sourceTopicId, groupKey) ?: throw MoveOperationAborted()
-                val movedKey = QuestionGroupKey.of(original) ?: throw MoveOperationAborted()
-                // Pasting a cut card immediately before/after itself is a valid no-op, not an append-to-end.
-                if (sourceTopicId == targetTopicId && anchorGroupKey == groupKey) {
-                    true
-                } else {
-                    val ids = original.subQuestions
-                        .sortedWith(compareBy<SavedSubQuestion> { it.label?.sortOrder ?: 9 }.thenBy { it.id })
-                        .map { it.id }
-                    if (ids.isEmpty()) throw MoveOperationAborted()
-                    if (!dao.moveCardToTopic(sourceTopicId, targetTopicId, original.stimulusId, ids, clock())) {
-                        throw MoveOperationAborted()
-                    }
-                    if (!placeCard(targetTopicId, movedKey, anchorGroupKey, beforeAnchor)) throw MoveOperationAborted()
-                    true
-                }
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: MoveOperationAborted) {
-            false
-        } catch (e: Exception) {
-            com.questionbank.app.ActivityLog.error("DB-FAIL", "Type CQ move transaction failed: ${e.javaClass.simpleName}: ${e.message}", e)
-            false
-        }
-    }
-
-    private class CopyOperationAborted(val result: SaveResult) : RuntimeException()
-    private class MoveOperationAborted : RuntimeException()
-
-    /** Re-sequence by card, then by ক/খ/গ/ঘ inside each card. */
-    private suspend fun placeCard(topicId: String, cardKey: String, anchorKey: String?, beforeAnchor: Boolean): Boolean {
-        val rows = dao.selectByTopic(topicId)
-        if (rows.isEmpty()) return false
-        val grouped = group(rows, tagsOfTopic(topicId))
-        val byKey = grouped.mapNotNull { saved -> QuestionGroupKey.of(saved)?.let { it to saved } }.toMap()
-        if (cardKey !in byKey) return false
-        val base = grouped.mapNotNull { QuestionGroupKey.of(it) }.filterNot { it == cardKey }.toMutableList()
-        val anchorIndex = anchorKey?.takeIf { it in base }?.let { base.indexOf(it) }
-        val insertAt = when {
-            anchorIndex == null -> base.size
-            beforeAnchor -> anchorIndex
-            else -> anchorIndex + 1
-        }
-        base.add(insertAt.coerceIn(0, base.size), cardKey)
-        val orderedIds = base.flatMap { key ->
-            byKey[key]?.subQuestions.orEmpty().sortedWith(compareBy<SavedSubQuestion> { it.label?.sortOrder ?: 9 }.thenBy { it.id }).map { it.id }
-        }
-        return dao.reorderTopicQuestionIds(topicId, orderedIds)
-    }
-
-    override suspend fun setCardCategories(topicId: String, groupKey: String, categoryIds: List<String>): Boolean = try {
-        val parsed = QuestionGroupKey.parse(groupKey) ?: return false
-        beforeWrite()
-        when (parsed) {
-            is QuestionGroupKey.Parsed.Stimulus -> {
-                if (dao.countStimulusInTopic(parsed.id, topicId) != 1) false
-                else dao.replaceStimulusCategories(parsed.id, categoryIds, clock())
-            }
-            is QuestionGroupKey.Parsed.Single -> dao.replaceSingleQuestionCategories(topicId, parsed.id, categoryIds, clock())
-        }
-    } catch (e: CancellationException) {
-        throw e
-    } catch (_: Exception) {
-        false
+        if (subQuestions.isEmpty()) return SaveResult.Failed("নকল করার মতো প্রশ্ন পাওয়া যায়নি")
+        val input = QuestionGroupInput(
+            topicId = topicId, stimulusText = original.stimulusText, subQuestions = subQuestions,
+            ratings = RatingsInput(original.stimulusRating, original.subQuestions.mapNotNull { q -> q.label?.let { it to q.rating } }.toMap()),
+            boards = BoardsInput(original.stimulusBoards, original.subQuestions.mapNotNull { q -> q.label?.let { it to q.boards } }.toMap()),
+            referenceText = original.referenceText,
+            categoriesByLabel = original.subQuestions.mapNotNull { q -> q.label?.let { it to q.categoryIds } }.toMap(),
+            stimulusImages = original.stimulusImages,
+            stimulusCategoryIds = original.stimulusCategoryIds,
+            solutionPartsByLabel = original.subQuestions.mapNotNull { q -> q.label?.let { it to q.orderedSolutionParts.map { part -> part.copy(partId = newId()) } } }.toMap(),
+        )
+        return saveGroup(input)
     }
 
     private suspend fun loadOriginal(topicId: String, groupKey: String): SavedGroup? {
@@ -452,6 +419,7 @@ class TypeCqQuestionRepositoryImpl(
             stimulus = if (stimulusIds.isEmpty()) emptyMap() else toTags(dao.stimulusBoardsIn(stimulusIds)),
             question = if (questionIds.isEmpty()) emptyMap() else toTags(dao.questionBoardsIn(questionIds)),
             categories = if (questionIds.isEmpty()) emptyMap() else dao.categoryLinksIn(questionIds).groupBy({ it.questionId }, { it.categoryId }),
+            stimulusCategories = if (stimulusIds.isEmpty()) emptyMap() else dao.stimulusCategoryLinksIn(stimulusIds).groupBy({ it.stimulusId }, { it.categoryId }),
         )
         val solutions = if (questionIds.isEmpty()) emptyMap() else dao.solutionPartsIn(questionIds)
             .filter { it.partType == "TEXT" && it.textContent != null }
@@ -461,13 +429,11 @@ class TypeCqQuestionRepositoryImpl(
         val base = group(rows, tags, solutions, categories).firstOrNull() ?: return null
         val stimulusImageRows = stimulusIds.firstOrNull()?.let { dao.stimulusImagesFor(it) }.orEmpty()
             .map { com.questionbank.app.domain.question.QuestionStimulusImage(it.imageId, it.placement, it.position) }
-        val stimulusCategories = if (stimulusIds.isEmpty()) emptyList() else dao.stimulusCategoryLinksIn(stimulusIds).map { it.categoryId }
         val orderedParts = if (questionIds.isEmpty()) emptyMap() else dao.solutionPartsIn(questionIds).groupBy({ it.questionId }, { part ->
             com.questionbank.app.domain.question.QuestionSolutionPart(part.partId, part.partType, part.position, part.textContent, part.imageId)
         })
         return base.copy(
             stimulusImages = stimulusImageRows,
-            stimulusCategoryIds = stimulusCategories,
             subQuestions = base.subQuestions.map { sub -> sub.copy(orderedSolutionParts = orderedParts[sub.id].orEmpty()) },
         )
     }
@@ -502,7 +468,10 @@ class TypeCqQuestionRepositoryImpl(
                 "updateGroup(edit) topic=${snapshot.topicId} group=${snapshot.groupKey} parts=" +
                     partsForLog.joinToString { "[q=${it.first.take(8)} ${it.second} ${it.third}]" },
             )
-            val ok = when (val checked = QuestionEditRules.check(original, snapshot)) {
+            auditEditInput(snapshot, original)
+            val rulesChecked = QuestionEditRules.check(original, snapshot)
+            com.questionbank.app.EditorLog.event("RULES", describeEditRules(rulesChecked))
+            val ok = when (val checked = rulesChecked) {
                 QuestionEditRules.Checked.NoChange -> return UpdateResult.NoChange
                 QuestionEditRules.Checked.BlankedStimulus -> return UpdateResult.BlankedStimulus
                 is QuestionEditRules.Checked.BlankedQuestion -> return UpdateResult.BlankedQuestion(checked.label)
@@ -528,6 +497,16 @@ class TypeCqQuestionRepositoryImpl(
                 )
             }
             val categoryUpdates = ok.categoryUpdates.map { QuestionCategoriesDb(it.questionId, it.categoryIds) }
+            // The ordered-parts path (text AND image blocks, blanks kept as stored) is authoritative for every question it
+            // covers. The text-only path filters blank text blocks, so running both on one question made the DAO read-back
+            // disagree (stored "" block vs filtered list) and roll back the whole save.
+            val orderedSolutionUpdates = snapshot.solutionPartsByLabel.orEmpty().mapNotNull { (label, parts) ->
+                val questionId = original.subQuestions.firstOrNull { it.label == label }?.id
+                questionId?.let { id -> QuestionSolutionPartsDb(id, parts.map { part ->
+                    NewSolutionPartRow(part.partId, part.partType, part.position, part.textContent, part.imageId)
+                }) }
+            }
+            val orderedSolutionIds = orderedSolutionUpdates.map { it.questionId }.toSet()
             val written = dao.updateGroup(
                 topicId = snapshot.topicId,
                 stimulusId = original.stimulusId,
@@ -535,7 +514,7 @@ class TypeCqQuestionRepositoryImpl(
                 newReferenceText = ok.referenceText,
                 updates = ok.updates.map { QuestionTextUpdate(it.questionId, it.text, it.answer) },
                 metadataUpdates = ok.metadataUpdates.map { DbQuestionMetadataUpdate(it.questionId, it.questionTypeId, it.marks) },
-                solutionUpdates = ok.solutionUpdates.map { DbQuestionSolutionUpdate(it.questionId, it.parts) },
+                solutionUpdates = ok.solutionUpdates.filter { it.questionId !in orderedSolutionIds }.map { DbQuestionSolutionUpdate(it.questionId, it.parts) },
                 adds = rows,
                 now = clock(),
                 draftKey = editDraftKey(snapshot.groupKey),
@@ -548,12 +527,7 @@ class TypeCqQuestionRepositoryImpl(
                 deletes = ok.deletes,
                 categoryUpdates = categoryUpdates,
                 editorDraftKey = snapshot.editorDraftKey,
-                solutionPartUpdates = snapshot.solutionPartsByLabel.orEmpty().mapNotNull { (label, parts) ->
-                    val questionId = original.subQuestions.firstOrNull { it.label == label }?.id
-                    questionId?.let { id -> QuestionSolutionPartsDb(id, parts.map { part ->
-                        NewSolutionPartRow(part.partId, part.partType, part.position, part.textContent, part.imageId)
-                    }) }
-                },
+                solutionPartUpdates = orderedSolutionUpdates,
                 stimulusImageReplacement = snapshot.stimulusImages?.map { NewStimulusImageRow(it.imageId, it.placement, it.position) },
             )
             if (!written) return explainUpdateRefusal(
@@ -660,6 +634,7 @@ class TypeCqQuestionRepositoryImpl(
         val stimulus: Map<String, List<BoardTag>>,
         val question: Map<String, List<BoardTag>>,
         val categories: Map<String, List<String>> = emptyMap(),
+        val stimulusCategories: Map<String, List<String>> = emptyMap(),
     )
 
     private fun toTags(rows: List<BoardRowDb>): Map<String, List<BoardTag>> =
@@ -667,7 +642,13 @@ class TypeCqQuestionRepositoryImpl(
 
     private suspend fun tagsOfTopic(topicId: String): Tags {
         val categories = dao.categoryLinksOfTopic(topicId).groupBy({ it.questionId }, { it.categoryId })
-        return Tags(toTags(dao.stimulusBoardsOfTopic(topicId)), toTags(dao.questionBoardsOfTopic(topicId)), categories)
+        val stimulusCategories = dao.stimulusCategoryLinksOfTopic(topicId).groupBy({ it.stimulusId }, { it.categoryId })
+        return Tags(
+            stimulus = toTags(dao.stimulusBoardsOfTopic(topicId)),
+            question = toTags(dao.questionBoardsOfTopic(topicId)),
+            categories = categories,
+            stimulusCategories = stimulusCategories,
+        )
     }
 
     private fun tagRows(tags: List<BoardTag>): List<NewTagRow> = tags.map { NewTagRow(newId(), it.boardCode, it.year) }
@@ -707,36 +688,12 @@ class TypeCqQuestionRepositoryImpl(
                         )
                     },
                 stimulusBoards = first.stimulusId?.let { tags.stimulus[it] }.orEmpty(),
+                stimulusCategoryIds = first.stimulusId?.let { tags.stimulusCategories[it] }.orEmpty(),
                 referenceText = first.referenceText.orEmpty(),
                 unfilteredFallbackRating = list.mapNotNull { it.rating }.takeIf { it.isNotEmpty() }
                     ?.let { kotlin.math.round(it.average()).toInt() },
             )
         }
-    }
-
-
-    private fun SavedGroup.toCreateInput(targetTopicId: String, makeId: () -> String): QuestionGroupInput {
-        val subs = subQuestions.mapNotNull { question ->
-            val label = question.label ?: return@mapNotNull null
-            com.questionbank.app.domain.question.SubQuestionInput(
-                label = label, text = question.text, shortAnswer = question.shortAnswer,
-                questionTypeId = question.questionTypeId, marks = question.marks, solutionParts = question.solutionParts,
-            )
-        }
-        return QuestionGroupInput(
-            topicId = targetTopicId,
-            stimulusText = stimulusText,
-            subQuestions = subs,
-            ratings = RatingsInput(stimulusRating, subQuestions.mapNotNull { q -> q.label?.let { it to q.rating } }.toMap()),
-            boards = BoardsInput(stimulusBoards, subQuestions.mapNotNull { q -> q.label?.let { it to q.boards } }.toMap()),
-            referenceText = referenceText,
-            stimulusCategoryIds = if (stimulusId != null) stimulusCategoryIds else emptyList(),
-            categoriesByLabel = subQuestions.mapNotNull { q -> q.label?.let { it to q.categoryIds } }.toMap(),
-            stimulusImages = stimulusImages,
-            solutionPartsByLabel = subQuestions.mapNotNull { q ->
-                q.label?.let { label -> label to q.orderedSolutionParts.map { part -> part.copy(partId = makeId()) } }
-            }.toMap(),
-        )
     }
 
     companion object {

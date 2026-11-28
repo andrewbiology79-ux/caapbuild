@@ -468,6 +468,7 @@ fun QuestionEditScreen(
                         enabled = !viewModel.saving,
                         onToggle = { categoryId, selected -> viewModel.changeCategory(label, categoryId, selected) },
                         onAddCategory = viewModel::addCategory,
+                        label = "দাগের ক্যাটাগরি",
                         onManageCategories = onManageCategories,
                     )
                     }

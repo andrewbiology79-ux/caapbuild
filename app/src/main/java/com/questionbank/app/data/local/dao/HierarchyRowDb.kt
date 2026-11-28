@@ -17,6 +17,15 @@ data class ChapterPathDb(
     @ColumnInfo(name = "chapter_name") val chapterName: String,
 )
 
+data class TopicPathDb(
+    @ColumnInfo(name = "subject_id") val subjectId: String,
+    @ColumnInfo(name = "subject_name") val subjectName: String,
+    @ColumnInfo(name = "chapter_id") val chapterId: String,
+    @ColumnInfo(name = "chapter_name") val chapterName: String,
+    @ColumnInfo(name = "topic_id") val topicId: String,
+    @ColumnInfo(name = "topic_name") val topicName: String,
+)
+
 /** Result of "delete if empty", decided inside one transaction. */
 sealed interface DeleteOutcome {
     data object Deleted : DeleteOutcome
