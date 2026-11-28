@@ -101,3 +101,4 @@
 - উদ্দীপক ক্যাটাগরি ড্রপডাউন আগের মতোই চেকবক্স থেকে রেটিং পর্যন্ত পুরো জায়গা নেয় (রেটিং ছোট হওয়ায় বেশি জায়গা পায়)।
 - Status: SOURCE EDIT — NOT COMPILED / NOT TESTED / NOT DEVICE-VERIFIED।
 - Profile > অ্যাপ তথ্য: ZIP নাম QuestionBank_Step3_StimulusCategories_ReviewFix6_Source.zip, প্ল্যান টেক্সট নাম QuestionBank_TypeCQ_Full_Plan_Updated_2026-11-28_ReviewFix6_BN.txt। Version 0.2.49-card-ui-fix / versionCode 54।
+- GitHub Actions: android-instrumented.yml এখন push/pull_request-এও স্বয়ংক্রিয় চলে (হাতে চালানোও থাকল)। ডিফল্ট benchmark ২০০০০ সারি, API 34; একই branch-এ নতুন push এলে পুরোনো চলমান run বাতিল (concurrency)।
