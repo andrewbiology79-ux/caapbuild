@@ -43,7 +43,7 @@ android {
 
     sourceSets {
         getByName("test") { resources.srcDir("../database") }
-        // Review fix (Finding 7): MigrationTestHelper reads the exported Room schemas (1.json, 2.json) from the test APK assets.
+        // Review fix (Finding 7): RoomMigration1To2Test builds the version-1 database from the exported Room schema 1.json (test APK assets).
         getByName("androidTest") { assets.srcDir("$projectDir/schemas") }
     }
 
@@ -96,5 +96,4 @@ dependencies {
     androidTestImplementation("androidx.test:core:1.6.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
-    androidTestImplementation("androidx.room:room-testing:$roomVersion")
 }
