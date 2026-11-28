@@ -1,0 +1,316 @@
+- ReviewFix6: Type CQ card UI fixes (rating "N★", solution-row chip alignment, paper-category/board row layout) + Profile source names updated. Version 0.2.49-card-ui-fix / code 54. Not compiled / not tested.
+QUESTIONBANK — PROFILE SOURCE-FILE INFO (28 Nov 2026)
+- Profile > অ্যাপ তথ্য now shows the source ZIP and plan text file names (AppSourceInfo.kt). Version 0.2.48-profile-source-info / code 53. Not compiled.
+
+---
+
+QUESTIONBANK — androidTest COMPILE FIX (28 Nov 2026)
+- RoomMigration1To2Test used SQLiteConnection.execSQL on a PooledConnection (4 errors, lines 105-109). Now uses TestDb.exec(). Not re-run.
+
+---
+
+QUESTIONBANK — RoomMigration1To2Test FIX (28 Nov 2026)
+- CI clean; instrumented 122/123: only RoomMigration1To2Test failed (AbstractMethodError kotlinx.serialization GeneratedSerializer.typeParametersSerializers) because room-testing pulled a clashing kotlinx-serialization at runtime.
+- Fix: removed room-testing; the test builds the v1 DB from 1.json and opens it with Room + MIGRATION_1_2 (Room validates). Not re-run yet.
+
+---
+
+QUESTIONBANK — STEP 3 THIRD DEEP STATIC REVIEW FIXES (28 Nov 2026)
+SOURCE EDIT ONLY — NOT COMPILED / NOT TESTED / NOT DEVICE-VERIFIED (no Gradle here)
+- Version 0.2.47-stimulus-categories-review-fix / versionCode 52.
+- P1: reassignAndArchiveType touches question/stimulus updated_at before moving links; observeGroups also observes both category-link tables.
+- Tests added: 3 live-Flow reassign tests (TypeCqQuestionRepositoryTest), stimulus-link backup/restore round-trip (BackupRestoreTest), RoomMigration1To2Test (MigrationTestHelper), canonical SQL/2.json index-name tests (MigrationIndexNameTest).
+- Canonical SQL v1.2 index renamed to Room's name. build.gradle.kts: room-testing + androidTest assets from schemas/.
+- BackupInspector hash-mismatch message now names the backup's schema version and says to make a new backup. No automatic v1->v2 backup migration (policy decision pending).
+- Next: run CI (unit) + instrumented suite; if RoomMigration1To2Test fails to compile/run, check the MigrationTestHelper constructor for Room 2.8.5 with the bundled driver.
+
+---
+
+QUESTIONBANK — STEP 3 CI / INSTRUMENTED RESULT + TEST FIX (28 Nov 2026)
+- CI report: clean (unit tests pass, including MigrationIndexNameTest and RoomSchemaParityTest). KSP generated app/schemas/.../2.json (version 2, 36 entities); now committed in this source. It confirms the Room index name index_type_cq_stimulus_category_links_category_id_stimulus_id used by the migration fix.
+- Instrumented report: 118 tests on emulator-5554 (Android 14), 1 failure: RoomRuntimeTest.installedObjectsMatchInstaller (expected 35 but was 36). Cause: the test still asserted 35 ordinary tables; Step 3 added type_cq_stimulus_category_links, so 36 is correct.
+- Fix: assertion changed to 36L. No production code changed in this step.
+- Not yet re-run after the fix. Still open: MigrationTestHelper v1->v2 instrumentation test; phone checks.
+
+---
+
+QUESTIONBANK — STEP 3 MIGRATION INDEX-NAME FIX (28 Nov 2026)
+SOURCE EDIT ONLY — NOT COMPILED / NOT TESTED / NOT DEVICE-VERIFIED
+- Bug found in review: MIGRATION_1_2 and database/migrations/1_to_2_stimulus_category_links.sql created index idx_type_cq_stimulus_category_links_category, but the Room entity declares an unnamed index, so Room expects index_type_cq_stimulus_category_links_category_id_stimulus_id. Room's post-migration validation would fail on upgrade from a v1 database ("Migration didn't properly handle").
+- Fix: both migration paths now create index_type_cq_stimulus_category_links_category_id_stimulus_id.
+- Added JVM test MigrationIndexNameTest (not run here). SQLite replay of v1 schema + fixed migration confirmed the Room-named index exists.
+- Still open: generate app/schemas/.../2.json via KSP/CI; add a MigrationTestHelper-based v1->v2 instrumentation test.
+
+---
+
+QUESTIONBANK — STEP 3 / B2 STIMULUS CATEGORY IMPLEMENTATION (28 Nov 2026)
+SOURCE EDIT ONLY — NOT COMPILED / NOT TESTED / NOT DEVICE-VERIFIED
+- Input archive: QuestionBank_EditorLog_SaveFix_Full.zip (source baseline app version 0.2.45-profile-categories / code 50).
+- Output source metadata: app versionName 0.2.46-stimulus-categories / versionCode 51; Room database version 2; 36 Room entities.
+- Implemented the separate type_cq_stimulus_category_links relation, Room 1->2 migration, canonical SQL v1.2 and standalone migration SQL. Existing type_cq_question_category_links remains the per-question (“দাগের ক্যাটাগরি”) relation. Existing DB rows are not wiped by the migration.
+- Implemented the ribbon “উদ্দীপক ক্যাটাগরি” multi-select dropdown, instant persistence, selected-name horizontal scroll without scrollbar, empty placeholder and archived-category handling. Previously linked archived categories remain visible/removable but cannot be newly assigned. A stimulus-less single-question card edits that question's own category links.
+- Wired stimulusCategoryIds through QuestionGroupInput/SavedGroup, immutable editor snapshot, DAO, repository, topic-level batch load, ViewModel and list/card Compose. Duplicate-group copies stimulus links; deleting a stimulus cascades link rows; category reassign/archive moves these links too.
+- Updated Type CQ create/edit category labels to “দাগের ক্যাটাগরি”; Chapter CQ editor is unchanged. E2 filter categories are deliberately not implemented in this step.
+- Added Android integration test source for save/load/duplicate, single-question routing, archived-category rules, category reassignment and stimulus-link delete cascade; added domain tests for blank/duplicate stimulus-category IDs. Updated canonical SQL inventory and Room parity tests for v2/36 entities.
+- `app/schemas/.../2.json` is NOT yet generated: KSP/Room compilation was not available. Do not hand-create or treat the old `1.json` as the new schema.
+- Backup archive format did not change; it snapshots the full SQLite DB. Existing v1 installs should migrate through Room 1->2. Current restore compares exact Room identity hashes, so old v1 `.qbbak`/raw DB backups will not be accepted by the v2 app; make a fresh v2 backup.
+- Not completed in this step: E1 vector search icon, E2 filter changes, D bulk/clipboard workflow, C Concept feature and B10 Concept button.
+- Verification limitation: `./gradlew :app:testDebugUnitTest --no-daemon --stacktrace` stopped before Gradle startup while downloading the wrapper distribution: `java.net.UnknownHostException: services.gradle.org`. Gradle 8.14.3/dependency caches are unavailable and neither `ANDROID_HOME` nor `ANDROID_SDK_ROOT` is configured. Kotlin compile, KSP, JVM tests, instrumentation tests, APK, emulator and physical-phone acceptance remain NOT RUN.
+- SQLite validation actually run with Python sqlite3: replayed the prior canonical schema then `database/migrations/1_to_2_stimulus_category_links.sql` against representative test rows; confirmed the pre-existing per-question category link survived, the new composite-PK relation and category lookup index exist, stimulus deletion cascades its new link, and `PRAGMA foreign_key_check` returned zero rows. Replayed the full v1.2 canonical schema separately; foreign-key check also returned zero rows. This validates SQLite DDL only, not Room-generated schema or Kotlin behavior. See CHANGELOG_STIMULUS_CATEGORIES_BN.md.
+
+---
+
+QUESTION CARD DESIGN + PAPER-CATEGORY METADATA — SECOND RECHECK (28 Nov 2026)
+SOURCE EDIT ONLY — NOT COMPILED / NOT DEVICE-TESTED
+- Ribbon label is owner-approved “প্রশ্ন ১”, “প্রশ্ন ২”…; Type CQ displays the five-star Bengali rating name. Chapter CQ keeps its existing “৩★” rating text.
+- One Type CQ metadata band displays paper_categories.name chips on the left and existing board/year chips on the right. One chip per category, ordered by the latest question-to-paper link timestamp; category chips scroll on one line and show a thin indicator only when overflowing.
+- Recheck found a live-update bug: the initial category query was only loaded when question rows changed. Fixed observeGroups by combining the question/image/solution enrichment flow with a topic-scoped Room-observable paper-usage query. Paper link additions/removals and paper-category renames now invalidate the metadata flow. Metadata-only emissions update only PaperUsage chips; they do not reload every card's solution parts or stimulus images.
+- Added Android Room integration test paperCategoryMetadataRefreshesWhenPaperLinksAndCategoryNamesChange. It verifies initial empty metadata, a new question-to-paper link, a category rename and removal of the question-to-paper link. Test is added but NOT run because Gradle could not start.
+- Card body recheck: one subtle divider appears above the sub-question section (not between every sub-question), matching legacy Collection; missing stimulus-image placeholders use a medium 96dp framed area. Full-width image decoding remains aspect-ratio-preserving and uncropped. Standalone-question board tags appear only in the top metadata band; stimulus-group sub-question tags remain beside their solution controls, without duplication.
+- Existing B4 board chips use one compact “DHA ২৬” chip per board/year, newest year first, catalog ordering within a year and RTL right-aligned FlowRow. Chapter CQ uses the same compact TagChipRow as required by Q10; its question order and paper-title metadata query/display are unchanged.
+- Existing rating calculation, question/stimulus/solution/reference data, question editor, menu actions, global search behavior and backup format are unchanged. B2 stimulus-category dropdown/linking, concepts and filter/clipboard work remain out of scope.
+- No Room entity/table/column, schema version, migration, canonical SQL, DB version, backup format or app-version change.
+- SQLite schema install and the topic-scoped B3 query were executed against representative Type CQ data. Adding a paper-question link returned its category; renaming the category returned the updated name. EXPLAIN uses the Type CQ topic and paper-item question indexes; PRAGMA foreign_key_check returned no violations.
+- Gradle compile was attempted but stopped before Kotlin compilation: Gradle 8.14.3 was unavailable locally and the wrapper could not resolve services.gradle.org (UnknownHostException). No Kotlin/KSP/Room compile, unit/instrumented tests, APK build, emulator or phone UI test was completed. Status: NOT COMPILED / NOT VERIFIED.
+- Manual checks remain: short-width header, very long Bengali category names, many category/board chips, RTL wrap, Light/Dark appearance, first-question section-top divider, solution panel and large-image scroll/memory.
+- Hit-target note: checkbox and kebab clickable boxes are 44×36dp (visible checkbox square 20dp); legacy React used 44×44px. The 36dp ribbon height leaves a 44dp vertical target unresolved; verify on device and increase ribbon height only if the owner prioritizes the full 44dp target.
+- Files changed for the card feature/recheck: TypeCqQuestionDao.kt, TypeCqQuestionRepositoryImpl.kt, QuestionModels.kt, QuestionCard.kt, EditorImageAttachments.kt, QuestionListLogic.kt, Theme.kt, QuestionListLogicTest.kt, TypeCqQuestionRepositoryTest.kt; new PaperUsageRulesTest.kt and CHANGELOG_QUESTION_CARD_DESIGN_BN.md.
+
+
+SETTINGS PAGE + READING-TEXT SPACING (22 Nov 2026) - SOURCE EDIT ONLY, NOT COMPILED / NOT DEVICE-TESTED
+- Profile tab has a new "Settings" card with a button opening a new Settings page (route profile/settings). The old "text size" card was MOVED there (same behaviour, 12-28, default 16, body text only).
+- Four options, each with minus / plus / default: (1) line spacing 100-200 percent of the font size, step 5, default 118 (old fixed 1.18); (2) "<br>" gap 0-24 dp, default 4 (new; was 0); (3) display-formula ($$...$$) gap 0-24 dp, default 2 (old fixed 2dp); (4) body font size. A live sample sits at the top of the page.
+- Applied centrally: AppSettings (SharedPreferences keys line_spacing_percent, break_gap_dp, block_gap_dp, not part of the backup) -> QuestionBankTheme -> LocalLineSpacingMultiplier / LocalBreakGapDp / LocalBlockGapDp -> RichLatexText. Every surface already calls RichLatexText. The editor typing box line height (1.5x) is NOT changed by option 1.
+- New pure logic ui/settings/SpacingPolicy.kt with unit test SpacingPolicyTest (6 cases). NOT run here (no Kotlin/Gradle); the step arithmetic was desk-checked in Python only.
+- Files changed: data/settings/AppSettings.kt, ui/theme/Theme.kt, MainActivity.kt, ui/question/RichLatexText.kt, ui/profile/ProfileScreen.kt, ui/navigation/AppNavHost.kt; new: ui/settings/SpacingPolicy.kt, ui/settings/SettingsScreen.kt, test/.../SpacingPolicyTest.kt.
+- Manual checks needed: open Profile > Settings, change each value and watch the sample; restart the app (values must persist); check a saved question card, details, search and an editor preview; confirm back arrow returns to Profile and the bottom bar stays visible.
+- No database, Room schema, SQL or app version metadata change.
+
+EDITOR TEXT AREA BOTTOM INSET (22 Nov 2026) - SOURCE EDIT ONLY, NOT COMPILED / NOT DEVICE-TESTED
+- EdTextArea (ui/question/EditorDesign.kt): decoration Box bottom padding changed 26.dp -> 8.dp. Nothing else changed in this edit.
+
+LATEX LINE-BREAK MARKER <br> (22 Nov 2026) - SOURCE EDIT ONLY, NOT COMPILED / NOT DEVICE-TESTED
+- Requirement: a manual symbol that starts the following content on a new line, so step-by-step formula lines can sit one below another. Chosen marker: <br> (NOT backslash-n: it starts \neq, \nu, \nabla; NOT double backslash: it is used inside aligned/matrix).
+- Rules: <br> may follow a formula, sit between formulas or sit inside a formula (the formula is split in two). Text without <br> renders exactly as before; a plain Enter behaves as before. Two <br> in a row leave one blank row. A <br> touching a $$block$$ formula is ignored (a block already has its own row). Spaces around <br> are dropped; trailing <br> adds no blank row.
+- Implementation: new pure file ui/question/LatexLineBreaks.kt (tokenizer moved here unchanged, plus expandLineBreaks / buildInlineLines / buildRenderRuns). RichLatexText.kt renders one FlowRow per visual line inside a Column; scrolling, hidden scrollbars and unchanged font size are untouched.
+- New unit test: LatexLineBreakTest (10 cases). NOT run here (no Kotlin/Gradle). The same cases were desk-checked with a Python port of the logic only.
+- Known limitation: every line is its own formula, so '=' signs are not aligned under each other. For alignment use one $$\begin{aligned}...\end{aligned}$$ block (RaTeX support of aligned not verified).
+- No database, Room schema, SQL or version metadata change.
+- Files changed: ui/question/RichLatexText.kt, ui/question/LatexLineBreaks.kt (new), test/.../LatexLineBreakTest.kt (new), BUILD_STATUS.txt, README_BN.md.
+
+LATEX HORIZONTAL-SCROLL FIX (22 Nov 2026) - SOURCE EDIT ONLY, NOT COMPILED / NOT DEVICE-TESTED
+- Requirement: formulas in every display surface must swipe horizontally when wider than the viewport; no visible scrollbars; never shrink formula font size to fit.
+- Centralized implementation in ui/question/RichLatexText.kt: inline formulas are now separate FlowRow items and display/block formulas use the same scrollable renderer. Each RaTeXView is hosted in a native HorizontalScrollView with horizontal/vertical indicators disabled and overscroll glow disabled. The configured fontSize is passed through unchanged. When formula/font/display/color changes, the scroll offset resets to the left and native layout is requested again.
+- Ordinary prose remains Compose Text and wraps within the available width. All app surfaces already call RichLatexText (question cards/details, search results, Chapter_CQ group/detail cards and editor previews), so the shared renderer covers those paths.
+- Gradle compile attempt was BLOCKED before compilation: wrapper needed Gradle 8.14.3 from services.gradle.org, but DNS/network returned UnknownHostException. No Kotlin compile, unit tests, APK build, emulator or device test was completed. Runtime scrolling and visual line wrapping therefore remain unverified. Manual acceptance checks still required: test long inline and block formulas in Type_CQ and Chapter_CQ live previews, saved-question details/cards, and search; swipe both directions; confirm bars are invisible, glyph size is unchanged, plain prose wraps normally, and editing a formula resets its offset.
+- No database, Room schema, SQL, or app version metadata change was made.
+- File changed: app/src/main/java/com/questionbank/app/ui/question/RichLatexText.kt.
+
+SAVE-ERROR MESSAGE FIX (22 Nov 2026) - SOURCE EDIT ONLY, NOT COMPILED, NOT TESTED
+- Problem: a failed save always showed one fixed sentence ("সংরক্ষণ করা যায়নি, কিছুই হারায়নি ... আবার চেষ্টা করুন"), although
+  SaveResult.Failed / UpdateResult.Failed already carried the real reason. Also the DAO answers false for many refusals and the
+  repository reported every one as "topic missing" / "group missing".
+- Fix: new domain/question/SaveFailureText.kt turns the reason into a Bengali cause + the original technical text in brackets;
+  QuestionEditorScreen and QuestionEditScreen now show it. TypeCqQuestionRepositoryImpl.explainCreateRefusal / explainUpdateRefusal
+  look again (nothing was written) and name the real cause (inactive question type, removed category, missing image row);
+  TopicMissing / GroupMissing are kept only when the topic / group really is gone.
+- New unit test: SaveFailureTextTest (7 cases). Not run here.
+
+IMAGE-LOSS FIX (22 Nov 2026) - SOURCE EDIT ONLY, NOT COMPILED, NOT TESTED
+- Bug: after the app restarted, stored question images were deleted by the startup orphan collector. It compared a canonical
+  managed root with a non-canonical context.filesDir (/data/user/0/... vs /data/data/...), so every image looked orphaned.
+- Fix: ImagePipeline.reconcileAndCollectOrphans now passes filesDir.canonicalFile; OrphanMediaCollector compares canonical
+  paths, MOVES unknown files to media/.quarantine (purged after 30 days) instead of deleting, and skips the whole pass when the
+  database knows files but none on disk match.
+- UI: MediaThumbnail separates Loading (blank placeholder) from Missing ("ছবি অনুপলব্ধ"); ThumbnailCache (new) adds an LRU cache and
+  at most 3 parallel decodes.
+- New unit test: OrphanMediaCollectorTest (6 cases, includes a symlink reproduction). Not run here (no Gradle/Kotlin available).
+- Images already deleted by the old bug cannot be recovered; they must be added again.
+- Files changed: media/ImagePipeline.kt, media/recovery/OrphanMediaCollector.kt, ui/question/EditorImageAttachments.kt,
+  ui/question/ThumbnailCache.kt (new), test/.../OrphanMediaCollectorTest.kt (new), BUILD_STATUS.txt.
+
+CI RESULTS v1.70 SOURCE (20 Nov 2026) - see PROJECT_PLAN_v1_71_COMPILEFIX_CI.txt section 80
+- Run A: compileDebugKotlin FAILED, 8 errors; fixed in compilefix1.
+- Run B (compilefix1): compile OK; unit tests 147 of 148 passed (stale .db vs .qbbak expectation in RestoreSwapTest); androidTest compile OK; release assemble OK.
+- compilefix2: stale test corrected. NOT yet re-run, NOT verified. Emulator/instrumented run for this source: not done.
+
+CURRENT SOURCE CANDIDATE v1.65 — PHASE 10–12 SECOND STATIC RECHECK (NOT VERIFIED)
+Artifact filename: QuestionBank_PHASE10_12_v1_65_RECHECKED_SOURCE_UNVERIFIED.zip
+Project plan: PROJECT_PLAN_v1_65_RECHECKED.txt
+
+- Recheck corrections: media orphan collection scope-limited to Type_CQ/Chapter_CQ folders; image journal recovery filters operation types; pending media files protected; media delete confirmation; picker scope captured at launch; recovery gates media actions; full-group delete warning fixed for filtered cards.
+- Phase 10–12 remain PARTIAL / WRITTEN / UNVERIFIED; remaining work is listed in Project Plan section 74.
+- No Gradle build, Kotlin/KSP/Room compile, unit/instrumented/UI test, APK build, emulator or device run was performed. This follows the owner's no-test instruction.
+- No APK is included. app versionCode/versionName remain 36 / 0.2.31-phase5-wip2. Canonical SQL, Room schema JSON, database version and identityHash are unchanged.
+- Archive integrity and static source/document checks are not Android compilation or runtime verification.
+
+--- Previous v1.64 candidate record ---
+CURRENT SOURCE CANDIDATE v1.64 — COORDINATED PHASE 10–12 (NOT VERIFIED)
+Artifact filename: QuestionBank_PHASE10_12_v1_64_SOURCE_UNVERIFIED.zip
+Project plan: PROJECT_PLAN_v1_64_UPDATED.txt
+
+- Source additions: private-storage media import/export and journal/recovery; Type_CQ card deletion; Chapter_CQ single-question deletion; Type_CQ in-topic category/rating/question-type filters.
+- Phase 10–12 remain PARTIAL / WRITTEN / UNVERIFIED; full outstanding scope is recorded in section 73 of the project plan.
+- The owner expressly instructed that no tests be run. No Gradle build, Kotlin/KSP/Room compile, unit/instrumented test, APK build, emulator or device run was performed.
+- No APK is included. app versionCode/versionName remain 36 / 0.2.31-phase5-wip2. Canonical SQL, Room schema, database version and identityHash are unchanged.
+- ZIP packaging and source static review do not establish Android compilation or runtime behavior.
+
+Question Bank Android - coordinated Phase 6-8 implementation candidate + CI run 51 fix (plan v1.55)
+Artifact filename: QuestionBank_v0_2_31_PHASE6_8_IMPLEMENTATION_CANDIDATE_UNVERIFIED_v1_55.zip
+Project plan: PROJECT_PLAN_v1_55_UPDATED.txt
+
+FIX FOR CI RUN 51 (SOURCE EDIT ONLY, NOT COMPILED)
+- CI run 51 (commit fef46c8) failed at :app:compileDebugKotlin with 2 errors, both "Unresolved reference 'KeyboardOptions'" in QuestionEditorScreen.kt (lines 39 and 103).
+- Fix: the import on line 39 changed from androidx.compose.ui.text.input.KeyboardOptions to androidx.compose.foundation.text.KeyboardOptions. No other file under app/src was changed.
+- Static checks only (no Gradle or Kotlin compiler available here): the internal imports of all 157 Kotlin files resolve to a declaration; 126 common Compose imports were compared with their expected packages and none is wrong.
+- NOT verified: Kotlin compile, KSP, unit tests, emulator tests, phone. More compile errors may appear on the next CI run. After a green build the Room identityHash must still be 786b471dfa14c9ae4739bb81479bab25.
+- versionCode / versionName are unchanged (36 / 0.2.31-phase5-wip2; P-56 still open).
+- Added PROJECT_PLAN_v1_55_UPDATED.txt: master checklist reconciled with evidence (section 6) and section 64.
+
+--- Notes of the Phase 6-8 candidate (unchanged below) ---
+
+Question Bank Android — coordinated Phase 6–8 implementation candidate
+Artifact filename: QuestionBank_v0_2_31_PHASE6_8_IMPLEMENTATION_CANDIDATE_UNVERIFIED.zip
+Source baseline: QuestionBank_v0_2_31_PHASE5_WIP2.zip
+Project plan: PROJECT_PLAN_v1_53_UPDATED.txt
+
+STATIC RECHECK v1.53 (SOURCE REVIEW ONLY)
+- Rechecked modified source files against the v0.2.31-phase5-wip2 baseline and plan v1.52.
+- Corrected the Type_CQ duplicate-checker repository call; archived question-type retention guard; Minimum/Full solution-control gating; exact-duplicate warning wording; and Chapter_CQ transactional read-back boundary. See STATIC_RECHECK_REPORT_v1_53.txt and plan section 62.
+- These corrections are SOURCE WRITTEN ONLY. No Gradle build, Kotlin/KSP compile, unit test, instrumented/emulator test, or phone test was run.
+- Phase 6, Phase 7 and Phase 8 remain PARTIAL / NOT VERIFIED. Phase 4/5 M0 remains NOT PASSED.
+
+OWNER DIRECTION FOR THIS ITERATION
+- The owner explicitly instructed: implement the coordinated Phase 6, Phase 7 and Phase 8 work in one combined delivery; do NOT run tests.
+- Accordingly, no Gradle build, Kotlin/KSP compilation, unit tests, instrumented/emulator tests, or phone tests were run for this candidate.
+- “Not run by owner instruction” is not a pass. This file does not claim that the candidate compiles or works at runtime.
+
+INHERITED BASELINE STATUS
+- Phase 4/5 WIP2 M0 gate has NOT passed. The inherited WIP2 package was not CI/build/emulator/phone verified. The prior local Gradle attempt could not acquire Gradle 8.14.3 because of unavailable network/DNS; Android SDK/adb and a Git remote were unavailable in that environment.
+- The owner then directed us to continue implementation without tests. The editor work is therefore layered on an unverified baseline. P-57 remains OPEN; Phase 4 and Phase 5 are NOT marked DONE.
+- Historical CI run #47 (142/142 unit, 99/99 emulator) belongs to v0.2.30c3, not WIP2 and not this candidate.
+
+IMPLEMENTATION STATUS (SOURCE WRITTEN, NOT COMPILED / NOT RUN)
+- Phase 6: PARTIAL. Added bounded undo/redo history, Minimum/Full mode controls, duplicate warning paths, editor draft extensions and reference/metadata fields. Type_CQ still uses the legacy DraftText/edit-draft storage; Chapter_CQ uses the generic opaque EditorDraftRepository. A single canonical cross-scope draft schema is NOT complete (P-55.4 remains OPEN).
+- Phase 7: PARTIAL. Type_CQ new/edit and Chapter_CQ create/edit text paths now expose reference, editable positive marks, rating and board/category controls as applicable. Type_CQ question type is editable in Full mode; Chapter_CQ intentionally has no question-type column or picker.
+- Phase 8: PARTIAL. Added ordered text-solution editing, math-symbol insert bar and plain-text preview. The symbol bar appends at the end of a text value; this is not cursor-aware equation editing and preview does not render mathematical notation.
+- Chapter_CQ screen now has a subject/chapter workspace, add/rename entry points and per-question create/edit flow. Existing multiple board/year links and archived reference links are preserved during a question edit; the UI edits only one primary board/year entry.
+
+IMPORTANT LIMITATIONS / STILL OPEN
+- Type_CQ editor category assignment controls are not included. The reusable history helper is present, but one canonical immutable/observable EditorState pipeline across Type_CQ and Chapter_CQ is not complete. Raw invalid marks text is local to the input control until it parses and is not draft/history state.
+- Chapter_CQ hierarchy delete/reorder/breadcrumb and category create/rename/archive management are not included.
+- Image/media add, replace, crop, order and upload pipeline are NOT implemented. Existing IMAGE solution rows are preserved by text edits where present, but cannot be edited in this UI. Phase 10 media work remains required.
+- Full formula rendering, cursor-aware symbol insertion, rich layout, and image+text mixed solution UI remain NOT IMPLEMENTED.
+- Type_CQ edit duplicate-warning flow is NOT implemented; the Type_CQ new editor performs an exact-text duplicate check. Chapter_CQ new/edit checks exact duplicate text and allows an explicit “save anyway” confirmation.
+- Question-block deletion and sub-question block reorder remain out of scope; fixed ক/খ/গ/ঘ labels remain.
+- Chapter_CQ exposes one primary board/year selection. Additional existing links are preserved but are not independently editable in this screen. Archived linked category rows are retained and displayed as disabled.
+- Chapter_CQ category creation/rename/archive is not included in this workspace; it uses existing category records.
+- The generic EditorDraft abstraction is not yet the canonical state engine for both scopes. Existing Type_CQ DraftText version-1 JSON remains backward-compatible through defaulted fields, but a full migration/reconciliation has not been completed.
+- P-18, P-32, P-55.4, P-56, P-57, P-62 and P-63 remain open. Version metadata was deliberately NOT incremented because P-56 has no approved version map.
+
+VERSION / DATABASE
+- app/build.gradle.kts remains versionCode 36 and versionName 0.2.31-phase5-wip2. The ZIP filename is an artifact label only, not a new app version/release.
+- No Room entity/table/schema migration was intentionally introduced. Room/KSP output and identityHash have NOT been checked for this candidate; do not claim schema parity until CI confirms it.
+- No APK or release artifact is included.
+
+--- Older notes (v0.2.30c3-phase4-wip1 and before) ---
+--- Older notes (v0.2.30c3-phase4-wip1 and before) ---
+
+Question Bank Android build foundation - working package v0.2.30c3-phase4-wip1 (plan v1.46)
+
+CURRENT WORKING PACKAGE - PHASE 4 DATA LAYER (NOT VERIFIED / NOT RELEASED)
+- Added shared, Type_CQ, Chapter_CQ, category, media and paper DAO/repository/use-case work. See PHASE4_DATA_LAYER_NOTES.md and PROJECT_PLAN_v1_46_UPDATED.txt section 55.
+- SQLite static query check: 87 newly added DAO @Query statements passed EXPLAIN against the canonical schema. This is not a Room/KSP compile.
+- No Room Entity/schema/database-version change intended: 35 Room entities, database version 1, expected identityHash 786b471dfa14c9ae4739bb81479bab25. Must be reconfirmed by CI.
+- Added 3 JVM tests and 3 Android instrumentation tests. Expected totals based on the prior baseline: 145 unit / 102 emulator; actual totals are unknown until CI/emulator runs.
+- Local Gradle run BLOCKED: Gradle 8.14.3 distribution is not cached and services.gradle.org cannot be resolved (UnknownHostException). Kotlin compile, KSP, unit tests and emulator tests are therefore NOT CONFIRMED.
+- Previous CI Run #47 (142/142 unit, 99/99 emulator) is for the unchanged v0.2.30c3 baseline, not this package.
+- PHASE 4 remains IN PROGRESS. Do not ship as a release or call the phase complete until CI, emulator, domain-boundary/draft reconciliation and owner device smoke checks pass.
+
+--- Historical build notes from the v0.2.30c3 base package ---
+
+Question Bank Android build foundation - package version 0.2.30c-fix1 (plan v1.42)
+
+v0.2.30a + b (b-fix1) are CONFIRMED by owner report (CI clean, instrumented test clean, phone check list clean; the counts were not sent to the assistant).
+
+NEW in v0.2.30c (part C-1 of the split step "editor fields"; written, NOT compiled, NOT run - UNCONFIRMED): the board catalog with 11 built-in boards (seeded on every open), custom boards (addCustomBoard), and boards + years (tags) saved, edited, read back and carried by the list / search / edit load - data and rule layer only, NO screen change. Drafts do not carry boards yet (C-2). No schema change; 13 new unit tests (expected 122) and 8 new emulator tests (expected 93). Next: C-2 board picker, year window, chips, new-board dialog. See VERSION_NOTES_0.2.30c.md.
+
+
+NEW in v0.2.30a + v0.2.30b (parts A-1 and A-2 of the split step "editor fields"; written, NOT compiled, NOT run - UNCONFIRMED; tested together because the owner asked for b on top of a):
+a = ratings in the data and rule layer (stimulus rating + rating per sub-question, saved with a new group, changed by an edit, read back, carried by drafts);
+b = rating buttons "১★..৫★" on the new-question screen and the edit screen, with the names and the line under them; a rating-only edit is a real change.
+CI run 42 FAILED with one compile error (Int? vs Long? in TypeCqQuestionDao.insertGroup); fixed in fix1, see plan 49.
+No schema change; 14 new unit tests (expected 109) and 7 new emulator tests (expected 85). Next: v0.2.30c boards + years. See VERSION_NOTES_0.2.30.md.
+
+NEW in v0.2.29 (part B-2 of the split step plus hashtag search; written, NOT compiled, NOT run - UNCONFIRMED): automatic edit drafts (key draft:type_cq:edit:<card>, restored when the
+edit is opened again, removed in the same transaction as a successful save, removed by "discard"); search words that start with "#" are matched as plain text with the "#" sign
+(question, short answer, stimulus); no schema change; 6 new unit tests (expected 95) and 10 new emulator tests (expected 78). See VERSION_NOTES_0.2.29.md.
+
+This ZIP is an incremental Android/Room package, not a completed Question Bank application.
+
+VERIFIED
+- v0.2.19: CI run 27 green (11 unit tests, release variant); emulator 300,000 rows green.
+- v0.2.20: CI-built debug APK installed on a phone; home screen and Bengali text correct.
+- v0.2.21 (emulator run, 20,000 rows): app and DAOs compile; 10 existing runtime tests and the benchmark pass; the 7 new hierarchy tests failed
+  because HierarchyName used a regex flag Android does not support. Fixed in v0.2.22.
+
+- v0.2.22: owner phone test passed (CI report, instrumented test, add subject/chapter/topic, no duplicate names). First open about 5 s: accepted (up to 10 s).
+
+v0.2.23: owner phone test passed (CI report, instrumented test, questions survive removal from recents, drafts survive).
+
+v0.2.24: CI and emulator green (owner report); phone test passed: install over v0.2.23 without uninstall, backup, restore with confirmation and restart, wrong file refused.
+
+NEW in v0.2.28 (part B-1 of the split step; written, NOT compiled, NOT run - UNCONFIRMED): edit an existing question - "⋮" menu on the card, edit screen with the stored texts,
+one all-or-nothing save (FTS rows follow), refusals for blanking, discard dialog; no edit draft yet (v0.2.29); no schema change; 15 new unit tests (expected 89) and 9 new emulator
+tests (expected 68). See VERSION_NOTES_0.2.28.md.
+v0.2.27 is CONFIRMED (CI run 38: 74 of 74 unit tests; emulator 59 of 59; identityHash 786b471d... unchanged; same fixed debug key; phone check list clear by owner report).
+The first CI run of v0.2.27 (run 37) failed: a Kotlin "platform declaration clash" (property `query` and function `setQuery`); the function was renamed `onQueryChange`; run 38 green.
+
+NEW in v0.2.27 (part A of the split step; written, NOT compiled, NOT run - UNCONFIRMED): question card in the new design (ribbon, rating badge by rule U-1, chip strip)
+and Bengali in-topic search (FTS5 for question text and short answer, plain match for the stimulus, 300 ms after the last key); read-only; no schema change; 17 new unit tests
+(expected 74) and 8 new emulator tests (expected 59). Part B (v0.2.28: open an existing question in the editor) starts after part A is confirmed. See VERSION_NOTES_0.2.27.md.
+v0.2.26 is CONFIRMED (CI run 36: 57 of 57 unit tests; emulator 51 of 51; identityHash unchanged; phone check list done by owner report).
+
+NEW in v0.2.26 (written, NOT compiled, NOT run - UNCONFIRMED): hierarchy management - counts and breadcrumb on the subject/chapter/topic lists, rename, delete (only empty items, ADR-010),
+reorder with arrows (saved once); no schema change; 11 new unit tests (expected 57) and 11 new emulator tests (expected 51). See VERSION_NOTES_0.2.26.md.
+v0.2.25 is CONFIRMED by owner report (CI, emulator, phone check list); the test counts were not sent.
+
+NEW in v0.2.25 (written, NOT compiled, NOT run - UNCONFIRMED): UI shell - five bottom tabs, blue header, owner-chosen Light/Dark theme and text size in Profile,
+Bengali digit formatter, existing screens moved into the new design; no schema change; 11 new unit tests (expected 46) and 3 new emulator tests. See VERSION_NOTES_0.2.25.md.
+
+(v0.2.24 content) backup export (VACUUM INTO, inspected, read back) and restore (staged, swapped at next start,
+previous database kept); 7 new unit tests and 7 new emulator tests. See VERSION_NOTES_0.2.24.md.
+
+(v0.2.23 content, written earlier) : fixed debug signing key, question types seed, Type_CQ question editor with
+atomic save + read-back, automatic drafts, synchronous=FULL; 11 new unit tests, 10 new emulator tests. See VERSION_NOTES_0.2.23.md.
+Do not install the v0.2.21 APK (adding a subject would crash). Uninstall v0.2.22 once before installing v0.2.23 (different signing key).
+
+Open: confirm v0.2.26 (CI + emulator + phone), question card + search + edit (v0.2.27), keyset paging (P-20), rank-search cost (P-19, 10 ms at 20,000 rows),
+Phase 0 documents, release signing, AGP 9 / compileSdk 37 upgrade (later, separate step).
+
+
+DEEP STATIC RECHECK v1.54
+- Reopened source ZIP, v1.53 plan and v1.53 report; compared candidate tree with original WIP2. 235/235 original file paths preserved; no original path removed.
+- Additional static corrections: Chapter_CQ rapid-save/draft races; atomic draft metadata deletion; Type_CQ duplicate-check cancellation race; Type_CQ transaction-local read-back; text/image part-position preservation; Chapter_CQ single transaction body (no nested @Transaction call); stale edit-target guard; shared-stimulus copy-on-write; primary board/year replacement; cancellation propagation; root back action.
+- No Gradle build, Kotlin compile, KSP, unit/instrumented/emulator/phone tests run, as requested by owner. ZIP integrity is not app verification.
+- Phase 6/7/8 remain PARTIAL / UNVERIFIED. Phase 4/5 M0 NOT PASSED. Room identityHash not checked. Version remains code 36 / 0.2.31-phase5-wip2.
+- See PROJECT_PLAN_v1_54_UPDATED.txt and STATIC_RECHECK_REPORT_v1_54.txt.
+
+
+PROFILE CATEGORY MANAGEMENT (22 Nov 2026) - SOURCE UPDATE, SQLITE-VALIDATED, ANDROID BUILD UNVERIFIED
+- Profile now opens a category manager with create, rename, reorder, select-all, multi-select and delete.
+- Category detail lists its papers and supports paper multi-select / bulk delete. No bottom action panel is used.
+- Deleting a category also deletes all its papers, sections, snapshot items and item-image links; orphan paper media is collected. Source Type CQ / Chapter CQ questions remain untouched.
+- `অশ্রেণিবদ্ধ` (the exact original SQL/old Caa spelling, short ই) is the permanent category. UI/repository prevent rename/delete; the SQLite trigger prevents direct deletion; the repository prevents creation/rename using either spelling. The on-open/restore repair merges both spelling variants and whitespace variants into `system_uncategorized`, moving their papers there.
+- SQLite schema/runtime installer, restore duplicate repair (including a pre-existing canonical row), foreign-key integrity and delete cascade were checked with Python SQLite.
+- `./gradlew :app:testDebugUnitTest --no-daemon` was attempted, but the wrapper could not download Gradle 8.14.3 because `services.gradle.org` returned `UnknownHostException`. No Android/Kotlin/Compose compile, Gradle unit test, APK build, emulator or device test could be completed.
+- Version: code 50 / `0.2.45-profile-categories`; no Room entity/schema version change.
+- See `CHANGELOG_PROFILE_CATEGORIES_BN.md`.
+
+
+PROFILE CATEGORY CAREFUL RECHECK (22 Nov 2026)
+- Found and corrected a spelling mismatch: the original SQL seed and old Caa source both use `অশ্রেণিবদ্ধ` (short ই), while the first category patch used `অশ্রেণীবদ্ধ` (long ঈ).
+- Restore repair now recognizes both spellings plus leading/trailing spaces; it keeps only one canonical `system_uncategorized` row named `অশ্রেণিবদ্ধ`, and moves papers from aliases into that row.
+- Regression scenarios passed in Python SQLite: existing canonical row + aliases, missing canonical ID + legacy adoption, wrong canonical spelling, repeated/idempotent repair, protected-row deletion, and full paper/section/snapshot cascade while preserving source CQ questions.
+- The category row menu is shown for the permanent category, but rename/delete are disabled.
+- Gradle 8.14.3 download was retried and again failed with `UnknownHostException`; Android/Compose compile and Android tests remain unverified.
