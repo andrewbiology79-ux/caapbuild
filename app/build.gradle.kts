@@ -13,8 +13,8 @@ android {
         applicationId = "com.questionbank.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 53
-        versionName = "0.2.48-profile-source-info"
+        versionCode = 54
+        versionName = "0.2.49-card-ui-fix"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

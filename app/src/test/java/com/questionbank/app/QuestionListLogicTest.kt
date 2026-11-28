@@ -33,10 +33,10 @@ class QuestionListLogicTest {
     }
 
     @Test
-    fun typeCqRatingBadgeShowsFilledAndEmptyStarsWithTheRatingName() {
+    fun typeCqRatingBadgeShowsNumberAndOneStar() {
         assertEquals("৩★", ratingText(3)) // Chapter CQ shared badge remains unchanged.
-        assertEquals("★★★☆☆ মাঝারি", typeCqRatingText(3))
-        assertEquals("★★★★★ চ্যালেঞ্জিং", typeCqRatingText(5))
-        assertEquals("★☆☆☆☆ সহজ", typeCqRatingText(0))
+        assertEquals("৩★", typeCqRatingText(3))
+        assertEquals("৫★", typeCqRatingText(5))
+        assertEquals("১★", typeCqRatingText(0)) // clamped to the minimum rating
     }
 }

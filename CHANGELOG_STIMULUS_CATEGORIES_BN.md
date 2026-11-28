@@ -93,3 +93,11 @@
 - Profile-এর "অ্যাপ তথ্য" কার্ডে দুটি লাইন যোগ: "সোর্স ZIP ফাইল: QuestionBank_Step3_StimulusCategories_ReviewFix5_Source.zip" ও "প্ল্যান টেক্সট ফাইল: QuestionBank_TypeCQ_Full_Plan_Updated_2026-11-28_ReviewFix5_BN.txt"।
 - নাম দুটি `app/src/main/java/com/questionbank/app/AppSourceInfo.kt`-এ আছে; নতুন ZIP/প্ল্যান দিলে এই দুই নাম হালনাগাদ করতে হবে।
 - Status: SOURCE EDIT — NOT COMPILED / NOT TESTED।
+
+## ReviewFix6 — কার্ড UI সংশোধন (২৮ নভেম্বর ২০২৬)
+- রেটিং ব্যাজ: "৩★"/"৪★" ফরম্যাট (খালি তারা ও মাঝারি/চ্যালেঞ্জিং বাদ), Chapter CQ-র মতোই।
+- সমাধান দেখো সারি: বোর্ড চিপের প্রথম লাইন বাটনের সাথে একই উচ্চতায়; ডান থেকে বামে বাড়ে, বাটন পর্যন্ত এলে নিচের লাইনে নামে।
+- উপরের সারি: প্রশ্নপত্রের ক্যাটাগরি এক লাইনে (বেশি হলে স্ক্রল); বোর্ড চিপ তার ডানে, জায়গা না থাকলে নিচের লাইনে।
+- উদ্দীপক ক্যাটাগরি ড্রপডাউন আগের মতোই চেকবক্স থেকে রেটিং পর্যন্ত পুরো জায়গা নেয় (রেটিং ছোট হওয়ায় বেশি জায়গা পায়)।
+- Status: SOURCE EDIT — NOT COMPILED / NOT TESTED / NOT DEVICE-VERIFIED।
+- Profile > অ্যাপ তথ্য: ZIP নাম QuestionBank_Step3_StimulusCategories_ReviewFix6_Source.zip, প্ল্যান টেক্সট নাম QuestionBank_TypeCQ_Full_Plan_Updated_2026-11-28_ReviewFix6_BN.txt। Version 0.2.49-card-ui-fix / versionCode 54।

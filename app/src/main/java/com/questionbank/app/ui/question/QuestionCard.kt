@@ -37,6 +37,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -257,9 +259,11 @@ fun QuestionCard(
                     ) {
                         when {
                             group.paperUsages.isNotEmpty() && topTags.isNotEmpty() -> {
-                                PaperCategoryChipRow(group.paperUsages, Modifier.weight(1f))
-                                Spacer(Modifier.width(8.dp))
-                                TagChipRow(topTags, boards, Modifier.weight(1f))
+                                PaperAndBoardRow(
+                                    paper = { PaperCategoryChipRow(group.paperUsages) },
+                                    boardChips = { TagChipRow(topTags, boards, Modifier.fillMaxWidth()) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
                             }
                             group.paperUsages.isNotEmpty() -> PaperCategoryChipRow(group.paperUsages, Modifier.weight(1f))
                             else -> TagChipRow(topTags, boards, Modifier.fillMaxWidth())
@@ -395,13 +399,38 @@ private fun StimulusCategoryDropdown(
     }
 }
 
+/**
+ * Paper-category chips on one line (scrolls sideways when too long). The box wraps its content so the
+ * width is the natural chip width (capped by the parent) and [PaperAndBoardRow] can see how much room is left.
+ */
 @Composable
 private fun PaperCategoryChipRow(usages: List<com.questionbank.app.domain.question.PaperUsage>, modifier: Modifier = Modifier) {
     val dark = LocalDarkTheme.current
     val scrollState = rememberScrollState()
-    Column(modifier = modifier) {
+    val scrollable = scrollState.maxValue > 0
+    Box(
+        modifier = modifier
+            .drawBehind {
+                val maxScroll = scrollState.maxValue
+                val viewport = scrollState.viewportSize
+                if (maxScroll > 0 && viewport > 0 && size.width > 0f) {
+                    val centerY = size.height - 1.dp.toPx()
+                    val trackWidth = size.width
+                    val thumbWidth = (trackWidth * viewport.toFloat() / (viewport + maxScroll))
+                        .coerceAtLeast(16.dp.toPx())
+                        .coerceAtMost(trackWidth)
+                    val progress = (scrollState.value.toFloat() / maxScroll).coerceIn(0f, 1f)
+                    val thumbStart = (trackWidth - thumbWidth) * progress
+                    val trackColor = if (dark) QuestionCardPalette.DarkPaperChipBorder else QuestionCardPalette.LightPaperChipBorder
+                    val thumbColor = if (dark) QuestionCardPalette.DarkPaperChipText else QuestionCardPalette.LightPaperChipText
+                    drawLine(trackColor, Offset(0f, centerY), Offset(trackWidth, centerY), 1.dp.toPx(), cap = StrokeCap.Round)
+                    drawLine(thumbColor, Offset(thumbStart, centerY), Offset(thumbStart + thumbWidth, centerY), 1.dp.toPx(), cap = StrokeCap.Round)
+                }
+            }
+            .padding(bottom = if (scrollable) 3.dp else 0.dp),
+    ) {
         Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(scrollState),
+            modifier = Modifier.horizontalScroll(scrollState),
             horizontalArrangement = Arrangement.spacedBy(5.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -432,25 +461,42 @@ private fun PaperCategoryChipRow(usages: List<com.questionbank.app.domain.questi
                 }
             }
         }
-        if (scrollState.maxValue > 0) Spacer(
-            Modifier.fillMaxWidth().height(2.dp).drawBehind {
-                val maxScroll = scrollState.maxValue
-                val viewport = scrollState.viewportSize
-                if (maxScroll > 0 && viewport > 0 && size.width > 0f) {
-                    val centerY = size.height / 2f
-                    val trackWidth = size.width
-                    val thumbWidth = (trackWidth * viewport.toFloat() / (viewport + maxScroll))
-                        .coerceAtLeast(16.dp.toPx())
-                        .coerceAtMost(trackWidth)
-                    val progress = (scrollState.value.toFloat() / maxScroll).coerceIn(0f, 1f)
-                    val thumbStart = (trackWidth - thumbWidth) * progress
-                    val trackColor = if (dark) QuestionCardPalette.DarkPaperChipBorder else QuestionCardPalette.LightPaperChipBorder
-                    val thumbColor = if (dark) QuestionCardPalette.DarkPaperChipText else QuestionCardPalette.LightPaperChipText
-                    drawLine(trackColor, Offset(0f, centerY), Offset(trackWidth, centerY), 1.dp.toPx(), cap = StrokeCap.Round)
-                    drawLine(thumbColor, Offset(thumbStart, centerY), Offset(thumbStart + thumbWidth, centerY), 1.dp.toPx(), cap = StrokeCap.Round)
-                }
-            },
-        )
+    }
+}
+
+/**
+ * Top metadata row: paper-category chips stay on ONE line at the left; the board chips sit to their right
+ * (right-aligned, growing leftwards, wrapping onto new lines inside that space). When the category chips take
+ * (almost) the whole width, the board chips move to the line below, full width and right-aligned.
+ */
+@Composable
+private fun PaperAndBoardRow(
+    paper: @Composable () -> Unit,
+    boardChips: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Layout(content = { paper(); boardChips() }, modifier = modifier) { measurables, constraints ->
+        val total = constraints.maxWidth
+        val gap = 8.dp.roundToPx()
+        val lineGap = 3.dp.roundToPx()
+        val minBoardsWidth = 56.dp.roundToPx()
+        val paperPlaceable = measurables[0].measure(Constraints(0, total, 0, constraints.maxHeight))
+        val remaining = total - paperPlaceable.width - gap
+        if (remaining >= minBoardsWidth) {
+            val boardsPlaceable = measurables[1].measure(Constraints(0, remaining, 0, constraints.maxHeight))
+            val height = maxOf(paperPlaceable.height, boardsPlaceable.height)
+            layout(total, height) {
+                paperPlaceable.place(0, 0)
+                boardsPlaceable.place(total - boardsPlaceable.width, 0)
+            }
+        } else {
+            val boardsPlaceable = measurables[1].measure(Constraints(0, total, 0, constraints.maxHeight))
+            val height = paperPlaceable.height + lineGap + boardsPlaceable.height
+            layout(total, height) {
+                paperPlaceable.place(0, 0)
+                boardsPlaceable.place(total - boardsPlaceable.width, paperPlaceable.height + lineGap)
+            }
+        }
     }
 }
 
@@ -547,7 +593,7 @@ private fun QuestionCardSubQuestion(
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = Alignment.Top,
         ) {
             val buttonShape = RoundedCornerShape(8.dp)
             Box(
@@ -593,7 +639,8 @@ private fun QuestionCardSubQuestion(
                 }
             }
             if (showQuestionBoards && question.boards.isNotEmpty()) {
-                Box(Modifier.weight(1f)) {
+                // The first chip line is level with the button (button 28dp, chip ~18dp -> ~5dp offset).
+                Box(Modifier.weight(1f).padding(top = 5.dp)) {
                     TagChipRow(question.boards, boards, Modifier.fillMaxWidth())
                 }
             } else {

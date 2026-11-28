@@ -12,10 +12,10 @@ fun cardCount(groups: List<SavedGroup>): Int = groups.size
 /** Existing shared rating text retained for Chapter CQ cards (e.g. "৩★"). */
 fun ratingText(rating: Int): String = "${rating.toBengali()}★"
 
-/** Type CQ ribbon rating text matching the legacy Collection card (e.g. "★★★☆☆ মাঝারি"). */
+/** Type CQ ribbon rating text: number + one star (e.g. "৩★"); no empty stars, no rating name. */
 fun typeCqRatingText(rating: Int): String {
     val safeRating = rating.coerceIn(RatingRules.MIN, RatingRules.MAX)
-    return "${"★".repeat(safeRating)}${"☆".repeat(RatingRules.MAX - safeRating)} ${RatingRules.name(safeRating)}"
+    return "${safeRating.toBengali()}★"
 }
 
 /** Total saved cards in the topic. */
