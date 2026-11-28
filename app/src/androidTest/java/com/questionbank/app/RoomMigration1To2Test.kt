@@ -102,11 +102,11 @@ class RoomMigration1To2Test {
         }
         // the new table works and its foreign keys cascade
         db.useWriterConnection { c ->
-            c.execSQL("PRAGMA foreign_keys = ON")
-            c.execSQL("INSERT INTO type_cq_stimulus_category_links(stimulus_id, category_id, assigned_at) VALUES('st1', 'cat1', 9)")
+            c.exec("PRAGMA foreign_keys = ON")
+            c.exec("INSERT INTO type_cq_stimulus_category_links(stimulus_id, category_id, assigned_at) VALUES('st1', 'cat1', 9)")
             assertEquals(1L, c.scalarLong("SELECT COUNT(*) FROM type_cq_stimulus_category_links"))
-            c.execSQL("DELETE FROM type_cq_questions WHERE question_id = 'q1'")
-            c.execSQL("DELETE FROM type_cq_stimuli WHERE stimulus_id = 'st1'")
+            c.exec("DELETE FROM type_cq_questions WHERE question_id = 'q1'")
+            c.exec("DELETE FROM type_cq_stimuli WHERE stimulus_id = 'st1'")
             assertEquals(0L, c.scalarLong("SELECT COUNT(*) FROM type_cq_stimulus_category_links"))
         }
     }

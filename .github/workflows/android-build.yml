@@ -73,10 +73,9 @@ jobs:
           exit "$build_exit_code"
 
       # v0.2.15: compile the androidTest sources (no emulator) so compile errors show up in the normal CI.
-      # Non-blocking: a failure here does not fail the build; read build-report/androidtest-compile.log.
-      - name: Compile androidTest sources (non-blocking)
+      # Recheck item 11: BLOCKING since 0.2.47 - an androidTest compile error now fails the job (read build-report/androidtest-compile.log).
+      - name: Compile androidTest sources (blocking)
         if: always()
-        continue-on-error: true
         shell: bash
         run: |
           mkdir -p build-report
@@ -84,11 +83,10 @@ jobs:
           $GRADLE_CMD --no-daemon compileDebugAndroidTestKotlin --stacktrace 2>&1 | tee build-report/androidtest-compile.log
           exit ${PIPESTATUS[0]}
 
-      # v0.2.19: assemble the (unsigned) release variant so release-only errors show up. Non-blocking.
+      # v0.2.19: assemble the (unsigned) release variant so release-only errors show up. BLOCKING since 0.2.47 (recheck item 12).
       # Read build-report/release-assemble.log. The APK is not uploaded: it is unsigned and not installable.
-      - name: Assemble release variant (non-blocking)
+      - name: Assemble release variant (blocking)
         if: always()
-        continue-on-error: true
         shell: bash
         run: |
           mkdir -p build-report

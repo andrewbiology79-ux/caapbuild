@@ -178,6 +178,8 @@ fun QuestionCard(
                     categories = categories,
                     selectedIds = selectedCategoryIds,
                     enabled = onSetStimulusCategories != null,
+                    // Recheck item 7: a card without a stimulus edits the question's own category, so the hint says so.
+                    placeholder = if (group.stimulusId != null) "উদ্দীপক ক্যাটাগরি" else "দাগের ক্যাটাগরি",
                     modifier = Modifier.weight(1f),
                     onToggle = { categoryId ->
                         val next = if (categoryId in selectedCategoryIds) {
@@ -330,6 +332,7 @@ private fun StimulusCategoryDropdown(
     categories: List<TypeCqQuestionCategoriesEntity>,
     selectedIds: List<String>,
     enabled: Boolean,
+    placeholder: String,
     modifier: Modifier = Modifier,
     onToggle: (String) -> Unit,
 ) {
@@ -349,7 +352,7 @@ private fun StimulusCategoryDropdown(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = label.ifBlank { "উদ্দীপক ক্যাটাগরি" },
+                text = label.ifBlank { placeholder },
                 modifier = Modifier.weight(1f).horizontalScroll(scrollState),
                 color = if (label.isBlank()) Color.White.copy(alpha = 0.68f) else Color.White,
                 fontSize = 10.sp,
